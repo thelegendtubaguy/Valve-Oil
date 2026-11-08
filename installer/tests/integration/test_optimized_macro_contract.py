@@ -175,6 +175,19 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("SET_PRINT_SUB_STATUS SUB_STATUS=box_filament_exhausted", runout)
         self.assertIn("SET_PRINT_SUB_STATUS SUB_STATUS=ext_filament_exhausted", runout)
         self.assert_ordered(runout, "QIDI Box handling", "PAUSE", "M118 Filament run out")
+        # Klipper runs runout_gcode only after the command holding the G-code lock ends; a trip
+        # from a Box unload must not pause or reload after the filament is back or the print ended.
+        self.assert_ordered(
+            runout,
+            "{% if filament_back or not print_running %}",
+            "ignoring an earlier toolhead sensor trip",
+            "{% else %}",
+            "PAUSE",
+            "AUTO_RELOAD_FILAMENT",
+            "SET_PRINT_SUB_STATUS SUB_STATUS=ext_filament_exhausted",
+        )
+        self.assertIn("filament_switch_sensor'].filament_detected", runout)
+        self.assertIn('printer.print_stats.state == "printing" and not printer.pause_resume.is_paused', runout)
 
         inserted = self._macro_gcode("OPTIMIZED_FILAMENT_SENSOR_INSERTED")
         self.assertIn("TOOLHEAD SENSOR UNTRIPPED", inserted)
