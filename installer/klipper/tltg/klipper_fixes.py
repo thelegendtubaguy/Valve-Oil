@@ -54,16 +54,40 @@
 #   NaN and infinity go out as null, which Moonraker's msgspec decoder
 #   reads; json wrote NaN, which it rejects. Anything msgspec can't encode
 #   goes through json as before.
+# - G-code time slices: while Klipper streams a print's G-code, a run of
+#   moves (planning, bed mesh splitting, step generation) kept the main loop
+#   busy for 50-150 ms a few thousand times an hour, and every other timer
+#   waited for the run to end. A move now lets the timers that are due run
+#   once the loop has worked 20 ms since it last ran them. The work and the
+#   moves are the same; only the order changes. Homing and probing moves
+#   don't yield.
+# - Long moves: Klipper generates all of a move's steps at once when it
+#   flushes the move from its lookahead queue, so one long move that
+#   doesn't extrude, such as the slicer end G-code lowering the bed 170 mm
+#   at 10 mm/s (12,800 steps per millimetre for each Max 4 Z motor), held
+#   the main loop for about 1.5 s. Such moves are now queued as pieces of
+#   at most 0.5 s along the same line at the same speed, so their steps
+#   are generated piece by piece with the time slices between them. As with
+#   any run of moves, the G-code after one now runs once less than 3 s of
+#   it is left to run, instead of at once.
+# - Box temperatures in status updates: each Box's aht20_temp in box_extras
+#   wanders by 0.01-0.04 C, and as it sits in the 8.5 KB boxes list, every
+#   wobble sent Moonraker the whole list, about once a second. Status updates
+#   now report a Box's temperature again once it moves 0.1 C from the value
+#   last reported. Macros read the current value as before.
 
 import gc
 import hashlib
 import inspect
 import json
 import logging
+import math
+import time
 
 import mcu
 import reactor
 import serialhdl
+import toolhead
 import webhooks
 from . import heaters, stepper_enable, tmc
 
@@ -86,6 +110,13 @@ NO_COMMUNICATION = "No communication with MCU"
 # move after X/Y are disabled starts about 160 ms ahead of the MCU, so the
 # motor still locks about 140 ms before it moves.
 ENABLE_MARGIN = 0.020
+# How long the main loop works through moves before the timers that are due
+# get to run.
+SLICE_TIME = 0.020
+# Moves that don't extrude are queued in pieces no longer than this.
+MAX_MOVE_TIME = 0.5
+# How far a Box's temperature moves before status updates report it again.
+BOX_TEMP_STEP = 0.1
 
 # SHA-256 of each replaced function's source, line endings removed, as
 # shipped in QIDI firmware 01.01.07.01.
@@ -120,6 +151,8 @@ ORIGINALS = {
         "4c98062e7e62f23b182fa789a31cbd28994d0d91dacc4ddb429d9ba08301eeee",
     "ClientConnection.send":
         "55aab4af4a66a830c9bbc27deccdf413d762f25bcb0a2da6bab0bd76331707b8",
+    "ToolHead._do_actual_move":
+        "46130d66b0dd45c82d47bb5857bff35c86c92ba7e52007c4ea40fcaab48fa5c9",
 }
 
 
@@ -356,6 +389,8 @@ def _update_timer(self, timer_handler, waketime):
 
 
 def _check_timers(self, eventtime, busy):
+    # When the loop last turned to its timers; moves yield some time after.
+    _slice_start[0] = _clock()
     if eventtime < self._next_timer:
         if busy:
             return 0.
@@ -394,7 +429,90 @@ def _check_timers(self, eventtime, busy):
     return 0.
 
 
+# The slice check runs for every move, thousands a second while printing, so
+# it reads Python's own clock: about 0.6 us on the Max 4 against 2.6 us for
+# Klipper's. Only differences between its readings are used.
+_clock = time.perf_counter
+# When the main loop last turned to its timers, or a move last yielded.
+_slice_start = [0.]
+
+
+def _fix_move_slices():
+    # Slices are timed from the scan above, which notes each pass.
+    if not getattr(reactor.SelectReactor.__dict__.get("_check_timers"),
+                   MARKER, False):
+        return False
+    original = toolhead.ToolHead.__dict__.get("_do_actual_move")
+
+    def _do_actual_move(self, newpos, speed):
+        # Homing and probing ("Drip") and priming keep QIDI's timing.
+        if self.special_queuing_state or not self.can_pause:
+            original(self, newpos, speed)
+            return
+        pieces = 1
+        if newpos[3] == self.commanded_pos[3]:
+            pieces = _move_pieces(self, newpos, speed)
+        if pieces == 1:
+            original(self, newpos, speed)
+            if _clock() - _slice_start[0] >= SLICE_TIME:
+                _yield_slice(self.reactor)
+            return
+        start = list(self.commanded_pos)
+        for i in range(1, pieces + 1):
+            piece = [s + (e - s) * i / pieces for s, e in zip(start, newpos)]
+            original(self, newpos if i == pieces else piece, speed)
+            if _clock() - _slice_start[0] >= SLICE_TIME:
+                _yield_slice(self.reactor)
+    return _replace(toolhead.ToolHead, "_do_actual_move",
+                    "ToolHead._do_actual_move", _do_actual_move)
+
+
+def _move_pieces(th, newpos, speed):
+    """How many pieces of at most MAX_MOVE_TIME a move that doesn't extrude
+    splits into."""
+    pos = th.commanded_pos
+    dx, dy, dz = (newpos[0] - pos[0], newpos[1] - pos[1], newpos[2] - pos[2])
+    dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if not dist:
+        return 1
+    move_time = dist / min(speed, th.max_velocity)
+    max_z_velocity = getattr(th.kin, "max_z_velocity", None)
+    if dz and max_z_velocity:
+        move_time = max(move_time, abs(dz) / max_z_velocity)
+    return max(1, int(math.ceil(move_time / MAX_MOVE_TIME - 1e-9)))
+
+
+def _yield_slice(reactor):
+    # Pausing until now runs the timers that are due, then this move's caller.
+    reactor.pause(reactor.NOW)
+    _slice_start[0] = _clock()
+
+
 # ------------------------------------------------------------------ status
+_NUMBERS = (int, float)
+
+
+def _hold_box_temps(status, last):
+    """box_extras status with each Box's aht20_temp kept at the value last
+    reported until it moves BOX_TEMP_STEP."""
+    boxes = status.get("boxes") if type(status) is dict else None
+    last_boxes = last.get("boxes") if type(last) is dict else None
+    if (type(boxes) is not list or type(last_boxes) is not list
+            or len(boxes) != len(last_boxes)):
+        return status
+    held = []
+    for box, last_box in zip(boxes, last_boxes):
+        if type(box) is dict and type(last_box) is dict:
+            temp = box.get("aht20_temp")
+            last_temp = last_box.get("aht20_temp")
+            if (temp != last_temp and type(temp) in _NUMBERS
+                    and type(last_temp) in _NUMBERS
+                    and abs(temp - last_temp) < BOX_TEMP_STEP):
+                box = dict(box, aht20_temp=last_temp)
+        held.append(box)
+    return dict(status, boxes=held)
+
+
 def _status_diff(self, now, last):
     """QIDI's _get_diff_recursive, comparing each key's values in C first
     so that only values that differ go through QIDI's recursion."""
@@ -436,7 +554,10 @@ def _do_query(self, eventtime):
                 if po is None or not hasattr(po, 'get_status'):
                     res = query[obj_name] = {}
                 else:
-                    res = query[obj_name] = po.get_status(eventtime)
+                    res = po.get_status(eventtime)
+                    if obj_name == "box_extras":
+                        res = _hold_box_temps(res, last_query.get(obj_name))
+                    query[obj_name] = res
             if req_items is None:
                 req_items = list(res.keys())
                 if req_items:
@@ -530,6 +651,7 @@ class KlipperFixes:
                 webhooks.QueryStatusHelper, "_do_query",
                 "QueryStatusHelper._do_query", _do_query)),
             ("stepper enable timing", _fix_stepper_enable),
+            ("G-code time slices", _fix_move_slices),
         ]
         if msgspec is None:
             logging.info("tltg_klipper_fixes: msgspec isn't installed for "

@@ -920,6 +920,35 @@ Optimized configuration SHALL replace the vendor once-a-second status update pas
 - **WHEN** an update holds data `msgspec` rejects, such as a dict key that is not a string
 - **THEN** that update is encoded with `json` as the vendor send does, and Klipper keeps running
 
+### Requirement: Box temperatures in status updates
+The optimized status update pass SHALL report each Box's `box_extras` `aht20_temp` as its last reported value until the reading moves 0.1 °C from it. Macros SHALL read the current value.
+
+#### Scenario: Box temperature wobble
+- **WHEN** a Box's temperature changes by less than 0.1 °C from the value last reported and nothing else in the Box status changes
+- **THEN** no `box_extras` update is sent; once it moves 0.1 °C, or another Box field changes, the update carries the Box list with the temperatures last reported or newly moved
+
+### Requirement: Print moves share the main loop
+When the vendor toolhead move queuing and the vendor timer scan match their originals, a toolhead move queued in normal printing SHALL let Klipper's due timers run before the next move once the main loop has worked 20 ms since it last turned to its timers. Homing and probing (drip) moves and moves while the toolhead is priming SHALL keep the vendor timing.
+
+#### Scenario: Long run of print moves
+- **WHEN** queuing moves keeps the main loop busy past 20 ms
+- **THEN** the next move pauses until the timers that are due have run, and the moves are queued unchanged
+
+#### Scenario: Homing move
+- **WHEN** a move is queued in drip mode for homing or probing
+- **THEN** it does not pause for other timers
+
+### Requirement: Long moves queued in pieces
+When the same fix is in place, a toolhead move in normal printing that does not extrude and would take longer than 0.5 s, counting the Z velocity limit, SHALL be queued as equal pieces of at most 0.5 s along the same line at the requested speed, ending exactly at the requested position. Extruding moves and drip moves SHALL be queued whole.
+
+#### Scenario: End-of-print bed drop
+- **WHEN** the end G-code lowers the bed 178 mm at 10 mm/s
+- **THEN** the move is queued as 36 pieces along Z ending at the requested Z, with due timers run between pieces
+
+#### Scenario: Extruding move
+- **WHEN** a move extrudes, however long it takes
+- **THEN** it is queued as one move
+
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.
 

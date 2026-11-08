@@ -20,9 +20,9 @@ def _load():
     """Import tltg_klipper_fixes with stand-ins for the Klipper modules it
     patches; the tests attach the classes they need."""
     saved = {name: sys.modules.get(name)
-             for name in ("mcu", "reactor", "serialhdl", "webhooks", "extras", "extras.heaters",
-                          "extras.stepper_enable", "extras.tmc")}
-    for name in ("mcu", "reactor", "serialhdl", "webhooks"):
+             for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks", "extras",
+                          "extras.heaters", "extras.stepper_enable", "extras.tmc")}
+    for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks"):
         sys.modules[name] = types.ModuleType(name)
     sys.modules["serialhdl"].error = SerialError
     sys.modules["webhooks"].DEEP_COMPARISON_MODULES = ["multi_color_controller"]
@@ -291,6 +291,98 @@ class TimerTest(unittest.TestCase):
         self.assertEqual((due.waketime, idle.waketime, reactor._next_timer), (30., 15., 15.))
 
 
+class TimeSliceTest(unittest.TestCase):
+    """Streamed moves let due timers run every 20 ms; homing doesn't."""
+
+    def setUp(self) -> None:
+        class Reactor:
+            NOW = 0.
+
+            def __init__(self):
+                self.clock = 100.
+                self.pauses = []
+
+            def monotonic(self):
+                return self.clock
+
+            def pause(self, waketime):
+                self.pauses.append(self.clock)
+                return self.clock
+
+        class ToolHead:
+            def __init__(self, reactor):
+                self.reactor = reactor
+                self.special_queuing_state = ""
+                self.can_pause = True
+                self.max_velocity = 565.
+                self.kin = types.SimpleNamespace(max_z_velocity=10.)
+                self.commanded_pos = [0., 0., 3., 0.]
+                self.moves = []
+
+            def _do_actual_move(self, newpos, speed):
+                self.moves.append(list(newpos))
+                self.commanded_pos[:] = newpos
+                self.reactor.clock += .008
+
+        def check_timers(self, eventtime, busy):
+            pass
+        setattr(check_timers, klipper_fixes.MARKER, True)
+        saved = (getattr(klipper_fixes.toolhead, "ToolHead", None),
+                 getattr(klipper_fixes.reactor, "SelectReactor", None),
+                 klipper_fixes.ORIGINALS["ToolHead._do_actual_move"])
+        def restore():
+            klipper_fixes.toolhead.ToolHead, klipper_fixes.reactor.SelectReactor = saved[:2]
+            klipper_fixes.ORIGINALS["ToolHead._do_actual_move"] = saved[2]
+        self.addCleanup(restore)
+        klipper_fixes.toolhead.ToolHead = ToolHead
+        klipper_fixes.reactor.SelectReactor = type("SelectReactor", (), {"_check_timers": check_timers})
+        klipper_fixes.ORIGINALS["ToolHead._do_actual_move"] = klipper_fixes.source_hash(
+            ToolHead._do_actual_move)
+        self.assertTrue(klipper_fixes._fix_move_slices())
+        self.reactor = Reactor()
+        saved_clock = klipper_fixes._clock
+        self.addCleanup(setattr, klipper_fixes, "_clock", saved_clock)
+        klipper_fixes._clock = self.reactor.monotonic
+        # The timer scan starts a pass now.
+        klipper_fixes._slice_start[0] = self.reactor.clock
+        self.toolhead = ToolHead(self.reactor)
+
+    def test_moves_yield_once_the_loop_has_worked_a_slice(self) -> None:
+        for i in range(6):
+            self.toolhead._do_actual_move([i, 0., 0., 0.], 100.)
+
+        self.assertEqual(len(self.toolhead.moves), 6)
+        # 8 ms a move: yields after the 3rd move (24 ms) and the 6th.
+        self.assertEqual([round(t - 100., 3) for t in self.reactor.pauses], [.024, .048])
+
+    def test_homing_moves_keep_their_timing(self) -> None:
+        self.toolhead.special_queuing_state = "Drip"
+        for i in range(6):
+            self.toolhead._do_actual_move([i, 0., 0., 0.], 5.)
+        self.toolhead._do_actual_move([5., 0., 200., 0.], 10.)
+
+        self.assertEqual(self.reactor.pauses, [])
+        self.assertEqual(len(self.toolhead.moves), 7)
+
+    def test_long_travel_is_queued_in_short_pieces_along_the_same_line(self) -> None:
+        # The end G-code's bed drop: G1 Z181 F600 from Z3, capped at 10 mm/s.
+        self.toolhead._do_actual_move([0., 0., 181., 0.], 100.)
+
+        moves = self.toolhead.moves
+        self.assertEqual(len(moves), 36)
+        self.assertEqual(moves[-1], [0., 0., 181., 0.])
+        steps = [b[2] - a[2] for a, b in zip([[0., 0., 3., 0.]] + moves, moves)]
+        self.assertTrue(all(abs(step - 178. / 36) < 1e-9 for step in steps))
+        self.assertTrue(all(m[0] == 0. and m[1] == 0. and m[3] == 0. for m in moves))
+        self.assertTrue(self.reactor.pauses)
+
+    def test_extruding_and_short_moves_are_queued_whole(self) -> None:
+        self.toolhead._do_actual_move([300., 0., 3., 50.], 5.)
+        self.toolhead._do_actual_move([300., 200., 3., 50.], 500.)
+
+        self.assertEqual(self.toolhead.moves, [[300., 0., 3., 50.], [300., 200., 3., 50.]])
+
+
 class StatusEncodingTest(unittest.TestCase):
     """Updates msgspec can't encode still reach Moonraker instead of
     shutting Klipper down."""
@@ -362,6 +454,36 @@ class StatusUpdateTest(unittest.TestCase):
             {"temperature_sensor s": {"temperature": 21.},
              "multi_color_controller": {"box": {"temp": 28.8}}},
         ])
+
+    def test_box_temperature_wobble_does_not_resend_the_boxes(self) -> None:
+        boxes = [{"aht20_temp": 26.33, "slots": ["PLA"]}, {"aht20_temp": 0, "slots": []}]
+        objects = {"box_extras": types.SimpleNamespace(
+            get_status=lambda e: {"boxes": [dict(box) for box in boxes]})}
+        helper = self.Helper(objects)
+        sent = []
+        class Connection:
+            def is_closed(self):
+                return False
+        conn = Connection()
+        helper.clients[conn] = (conn, {"box_extras": None}, sent.append, {})
+
+        def update(temp, slots=None):
+            boxes[0]["aht20_temp"] = temp
+            if slots is not None:
+                boxes[0]["slots"] = slots
+            klipper_fixes._do_query(helper, 1.)
+            return sent[-1]["params"]["status"].get("box_extras") if sent else None
+
+        first = update(26.33)
+        wobbles = [update(t) for t in (26.35, 26.31, 26.40)]
+        moved = update(26.43)
+        slot_change = update(26.46, slots=["PETG"])
+
+        self.assertEqual(first["boxes"][0]["aht20_temp"], 26.33)
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(wobbles, [first] * 3)
+        self.assertEqual(moved["boxes"][0]["aht20_temp"], 26.43)
+        self.assertEqual(slot_change["boxes"][0], {"aht20_temp": 26.43, "slots": ["PETG"]})
 
 
 if __name__ == "__main__":
