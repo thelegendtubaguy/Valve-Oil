@@ -16,8 +16,11 @@ The full GPLv3 text is available in [`LICENSE`](LICENSE) and [`LICENSES/GPL-3.0-
   - `installer/klipper/qidi/homing.py`
   - `installer/klipper/qidi/homing-sync-reset.py`
   - `installer/tests/fixtures/source-patches/01.01.06.04/homing-sync-reset.py`
+  - `installer/klipper/tltg/resonance_sweep.py` (adapted portions)
 
 The installer payloads are modified QIDI/Klipper homing sources. `homing.py` was modified for QIDI Max 4 homing behavior and timing on 2026-07-26. `homing-sync-reset.py` carries the same modifications against the alternate QIDI source variant dated 2026-07-28. Copyright and licensing notices in those files remain in effect.
+
+`resonance_sweep.py` adapts the sweeping resonance test from Klipper's `klippy/extras/resonance_tester.py` (Copyright (C) 2020-2024 Dmitry Butyugin) and the junction calculation from `klippy/toolhead.py` (Copyright (C) 2016-2024 Kevin O'Connor) on 2026-11-07, as credited in its header.
 
 ### Fluidd base configuration
 

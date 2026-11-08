@@ -16,6 +16,7 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 | [`tltg_staggered_start_heating_dwell_seconds`](print-start.md#staggered-heating) | `10` | Pause between staggered heating stages, in seconds. |
 | [`tltg_box_link_monitor`](troubleshooting.md#box-link-monitor) | `0` | `1` records Box disconnect details to `tltg_box_link.log`. |
 | [`tltg_step_loss_monitor`](tools.md#xy-step-loss-monitor) | `0` | `1` pauses the print and warns when an X or Y motor slips. Max 4 only. |
+| [`tltg_resonance_sweep`](tools.md#input-shaper-calibration) | `1` | `0` runs QIDI's resonance test for input shaper calibration instead of the newer sweeping one. |
 
 ## Commands
 
@@ -32,6 +33,7 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 | [`TLTG_TEST_PROBE CONFIRM=1`](tools.md#nozzle-load-cell-check) | Checks the nozzle load cell without moving. |
 | [`TLTG_PROBE_ACCURACY_CENTER`](tools.md) | Probe accuracy at the bed center. |
 | [`TLTG_CORNER_BED_SCREW_CHECK`](tools.md) | Levels, then shows bed screw adjustments. |
+| [`SHAPER_CALIBRATE`, `TEST_RESONANCES` with `SWEEPING_PERIOD=`, `SWEEPING_ACCEL=`, `ACCEL_PER_HZ=`](tools.md#input-shaper-calibration) | Klipper's resonance test settings for one run. `SWEEPING_PERIOD=0` runs QIDI's test. |
 
 ## In your slicer
 
