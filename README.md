@@ -77,6 +77,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - A guided nozzle load-cell check, probe accuracy, and bed screw helpers.
 - A switch to stop the external spool's runout sensor from pausing prints.
 - On the Max 4, an optional monitor that pauses the print when an X or Y motor slips.
+- Input shaper calibration with newer Klipper's sweeping resonance test, with a switch back to QIDI's.
 
 [Tools →](docs/tools.md)
 

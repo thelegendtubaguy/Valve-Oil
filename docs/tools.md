@@ -13,6 +13,7 @@ Run these from Fluidd's console or macro controls after installing and restartin
 | `TLTG_RESET_TOOL_MAPPINGS` | Restores QIDI Box tool-to-slot mappings to T0 → 1A, T1 → 1B, and so on. Idle only. |
 | [`TLTG_FILAMENT_SENSOR ENABLE=0`](#external-spool-runout-sensor) | Stops the external spool's runout sensor from pausing prints. |
 | [`TLTG_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds. |
+| [`SHAPER_CALIBRATE SWEEPING_PERIOD=0`](#input-shaper-calibration) | Input shaper calibration with QIDI's resonance test instead of the newer sweeping one, for one run. |
 
 ## Nozzle load-cell check
 
@@ -73,3 +74,33 @@ Set it back to `0` to turn it off. Both take effect without a restart.
 **How it tells a slip from normal motion:** a motor that slips falls behind by whole steps of 4 motor steps, 0.78 mm of belt each, and stays there. Normal printing moves leave a motor at most about 0.1 mm behind, and it catches up once the move ends. The monitor reports a slip once a motor is three quarters of a step cycle (0.59 mm of belt) away from where it stood after homing, on two checks in a row. A slip of less than one step cycle isn't detected.
 
 Each motor answers in about 60 ms, a delay in the mainboard's firmware, so a slip is reported up to about a second after it happens. The monitor only asks the motors for their position; it doesn't change any motor setting. Printers without QIDI's closed-loop X/Y motors, such as the Plus 5, aren't affected.
+
+## Input shaper calibration
+
+Input shaper calibration, from `SHAPER_CALIBRATE` or the printer's screen, now runs the resonance test from newer Klipper. QIDI's test shakes the toolhead back and forth around one spot from 5 to 133 Hz, stopping and reversing twice every cycle. The stops are where friction in the rails and slack in the belts matter most, and they can add peaks that aren't the printer's resonance or shift the real ones. The newer test adds a slow back-and-forth on top of the shaking, so the toolhead spends most of the test moving steadily one way. Upstream Klipper made it its default in December 2024; it's meant to give the same answer on a printer in good shape and a steadier one on a printer with some friction or binding.
+
+On a Max 4 in good shape, two runs of each test per axis recommended `mzv` at 41.0 Hz for Y with both tests, and `mzv` at 53.6 Hz (newer test) or 54.2 Hz (QIDI's) for X. Each test repeated its own answer exactly.
+
+**What's different:**
+
+- The toolhead wanders up to about 20 mm either side of the test point (`X195 Y195` on the Max 4) along the axis being tested. The test takes as long as before, about two minutes per axis.
+- Calibration fades out motion below 10 Hz instead of cutting it off at 5 Hz, so the slow back-and-forth isn't taken for a resonance.
+- The console says which test ran, for example `Resonance test with sweeping: ACCEL_PER_HZ=150 SWEEPING_PERIOD=1.2 SWEEPING_ACCEL=400`.
+
+To run QIDI's test instead, for example to compare the two:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_resonance_sweep VALUE=0
+```
+
+Set it back to `1` for the newer test. The setting applies from the next calibration, including the one on the printer's screen, without a restart.
+
+For a single run, add these to `SHAPER_CALIBRATE` or `TEST_RESONANCES`:
+
+| Parameter | Default | What it does |
+|---|---|---|
+| `SWEEPING_PERIOD=` | `1.2`, or `0` while `tltg_resonance_sweep` is `0` | Seconds for each slow back-and-forth. `0` runs QIDI's test. |
+| `SWEEPING_ACCEL=` | `400` | Acceleration of the slow back-and-forth, in mm/s². |
+| `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
+
+A test that would need more acceleration than `max_accel` in `printer.cfg` stops before moving and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `tltg_resonance_sweep: skipped`.
