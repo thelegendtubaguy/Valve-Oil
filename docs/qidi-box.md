@@ -186,6 +186,10 @@ Unload of a slot whose filament isn't past the hub doesn't run. The console says
 
 Pausing turns the nozzle off. With the Box, **Resume** first moves the toolhead to the waste chute and heats the nozzle back to the temperature it had when the print paused, then runs QIDI's resume, which reloads the filament and carries on printing. QIDI's resume cuts before it heats, so after a pause long enough for the nozzle to cool below 135 °C it stopped with `Extrude below minimum temp`, and the print stayed paused until the nozzle was heated by hand.
 
+## Runouts during Box loads and unloads
+
+When filament leaves the toolhead sensor during a print, Klipper waits for the command that's running to finish before it handles the runout. A Box unload inside a resume or the print-start load runs within one command, so its runout used to be handled minutes later, once the new filament was already loaded: the print paused and QIDI's auto-reload ran, or, if the print had been cancelled meanwhile, the idle printer paused, homed, and reported `Auto reload failed`. The runout is now handled only if the toolhead sensor still reports no filament and the print is still running unpaused; otherwise the console says `TLTG_FILAMENT_SENSOR: ignoring an earlier toolhead sensor trip` and nothing else happens.
+
 ## Box disconnects
 
 See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [Troubleshooting](troubleshooting.md#box-link-monitor) to record why a Box drops.

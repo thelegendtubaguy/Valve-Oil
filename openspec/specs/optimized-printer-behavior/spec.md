@@ -218,6 +218,12 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 - **AND** QIDI Box runout, reload, status, and resume remain vendor-controlled
 - **AND** the setting returns enabled after Klipper restart
 
+#### Scenario: A toolhead runout acts only while still true
+- **WHEN** the toolhead sensor's runout handling runs, which Klipper delays until the command running when the sensor emptied finishes
+- **AND** the sensor detects filament again, or no print is running unpaused
+- **THEN** it reports the trip as ignored and sends no pause, reload, runout message, or exhausted status
+- **AND** otherwise it handles the runout as for a Box or external-spool print
+
 #### Scenario: Resume follows vendor recovery unless the operator overrides the sensor
 - **WHEN** a paused print is resumed
 - **THEN** an active Box print resumes through the vendor Box resume command
