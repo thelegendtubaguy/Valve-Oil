@@ -37,6 +37,9 @@ Klipper also does less work on its main loop, so Box motor moves keep more headr
 - Klipper checks its timers, about 70 of them, many times a second; that now takes about a third less time.
 - QIDI's once-a-second status update for Fluidd and the touchscreen skips macros whose values haven't changed and compares QIDI's Box status faster. Fluidd and the touchscreen receive the same updates.
 - Klipper encodes the status it sends Moonraker with `msgspec` instead of Python's `json`, in about a third of the time. The installer adds `msgspec` to QIDI's Klipper. Anything `msgspec` can't encode goes out with `json` as before.
+- While Klipper streams a print's G-code, moves let Klipper's other timers run every 20 ms. A run of moves (planning, bed mesh splitting, step generation) used to hold them for 50–150 ms a few thousand times an hour. Homing and probing moves keep QIDI's timing.
+- QIDI's Box status reports each Box's temperature again only once it moves 0.1 °C. Its wobble of a few hundredths of a degree resent the whole 8.5 KB Box list about once a second, three quarters of all the status Klipper sends. Fluidd's Box temperatures come from each Box's own sensor, which is unchanged.
+- Moves longer than half a second that don't extrude, such as the end G-code lowering the bed 170 mm, are queued as half-second pieces along the same line at the same speed. Klipper used to generate all the steps of the bed drop at once (12,800 a millimetre for each Max 4 Z motor), holding its main loop for about 1.5 seconds. As with any run of moves, the G-code after such a move runs once less than 3 seconds of it is left.
 
 The timer and status changes come from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check: each is skipped, and listed as skipped in `klippy.log`, if QIDI's code isn't exactly the version it was written for.
 
