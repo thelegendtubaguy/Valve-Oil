@@ -218,6 +218,12 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 - **AND** QIDI Box runout, reload, status, and resume remain vendor-controlled
 - **AND** the setting returns enabled after Klipper restart
 
+#### Scenario: A toolhead runout acts only while still true
+- **WHEN** the toolhead sensor's runout handling runs, which Klipper delays until the command running when the sensor emptied finishes
+- **AND** the sensor detects filament again, or no print is running unpaused
+- **THEN** it reports the trip as ignored and sends no pause, reload, runout message, or exhausted status
+- **AND** otherwise it handles the runout as for a Box or external-spool print
+
 #### Scenario: Resume follows vendor recovery unless the operator overrides the sensor
 - **WHEN** a paused print is resumed
 - **THEN** an active Box print resumes through the vendor Box resume command
@@ -948,6 +954,32 @@ When the same fix is in place, a toolhead move in normal printing that does not 
 #### Scenario: Extruding move
 - **WHEN** a move extrudes, however long it takes
 - **THEN** it is queued as one move
+
+### Requirement: Sweeping resonance test
+Optimized configuration SHALL run upstream Klipper's sweeping resonance test for `SHAPER_CALIBRATE` and `TEST_RESONANCES` unless the saved variable `tltg_resonance_sweep` is false or the command passes `SWEEPING_PERIOD=0`, in which case the vendor test SHALL run unchanged.
+
+#### Scenario: Changed vendor Klipper
+- **WHEN** the vendor resonance tester, junction calculation, `M204`, or calibration-data normalization differs from the original this was written for
+- **THEN** the vendor test stays in place and `klippy.log` says which code differs
+
+#### Scenario: Default calibration
+- **WHEN** `SHAPER_CALIBRATE` runs with no sweeping parameters and `tltg_resonance_sweep` absent or true
+- **THEN** the vendor vibration sweep runs with a slow 400 mm/s² back-and-forth of 1.2 s period added, along the tested axis only
+- **AND** each move starts at the speed the previous one was planned to end at, with junctions planned as upstream does, for that run only
+- **AND** that run's calibration data fades out below 10 Hz instead of being zeroed below 5 Hz
+- **AND** the console names the test and its `ACCEL_PER_HZ`, `SWEEPING_PERIOD`, and `SWEEPING_ACCEL`
+
+#### Scenario: Sweeping off
+- **WHEN** `tltg_resonance_sweep` is false, or the command passes `SWEEPING_PERIOD=0`
+- **THEN** the vendor test runs with its own moves and calibration data, at the command's `ACCEL_PER_HZ` when given
+
+#### Scenario: Test beyond the acceleration limit
+- **WHEN** a sweeping test needs more acceleration than `max_accel`
+- **THEN** the command fails before any test move
+
+#### Scenario: Failed run
+- **WHEN** a move fails during a sweeping run
+- **THEN** later moves are planned with the vendor junction calculation
 
 ### Requirement: Box heater sensors stop polling after a shutdown
 Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop that sensor's polling instead of raising, so Klipper stays in its shutdown state with the original reason. While Klipper is not shut down, sensor read errors SHALL propagate unchanged.

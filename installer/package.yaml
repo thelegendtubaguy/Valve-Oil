@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.06.1"
+  version: "26.11.07.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -92,6 +92,7 @@ install:
       - "klipper_fixes.cfg"
       - "input_shaper.cfg"
       - "printer_warnings.cfg"
+      - "resonance_sweep.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -166,6 +167,9 @@ install:
     - id: velocity_limit
       source: "klipper/tltg/velocity_limit.py"
       destination: "klippy/extras/tltg_velocity_limit.py"
+    - id: resonance_sweep
+      source: "klipper/tltg/resonance_sweep.py"
+      destination: "klippy/extras/tltg_resonance_sweep.py"
 
   source_patches:
     - id: qidi_homing
