@@ -723,7 +723,7 @@ On the Max 4, the toolhead top speed SHALL keep every CoreXY motor at or below 8
 - **AND** a request at or below it, and requests that set only acceleration or corner velocity, are applied unchanged
 
 ### Requirement: Optional X/Y step-loss monitor
-The optional X/Y step-loss monitor SHALL stay inert until its saved variable enables it, and on printers without QIDI's closed-loop X/Y drivers. While enabled, it SHALL report an X or Y motor slip from the drivers' position error, measured against a baseline taken after each home, and SHALL send the drivers nothing but the position-error query.
+The optional X/Y step-loss monitor SHALL stay inert until its saved variable enables it, and on printers without QIDI's closed-loop X/Y drivers. While enabled, it SHALL report an X or Y motor slip from the drivers' position error, measured against a baseline taken after each home, and SHALL send the drivers nothing but the position-error query. Correcting Klipper's position for a slip SHALL stay off until its own saved variable enables it.
 
 #### Scenario: Only position-error queries, one at a time
 - **WHEN** the monitor is enabled and X and Y are homed with their motors on, outside homing and driver firmware upgrades
@@ -731,10 +731,20 @@ The optional X/Y step-loss monitor SHALL stay inert until its saved variable ena
 - **AND** it takes each motor's baseline from a read at rest after every X/Y home and after `RESET_MOTOR_POSITION_ERROR`
 
 #### Scenario: Slip during a print
-- **WHEN** the monitor is enabled during a print and a motor's position error is at least three quarters of an electrical cycle (768 of 1024 counts) from its baseline on two consecutive reads
+- **WHEN** the monitor is enabled during a print, after print start, with recovery off, and a motor's position error is at least three quarters of an electrical cycle (768 of 1024 counts) from its baseline on two consecutive reads
 - **THEN** the print pauses
 - **AND** the console and Fluidd's warning banner name the motor and the slip in whole electrical cycles and millimeters of belt
 - **AND** the warning stays until X and Y have both been homed since the slip
+
+#### Scenario: Slip during print start
+- **WHEN** the same slip occurs while QIDI's print status is `print_start`
+- **THEN** the print is cancelled at once, breaking any heater wait, as Fluidd's cancel does, instead of pausing after the rest of the start sequence
+
+#### Scenario: Recovery corrects the position once per print
+- **WHEN** recovery is enabled and the same slip occurs during a print after print start, for the first time in that print
+- **THEN** the nozzle retracts and lifts, and once the toolhead has stopped and each motor has answered twice more, Klipper's X/Y position moves by the net slip, taking each motor's slip as whole electrical cycles behind in the direction a +X move turns it, with `stepper_x` driving X+Y and `stepper_y` X−Y
+- **AND** the toolhead returns to where the print's next move starts, lowers, and the print continues, and the warning clears
+- **AND** a later slip in the same print, a slip while correcting, or motors that don't answer within 5 seconds pause the print instead, with the position left uncorrected when it couldn't be corrected
 
 #### Scenario: Slip outside a print
 - **WHEN** the same slip occurs with no print running

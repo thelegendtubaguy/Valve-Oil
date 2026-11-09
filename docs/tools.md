@@ -68,12 +68,40 @@ Set it back to `0` to turn it off. Both take effect without a restart.
 
 - It runs while X and Y are homed and their motors are on. It records where each motor stands after every X/Y home and checks each motor about twice a second.
 - When a motor slips during a print, the print pauses. The console shows `!! The stepper_x motor slipped 14 step cycles (10.9 mm of belt): the toolhead is no longer where Klipper thinks it is. Home X and Y before moving it again. The print is paused.`, and Fluidd's red warning banner shows how far each motor has slipped in total since X and Y were homed.
+- When a motor slips during print start, before the first layer, the print is cancelled at once and the message ends `The print is cancelled.` Print start runs as one long command, heating, leveling, and meshing included, and a pause would wait for all of it, with the toolhead out of place for the rest of the leveling and the mesh. The cancel stops the bed or chamber wait at once, as Fluidd's **Cancel** does.
 - A slip with no print running shows the same message without pausing.
-- The warning stays until X and Y are homed again. Klipper's position is wrong after a slip, so don't resume a paused print unless a shifted layer doesn't matter; cancel it and home instead.
+- The warning stays until X and Y are homed again. Klipper's position is wrong after a slip, so don't resume a paused print unless a shifted layer doesn't matter; cancel it and home instead, or run `TLTG_STEP_LOSS_CORRECT` first (below).
 
 **How it tells a slip from normal motion:** a motor that slips falls behind by whole steps of 4 motor steps, 0.78 mm of belt each, and stays there. Normal printing moves leave a motor at most about 0.1 mm behind, and it catches up once the move ends. The monitor reports a slip once a motor is three quarters of a step cycle (0.59 mm of belt) away from where it stood after homing, on two checks in a row. A slip of less than one step cycle isn't detected.
 
 Each motor answers in about 60 ms, a delay in the mainboard's firmware, so a slip is reported up to about a second after it happens. The monitor only asks the motors for their position; it doesn't change any motor setting. Printers without QIDI's closed-loop X/Y motors, such as the Plus 5, aren't affected.
+
+A pause, cancel, or correction happens once the G-code line running when the slip was reported finishes. That's at most a few seconds during printing, but a long command, such as a QIDI Box filament change, runs to its end first, with the toolhead out of place.
+
+### Correcting the position after a slip
+
+A motor that slips falls behind by whole step cycles, and it reports exactly how many, so Klipper's position can be moved to where the toolhead really is without homing. Homing again would be less exact: on the test printer, X and Y homes land within about 0.3 mm (X) and 0.9 mm (Y) of each other, which would shift the layers by that much.
+
+Recovery is **off by default** and needs the step-loss monitor on as well:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_step_loss_recovery VALUE=1
+```
+
+With it on, the first slip in a print after print start doesn't pause it. The console says `!! The stepper_x motor slipped 7 step cycles (5.5 mm of belt). Correcting the toolhead position and continuing the print.`, then:
+
+1. The nozzle pulls the filament back 0.8 mm and lifts 1 mm.
+2. Once the toolhead stops, the monitor reads both motors twice more, then moves Klipper's X/Y position by the slip and says so, for example `Moved Klipper's position by X-2.73 Y-2.73 mm for the slip (stepper_x +7, stepper_y +0 step cycles).`
+3. The toolhead moves back to where the print's next move starts, lowers, pushes the filament back, and the print continues. The warning banner clears.
+
+What it can't fix:
+
+- **What printed before it stopped.** Klipper has already sent up to about 2 seconds of moves to the mainboard, and they can't be called back without an emergency stop. With the time to notice the slip, about 1 to 3 seconds of printing lands out of place, and stays in the part as a scar.
+- **Whatever made the motor slip.** A nozzle catching a curled part, or a belt or rail binding, will likely do it again, so recovery runs once per print. A second slip in the same print, a slip during the recovery, or motors that don't answer within 5 seconds pause the print as without recovery. If the motors don't answer, the position isn't changed.
+
+During print start, a slip still cancels the print; with recovery on, the position is corrected before the cancel's moves.
+
+Outside a print, run `TLTG_STEP_LOSS_CORRECT` from the console to correct the position after a slip instead of homing: it waits for the toolhead to stop, reads the motors, and moves Klipper's X/Y position by the slip reported since X and Y were last homed or corrected. It doesn't move the toolhead.
 
 ## Input shaper calibration
 
