@@ -342,6 +342,23 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **THEN** supported bed-screw, probe-accuracy, mapping-reset, and startup reporting helpers are available
 - **AND** each helper validates required printer state and hardware bounds before acting
 
+### Requirement: Paused prints cancel after the pause timeout
+A paused print's idle timeout SHALL be the hours in the `tltg_pause_timeout_hours` saved variable, or QIDI's 72 when it is absent or not a positive number. When that idle timeout runs out with the print still paused, the print SHALL be cancelled as Fluidd's cancel does.
+
+#### Scenario: Pause sets the timeout
+- **WHEN** `PAUSE` pauses a print, including a `PAUSE` that fails after pausing
+- **THEN** Klipper's idle timeout becomes `tltg_pause_timeout_hours` hours, or 72 hours
+- **AND** a `PAUSE` while already paused leaves the timeout unchanged
+
+#### Scenario: Timeout on a paused print
+- **WHEN** the idle timeout runs out while the print is paused
+- **THEN** after QIDI's idle G-code, the file print ends, `CANCEL_PRINT` runs, and the console says why
+- **AND** if `CANCEL_PRINT` fails, the motion-free error cancellation ends the print instead
+
+#### Scenario: Timeout without a paused print
+- **WHEN** the idle timeout runs out with no paused print
+- **THEN** only QIDI's idle G-code runs
+
 ### Requirement: Firmware and vendor compatibility surfaces
 Optimized configuration SHALL preserve firmware-scoped peripheral ownership, stock integration names, and fan-failure safety while applying guarded hardware optimizations.
 

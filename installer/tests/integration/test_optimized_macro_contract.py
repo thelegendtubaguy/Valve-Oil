@@ -1265,3 +1265,144 @@ class VelocityLimitTest(unittest.TestCase):
         self.assertIn("using 565 mm/s", message)
         self.assertEqual(self.run_command({"VELOCITY": "300"}), (300., []))
         self.assertEqual(self.run_command({"ACCEL": "5000"}), (565., []))
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_pause_timeout", REPO_ROOT / "installer/klipper/tltg/pause_timeout.py"
+)
+pause_timeout = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(pause_timeout)
+
+
+class PauseTimeoutTest(unittest.TestCase):
+    """A paused print's idle timeout is tltg_pause_timeout_hours, 72 by
+    default, and a paused print is cancelled when it runs out."""
+
+    def printer(self, variables=None, cancel_fails=False):
+        class Sim:
+            ran = []
+            messages = []
+            handlers = {}
+            callbacks = []
+            timeout = 43200.
+
+        sim = Sim()
+
+        class PauseResume:
+            is_paused = False
+            sd_paused = False
+
+        pause_resume = PauseResume()
+
+        class Sdcard:
+            def is_active(self):
+                return False
+
+            def do_cancel(self):
+                sim.ran.append("do_cancel")
+
+        def vendor_pause(gcmd):
+            pause_resume.is_paused = pause_resume.sd_paused = True
+            run("SET_IDLE_TIMEOUT TIMEOUT=259200")
+
+        def run(script):
+            sim.ran.append(script)
+            if script.startswith("SET_IDLE_TIMEOUT"):
+                sim.timeout = float(script.split("=")[1])
+            elif script == "CANCEL_PRINT":
+                if cancel_fails:
+                    raise RuntimeError("Must home axis first")
+                pause_resume.is_paused = False
+            elif script == "OPTIMIZED_CANCEL_PRINT_ON_ERROR":
+                pause_resume.is_paused = False
+
+        commands = {"PAUSE": vendor_pause}
+
+        class Gcode:
+            gcode_help = {}
+
+            def register_command(self, name, handler, desc=None):
+                old = commands.pop(name, None)
+                if handler is not None:
+                    commands[name] = handler
+                return old
+
+            def run_script(self, script):
+                run(script)
+
+            run_script_from_command = run_script
+
+            def respond_info(self, message):
+                sim.messages.append(message)
+
+        class IdleTimeout:
+            @property
+            def idle_timeout(self):
+                return sim.timeout
+
+        objects = {
+            "gcode": Gcode(), "pause_resume": pause_resume,
+            "virtual_sdcard": Sdcard(), "idle_timeout": IdleTimeout(),
+            "save_variables": types.SimpleNamespace(allVariables=variables or {}),
+        }
+
+        class Printer:
+            def get_reactor(self):
+                return types.SimpleNamespace(register_callback=sim.callbacks.append)
+
+            def lookup_object(self, name, default=None):
+                return objects.get(name, default)
+
+            def register_event_handler(self, event, handler):
+                sim.handlers[event] = handler
+
+        pause_timeout.load_config(types.SimpleNamespace(get_printer=Printer))
+        sim.handlers["klippy:ready"]()
+
+        def idle():
+            sim.handlers["idle_timeout:idle"](0.)
+            while sim.callbacks:
+                sim.callbacks.pop(0)(0.)
+
+        sim.pause = lambda: commands["PAUSE"](None)
+        sim.idle = idle
+        sim.pause_resume = pause_resume
+        self.assertIsNot(commands["PAUSE"], vendor_pause)
+        return sim
+
+    def test_pause_keeps_qidis_72_hours_by_default(self) -> None:
+        for variables in ({}, {"tltg_pause_timeout_hours": 0},
+                          {"tltg_pause_timeout_hours": "soon"}):
+            sim = self.printer(variables)
+            sim.pause()
+            self.assertEqual(sim.timeout, 72 * 3600.)
+
+    def test_pause_uses_the_saved_hours(self) -> None:
+        sim = self.printer({"tltg_pause_timeout_hours": 1.5})
+        sim.pause()
+        self.assertEqual(sim.timeout, 5400.)
+        sim.ran.clear()
+        sim.pause()
+        self.assertEqual(sim.ran, ["SET_IDLE_TIMEOUT TIMEOUT=259200"])
+
+    def test_idle_timeout_on_a_paused_print_cancels_it_as_fluidd_does(self) -> None:
+        sim = self.printer()
+        sim.pause()
+        sim.ran.clear()
+        sim.idle()
+        self.assertEqual(sim.ran, ["do_cancel", "CANCEL_PRINT"])
+        self.assertIn("72 hours", sim.messages[0])
+        self.assertFalse(sim.pause_resume.is_paused)
+
+    def test_cancel_that_cannot_move_still_ends_the_pause(self) -> None:
+        sim = self.printer(cancel_fails=True)
+        sim.pause()
+        with self.assertLogs(level="ERROR"):
+            sim.idle()
+        self.assertEqual(sim.ran[-1], "OPTIMIZED_CANCEL_PRINT_ON_ERROR")
+        self.assertFalse(sim.pause_resume.is_paused)
+
+    def test_idle_timeout_without_a_paused_print_cancels_nothing(self) -> None:
+        sim = self.printer()
+        sim.idle()
+        self.assertEqual((sim.ran, sim.messages), ([], []))

@@ -93,6 +93,18 @@ SAVE_VARIABLE VARIABLE=tltg_keep_loaded_between_prints VALUE=1
 
 This works with files you've already sliced and survives Klipper restarts.
 
+## Long pauses
+
+A print left paused for 72 hours is cancelled, as Fluidd's **Cancel** does, and the console says why. QIDI's pause turns the heaters off at 72 hours, and before this the print stayed paused after that. Moving the toolhead during the pause starts the count again.
+
+To change how long, in hours:
+
+```gcode
+SAVE_VARIABLE VARIABLE=tltg_pause_timeout_hours VALUE=24
+```
+
+It applies from the next pause.
+
 ## Z offset
 
 Your Z offset, including adjustments made on the touchscreen during a print, is kept through the start's homing, leveling, and mesh. Cancelling a print during its start no longer wipes the saved offset to `0`; the console shows `Z offset not saved` instead.

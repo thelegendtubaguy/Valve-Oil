@@ -170,6 +170,9 @@ install:
     - id: resonance_sweep
       source: "klipper/tltg/resonance_sweep.py"
       destination: "klippy/extras/tltg_resonance_sweep.py"
+    - id: pause_timeout
+      source: "klipper/tltg/pause_timeout.py"
+      destination: "klippy/extras/tltg_pause_timeout.py"
 
   source_patches:
     - id: qidi_homing
