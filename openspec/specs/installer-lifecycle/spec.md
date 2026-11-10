@@ -422,7 +422,7 @@ Fluidd SHALL show the bed mesh card on the Tune page and temperature sensors wit
 - **AND** a value saved from Fluidd's settings, including off, still applies
 
 ### Requirement: QIDI filament database in Fluidd
-Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying, backing up, or modifying the database files.
+Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying or backing up the database files. Their contents SHALL change only by the optimized configuration adding missing catalog filaments.
 
 #### Scenario: Link is created where the database exists
 - **WHEN** the QIDI filament database directory exists and `config/qidi_filament_config` is absent

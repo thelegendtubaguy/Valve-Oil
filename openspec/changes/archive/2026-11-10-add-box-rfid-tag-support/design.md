@@ -15,7 +15,7 @@ The v1 parser does not check that the ID exists in the database, and it does not
 
 **Goals:** read QIDI, Anycubic, Elegoo, and Bambu Lab tags; put the three brands' filaments in QIDI's database; keep QIDI's read flow, slot saving, touchscreen, and Fluidd paths unchanged; collect reports for unknown tags.
 
-**Non-Goals:** writing tags and keeping operator database edits across QIDI updates (a later change; the firmware commands already allow both); RS-485 Boxes; writing Bambu Lab tags (their data is RSA-signed); Creality and other encrypted formats; changing QIDI's read timing or motion.
+**Non-Goals:** writing tags (change `add-box-rfid-tag-writing`; the firmware commands already allow it); keeping operator database edits across QIDI updates; RS-485 Boxes; writing Bambu Lab tags (their data is RSA-signed); Creality and other encrypted formats; changing QIDI's read timing or motion.
 
 ## Decisions
 
@@ -82,15 +82,6 @@ The module adds missing catalog entries at each Klipper start. QIDI's `multi_col
 
 Each reader has a reactor mutex shared by QIDI's polling and `TLTG_BOX_RFID_REPORT`. Automatic reports are written once per distinct tag contents and reason, at most 20 per Klipper run. A requested report reads all NTAG pages from GET_VERSION's size, or every MIFARE sector readable with the default, MAD, or NDEF public key. UID bytes are zeroed in page data and never stored in the identity fields.
 
-### For the later writing change
-
-The firmware already carries everything a write needs; only host code and a Fluidd control are missing.
-
-- QIDI tags: select, MIFARE login to block 4 with key A `FFFFFFFFFFFF` (`fm17550_transceive` MFAuthent, Status2 bit 3 confirms), `A0 04` (4-bit ACK `0x0A`), then the 16-byte v1 block (ACK `0x0A`), then read block 4 back. Emulation covers this path; on hardware only a refused login (a Bambu tag) has been seen, so the first blank MIFARE Classic 1K tag must confirm it.
-- NTAG tags: `A2 <page> <4 bytes>` per page (ACK `0x0A`), then read back. Anycubic layout: pages 4 to 31 as in `material-metadata.md`, black written as `01 01 01`. Elegoo layout: pages 16 to 24, plus the NDEF URI in pages 4 to 9 if wanted.
-- Anycubic's own tags are password write-protected (`AUTH0 = 4`, configuration locked), so only blank NTAG213/215/216 tags can carry the Anycubic layout. The Elegoo tag seen has no password.
-- Hardware still to test: genuine NXP and clone MIFARE Classic 1K, NXP NTAG213, 215, and 216.
-
 ## Risks / Trade-offs
 
 - [The handlers run QIDI's FM17550 routines in combinations QIDI never used (WUPA, arbitrary frames)] → QIDI's own select and read use the same routines with the same argument patterns; the emulation covers each path; hardware validation on both admitted bootloader builds precedes release.
@@ -101,5 +92,4 @@ The firmware already carries everything a write needs; only host code and a Flui
 
 ## Open Questions
 
-- Whether other Anycubic tags share the write password seen on the first one; it matters only for the later writing change.
 - How to keep operator database edits across QIDI updates.

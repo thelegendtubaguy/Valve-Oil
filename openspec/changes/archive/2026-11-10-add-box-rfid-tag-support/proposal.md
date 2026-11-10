@@ -12,7 +12,7 @@ The QIDI Box reads only QIDI's own spool tags. Owners want Anycubic, Elegoo, and
 - Add a Klipper module that serves QIDI's RFID reads through the new commands. It reads QIDI tags, Anycubic tags, Elegoo tags, Bambu Lab tags (read only, with the keys derived from each tag's UID), and QIDI-format data on NTAG tags, and hands QIDI's parser a QIDI-format block, so QIDI's slot assignment, touchscreen, and Fluidd behavior are unchanged. Without the new firmware, QIDI's reads pass through untouched.
 - Add every Anycubic, Elegoo, and Bambu Lab filament from the vendors' slicer profiles to QIDI's filament database at Klipper start, without changing existing entries.
 - Save a report of any tag the Box reads but cannot use, and add `TLTG_BOX_RFID_REPORT` and a spool-tag issue template so owners can send reports for new brands.
-- Tag writing, and keeping operator edits across QIDI firmware updates, are left for a later change.
+- Tag writing is change `add-box-rfid-tag-writing`. Keeping operator edits across QIDI firmware updates is left for a later change.
 
 ## Capabilities
 
