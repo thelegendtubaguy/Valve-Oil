@@ -37,24 +37,31 @@ ELEGOO = bytes.fromhex(
     "000000bd040000ff000500000000000000000000"
 )
 QIDI_BLOCK = bytes.fromhex("41001100ff000000000000000000000a")
+# Bambu Lab PLA Silk Multi-Color data blocks (layout from the Bambu Lab RFID Tag Guide).
+BAMBU_BLOCKS = {
+    1: b"A05-M1\0\0GFA05\0\0\0", 2: b"PLA".ljust(16, b"\0"), 4: b"PLA Silk".ljust(16, b"\0"),
+    5: bytes.fromhex("ec008cfffa0000000000e03f00000000"), 6: bytes.fromhex("3700080001002d00dc00dc0000000000"),
+    9: bytes.fromhex("d7ac3b89a16b47c4b061728044e1f2d5"), 16: bytes.fromhex("02000200ff0a4dff0000000000000000"),
+}
 
 
 class Tag:
-    def __init__(self, kind, memory=b"", key=b"\xff" * 6, block4=bytes(16)):
+    def __init__(self, kind, memory=b"", key=b"\xff" * 6, block4=bytes(16), blocks=None, bambu=False):
         self.kind, self.key = kind, key
         self.uid = bytes.fromhex("04a1b2c3d4e5f6") if kind == "ntag" else bytes.fromhex("c0ffee42")
         self.memory = bytearray(memory.ljust(180, b"\0"))
-        self.blocks = {4: bytearray(block4)}
+        self.blocks = {4: bytearray(block4), **(blocks or {})}
+        self.sector_keys = box_rfid.bambu_keys(self.uid) if bambu else [key] * 16
 
 
 class Reader:
     """fm17550_select and fm17550_transceive answered from a tag model."""
 
     def __init__(self, tag=None):
-        self.tag, self.crypto, self.log, self.lost_after = tag, False, [], None
+        self.tag, self.crypto, self.halted, self.log, self.lost_after = tag, False, False, [], None
 
     def select(self, args):
-        self.crypto = False
+        self.crypto = self.halted = False
         tag = self.tag
         if tag is None:
             return {"status": 0, "data": bytes(20)}
@@ -75,11 +82,14 @@ class Reader:
             return {"status": 1 if ok else 0,
                     "data": bytes([0 if ok else 0x20, 0x08 if self.crypto else 0, bits & 0xFF, bits >> 8]) + data}
 
-        if command == 0x0E:
-            self.crypto = tag.kind == "classic" and frame[2:8] == tag.key and frame[8:12] == tag.uid
-            return reply(ok=self.crypto)
-        if self.lost_after is not None and len(self.log) > self.lost_after:
+        if self.halted or self.lost_after is not None and len(self.log) > self.lost_after:
             return reply(ok=False)
+        if command == 0x0E:
+            # A refused login leaves the tag silent until it is selected again.
+            self.crypto = (tag.kind == "classic" and frame[2:8] == tag.sector_keys[frame[1] // 4]
+                           and frame[8:12] == tag.uid)
+            self.halted = not self.crypto
+            return reply(ok=self.crypto)
         if tag.kind == "ntag":
             if frame == b"\x60":
                 return reply(bytes.fromhex("0053040201000f03"))
@@ -253,6 +263,24 @@ class BoxRfidTests(unittest.TestCase):
         self.module(Tag("ntag", ELEGOO))
         # The operator's own Elegoo PLA entry wins over the catalog's.
         self.assertEqual(self.qidi_read()["data"][:6], b"A" + bytes([94, 0x11]) + bytes.fromhex("ff0000"))
+        # Bambu tags open with keys from their UID; both of a two-color spool's colors are kept.
+        self.module(Tag("classic", blocks=BAMBU_BLOCKS, bambu=True))
+        silk = box_rfid.CATALOG["filaments"][box_rfid.CATALOG["bambu_ids"]["GFA05"]]["entry"]["filament_id"]
+        self.assertEqual(self.qidi_read()["data"][:9],
+                         silk[2].encode() + bytes([int(silk[3:]), 0x12]) + bytes.fromhex("ec008cff4d0a"))
+        self.reader.lost_after = len(self.reader.log) + 4
+        self.assertEqual(self.qidi_read(), {"oid": 21, "status": 0, "data": b""})
+        # A copy on a blank tag that kept the default key reads as Bambu, never as
+        # a QIDI block made of its "PLA Silk" text, which QIDI's parser would accept.
+        self.assertTrue(box_rfid.qidi_block_valid(BAMBU_BLOCKS[4]))
+        self.module(Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]))
+        self.assertEqual(self.qidi_read()["data"][:3], silk[2].encode() + bytes([int(silk[3:]), 0x12]))
+        # A Bambu filament the catalog lacks falls back to the brand's base material.
+        newer = {**BAMBU_BLOCKS, 1: b"A99-K0\0\0GFA99\0\0\0", 4: b"PLA Future".ljust(16, b"\0")}
+        self.existing["Bambu PLA"] = entry("QFL30", "Bambu")
+        (self.database / "filament-0.4.json").write_text(json.dumps(self.existing))
+        self.module(Tag("classic", blocks=newer, bambu=True))
+        self.assertEqual(self.qidi_read()["data"][:3], b"L" + bytes([30, 0x12]))
         self.assertEqual(self.reports(), [])
 
     def test_qidi_tags_read_as_stock_and_unusable_tags_never_return_old_data(self):
@@ -293,6 +321,22 @@ class BoxRfidTests(unittest.TestCase):
         self.assertEqual(pages[9:], ANYCUBIC[9:])
         self.assertEqual(report["ident"], {"atqa": "4400", "uid_bytes": 7, "sak": "0400"})
         self.assertIn("Anycubic PLA High Speed", gcmd.messages[-1])
+        self.module(Tag("classic", blocks=BAMBU_BLOCKS, bambu=True))
+        self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+        bambu, = set(self.reports()) - {path}
+        report = json.loads(bambu.read_text())
+        self.assertEqual(report["read"]["decoded"], {"brand": "Bambu", "material": "PLA Silk",
+                                                     "colors": ["EC008C", "FF4D0A"]})
+        sectors = report["read"]["readable_sectors"]
+        self.assertEqual(len(sectors), 16)
+        self.assertEqual(sectors["1"]["blocks"][2], BAMBU_BLOCKS[6].hex())
+        self.assertNotIn(BAMBU_BLOCKS[9].hex(), json.dumps(report))  # the spool's serial number
+        self.assertNotIn("c0ffee42", json.dumps(report))
+        self.module(Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]))
+        self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+        report = json.loads(max(self.reports(), key=lambda p: p.stat().st_mtime_ns).read_text())
+        self.assertEqual(report["read"]["decoded"]["material"], "PLA Silk")
+        self.assertNotIn(BAMBU_BLOCKS[9].hex(), json.dumps(report))
         self.module()
         with self.assertRaises(CommandError):
             self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7, SECONDS=1))

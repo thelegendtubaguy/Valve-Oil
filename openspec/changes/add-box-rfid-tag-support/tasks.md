@@ -23,8 +23,14 @@
 - [x] 4.1 Save reports for unusable tags and add `TLTG_BOX_RFID_REPORT`, without UID bytes.
 - [x] 4.2 Add the spool-tag issue template.
 
-## 5. Release
+## 5. Bambu Lab tags
 
-- [x] 5.1 Update `firmware/BOX_FIRMWARE.md`, `docs/firmware.md`, `docs/qidi-box.md`, `docs/settings.md`, `docs/under-the-hood.md`, and the README.
-- [ ] 5.2 Bump the package version and add the `CHANGELOG.md` section.
-- [ ] 5.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.
+- [x] 5.1 Derive Bambu Lab sector keys from the UID and decode blocks 1, 2, 4, 5, and 16 into QIDI v1 blocks; never write.
+- [x] 5.2 Add Bambu Lab filaments from BambuStudio's profiles to the catalog with `QFZ` IDs and a Bambu filament ID map.
+- [x] 5.3 Check a Bambu Lab spool sets its slot through QIDI's read on hardware.
+
+## 6. Release
+
+- [x] 6.1 Update `firmware/BOX_FIRMWARE.md`, `docs/firmware.md`, `docs/qidi-box.md`, `docs/settings.md`, `docs/under-the-hood.md`, and the README.
+- [ ] 6.2 Bump the package version and add the `CHANGELOG.md` section.
+- [ ] 6.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.
