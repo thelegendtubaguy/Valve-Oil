@@ -71,6 +71,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.
 - Multi-plate 3MF files print the right plate from Fluidd, reprints, and the job queue.
 - On the Max 4, a top speed that keeps the X/Y motors from skipping on fast diagonal moves.
+- A probe point whose samples never agree fails the mesh instead of hanging print start.
 
 [All fixes →](docs/fixes.md)
 
@@ -79,6 +80,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - A switch to stop the external spool's runout sensor from pausing prints.
 - On the Max 4, an optional monitor that pauses the print when an X or Y motor slips, or corrects the position and keeps printing.
 - Input shaper calibration with newer Klipper's sweeping resonance test, with a switch back to QIDI's.
+- A bed soak test that shows how long the bed and chamber take to reach temperature and the bed to stop moving.
 
 [Tools →](docs/tools.md)
 
