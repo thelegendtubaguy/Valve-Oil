@@ -75,6 +75,16 @@
 #   wobble sent Moonraker the whole list, about once a second. Status updates
 #   now report a Box's temperature again once it moves 0.1 C from the value
 #   last reported. Macros read the current value as before.
+# - Probe retries (QIDI's Max 4 and Plus 5 Klipper): when a point's probe
+#   samples disagree by more than samples_tolerance, QIDI re-zeroes the load
+#   cell and retries, but it reset the retry count each time, so
+#   samples_tolerance_retries never ended a probe and a point whose samples
+#   never agreed was probed forever. It also re-zeroed with the nozzle still
+#   pressed on the bed, so the next samples triggered in the air, 3 mm
+#   higher each time, until the following retry re-zeroed again. The count
+#   now runs to the limit and the probe then fails with "Probe samples
+#   exceed samples_tolerance", as upstream does, and the load cell is
+#   re-zeroed for each retry after the nozzle lifts off the bed.
 
 import gc
 import hashlib
@@ -89,7 +99,7 @@ import reactor
 import serialhdl
 import toolhead
 import webhooks
-from . import heaters, stepper_enable, tmc
+from . import heaters, probe, stepper_enable, tmc
 
 try:
     import msgspec
@@ -153,6 +163,8 @@ ORIGINALS = {
         "55aab4af4a66a830c9bbc27deccdf413d762f25bcb0a2da6bab0bd76331707b8",
     "ToolHead._do_actual_move":
         "46130d66b0dd45c82d47bb5857bff35c86c92ba7e52007c4ea40fcaab48fa5c9",
+    "ProbeSessionHelper.run_probe":
+        "db6a8f8c3d8b77127dfbc577406186102c4a076a0e4b768be6f7f55941a7ed8c",
 }
 
 
@@ -488,6 +500,41 @@ def _yield_slice(reactor):
     _slice_start[0] = _clock()
 
 
+# ------------------------------------------------------------ probe retries
+def _run_probe(self, gcmd):
+    if not self.multi_probe_pending:
+        self._probe_state_error()
+    params = self.get_probe_params(gcmd)
+    toolhead = self.printer.lookup_object('toolhead')
+    probexy = toolhead.get_position()[:2]
+    retries = 0
+    positions = []
+    sample_count = params['samples']
+    while len(positions) < sample_count:
+        pos = self._probe(params['probe_speed'])
+        positions.append(pos)
+        z_positions = [p[2] for p in positions]
+        if max(z_positions) - min(z_positions) > params['samples_tolerance']:
+            if retries >= params['samples_tolerance_retries']:
+                raise gcmd.error("Probe samples exceed samples_tolerance")
+            gcmd.respond_info("Probe samples exceed tolerance. Retrying...")
+            retries += 1
+            positions = []
+        if len(positions) < sample_count:
+            toolhead.manual_move(
+                probexy + [pos[2] + params['sample_retract_dist']],
+                params['lift_speed'])
+            if not positions:
+                # Re-zero the load cell for the retry once the nozzle is
+                # off the bed, as before each point.
+                toolhead.wait_moves()
+                toolhead.dwell(0.05)
+                self.mcu_probe.home_zero()
+                toolhead.dwell(0.05)
+    epos = probe.calc_probe_z_average(positions, params['samples_result'])
+    self.results.append(epos)
+
+
 # ------------------------------------------------------------------ status
 _NUMBERS = (int, float)
 
@@ -651,6 +698,9 @@ class KlipperFixes:
                 webhooks.QueryStatusHelper, "_do_query",
                 "QueryStatusHelper._do_query", _do_query)),
             ("stepper enable timing", _fix_stepper_enable),
+            ("probe retry limit", lambda: _replace(
+                probe.ProbeSessionHelper, "run_probe",
+                "ProbeSessionHelper.run_probe", _run_probe)),
             ("G-code time slices", _fix_move_slices),
         ]
         if msgspec is None:

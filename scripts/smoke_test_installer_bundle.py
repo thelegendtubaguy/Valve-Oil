@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
                          "box_slot_jog", "box_rfid", "filament_catalog", "box_flow_recovery", "cold_cut",
                          "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard", "step_loss_monitor", "velocity_limit",
-                         "resonance_sweep", "pause_timeout")
+                         "resonance_sweep", "pause_timeout", "probe_report", "bed_soak")
         }
         for module_target, module_source in module_targets.items():
             if not module_target.is_file():

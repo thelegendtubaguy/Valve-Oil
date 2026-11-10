@@ -13,6 +13,7 @@ Run these from Fluidd's console or macro controls after installing and restartin
 | `TLTG_RESET_TOOL_MAPPINGS` | Restores QIDI Box tool-to-slot mappings to T0 → 1A, T1 → 1B, and so on. Idle only. |
 | [`TLTG_FILAMENT_SENSOR ENABLE=0`](#external-spool-runout-sensor) | Stops the external spool's runout sensor from pausing prints. |
 | [`TLTG_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds. |
+| [`TLTG_BED_SOAK BED=100 CHAMBER=60`](#bed-soak-test) | Measures how long the bed and chamber take to reach temperature and the bed to stop moving. |
 | [`SHAPER_CALIBRATE SWEEPING_PERIOD=0`](#input-shaper-calibration) | Input shaper calibration with QIDI's resonance test instead of the newer sweeping one, for one run. |
 
 ## Nozzle load-cell check
@@ -132,3 +133,41 @@ For a single run, add these to `SHAPER_CALIBRATE` or `TEST_RESONANCES`:
 | `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
 
 A test that would need more acceleration than `max_accel` in `printer.cfg` stops before moving and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `tltg_resonance_sweep: skipped`.
+
+## Bed soak test
+
+The bed and the frame keep moving for a while after the bed reaches its temperature. The nozzle is both the probe and the Z endstop, so if the bed is still moving after print start's mesh, the first layer changes. The bed soak test measures how long your printer takes, at the bed and chamber temperatures you print at, so you know how long to let it heat before printing. It only reports; print start doesn't change.
+
+Run it from the **Bed soak** card under **Bed mesh** on Fluidd's Tune page, or from the console:
+
+```gcode
+TLTG_BED_SOAK BED=100 CHAMBER=60
+```
+
+| Parameter | Default | What it does |
+|---|---|---|
+| `BED=` | required | Bed temperature. |
+| `CHAMBER=` | off | Chamber temperature, on a printer with a chamber heater. |
+| `PROBE_COUNT=` | `5` | Mesh size, 3 to 11 points a side. A 5×5 mesh over the whole bed takes about 2 minutes on the Max 4, a 9×9 about 6½. |
+| `TIME_LIMIT=` | `90` | Minutes after the heaters turn on before the test ends, at most 240. |
+| `STOP_WHEN_SETTLED=` | `1` | `1` ends the test once the bed has stopped moving and the chamber is at temperature or stopped warming. `0` runs to the time limit. |
+| `KEEP_HEATING=` | `0` | `1` leaves the bed and chamber heating when the test ends, so you can print straight after. |
+
+Start it with the bed and chamber cool, since the first mesh is the reference everything else is measured against. The printer turns the bed and chamber heaters off, heats the nozzle to print start's probing temperature (140 °C), homes, wipes the nozzle at the chute, runs `Z_TILT_ADJUST`, homes Z, and measures a mesh of the whole bed. It then turns on the bed and chamber heaters and measures mesh after mesh, probing the bed center between meshes. Other commands can run between meshes.
+
+The results count from when the heaters turned on:
+
+- **Bed at temperature** is when the bed is within 1 °C of its target, where print start stops waiting for it.
+- **Chamber at temperature** is when the chamber is 3 °C below its target, where print start stops waiting for it. If the chamber stops warming first (less than 0.5 °C in 10 minutes), the results show the highest temperature it reached instead.
+- **Bed stopped moving** is the first of the last three or more meshes in a row, after the bed reached temperature, in which the bed moved less than 2 µm a minute.
+- **Ready to print** is the later of the chamber reaching temperature and the bed stopping moving.
+
+Each mesh also shows how far the whole bed has moved up or down since the first mesh (height), how much its shape has changed apart from that (shape), and how fast it was still moving.
+
+**Problem points.** A point the probe had to retry is marked and left out of that mesh's numbers. Once the bed is at temperature, so is a point whose change since the previous mesh is more than 15 µm out of line with the points around it. If every reading then suddenly shifts, which shows as the bed center moving more than 15 µm further during one mesh than during the meshes either side, that mesh isn't used and the meshes after it are corrected. While the bed heats it moves too much and too unevenly for these checks; on a Max 4 heating to 100 °C, its center rose about 150 µm in uneven steps over 10 minutes. A point marked in more than one mesh, or a shift, puts a warning at the top of the results. Check the build plate for debris and run the test again.
+
+Stop the test with **Stop** on the card, which turns the heaters off at once, or `TLTG_BED_SOAK_STOP`, which waits for the mesh in progress. The test also ends if a print starts, a heater's target is changed outside the test, or homing or probing fails. When it ends, the nozzle heater turns off, the bed and chamber turn off unless you asked to keep them heating, and the mesh you had loaded before is loaded again. The test saves no mesh profile and leaves no config save pending.
+
+Each run is saved in `tltg_bed_soak/` in Fluidd's configuration files, named by start time and temperatures, for example `20261110-195948-bed100-chamber50.jsonl`. The card's **Past runs** tab lists, compares, and deletes them.
+
+Fluidd's Bed mesh card also marks the points that needed a retry in the last mesh measured, including print start's, while that mesh is loaded.

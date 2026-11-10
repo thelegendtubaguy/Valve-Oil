@@ -21,7 +21,7 @@ def _load():
     patches; the tests attach the classes they need."""
     saved = {name: sys.modules.get(name)
              for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks", "extras",
-                          "extras.heaters", "extras.stepper_enable", "extras.tmc")}
+                          "extras.heaters", "extras.probe", "extras.stepper_enable", "extras.tmc")}
     for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks"):
         sys.modules[name] = types.ModuleType(name)
     sys.modules["serialhdl"].error = SerialError
@@ -30,12 +30,14 @@ def _load():
     package = types.ModuleType("extras")
     package.__path__ = []
     sys.modules["extras"] = package
-    for name in ("heaters", "stepper_enable", "tmc"):
+    for name in ("heaters", "probe", "stepper_enable", "tmc"):
         module = types.ModuleType("extras." + name)
         sys.modules["extras." + name] = module
         setattr(package, name, module)
     sys.modules["extras.heaters"].MAX_HEAT_TIME = 5.
     sys.modules["extras.stepper_enable"].ENABLE_DELAY_TIME = .3
+    sys.modules["extras.probe"].calc_probe_z_average = (
+        lambda positions, method: [sum(p[i] for p in positions) / len(positions) for i in range(3)])
     try:
         spec = importlib.util.spec_from_file_location(
             "extras.tltg_klipper_fixes", REPO_ROOT / "installer/klipper/tltg/klipper_fixes.py")
@@ -167,6 +169,62 @@ class HeaterTest(unittest.TestCase):
 
         self.assertEqual(klipper_fixes._heater_get_temp(heater, 106.)[0], 210.)
         self.assertEqual(klipper_fixes._heater_get_temp(heater, 107.5)[0], 0.)
+
+
+class ProbeRetryTest(unittest.TestCase):
+    """QIDI reset the retry count on a point's first retry, so a point whose
+    samples never agreed was probed forever."""
+
+    class Session:
+        def __init__(self, readings, retries=3):
+            self.multi_probe_pending = True
+            self.readings = iter(readings)
+            self.retries = retries
+            self.results = []
+            self.events = []
+            self.mcu_probe = types.SimpleNamespace(home_zero=lambda: self.events.append("zero"))
+            toolhead = types.SimpleNamespace(
+                get_position=lambda: [10., 20., 5., 0.],
+                manual_move=lambda pos, speed: self.events.append("lift"),
+                wait_moves=lambda: None, dwell=lambda delay: None)
+            self.printer = types.SimpleNamespace(lookup_object=lambda name: toolhead)
+
+        def get_probe_params(self, gcmd):
+            return {"probe_speed": 5., "lift_speed": 5., "samples": 2,
+                    "sample_retract_dist": 3., "samples_tolerance": .02,
+                    "samples_tolerance_retries": self.retries, "samples_result": "average"}
+
+        def _probe(self, speed):
+            return [10., 20., next(self.readings)]
+
+    class Command:
+        def __init__(self):
+            self.messages = []
+
+        def respond_info(self, msg):
+            self.messages.append(msg)
+
+        def error(self, msg):
+            return CommandError(msg)
+
+    def test_samples_that_never_agree_fail_at_the_limit(self) -> None:
+        session = self.Session([0., .1] * 100)
+        gcmd = self.Command()
+
+        with self.assertRaisesRegex(CommandError, "Probe samples exceed samples_tolerance"):
+            klipper_fixes._run_probe(session, gcmd)
+
+        self.assertEqual(len(gcmd.messages), 3)
+        # Each retry re-zeroes the load cell with the nozzle off the bed.
+        self.assertEqual(session.events, ["lift", "lift", "zero"] * 3 + ["lift"])
+
+    def test_samples_that_agree_after_a_retry_carry_on(self) -> None:
+        session = self.Session([0., .1, .05, .06])
+
+        klipper_fixes._run_probe(session, self.Command())
+
+        self.assertAlmostEqual(session.results[0][2], .055)
+        self.assertEqual(session.events.count("zero"), 1)
 
 
 class StepperEnableTest(unittest.TestCase):
