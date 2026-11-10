@@ -35,7 +35,39 @@ Firmware `01.01.06.05` changes only the fallback for absent `filament_slot0..16`
 - **Runtime-confirmed:** with `config/qidi_filament_config` symlinked to `/home/qidi/QIDI_Client/resource/filament_config`, Moonraker lists the four JSON files as read-write in the `config` root, and saving `filament-0.4.json` from Fluidd's editor rewrote the target file in place with the edit intact. The link was preserved, and the file's mode changed from `0755` to `0644` with `qidi` ownership retained. Moonraker runs as `qidi`, which owns the directory and files; qidiclient runs as root.
 - **Runtime-confirmed:** stock Fluidd shows `QF` slots as `?` with a transparent spool, because `parseInt` turns the string ID into `NaN` and the RGB value into a missing `[colordict]` key.
 - **Harness-recovered (2026-10-29):** `UPDATE_FILAMENT_INFORMATION SLOT=` and the `set_filament_info` web request pass `(slot, color, filament, vendor)` to the slot's adapter. For slot `16`, `ExternalAdapter.set_filament_information` resolves the ID with `get_fila_id(filament, vendor)`, which matched the display name without its vendor prefix (`ABS Rapido` with `QIDI`) and not the full display name. On no match it saves `filament_slot16 = 'None'` along with the color, then raises `TypeError` looking up `None`. For a Box slot the same unknown pair responds `V2 filament not found: <vendor> <filament>` and saves nothing.
-- **Unresolved:** the RFID legacy-to-`QF` mapping and any numeric range enforced for `QF` IDs.
+- **Harness-recovered (2026-11-10, `box_rfid.so` run on the printer with fake Klipper objects):** `_schedule_rfid_read` polls every 0.3 s for up to 30 s and accepts a block after two identical reads. Byte 2's high nibble selects the layout. With `0`, byte 0 is an old material ID mapped through `LEGACY_RFID_FILAMENT_ID_MAP` (`1..50`, for example `7` to `QFA00`) and byte 1 an old color ID mapped through `LEGACY_RFID_COLOR_MAP` (`1..24`); other byte-0 values are rejected as an unrecognized label, and unmapped values fall back to `QFA00` and `#FAFAFA`. With `1` or more (v1), byte 0 must be `A..Z`, byte 1 `0..99`, byte 2's low nibble (color count) at most 4, and byte 15 at most 127; the ID is `QF` plus byte 0 plus byte 1 as two digits, and the colors are RGB triples from byte 3. Byte 15 is not otherwise checked, and the ID is saved whether or not the database contains it. A valid read saves `filament_slotN` and `color_slotN` (uppercase RGB list) through `box_extras.save_variable`.
+- **Harness-recovered:** `box_stepper` `SLOT_RFID_READ` (reached by `READ_RFID SLOT=n`) refuses with `QDE_004_011` when the hub sensor shows filament. Otherwise it starts the slot's reader (`card_reader_{slot//2+1}`) and homes the slot toward the hub sensor for up to 2000 mm at 80 mm/s, which turns the spool past the reader, then reports `QDE_004_020` if the slot's inlet sensor shows no filament.
+- **Runtime-confirmed (2026-11-10, Anycubic "PLA High Speed" spool, read through the TLTG Box firmware's `fm17550_select` and `fm17550_transceive`):** the tag answers GET_VERSION with `00 53 04 02 01 00 0f 03` (NTAG213 geometry, 45 pages, vendor byte `0x53` rather than NXP's `0x04`). Its data, in 4-byte pages:
+
+  | Page | Contents |
+  |---:|---|
+  | 4 | `7b 00 65 00` header |
+  | 5–9 | SKU, ASCII, NUL-padded (`AHHSBR-106`) |
+  | 10–14 | brand, ASCII (`AC`) |
+  | 15–19 | material, ASCII (`PLA High Speed`) |
+  | 20 | color as alpha, blue, green, red (`ff 00 06 e1` is `#E10600`) |
+  | 23, 25, 27 | print-speed bands in mm/s, two little-endian `u16` (`50–150`, `150–300`, `300–600`) |
+  | 24, 26, 28 | nozzle temperature for the band before it, °C (`190–210`, `210–230`, `230–260`) |
+  | 29 | bed temperature, °C (`55–65`) |
+  | 30 | diameter in hundredths of a mm (`175`), then length in m (`330`) |
+  | 31 | weight in g (`1000`) |
+
+  Pages 21–22 and 32–39 are zero. No static lock bits are set, but CFG0 has `AUTH0 = 0x04` and CFG1 `ACCESS = 0x47` (configuration locked, password needed to write from page 4, reads open), so the tag is write-protected by a password that is not known.
+- **Runtime-confirmed (2026-11-10, Elegoo PLA spool, same commands):** the tag has the same chip as the Anycubic tag (GET_VERSION `00 53 04 02 01 00 0f 03`) and no write protection (`AUTH0 = 0xff`, `ACCESS = 0x00`). Pages 4–9 hold an NDEF URI record for `https://www.elegoo.com`. The filament data, big-endian:
+
+  | Page | Bytes on this spool | Contents |
+  |---:|---|---|
+  | 16 | `36 ee ee ee` | header `0x36`, then the manufacturer code `ee ee ee ee` running into page 17 |
+  | 17 | `ee 00 00 00` | end of manufacturer code, then a filament code |
+  | 18 | `00 80 76 65` | material as decimal ASCII codes (80 76 65 is `PLA`) |
+  | 19 | `00 00 00 00` | subtype, family in the high byte and variant in the low byte (`0x0000` plain PLA) |
+  | 20 | `ff 00 00 ff` | RGB color, then a finish byte |
+  | 21 | `00 be 00 e6` | nozzle temperature 190–230 °C |
+  | 23 | `00 af 03 e8` | diameter 1.75 mm, weight 1000 g |
+  | 24 | `00 36 c8 00` | not decoded |
+
+  The material and subtype codes match the community tables in `Savion/elegoo-rfid-editor` (`src/lib/materials.ts`, MIT).
+- **Unresolved:** any numeric range QIDI enforces for `QF` IDs beyond the v1 parser's limits.
 
 ## Filaments
 

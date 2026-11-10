@@ -1,4 +1,4 @@
-"""QIDI Box firmware shutdown fix: status, install, restore, and rescue.
+"""TLTG QIDI Box firmware (shutdown fix and RFID commands): status, install, restore, and rescue.
 
 Run only through box-firmware.sh. Install, update, and automatic updates never
 call this module, and --yes cannot authorize it.
@@ -27,6 +27,7 @@ from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 SUBJECT = "Box firmware"
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
 BACKUP_DIRECTORY = ".tltg_box_firmware_backups"
+MANIFEST = "firmware/max4-box-rfid-v1.json"
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
@@ -95,10 +96,16 @@ def _versions(paths, boxes, urlopen) -> dict[str, str | None]:
     return {box.name: (status.get(f"mcu {box.name}") or {}).get("mcu_version") for box in boxes}
 
 
+def _superseded_versions(manifest: dict) -> set[str]:
+    return {entry["version"] for entry in manifest["box"].get("superseded", ())}
+
+
 def _describe(version: str | None, manifest: dict) -> str:
     box = manifest["box"]
     if version == box["patched_version"]:
-        return "shutdown fix installed (" + version + ")"
+        return "TLTG Box firmware installed (" + version + ")"
+    if version in _superseded_versions(manifest):
+        return "earlier TLTG Box firmware (" + version + "); install updates it"
     if version == box["stock_version"]:
         return "QIDI stock firmware (" + version + ")"
     if version is None:
@@ -178,7 +185,7 @@ def run_box_firmware(
     run = subprocess.run if run is None else run
     usb_state = protocol.usb_state if usb_state is None else usb_state
     env = {} if environ is None else environ
-    manifest = build_box_firmware.load_manifest(paths.bundle_root / "firmware/max4-box-shutdown-fix-v1.json")
+    manifest = build_box_firmware.load_manifest(paths.bundle_root / MANIFEST)
     configured = discover_boxes(paths, resolve_usb=resolve_usb)
     marker = paths.printer_data_root / BOX_RECOVERY_MARKER
 
@@ -253,17 +260,25 @@ def run_box_firmware(
                 previous[box.name] = "already " + ("installed" if target == "patched" else "stock")
             elif box.usb is None or version is None:
                 previous[box.name] = "skipped: not connected"
-            elif version not in (manifest["box"]["stock_version"], manifest["box"]["patched_version"]):
+            elif version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
+                                 *_superseded_versions(manifest)}:
                 previous[box.name] = "skipped: unsupported firmware"
             else:
                 plan.append((box, box.usb))
+                if version in _superseded_versions(manifest) and stock_image is None:
+                    # The fix is built from QIDI's stock image, which the Box no longer holds.
+                    stock_image = _stock_image(paths, manifest)
+                    if stock_image is None:
+                        raise BoxFirmwareError("Updating earlier TLTG Box firmware needs QIDI's Box firmware "
+                                               + manifest["box"]["stock_version"] + " from the Box firmware backups "
+                                               "or ~/update; none was found. No Box firmware was changed.")
         if not plan:
             for box in selected:
                 reporter.line(f"{box.label}: {previous[box.name]}")
             reporter.line("Nothing to flash.")
             return 0
 
-    verb = {"install": "Install the shutdown fix on", "restore": "Restore QIDI's stock firmware on",
+    verb = {"install": "Install the TLTG Box firmware on", "restore": "Restore QIDI's stock firmware on",
             "rescue": "Rescue and restore QIDI's stock firmware on"}[action]
     reporter.line(WARNING)
     reporter.line(f"{verb}: " + ", ".join(box.label for box, _ in plan)
@@ -347,7 +362,10 @@ def run_box_firmware(
                 if current == target:
                     results[box.name] = "already " + ("installed" if target == "patched" else "stock") + " (verified by readback)"
                     continue
-                image = build_box_firmware.patch_box(app, manifest) if target == "patched" else stock_image
+                if target == "patched":
+                    image = build_box_firmware.patch_box(app if current == "stock" else stock_image, manifest)
+                else:
+                    image = stock_image
                 record.update(phase="programming", box=box.name, usb=usb)
                 atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
                 pending = True
@@ -360,7 +378,7 @@ def run_box_firmware(
             evidence = protocol.verify_readback(image, after, manifest,
                                                 expected_bootloader=(before / "bootloader.bin").read_bytes())
             atomic_write_text(box_dir / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
-            results[box.name] = ("shutdown fix installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
+            results[box.name] = ("TLTG Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
             pending = False
             record.update(phase="verified", box=box.name)
             atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)

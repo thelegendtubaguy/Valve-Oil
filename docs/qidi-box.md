@@ -127,9 +127,33 @@ On Max 4 firmware `01.01.07.01`, the Vendor and Filament lists on the touchscree
 The installer makes this possible by adding a `qidi_filament_config` folder to Fluidd's configuration files, linked to QIDI's filament files. The other nozzle sizes' files are there too, and any of them can be edited by hand: right-click a file and choose **Edit**. Keep it valid JSON, as a missing comma or bracket can break the touchscreen's filament list.
 
 > [!WARNING]
-> These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups.
+> These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups. The [Anycubic and Elegoo filaments](#anycubic-and-elegoo-filaments) come back by themselves.
 
 If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
+
+## Spool tags
+
+With the [TLTG Box firmware](firmware.md#qidi-box-firmware) on a USB Box, the Box reads **Anycubic** and **Elegoo** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
+
+- A tag sets the slot to that brand's filament in QIDI's list, matched by name, such as **Anycubic PLA High Speed** or **Elegoo Rapid PLA+**. If the list has no such filament, the slot gets the brand's plain filament of that type, then Generic's. A filament you added yourself with the same name, such as your own **Elegoo PLA**, is used instead of this project's.
+- Tags the Box can't read, such as Bambu's and Creality's encrypted ones, leave the slot's filament as it was. QIDI's firmware could give such a spool the filament of the last tag that reader read, which might be the spool in the slot next to it; that no longer happens.
+- Each reader serves two slots, 1A with 1B and 1C with 1D. The tag has to pass close over the reader, so a spool may need a full turn before it reads.
+
+### Anycubic and Elegoo filaments
+
+Klipper adds 30 Anycubic and 32 Elegoo filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles, and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken. After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
+
+Their IDs start with `QFX` (Anycubic) and `QFY` (Elegoo), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
+
+### Spools that don't read
+
+When the Box reads a tag it doesn't recognize, Klipper saves what it read as `tltg_rfid_<reason>_<reader>_<time>.json` in its log folder (Fluidd: **Logs**). To read a tag on purpose, put the spool in a slot without feeding its filament and run:
+
+```gcode
+TLTG_BOX_RFID_REPORT SLOT=7
+```
+
+Slots are numbered from 0, so 2D is slot 7. For up to 60 seconds (`SECONDS=` up to 300) it waits for a tag; turn the spool slowly by hand until it reports. It saves `tltg_rfid_report_<slot>_<time>.json` with everything the tag lets it read. Attach the file to a [spool tag issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=spool-tag.yml) to get that brand supported. Reports never include the tag's serial number.
 
 ## Filaments missing from QIDI's list
 

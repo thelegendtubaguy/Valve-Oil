@@ -89,6 +89,12 @@ This module does not perform the primary slot load/unload motion; that motion li
 
 **Static-recovered.** The FM17550 reader is driven from the MCU over an SPI bus allocated by the host. `fm17550_init_cb` toggles a reset/select line with fixed delays, writes a one-byte command sequence, then reads one status byte and checks its low two bits. Raw register, FIFO, and card payloads are returned to the host as byte buffers.
 
+**Static-recovered (`02.03.01.21`).** `fm17550_read_card_cb` turns both antenna drivers on, runs QIDI's register setup, and returns status 2 when TxControlReg and TxASKReg both read wrong. It then sends REQA, runs anticollision and select through up to three cascade levels, and stores ATQA, UID bytes, and SAK in the reader object. It logs in to MIFARE Classic block 4 with key A `FFFFFFFFFFFF`, reads 16 bytes with READ `0x30 0x04`, and halts the tag. When the login fails it skips the read and still returns status 1 with the previous buffer, so a tag that is not MIFARE Classic, or uses another key, returns whatever the reader last read. No tag returns status 0 and clears the buffer.
+
+**Static-recovered.** `fm17550_write_card_cb` logs in the same way and writes sixteen `0x61` bytes to block 4. It also sets a RAM flag (`0x200003aa`) that makes later reads skip the login. No QIDI host module sends it, nor `fm17550_init_cb`, `fm17550_read_regs_cb`, or `fm17550_read_fifo_cb`; `box_rfid.so` uses only `config_fm17550`, `query_fm17550`, and `fm17550_read_card_cb`.
+
+**Runtime-confirmed (2026-11-10, Box 2 slot 2D).** An Anycubic spool tag answered `fm17550_read_card_cb` with status 1 and sixteen zero bytes while the spool was turned by hand, only at some angles, about once per turn. The reader object held ATQA `0x0044`, a 7-byte UID, and SAK `0x04` then `0x00`: an NFC Type 2 (NTAG-class) tag, on which QIDI's MIFARE login cannot succeed. QIDI's `READ_RFID SLOT=7`, which feeds the slot for about 55 s, got 101 status-0 reads from the same tag. The Box MCU kept that state across a Klipper service restart.
+
 ## Host-side companion modules
 
 Vendor Cython modules are built with `CYTHON_COMPRESS_STRINGS`, so most string literals are stored as one zlib stream inside the shared object rather than as plain text. They decompress to the module's full literal table, including G-code fragments, error-code text, and config-key names:

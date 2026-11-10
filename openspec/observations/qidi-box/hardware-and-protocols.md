@@ -303,6 +303,6 @@ Recovered fields:
 | `get_message_count` | `1` |
 | initial `had_get_value` | `False` |
 
-Idle commands were accepted without a visible result and did not clear stored material metadata. Raw valid-tag bytes, status interpretation, reader ordering, tag-to-metadata decoding, and the four-logical-reader/two-chip-select relationship remain unresolved.
+Idle commands were accepted without a visible result and did not clear stored material metadata. Status values, the MIFARE Classic block 4 read, and the tag layouts are in [MCU firmware](mcu-firmware.md#rfid) and [material metadata](material-metadata.md). `box_stepper` reads slot `N` through `card_reader_{N//2+1}`, so each reader serves two adjacent slots.
 
-A fake `SLOT_RFID_READ` path emitted `QDE_004_011` when loaded, but live loaded-slot commands were accepted without that error. Live evidence outranks the fake predicate.
+**Runtime-confirmed (2026-11-10).** `READ_RFID SLOT=7` with filament loaded through the hub logged `QDE_004_011` and did not read. With the hub clear it fed the slot and polled `card_reader_4`.

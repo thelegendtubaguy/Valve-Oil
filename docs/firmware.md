@@ -27,24 +27,26 @@ Add `--dry-run` for a preview without touching the board. `--yes` alone and auto
 
 **To go back to stock firmware:** see [Restore the stock THR firmware from backup](../firmware/README.md#restore-the-stock-thr-firmware-from-backup). Details on supported bootloaders and recovery are in [THR-only operations](../firmware/FLASHING.md).
 
-## QIDI Box shutdown fix
+## QIDI Box firmware
 
-QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a restart. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box drops too. This fix keeps the Box connected, so Klipper shows what actually happened.
+QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a restart. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box drops too. The TLTG Box firmware keeps the Box connected, so Klipper shows what actually happened.
+
+It also lets the Box [read Anycubic and Elegoo spool tags](qidi-box.md#spool-tags), by giving Klipper direct access to the Box's RFID readers in place of four QIDI test commands that nothing on the printer uses. QIDI's own spool tags read as before.
 
 **How to install:** the installer never installs or offers it. Run it yourself over SSH from the installer folder:
 
 ```sh
 cd ~/tltg-optimized-macros
-./box-firmware.sh status    # which Boxes have the fix
+./box-firmware.sh status    # which firmware each Box runs
 ./box-firmware.sh install   # flash it to every USB Box (or --box N)
 ./box-firmware.sh restore   # put QIDI's stock Box firmware back
 ```
 
 The script asks you to type `FLASH`, and stops Klipper and the touchscreen for about four minutes per Box. It only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`.
 
-A fixed Box reports its version as `02.03.01.21-tltg-shutdownfix1` in Fluidd and `klippy.log`.
+A Box with this firmware reports its version as `02.03.01.21-tltg-rfid1` in Fluidd and `klippy.log`. `install` also updates a Box that has the earlier shutdown fix (`02.03.01.21-tltg-shutdownfix1`). It builds the new firmware from QIDI's stock Box firmware, which it takes from the backups it saved when it first flashed that Box, or from `~/update`.
 
-**If a flash fails:** see [QIDI Box firmware shutdown fix](../firmware/BOX_FIRMWARE.md).
+**If a flash fails:** see [TLTG QIDI Box firmware](../firmware/BOX_FIRMWARE.md).
 
 ## Mainboard closed-loop reply fix
 
