@@ -32,7 +32,7 @@ Alternatives rejected: patching QIDI's read to skip the login for SAK `0x00` wou
 
 ### Firmware build and verification
 
-`scripts/generate_box_firmware_manifest.py` compiles the handlers, checks they fit their caves, rebuilds and zopfli-compresses the dictionary, and writes hash-locked patches to `firmware/max4-box-rfid-v1.json`. Installs use only the manifest. `scripts/check_box_firmware.py` runs the handlers in emulation against QIDI's image with QIDI's FM17550 routines replaced by a frame-level tag model (NTAG, MIFARE Classic, no tag, and an unresponsive reader), alongside the existing identify, transfer, and shutdown checks.
+`scripts/generate_box_firmware_manifest.py` compiles the handlers, checks they fit their caves, rebuilds and zopfli-compresses the dictionary, and writes hash-locked patches to `firmware/max4-box-valve-oil-v1.json`. Installs use only the manifest. `scripts/check_box_firmware.py` runs the handlers in emulation against QIDI's image with QIDI's FM17550 routines replaced by a frame-level tag model (NTAG, MIFARE Classic, no tag, and an unresponsive reader), alongside the existing identify, transfer, and shutdown checks.
 
 ### Upgrading the earlier fix
 

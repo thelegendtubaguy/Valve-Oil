@@ -4,7 +4,7 @@ The QIDI Box reads only QIDI's own spool tags. Owners want Anycubic and Elegoo s
 
 ## What Changes
 
-- Replace the USB Box firmware fix with a cumulative build, `max4-box-rfid-v1`. It keeps the shutdown fix and adds two reader commands in place of four QIDI FM17550 debug commands that no QIDI software uses:
+- Replace the USB Box firmware fix with a cumulative build, `max4-box-valve-oil-v1`. It keeps the shutdown fix and adds two reader commands in place of four QIDI FM17550 debug commands that no QIDI software uses:
   - `fm17550_select` wakes a tag (including a halted one), selects it through every cascade level, and returns its ATQA, UID, and SAK.
   - `fm17550_transceive` sends one frame, or a MIFARE login, and returns the reply.
   QIDI's own read command is unchanged.
@@ -23,13 +23,13 @@ None.
 ### Modified Capabilities
 
 - `firmware-artifacts`: the Box image adds the RFID commands to the shutdown fix.
-- `box-firmware-transfer`: a Box on an earlier TLTG build is admitted and updated from QIDI's stock image.
+- `box-firmware-transfer`: a Box on an earlier build of this project is admitted and updated from QIDI's stock image.
 - `optimized-printer-behavior`: reading Anycubic and Elegoo tags, their filaments in QIDI's database, and tag reports.
 - `installer-lifecycle`: the optimized configuration may add catalog filaments to QIDI's database files.
 
 ## Impact
 
-- `firmware/box-rfid/`, `firmware/max4-box-rfid-v1.json` (replaces `max4-box-shutdown-fix-v1.json`), `scripts/generate_box_firmware_manifest.py`, `scripts/build_box_firmware.py`, `scripts/check_box_firmware.py`, `scripts/flash_box_firmware.py`, and `installer/runtime/box_firmware.py`.
+- `firmware/box-rfid/`, `firmware/max4-box-valve-oil-v1.json` (replaces `max4-box-shutdown-fix-v1.json`), `scripts/generate_box_firmware_manifest.py`, `scripts/build_box_firmware.py`, `scripts/check_box_firmware.py`, `scripts/flash_box_firmware.py`, and `installer/runtime/box_firmware.py`.
 - `installer/klipper/tltg/box_rfid.py`, the generated `installer/klipper/tltg/filament_catalog.py` (`scripts/generate_filament_catalog.py`), and `installer/klipper/tltg-optimized-macros/box_rfid.cfg`.
 - QIDI's `filament-*.json` files gain entries, which changes the current rule that nothing modifies them.
 - `installer/package.yaml`, `docs/`, `.github/ISSUE_TEMPLATE/spool-tag.yml`, and `CHANGELOG.md`.

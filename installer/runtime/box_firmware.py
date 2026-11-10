@@ -1,7 +1,7 @@
-"""TLTG QIDI Box firmware (shutdown fix and RFID commands): status, install, restore, and rescue.
+"""Valve Oil QIDI Box firmware (shutdown fix and RFID commands): status, install, restore, and rescue.
 
-Run only through box-firmware.sh. Install, update, and automatic updates never
-call this module, and --yes cannot authorize it.
+box-firmware.sh runs every action. An interactive or --yes install also brings
+each USB Box to the bundled firmware; automatic updates never flash a Box.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 SUBJECT = "Box firmware"
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
 BACKUP_DIRECTORY = ".tltg_box_firmware_backups"
-MANIFEST = "firmware/max4-box-rfid-v1.json"
+MANIFEST = "firmware/max4-box-valve-oil-v1.json"
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
@@ -103,9 +103,9 @@ def _superseded_versions(manifest: dict) -> set[str]:
 def _describe(version: str | None, manifest: dict) -> str:
     box = manifest["box"]
     if version == box["patched_version"]:
-        return "TLTG Box firmware installed (" + version + ")"
+        return "Valve Oil Box firmware installed (" + version + ")"
     if version in _superseded_versions(manifest):
-        return "earlier TLTG Box firmware (" + version + "); install updates it"
+        return "earlier Valve Oil Box firmware (" + version + "); install updates it"
     if version == box["stock_version"]:
         return "QIDI stock firmware (" + version + ")"
     if version is None:
@@ -177,8 +177,9 @@ def start_recorded_services(states, *, run, password, paths, urlopen, sleep, clo
 def run_box_firmware(
     *, paths, reporter, action, boxes=None, input_stream=None, environ=None,
     run=None, urlopen=urllib.request.urlopen, sleep=time.sleep, clock=time.monotonic,
-    resolve_usb=usb_path_for_serial, usb_state=None,
+    resolve_usb=usb_path_for_serial, usb_state=None, confirmed=False,
 ) -> int:
+    """confirmed: the operator already chose this by running the installer, so no FLASH prompt."""
     from scripts import build_box_firmware
     from scripts import flash_box_firmware as protocol
 
@@ -269,7 +270,7 @@ def run_box_firmware(
                     # The fix is built from QIDI's stock image, which the Box no longer holds.
                     stock_image = _stock_image(paths, manifest)
                     if stock_image is None:
-                        raise BoxFirmwareError("Updating earlier TLTG Box firmware needs QIDI's Box firmware "
+                        raise BoxFirmwareError("Updating earlier Valve Oil Box firmware needs QIDI's Box firmware "
                                                + manifest["box"]["stock_version"] + " from the Box firmware backups "
                                                "or ~/update; none was found. No Box firmware was changed.")
         if not plan:
@@ -278,17 +279,18 @@ def run_box_firmware(
             reporter.line("Nothing to flash.")
             return 0
 
-    verb = {"install": "Install the TLTG Box firmware on", "restore": "Restore QIDI's stock firmware on",
+    verb = {"install": "Install the Valve Oil Box firmware on", "restore": "Restore QIDI's stock firmware on",
             "rescue": "Rescue and restore QIDI's stock firmware on"}[action]
     reporter.line(WARNING)
     reporter.line(f"{verb}: " + ", ".join(box.label for box, _ in plan)
                   + ". Klipper and the touchscreen stop for about four minutes per Box.")
-    if input_stream is None:
-        raise BoxFirmwareError("box-firmware needs an interactive terminal to confirm.")
-    reporter.emit_prompt(question=f"Type {CONFIRMATION} to continue", instruction="Anything else cancels.")
-    if input_stream.readline().strip() != CONFIRMATION:
-        reporter.line("Cancelled. No Box firmware was changed.")
-        return 1
+    if not confirmed:
+        if input_stream is None:
+            raise BoxFirmwareError("box-firmware needs an interactive terminal to confirm.")
+        reporter.emit_prompt(question=f"Type {CONFIRMATION} to continue", instruction="Anything else cancels.")
+        if input_stream.readline().strip() != CONFIRMATION:
+            reporter.line("Cancelled. No Box firmware was changed.")
+            return 1
 
     try:
         if action != "rescue":
@@ -378,7 +380,7 @@ def run_box_firmware(
             evidence = protocol.verify_readback(image, after, manifest,
                                                 expected_bootloader=(before / "bootloader.bin").read_bytes())
             atomic_write_text(box_dir / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
-            results[box.name] = ("TLTG Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
+            results[box.name] = ("Valve Oil Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
             pending = False
             record.update(phase="verified", box=box.name)
             atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
@@ -400,6 +402,35 @@ def run_box_firmware(
     if failure is not None:
         raise BoxFirmwareError("Box firmware operation stopped before any write: " + str(failure))
     return 0
+
+
+def flash_box_firmware_after_install(*, paths, reporter, dry_run=False, environ=None, input_stream=None, **seams) -> None:
+    """Bring every USB Box to the bundled firmware at the end of an install.
+
+    Someone ran the installer, so no FLASH prompt; automatic updates never get here.
+    Anything that stops before a write leaves the install successful and says so.
+    An unverified flash still stops here with the rescue instructions.
+    """
+    env = {} if environ is None else environ
+    if env.get(LOCK_HELD_ENV) == "1":
+        return
+    resolve_usb = seams.get("resolve_usb", usb_path_for_serial)
+    if not discover_boxes(paths, resolve_usb=resolve_usb):
+        return
+    if dry_run:
+        reporter.line("Box firmware dry-run: would flash the Valve Oil Box firmware to each USB Box that needs it.")
+        return
+    try:
+        wait_for_thr_printer_ready(paths, urlopen=seams.get("urlopen", urllib.request.urlopen),
+                                   sleep=seams.get("sleep", time.sleep), clock=seams.get("clock", time.monotonic),
+                                   reporter=reporter, subject=SUBJECT)
+        run_box_firmware(paths=paths, reporter=reporter, action="install", input_stream=input_stream,
+                         environ=env, confirmed=True, **seams)
+    except InstallerError as exc:
+        if (paths.printer_data_root / BOX_RECOVERY_MARKER).exists():
+            raise
+        reporter.line("Box firmware not updated: " + str(exc))
+        reporter.line("Run the installer again, or ./box-firmware.sh install, once this is resolved.")
 
 
 def _write_image(directory: Path, image: bytes) -> Path:

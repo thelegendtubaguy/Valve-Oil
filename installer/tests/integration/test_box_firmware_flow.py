@@ -22,7 +22,7 @@ from scripts.build_box_firmware import apply_patches
 USB = {"mcu_box1": "2-1.4.2", "mcu_box2": "2-1.4.1.2", "mcu": "2-1.3"}
 
 
-def synthetic_manifest(name="max4-box-rfid-v1.json"):
+def synthetic_manifest(name="max4-box-valve-oil-v1.json"):
     manifest = json.loads((REPO_ROOT / "firmware" / name).read_text())
     box = protocol.image_spec(manifest)
     stock = bytearray(box["size"])
@@ -237,7 +237,43 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
 
-    def test_box_firmware_is_only_reachable_through_its_own_mode(self):
+    def after_install(self, paths, printer, reporter, *, environ=None, dry_run=False):
+        box_firmware.flash_box_firmware_after_install(
+            paths=paths, reporter=reporter, dry_run=dry_run, environ=environ, input_stream=None,
+            run=printer.run, urlopen=printer.urlopen, sleep=lambda seconds: None,
+            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
+            usb_state=printer.usb_state)
+
+    def test_install_flashes_every_box_that_needs_it_without_a_prompt(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
+        self.after_install(paths, printer, reporter)
+        self.assertEqual(printer.transfers, [("mcu_box1", False)])
+        self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
+        self.assertEqual(printer.states, printer.original)
+        self.after_install(paths, printer, reporter)
+        self.assertEqual(len(printer.transfers), 1)
+
+    def test_install_leaves_boxes_alone_when_it_cannot_flash_safely(self):
+        for case in ("automatic-update", "dry-run", "chamber-hot", "no-stock-image"):
+            with self.subTest(case=case):
+                paths, printer, reporter = self.fixture(
+                    {"mcu_box1": "superseded" if case == "no-stock-image" else "stock"})
+                printer.chamber = 60 if case == "chamber-hot" else 0
+                self.after_install(paths, printer, reporter, dry_run=case == "dry-run",
+                                   environ={LOCK_HELD_ENV: "1"} if case == "automatic-update" else None)
+                self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+                if case in ("chamber-hot", "no-stock-image"):
+                    self.assertIn("Box firmware not updated", reporter.stream.getvalue())
+
+    def test_install_stops_with_rescue_instructions_after_an_unverified_flash(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="transfer")
+        with self.assertRaises(box_firmware.BoxFirmwareError):
+            self.after_install(paths, printer, reporter)
+        self.assertTrue((paths.printer_data_root / BOX_RECOVERY_MARKER).is_file())
+        self.assertTrue(all(state == "inactive" for state in printer.states.values()))
+        self.assertIn("rescue --box 1", reporter.stream.getvalue())
+
+    def test_installs_reach_box_firmware_and_other_modes_do_not(self):
         self.assertEqual(parse_args(["box-firmware", "install", "--box", "1"]).box, [1])
         for argv in (["box-firmware"], ["box-firmware", "install", "--yes"], ["install", "--box", "1"], ["install", "install"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
@@ -245,8 +281,9 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         root = copy_base_runtime()
         env = build_env(root, moonraker_url="http://printer.invalid")
         with patch("installer.runtime.cli.run_install", return_value=InstallResult((), (), "label", None)), \
-                patch("installer.runtime.cli.run_box_firmware", side_effect=AssertionError("Unexpected Box firmware access")):
+                patch("installer.runtime.cli.flash_box_firmware_after_install") as after_install:
             self.assertEqual(main(["install", "--yes", "--plain"], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO()), 0)
+        self.assertFalse(after_install.call_args.kwargs["dry_run"])
 
 
 class MainboardFirmwareFlowTests(unittest.TestCase):

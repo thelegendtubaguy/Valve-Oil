@@ -55,6 +55,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | What | Change |
 |---|---|
 | `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, `box-firmware.sh`, and `mainboard-firmware.sh`. |
+| USB QIDI Box firmware and `~/printer_data/.tltg_box_firmware_backups/` | Each install flashes the [Valve Oil Box firmware](firmware.md#qidi-box-firmware) to every USB Box that needs it and keeps the Box's stock firmware in the backups folder. Automatic updates don't. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_rfid_*.json` | [Spool tag reports](qidi-box.md#spools-that-dont-read), written when a Box reads a tag it doesn't recognize or `TLTG_BOX_RFID_REPORT` runs. |
 | `~/printer_data/logs/tltg_box485.log`, `tltg_box485_report.json`, and `~/printer_data/.tltg_box485_salt` | Written only when [RS-485 Box hardware](qidi-box.md#rs-485-boxes) is detected or `TLTG_RS_BOX_REPORT` runs. The salt keeps the codes that replace hardware ids the same on this printer. |
@@ -66,4 +67,4 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the `msgspec` and `uvloop` added for Moonraker and Klipper, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, the service priorities and CPUs, the tuning and `irqbalance` changes, which brings QIDI's tuning script back, and the filament folder link, and restores Moonraker's service list. The Anycubic and Elegoo filaments stay in QIDI's filament list, since Box slots may use them. Values that QIDI's own configuration has for the printer's firmware, such as `query_cycle` 10, stay as they are. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
-Firmware is never changed by install, update, or uninstall unless you [ask for it](firmware.md).
+Installs and updates flash the [QIDI Box firmware](firmware.md#qidi-box-firmware); automatic updates don't. Other firmware changes only when you [ask for it](firmware.md). Uninstall doesn't change firmware. `./box-firmware.sh restore` puts QIDI's Box firmware back.

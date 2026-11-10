@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_thr_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if tool_help.returncode != 0:
         raise SystemExit(tool_help.stdout + tool_help.stderr)
-    for relative in ("box-firmware.sh", "scripts/flash_box_firmware.py", "scripts/build_box_firmware.py", "firmware/max4-box-rfid-v1.json", "firmware/BOX_FIRMWARE.md"):
+    for relative in ("box-firmware.sh", "scripts/flash_box_firmware.py", "scripts/build_box_firmware.py", "firmware/max4-box-valve-oil-v1.json", "firmware/BOX_FIRMWARE.md"):
         if not (bundle_root / relative).is_file():
             raise SystemExit("bundle is missing Box firmware support: " + relative)
     box_tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_box_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())

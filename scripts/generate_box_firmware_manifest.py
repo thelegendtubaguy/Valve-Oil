@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate firmware/max4-box-rfid-v1.json from QIDI's stock Box image.
+"""Regenerate firmware/max4-box-valve-oil-v1.json from QIDI's stock Box image.
 
 Maintainer tool. It compiles firmware/box-rfid/*.c for the Box's Cortex-M4,
 places the code in two handler bodies QIDI's host software never calls,
@@ -22,15 +22,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "firmware/box-rfid"
-OUTPUT = ROOT / "firmware/max4-box-rfid-v1.json"
+OUTPUT = ROOT / "firmware/max4-box-valve-oil-v1.json"
 
 BASE = 0x08008000
 STOCK_SIZE = 39392
 STOCK_SHA256 = "dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12"
 STOCK_VERSION = "02.03.01.21"
-PATCHED_VERSION = "02.03.01.21-tltg-rfid1"
-PATCH_ID = "max4-box-rfid-v1"
-SUPERSEDED = [{"patch_id": "max4-box-shutdown-fix-v1", "version": "02.03.01.21-tltg-shutdownfix1",
+PATCHED_VERSION = "02.03.01.21-valve-oil.1"
+PATCH_ID = "max4-box-valve-oil-v1"
+SUPERSEDED = [{"patch_id": "max4-box-rfid-v1", "version": "02.03.01.21-tltg-rfid1",
+               "sha256": "564bee0576a7f11830507994cb3e0be3c7d2a919028f9d6ca3a8d8bb6b0f4f93"},
+              {"patch_id": "max4-box-shutdown-fix-v1", "version": "02.03.01.21-tltg-shutdownfix1",
                "sha256": "bbd5c025ba98956cd7c5ed83d52601d55db50e1f96be4fcf597376510c863a5d"}]
 BOOTLOADERS = [
     {"sha256": "64962da860449bd3af7ead7cc194ec01192493b0b3e7eedc70e384f61bf7b1e4", "identity_reply": "0112"},

@@ -133,7 +133,7 @@ If `qidi_filament_config` already exists, the installer leaves it alone. Uninsta
 
 ## Spool tags
 
-With the [TLTG Box firmware](firmware.md#qidi-box-firmware) on a USB Box, the Box reads **Anycubic** and **Elegoo** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
+With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the installer puts on every USB Box, the Box reads **Anycubic** and **Elegoo** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
 
 - A tag sets the slot to that brand's filament in QIDI's list, matched by name, such as **Anycubic PLA High Speed** or **Elegoo Rapid PLA+**. If the list has no such filament, the slot gets the brand's plain filament of that type, then Generic's. A filament you added yourself with the same name, such as your own **Elegoo PLA**, is used instead of this project's.
 - Tags the Box can't read, such as Bambu's and Creality's encrypted ones, leave the slot's filament as it was. QIDI's firmware could give such a spool the filament of the last tag that reader read, which might be the spool in the slot next to it; that no longer happens.
