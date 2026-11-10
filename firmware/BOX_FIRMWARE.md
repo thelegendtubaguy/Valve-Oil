@@ -1,6 +1,6 @@
-# TLTG QIDI Box firmware
+# Valve Oil QIDI Box firmware
 
-`max4-box-rfid-v1` is built from QIDI's USB Box firmware `02.03.01.21`. It fixes how the Box handles a Klipper shutdown and adds two RFID reader commands.
+`max4-box-valve-oil-v1` is built from QIDI's USB Box firmware `02.03.01.21`. It fixes how the Box handles a Klipper shutdown and adds two RFID reader commands.
 
 ## Shutdown fix
 
@@ -19,11 +19,13 @@ They replace QIDI's `fm17550_write_card_cb`, `fm17550_init_cb`, `fm17550_read_re
 
 ## Version
 
-The firmware reports its version as `02.03.01.21-tltg-rfid1`. You can see it in `klippy.log` (`Loaded MCU 'mcu_boxN' … (02.03.01.21-tltg-rfid1 …`), in Fluidd's system information, and with `./box-firmware.sh status`. The earlier build, `02.03.01.21-tltg-shutdownfix1`, had only the shutdown fix; `install` replaces it.
+The firmware reports its version as `02.03.01.21-valve-oil.1`, which is QIDI's version, the project name, and a revision that goes up with each new Box firmware. You can see it in `klippy.log` (`Loaded MCU 'mcu_boxN' … (02.03.01.21-valve-oil.1 …`), in Fluidd's system information, and with `./box-firmware.sh status`. Earlier builds, `02.03.01.21-tltg-shutdownfix1` with only the shutdown fix and the development build `02.03.01.21-tltg-rfid1`, are replaced by the installer and by `install`.
 
 ## Commands
 
-Run these from the unpacked installer folder (`~/tltg-optimized-macros`) over SSH. The normal installer, updates, and automatic updates never flash Box firmware, and `--yes` cannot authorize it.
+Every install and update, including one run with `--yes`, flashes each USB Box that needs it after the rest of the install finishes, without asking. It does what `install` below does, except for the `FLASH` prompt. If it can't flash a Box safely, for example because a heater is on, it leaves that Box as it is, says why, and the install still succeeds. Automatic updates never flash a Box.
+
+Run these from the unpacked installer folder (`~/tltg-optimized-macros`) over SSH:
 
 ```sh
 ./box-firmware.sh status               # read-only: each USB Box and its firmware
@@ -55,11 +57,11 @@ Rescue waits for the Box's bootloader, flashes QIDI's stock firmware from the ba
 
 Rescue flashes only with a backup of a validated bootloader. If every backup of that Box is from a bootloader the script doesn't recognize, rescue changes nothing. If a pending record exists and the Box is still running its firmware, rescue starts Klipper and the touchscreen again and clears the record.
 
-Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware.
+Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware. Either way, the next install flashes the Valve Oil Box firmware again.
 
 ## Checks for developers
 
-`scripts/generate_box_firmware_manifest.py` rebuilds [`max4-box-rfid-v1.json`](max4-box-rfid-v1.json) from QIDI's stock image and the sources in `box-rfid/`. It needs `clang` with the Thumb target and the `zopfli` Python package; `--check` compares instead of writing. Installs use only the manifest.
+`scripts/generate_box_firmware_manifest.py` rebuilds [`max4-box-valve-oil-v1.json`](max4-box-valve-oil-v1.json) from QIDI's stock image and the sources in `box-rfid/`. It needs `clang` with the Thumb target and the `zopfli` Python package; `--check` compares instead of writing. Installs use only the manifest.
 
 `scripts/check_box_firmware.py` checks the patch against QIDI's stock image, including the data dictionary the Box serves to Klipper, which it runs in emulation. It also runs the RFID handlers in emulation, with QIDI's reader routines replaced by a model of an NTAG tag, a MIFARE Classic tag, no tag, and a reader that doesn't respond. Install `firmware/check-requirements.txt` first.
 

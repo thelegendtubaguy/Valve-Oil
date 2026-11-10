@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline checks for the TLTG QIDI Box firmware (shutdown fix and RFID commands) and the Box transfer tool.
+"""Offline checks for the Valve Oil QIDI Box firmware (shutdown fix and RFID commands) and the Box transfer tool.
 
 Always: the patch applies only to the pinned stock image, changes only the
 manifest regions, the patched data dictionary served by `identify` (run in

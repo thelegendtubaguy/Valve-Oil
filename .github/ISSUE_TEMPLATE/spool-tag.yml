@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping add spools. Reading Anycubic, Elegoo, and Bambu Lab tags needs the [TLTG Box firmware](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/firmware.md#qidi-box-firmware) on a USB Box.
+        Thanks for helping add spools. Reading Anycubic, Elegoo, and Bambu Lab tags needs the [Valve Oil Box firmware](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/firmware.md#qidi-box-firmware) on a USB Box.
         The report file is what lets us support a new brand. [Spools that don't read](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/qidi-box.md#spools-that-dont-read) explains how to make one with `TLTG_BOX_RFID_REPORT`. Reports never include the tag's serial number.
 
   - type: input

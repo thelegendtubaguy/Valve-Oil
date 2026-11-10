@@ -1,7 +1,7 @@
 ## 1. Box firmware
 
 - [x] 1.1 Recover the FM17550 handlers, command table, response encoders, and unused handler bodies in Box firmware `02.03.01.21`.
-- [x] 1.2 Write `fm17550_select` and `fm17550_transceive` in `firmware/box-rfid/` and generate `firmware/max4-box-rfid-v1.json` with `scripts/generate_box_firmware_manifest.py`.
+- [x] 1.2 Write `fm17550_select` and `fm17550_transceive` in `firmware/box-rfid/` and generate `firmware/max4-box-valve-oil-v1.json` with `scripts/generate_box_firmware_manifest.py`.
 - [x] 1.3 Extend `scripts/check_box_firmware.py` with handler emulation; pass it with both admitted bootloader captures and a Box RAM dump.
 - [x] 1.4 Admit the earlier shutdown-fix image and update it from QIDI's stock image in `box-firmware.sh install`; extend the flow test.
 - [x] 1.5 Flash a test Box; check select, NTAG reads, and a refused MIFARE login against real tags.

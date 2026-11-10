@@ -120,7 +120,7 @@ body:
     attributes:
       label: Changes from QIDI's setup
       options:
-        - label: TLTG Box firmware installed (shutdown fix or RFID build)
+        - label: Valve Oil Box firmware installed (shutdown fix or RFID build)
         - label: Changed Box load or unload speeds or lengths (FAST_LENGTH, UNLOAD_EXTRUDER_LENGTH, ...)
         - label: Longer or shorter PTFE tube than QIDI's, or a different tube route
         - label: Box connected through a USB hub or extension

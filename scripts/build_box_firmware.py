@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-box-rfid-v1.json"
+PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-box-valve-oil-v1.json"
 
 
 def sha256(data: bytes) -> str:

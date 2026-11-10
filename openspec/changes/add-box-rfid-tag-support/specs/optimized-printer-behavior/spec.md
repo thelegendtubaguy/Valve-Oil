@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: QIDI Box reads Anycubic, Elegoo, and Bambu Lab tags
-On a USB Box running the TLTG Box firmware, optimized configuration SHALL answer QIDI's RFID reads by reading the tag according to its type, decoding Anycubic, Elegoo, and Bambu Lab tags to a filament database ID and colors, and handing QIDI's parser the result in QIDI's v1 layout. QIDI's confirmation, slot saving, and clients SHALL stay unchanged, and a Box on any other firmware SHALL keep QIDI's read.
+On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL answer QIDI's RFID reads by reading the tag according to its type, decoding Anycubic, Elegoo, and Bambu Lab tags to a filament database ID and colors, and handing QIDI's parser the result in QIDI's v1 layout. QIDI's confirmation, slot saving, and clients SHALL stay unchanged, and a Box on any other firmware SHALL keep QIDI's read.
 
 #### Scenario: QIDI spool is recognized
 - **WHEN** QIDI reads a Box slot holding a QIDI-tagged spool
@@ -29,7 +29,7 @@ On a USB Box running the TLTG Box firmware, optimized configuration SHALL answer
 - **THEN** QIDI's parser receives no tag, so QIDI keeps polling
 
 #### Scenario: Stock Box firmware
-- **WHEN** a Box runs QIDI's or an earlier TLTG firmware
+- **WHEN** a Box runs QIDI's firmware or the earlier shutdown-fix build
 - **THEN** RFID reads behave exactly as stock
 
 ### Requirement: Anycubic, Elegoo, and Bambu Lab filaments in QIDI's database
@@ -48,7 +48,7 @@ At each Klipper start, optimized configuration SHALL add to every QIDI `filament
 - **THEN** that entry is kept and the catalog filament is not added
 
 ### Requirement: Spool tag reports
-Optimized configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the TLTG Box firmware reads but cannot use, and `TLTG_BOX_RFID_REPORT SLOT=` SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
+Optimized configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `TLTG_BOX_RFID_REPORT SLOT=` SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
 
 #### Scenario: Unknown tag during a QIDI read
 - **WHEN** QIDI reads a tag whose layout is unknown, that opens with no known key, or whose type is unsupported

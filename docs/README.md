@@ -16,7 +16,7 @@
 
 - [Fixes for QIDI bugs](fixes.md)
 - [If something goes wrong](troubleshooting.md): backups, restore, Box link monitor, reporting problems
-- [Optional firmware fixes](firmware.md): toolhead accelerometer, QIDI Box (shutdown fix and spool tag reading), and Max 4 mainboard closed-loop reply fixes
+- [Firmware fixes](firmware.md): QIDI Box (shutdown fix and spool tag reading, flashed by the installer), and the optional toolhead accelerometer and Max 4 mainboard closed-loop reply fixes
 
 ## Details
 

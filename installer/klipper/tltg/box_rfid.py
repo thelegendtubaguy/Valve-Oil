@@ -6,7 +6,7 @@
 # are never changed, and no entry is added whose name or ID is already used.
 #
 # QIDI's box_rfid polls each reader with fm17550_read_card_cb and parses a
-# 16-byte QIDI block. On a USB Box running the TLTG Box firmware
+# 16-byte QIDI block. On a USB Box running the Valve Oil Box firmware
 # (fm17550_select and fm17550_transceive), each poll is answered here instead:
 #
 # - MIFARE Classic tags: QIDI's block 4 login and read, so QIDI tags read as
@@ -462,7 +462,7 @@ class BoxRfid:
                 select = rfid.mcu.lookup_query_command(SELECT[0], SELECT[1], oid=rfid.oid, cq=cq)
                 transceive = rfid.mcu.lookup_query_command(TRANSCEIVE[0], TRANSCEIVE[1], oid=rfid.oid, cq=cq)
             except Exception:
-                continue  # QIDI's or earlier TLTG Box firmware: QIDI's read stays.
+                continue  # QIDI's or earlier Valve Oil Box firmware: QIDI's read stays.
             reader = TagReader(self, name.split()[-1], rfid, select, transceive, query)
             rfid.fm17550_read_card = reader
             self.readers[reader.name] = reader
@@ -511,7 +511,7 @@ class BoxRfid:
         label = "%d%s" % (slot // 4 + 1, "ABCD"[slot % 4])
         reader = self.readers.get("card_reader_%d" % (slot // 2 + 1))
         if reader is None:
-            raise gcmd.error("Slot %s's Box does not run the TLTG Box firmware, which reading tags needs. "
+            raise gcmd.error("Slot %s's Box does not run the Valve Oil Box firmware, which reading tags needs. "
                              "See docs/firmware.md." % (label,))
         if getattr(reader.rfid, "read_rfid_timer", None) is not None:
             raise gcmd.error("QIDI is reading slot %s's tag; try again when it finishes." % (label,))

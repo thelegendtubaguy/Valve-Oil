@@ -110,11 +110,11 @@ class Query:
 
 
 class Mcu:
-    def __init__(self, reader, firmware="02.03.01.21-tltg-rfid1"):
+    def __init__(self, reader, firmware="02.03.01.21-valve-oil.1"):
         self.reader, self.firmware = reader, firmware
 
     def lookup_query_command(self, msg, response, **kwargs):
-        if "rfid" not in self.firmware:
+        if not self.firmware.startswith("02.03.01.21-valve-oil"):
             raise LookupError(msg)
         return Query(self.reader.select if msg.startswith("fm17550_select") else self.reader.transceive)
 
@@ -221,7 +221,7 @@ class BoxRfidTests(unittest.TestCase):
         for nozzle in ("0.2", "0.4", "0.6", "0.8"):
             (self.database / f"filament-{nozzle}.json").write_text(json.dumps(self.existing))
 
-    def module(self, tag=None, firmware="02.03.01.21-tltg-rfid1"):
+    def module(self, tag=None, firmware="02.03.01.21-valve-oil.1"):
         self.reader = Reader(tag)
         self.rfid = BoxRfid(Mcu(self.reader, firmware))
         self.printer = Printer(self.rfid, self.root)
