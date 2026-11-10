@@ -22,7 +22,7 @@ from scripts.build_box_firmware import apply_patches
 USB = {"mcu_box1": "2-1.4.2", "mcu_box2": "2-1.4.1.2", "mcu": "2-1.3"}
 
 
-def synthetic_manifest(name="max4-box-shutdown-fix-v1.json"):
+def synthetic_manifest(name="max4-box-rfid-v1.json"):
     manifest = json.loads((REPO_ROOT / "firmware" / name).read_text())
     box = protocol.image_spec(manifest)
     stock = bytearray(box["size"])
@@ -42,16 +42,24 @@ def synthetic_manifest(name="max4-box-shutdown-fix-v1.json"):
         image[offset:offset + len(value)] = value
     box["stock_sha256"] = hashlib.sha256(stock).hexdigest()
     box["patched_sha256"] = hashlib.sha256(image).hexdigest()
+    if "superseded" in box:
+        box["superseded"] = [{"patch_id": "earlier", "version": box["stock_version"] + "-earlier",
+                              "sha256": hashlib.sha256(superseded_image(stock)).hexdigest()}]
     boot = bytes(range(256)) * 128
     manifest["bootloaders"] = [{"sha256": hashlib.sha256(boot).hexdigest(), "identity_reply": "0112"}]
     return manifest, bytes(stock), boot
 
 
+def superseded_image(stock):
+    return b"\x01" + stock[1:]
+
+
 class Printer:
     def __init__(self, manifest, stock, boot, apps, *, failure=None):
         self.manifest, self.boot, self.failure = manifest, boot, failure
-        self.apps = {name: (apply_patches(stock, protocol.image_spec(manifest), "test") if kind == "patched" else stock)
-                     for name, kind in apps.items()}
+        images = {"stock": stock, "patched": apply_patches(stock, protocol.image_spec(manifest), "test"),
+                  "superseded": superseded_image(stock)}
+        self.apps = {name: images[kind] for name, kind in apps.items()}
         self.states = {"klipper.service": "active", "qidi-client.service": "active",
                        "tltg-optimized-auto-update.timer": "inactive"}
         self.original = dict(self.states)
@@ -66,7 +74,9 @@ class Printer:
                   "extruder": {"target": 0}, "heater_bed": {"target": 0}, "heater_generic chamber": {"target": self.chamber}}
         for name, app in self.apps.items():
             kind = protocol.image_identity(app, self.manifest)
-            version = protocol.image_spec(self.manifest)["patched_version" if kind == "patched" else "stock_version"]
+            spec = protocol.image_spec(self.manifest)
+            version = (spec["superseded"][0]["version"] if kind == "superseded"
+                       else spec["patched_version" if kind == "patched" else "stock_version"])
             status["mcu" if name == "mcu" else "mcu " + name] = {"mcu_version": version}
         return io.BytesIO(json.dumps({"result": {"status": status}}).encode())
 
@@ -139,7 +149,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         (bundle / "scripts").mkdir(parents=True)
         (bundle / "firmware").mkdir()
         (bundle / "scripts/flash_box_firmware.py").write_text("# fixture")
-        (bundle / "firmware/max4-box-shutdown-fix-v1.json").write_text(json.dumps(manifest))
+        (bundle / box_firmware.MANIFEST).write_text(json.dumps(manifest))
         data = root / "printer_data"
         (data / "config").mkdir(parents=True)
         (data / "config/box.cfg").write_text("".join(f"[mcu {name}]\nserial: /dev/serial/by-id/{name}\n\n" for name in apps))
@@ -147,6 +157,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         (root / "klippy-env/bin/python").write_text("")
         paths = resolve_runtime_paths(bundle_root=bundle, environ=build_env(data, moonraker_url="http://printer.invalid/printer/objects/query"))
         printer = Printer(manifest, stock, boot, apps, **kwargs)
+        printer.stock = stock
         reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
         return paths, printer, reporter
 
@@ -169,6 +180,19 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(self.execute(paths, printer, reporter, "restore", boxes=[2]), 0)
         self.assertEqual(printer.transfers[-1], ("mcu_box2", False))
         self.assertEqual(protocol.image_identity(printer.apps["mcu_box2"], printer.manifest), "stock")
+        self.assertEqual(printer.states, printer.original)
+
+    def test_install_updates_earlier_tltg_firmware_from_qidi_stock_image(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "superseded", "mcu_box2": "stock"})
+        with self.assertRaises(InstallerError):
+            self.execute(paths, printer, reporter, "install")
+        self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+        update = paths.printer_data_root.parent / "update"
+        update.mkdir()
+        (update / "QD_MAX4_BOX_02.03.01.21_20260124.bin").write_bytes(printer.stock)
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual(sorted(printer.transfers), [("mcu_box1", False), ("mcu_box2", False)])
+        self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
         self.assertEqual(printer.states, printer.original)
 
     def test_unsupported_bootloader_is_captured_without_programming(self):

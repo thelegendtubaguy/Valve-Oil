@@ -73,10 +73,8 @@ A command returning `ok` proves acceptance in that captured state; it does not p
 
 ### RFID and metadata
 
-- Valid QIDI tag payload bytes and `status` interpretation.
 - Successful `multi_color_controller.rfid.results` schema.
-- Reader order, four-slot-to-two-chip-select multiplexing, and slot-to-reader mapping.
-- Raw tag conversion into filament/color/vendor IDs.
+- Whether each reader's two antenna drivers face different slots.
 - Which client wrote the operator's `filament_slot16 = 'None'`, and whether qidiclient sends `UPDATE_FILAMENT_INFORMATION SLOT=16` with a filament name `get_fila_id` does not match or saves `filament_slotN` itself.
 - Whether `BOX_PRINT_START` initiates RFID reads directly.
 - Whether failed/no-result reads preserve prior metadata in every state; they did so in the observed loaded-slot capture.

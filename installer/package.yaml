@@ -84,6 +84,7 @@ install:
       - "box_filament_guard.cfg"
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
+      - "box_rfid.cfg"
       - "box_flow_recovery.cfg"
       - "cold_cut.cfg"
       - "box485_monitor.cfg"
@@ -143,6 +144,12 @@ install:
     - id: box_slot_jog
       source: "klipper/tltg/box_slot_jog.py"
       destination: "klippy/extras/tltg_box_slot_jog.py"
+    - id: box_rfid
+      source: "klipper/tltg/box_rfid.py"
+      destination: "klippy/extras/tltg_box_rfid.py"
+    - id: filament_catalog
+      source: "klipper/tltg/filament_catalog.py"
+      destination: "klippy/extras/tltg_filament_catalog.py"
     - id: box_flow_recovery
       source: "klipper/tltg/box_flow_recovery.py"
       destination: "klippy/extras/tltg_box_flow_recovery.py"

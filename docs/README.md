@@ -6,7 +6,7 @@
 
 - [Installing, updating, and uninstalling](install.md): dry run, OS optimizations, slicer start G-code, automatic updates
 - [Print start and end](print-start.md): what's faster, saved bed mesh, minimum chamber temperature, exhaust fan with a heated chamber, staggered heating, keeping filament loaded, long pauses
-- [QIDI Box](qidi-box.md): load and unload speed, eject, stuck and failed loads, Box heater, editing QIDI's filament list, RS-485 Boxes
+- [QIDI Box](qidi-box.md): load and unload speed, eject, stuck and failed loads, Box heater, editing QIDI's filament list, Anycubic and Elegoo spool tags, RS-485 Boxes
 - [Spoolman](spoolman.md): setting it up, a spool for each Box slot
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
 - [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor, input shaper calibration
@@ -16,7 +16,7 @@
 
 - [Fixes for QIDI bugs](fixes.md)
 - [If something goes wrong](troubleshooting.md): backups, restore, Box link monitor, reporting problems
-- [Optional firmware fixes](firmware.md): toolhead accelerometer, QIDI Box shutdown, and Max 4 mainboard closed-loop reply fixes
+- [Optional firmware fixes](firmware.md): toolhead accelerometer, QIDI Box (shutdown fix and spool tag reading), and Max 4 mainboard closed-loop reply fixes
 
 ## Details
 

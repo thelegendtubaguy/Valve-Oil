@@ -1,10 +1,25 @@
-# QIDI Box firmware shutdown fix
+# TLTG QIDI Box firmware
 
-`max4-box-shutdown-fix-v1` fixes how the USB QIDI Box (firmware `02.03.01.21`) handles a Klipper shutdown. In QIDI's firmware, every shutdown of the Box's processor, whether from an emergency stop, a heater safety limit, or any other Klipper MCU error, loops in QIDI's Box feeder shutdown code until the Box's watchdog restarts it. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box restarts the same way. With the fix, a Box that shuts down stays connected and Klipper shows the real reason, such as `Missed scheduling of next digital out event` when a Box heater goes 5 seconds without an update from Klipper.
+`max4-box-rfid-v1` is built from QIDI's USB Box firmware `02.03.01.21`. It fixes how the Box handles a Klipper shutdown and adds two RFID reader commands.
 
-The patched firmware reports its version as `02.03.01.21-tltg-shutdownfix1`. You can see it in `klippy.log` (`Loaded MCU 'mcu_boxN' … (02.03.01.21-tltg-shutdownfix1 …`), in Fluidd's system information, and with `./box-firmware.sh status`.
+## Shutdown fix
 
-The fix changes two instruction bytes and the version string. Nothing else about the Box changes. RS-485 Boxes have no Klipper processor and are not affected.
+The fix changes how the USB QIDI Box handles a Klipper shutdown. In QIDI's firmware, every shutdown of the Box's processor, whether from an emergency stop, a heater safety limit, or any other Klipper MCU error, loops in QIDI's Box feeder shutdown code until the Box's watchdog restarts it. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box restarts the same way. With the fix, a Box that shuts down stays connected and Klipper shows the real reason, such as `Missed scheduling of next digital out event` when a Box heater goes 5 seconds without an update from Klipper.
+
+The fix changes two instruction bytes. RS-485 Boxes have no Klipper processor and are not affected.
+
+## RFID commands
+
+Each USB Box has two FM17550 RFID readers, each serving two adjacent slots. QIDI's firmware can only read MIFARE Classic tags in one fixed way. The new commands let Klipper talk to any ISO14443A tag through those readers:
+
+- `fm17550_select oid=%c` wakes the tag in the reader's field, including one QIDI's last read put to sleep, selects it, and answers `fm17550_select_return` with status (`0` no tag, `1` selected, `2` reader not responding) and the tag's ATQA, UID bytes, and SAK.
+- `fm17550_transceive oid=%c data=%*s` runs one reader exchange with the selected tag. `data` is the reader command (`0x0c` Transceive or `0x0e` MIFARE login), a timeout, and up to 32 frame bytes. It answers `fm17550_transceive_return` with the reader's error flags, its Status2 register, the number of bits received, and up to 44 received bytes.
+
+They replace QIDI's `fm17550_write_card_cb`, `fm17550_init_cb`, `fm17550_read_regs_cb`, and `fm17550_read_fifo_cb` test commands, which no QIDI software sends. QIDI's own tag read, `fm17550_read_card_cb`, is unchanged. The handlers are C in [`box-rfid/`](box-rfid/), compiled into the bodies of the replaced commands, so the firmware size doesn't change.
+
+## Version
+
+The firmware reports its version as `02.03.01.21-tltg-rfid1`. You can see it in `klippy.log` (`Loaded MCU 'mcu_boxN' … (02.03.01.21-tltg-rfid1 …`), in Fluidd's system information, and with `./box-firmware.sh status`. The earlier build, `02.03.01.21-tltg-shutdownfix1`, had only the shutdown fix; `install` replaces it.
 
 ## Commands
 
@@ -26,7 +41,7 @@ For each Box the script:
 2. Saves the read-back under `~/printer_data/.tltg_box_firmware_backups/`.
 3. Builds the patched image from the Box's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged.
 
-A Box that already has the requested firmware is skipped. A Box whose bootloader or firmware the script does not recognize is not changed: the script saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a GitHub issue; the `.bin` files stay private.
+A Box that already has the requested firmware is skipped. A Box with the earlier shutdown fix is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. A Box whose bootloader or firmware the script does not recognize is not changed: the script saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a GitHub issue; the `.bin` files stay private.
 
 ## If a flash fails
 
@@ -44,7 +59,9 @@ Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh re
 
 ## Checks for developers
 
-`scripts/check_box_firmware.py` checks the patch against QIDI's stock image, including the data dictionary the Box serves to Klipper, which it runs in emulation. Install `firmware/check-requirements.txt` first.
+`scripts/generate_box_firmware_manifest.py` rebuilds [`max4-box-rfid-v1.json`](max4-box-rfid-v1.json) from QIDI's stock image and the sources in `box-rfid/`. It needs `clang` with the Thumb target and the `zopfli` Python package; `--check` compares instead of writing. Installs use only the manifest.
+
+`scripts/check_box_firmware.py` checks the patch against QIDI's stock image, including the data dictionary the Box serves to Klipper, which it runs in emulation. It also runs the RFID handlers in emulation, with QIDI's reader routines replaced by a model of an NTAG tag, a MIFARE Classic tag, no tag, and a reader that doesn't respond. Install `firmware/check-requirements.txt` first.
 
 ```sh
 python3 scripts/check_box_firmware.py --stock-image QD_MAX4_BOX_02.03.01.21_20260124.bin \

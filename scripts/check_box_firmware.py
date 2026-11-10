@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Offline checks for the QIDI Box shutdown fix and the Box transfer tool.
+"""Offline checks for the TLTG QIDI Box firmware (shutdown fix and RFID commands) and the Box transfer tool.
 
 Always: the patch applies only to the pinned stock image, changes only the
-manifest regions, and the patched data dictionary served by `identify` (run in
-emulation) differs from stock only in its version.
+manifest regions, the patched data dictionary served by `identify` (run in
+emulation) differs from stock only in its version and FM17550 commands, and
+the fm17550_select and fm17550_transceive handlers run in emulation against
+modelled NTAG and MIFARE Classic tags (QIDI's reader routines stubbed at their
+entry points).
 
 --bootloader-backup: runs the transfer tool against the captured bootloader's
 own code (USB stack, delays, PLL setup, and the final jump or reset stubbed;
@@ -114,19 +117,304 @@ def check_image(stock: bytes, manifest: dict) -> bytes:
         allowed.update(range(offset, offset + len(bytes.fromhex(patch["after"]))))
     require(all(i in allowed for i in range(len(stock)) if stock[i] != patched[i]), "bytes changed outside the manifest")
     disassembler = Cs(CS_ARCH_ARM, CS_MODE_THUMB)
-    expected = {0x080090B6: ("b", "#0x80090ec"), 0x08009528: ("movw", "r3, #0xc04"),
-                0x08009534: ("movw", "r3, #0xc05"), 0x0800953C: ("rsb.w", "r2, r1, #5")}
+    stock_dictionary = json.loads(zlib.decompress(emulate_identify(stock)))
+    served = emulate_identify(patched)
+    patched_dictionary = json.loads(zlib.decompress(served))
+    length = len(served)
+    expected = {0x080090B6: ("b", "#0x80090ec"), 0x08009528: ("movw", f"r3, #{length - 1:#x}"),
+                0x08009534: ("movw", f"r3, #{length:#x}"), 0x0800953C: ("rsb.w", f"r2, r1, #{length & 0xFF:#x}")}
     for address, (mnemonic, operands) in expected.items():
         instruction = next(disassembler.disasm(patched[address - BASE:address - BASE + 4], address))
         require((instruction.mnemonic, instruction.op_str) == (mnemonic, operands), f"unexpected instruction at {address:#x}")
-    stock_dictionary = json.loads(zlib.decompress(emulate_identify(stock)))
-    patched_dictionary = json.loads(zlib.decompress(emulate_identify(patched)))
     require(stock_dictionary["version"] == box["stock_version"], "stock dictionary version")
     require(patched_dictionary["version"] == box["patched_version"], "patched dictionary version")
-    patched_dictionary["version"] = stock_dictionary["version"]
-    require(patched_dictionary == stock_dictionary, "patched dictionary differs beyond the version")
+    expected_dictionary = json.loads(json.dumps(stock_dictionary))
+    expected_dictionary["version"] = box["patched_version"]
+    for name in RFID_COMMANDS_REMOVED:
+        del expected_dictionary["commands"][name]
+    for name in RFID_RESPONSES_REMOVED:
+        del expected_dictionary["responses"][name]
+    expected_dictionary["commands"].update(RFID_COMMANDS)
+    expected_dictionary["responses"].update(RFID_RESPONSES)
+    require(patched_dictionary == expected_dictionary, "patched dictionary differs beyond the version and FM17550 commands")
     print("image: patch, changed regions, instructions, and identify dictionary OK")
     return patched
+
+
+# ---- RFID handler emulation ------------------------------------------------
+
+RFID_COMMANDS = {"fm17550_select oid=%c": 15, "fm17550_transceive oid=%c data=%*s": 17}
+RFID_RESPONSES = {"fm17550_select_return oid=%c status=%c data=%*s": -24,
+                  "fm17550_transceive_return oid=%c status=%c data=%*s": -22}
+RFID_COMMANDS_REMOVED = ("fm17550_write_card_cb oid=%c", "fm17550_read_fifo_cb oid=%c",
+                         "fm17550_read_regs_cb oid=%c", "fm17550_init_cb oid=%c")
+RFID_RESPONSES_REMOVED = ("fm17550_write_card_return oid=%c status=%c", "fm17550_read_fifo_return oid=%c data=%*s",
+                          "fm17550_read_regs_return oid=%c data=%*s", "fm17550_init_return oid=%c")
+COMMAND_TABLE, FM17550_TYPE = 0x0801121C, 0x08009755
+SPI_TRANSFER, INVALID_OID = 0x0800CC48, 0x08009708
+FM_SET_BITS, FM_INIT, FM_TIMEOUT, FM_EXECUTE = 0x0800FBFC, 0x0800FC4C, 0x0800F9D4, 0x0800A970
+FM_ANTICOLLISION, FM_SELECT = 0x0800AC8C, 0x0800ADF0
+SELECT_ENCODER, TRANSCEIVE_ENCODER = 0x080102C8, 0x080102D8
+OID_COUNT, OID_TABLE = 0x20000244, 0x20000248
+READER, SPI, ARGS, FRAME, FAKE_TABLE = 0x20003000, 0x20003800, 0x20001000, 0x20001100, 0x20002000
+RETURN = 0x08000000
+
+
+class Tag:
+    """ISO14443A tag at frame level: NTAG-style Type 2 (7-byte UID) or MIFARE Classic 1K (4-byte UID)."""
+
+    def __init__(self, kind):
+        self.kind = kind
+        self.uid = bytes.fromhex("04a1b2c3d4e5f6") if kind == "ntag" else bytes.fromhex("c0ffee42")
+        self.memory = bytearray(range(256)) if kind == "ntag" else bytearray(1024)
+        self.state, self.pending_write = "idle", None
+
+    def cascade(self, level):
+        uid = self.uid
+        if len(uid) == 4:
+            parts = [uid]
+        else:
+            parts = [b"\x88" + uid[:3], uid[3:]]
+        if level >= len(parts):
+            return None
+        part = parts[level]
+        return part + bytes([part[0] ^ part[1] ^ part[2] ^ part[3]]), (0x04 if level < len(parts) - 1 else
+                                                                       (0x00 if self.kind == "ntag" else 0x08))
+
+
+class Reader:
+    def __init__(self, image: bytes, tag=None, *, faulty=False):
+        self.tag, self.faulty, self.crypto = tag, faulty, False
+        self.regs = {0x14: 0x80, 0x15: 0x00}
+        self.pending_read, self.sent, self.calls, self.outcome = None, [], [], None
+        self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+        uc.mem_map(0x08000000, 0x40000)
+        uc.mem_write(BASE, image)
+        uc.mem_map(0x20000000, 0x10000)
+        uc.mem_write(OID_COUNT, bytes([3]))
+        uc.mem_write(OID_TABLE, struct.pack("<I", FAKE_TABLE))
+        uc.mem_write(FAKE_TABLE, struct.pack("<IIIIII", FM17550_TYPE, READER, 0x08009001, READER, FM17550_TYPE, READER))
+        uc.mem_write(READER + 0x10, struct.pack("<I", SPI))
+        uc.hook_add(UC_HOOK_CODE, self._code)
+
+    # Reader registers through QIDI's two-transfer read and two-byte write pattern.
+    def _spi(self, receive, length, buffer):
+        data = bytearray(self.uc.mem_read(buffer, length))
+        if receive:
+            require(length == 1, "register read with more than one byte")
+            value = self.regs.get(self.pending_read, 0) if self.pending_read is not None else 0
+            self.pending_read = (data[0] >> 1) & 0x3F if data[0] & 0x80 else None
+            self.uc.mem_write(buffer, bytes([value]))
+        else:
+            require(length == 2 and not data[0] & 0x80, "unexpected register write")
+            self.regs[data[0] >> 1] = data[1]
+            if data[0] >> 1 == 0x08:
+                self.crypto = bool(data[1] & 0x08)
+
+    def _execute(self, command, frame):
+        """QIDI's fm_execute contract: error flags in r0, received bytes and bit count."""
+        tag, regs = self.tag, self.regs
+        if command == 0x0E:
+            ok = (tag is not None and tag.kind == "classic" and tag.state == "active" and len(frame) == 12
+                  and frame[0] in (0x60, 0x61) and frame[2:8] == b"\xff" * 6 and frame[8:12] == tag.uid)
+            self.crypto = ok
+            regs[0x08] = (regs.get(0x08, 0) & ~0x08) | (0x08 if ok else 0)
+            return (0, b"", 0) if ok else (0x01, b"", 0)
+        if tag is None:
+            return 0x01, b"", 0
+        if regs.get(0x0D, 0) & 7 == 7:
+            if frame == b"\x52" or (frame == b"\x26" and tag.state == "idle"):
+                tag.state = "ready"
+                return 0, bytes([0x44 if tag.kind == "ntag" else 0x04, 0x00]), 16
+            return 0x01, b"", 0
+        require(regs.get(0x12, 0) & 0x80 and regs.get(0x13, 0) & 0x80, "frame sent without CRC")
+        if tag.state != "active":
+            return 0x01, b"", 0
+        if tag.pending_write is not None:
+            address, tag.pending_write = tag.pending_write, None
+            require(len(frame) == 16, "MIFARE write data phase is not 16 bytes")
+            tag.memory[address * 16:address * 16 + 16] = frame
+            return 0, b"\x0a", 4
+        if frame == b"\x50\x00":
+            tag.state = "halt"
+            return 0x01, b"", 0
+        if tag.kind == "ntag":
+            if frame[0] == 0x30 and len(frame) == 2:
+                start = frame[1] * 4
+                return 0, bytes(tag.memory[(start + i) % 256] for i in range(16)), 128
+            if frame[0] == 0xA2 and len(frame) == 6:
+                tag.memory[frame[1] * 4:frame[1] * 4 + 4] = frame[2:]
+                return 0, b"\x0a", 4
+            if frame[0] == 0x3A:  # FAST_READ start..end, longer than the reply limit
+                count = (frame[2] - frame[1] + 1) * 4
+                return 0, bytes(tag.memory[frame[1] * 4:frame[1] * 4 + count]), count * 8
+            return 0x01, b"", 0
+        if not self.crypto:
+            return 0x01, b"", 0
+        if frame[0] == 0x30 and len(frame) == 2:
+            return 0, bytes(tag.memory[frame[1] * 16:frame[1] * 16 + 16]), 128
+        if frame[0] == 0xA0 and len(frame) == 2:
+            tag.pending_write = frame[1]
+            return 0, b"\x0a", 4
+        return 0x01, b"", 0
+
+    def _return(self, value=None):
+        uc = self.uc
+        if value is not None:
+            uc.reg_write(UC_ARM_REG_R0, value)
+        uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
+
+    def _code(self, uc, address, size, user):
+        r = [uc.reg_read(reg) for reg in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)]
+        stack = lambda n: struct.unpack("<I", uc.mem_read(uc.reg_read(UC_ARM_REG_SP) + 4 * n, 4))[0]
+        if address == SPI_TRANSFER:
+            require(r[0] == SPI, "SPI transfer on the wrong device")
+            self._spi(r[1], r[2], r[3])
+            self._return()
+        elif address == FM_SET_BITS:
+            if not (self.faulty and r[1] in (0x14, 0x15)):
+                self.regs[r[1]] = self.regs.get(r[1], 0) | r[2]
+            self._return()
+        elif address == FM_INIT:
+            self.regs.update({0x12: 0, 0x13: 0})
+            if not self.faulty:
+                self.regs[0x15] = self.regs.get(0x15, 0) | 0x40
+            self.calls.append("init")
+            self._return()
+        elif address == FM_TIMEOUT:
+            self.calls.append(("timeout", r[1]))
+            self._return()
+        elif address == FM_EXECUTE:
+            frame = bytes(uc.mem_read(r[2], r[3]))
+            self.calls.append(("execute", r[1], frame))
+            error, reply, bits = self._execute(r[1], frame)
+            uc.mem_write(stack(0), reply)
+            uc.mem_write(stack(1), struct.pack("<i", bits))
+            self._return(error)
+        elif address == FM_ANTICOLLISION:
+            level = (r[1] - 0x93) // 2
+            found = self.tag.cascade(level) if self.tag and self.tag.state == "ready" else None
+            self.regs.update({0x0D: 0, 0x12: self.regs.get(0x12, 0) & 0x7F, 0x13: self.regs.get(0x13, 0) & 0x7F})
+            if found:
+                uc.mem_write(r[2], found[0])
+            self._return(0 if found else 1)
+        elif address == FM_SELECT:
+            level = (r[1] - 0x93) // 2
+            found = self.tag.cascade(level) if self.tag else None
+            ok = found is not None and bytes(uc.mem_read(r[2], 5)) == found[0]
+            if ok:
+                uc.mem_write(r[3], bytes([found[1]]))
+                if not found[1] & 0x04:
+                    self.tag.state = "active"
+            self.regs.update({0x0D: 0, 0x12: self.regs.get(0x12, 0) | 0x80, 0x13: self.regs.get(0x13, 0) | 0x80,
+                              0x08: self.regs.get(0x08, 0) & ~0x08})
+            self.crypto = False
+            self._return(0 if ok else 1)
+        elif address == SENDF:
+            self.sent.append((r[0], r[1], r[2], bytes(uc.mem_read(stack(0), r[3]))))
+            self._return()
+        elif address == INVALID_OID:
+            self.outcome = "shutdown"
+            uc.emu_stop()
+        elif address == RETURN:
+            uc.emu_stop()
+
+    def call(self, handler, args, frame=b""):
+        uc = self.uc
+        uc.mem_write(FRAME, frame)
+        uc.mem_write(ARGS, struct.pack("<III", *(list(args) + [0, 0, 0])[:3]))
+        uc.reg_write(UC_ARM_REG_R0, ARGS)
+        uc.reg_write(UC_ARM_REG_SP, 0x2000F000)
+        uc.reg_write(UC_ARM_REG_LR, RETURN | 1)
+        self.sent.clear()
+        self.outcome = None
+        uc.emu_start(handler | 1, RETURN, count=200_000)
+        if self.outcome:
+            return self.outcome
+        require(len(self.sent) == 1, f"handler sent {len(self.sent)} responses")
+        return self.sent[0]
+
+    def select(self, oid=0):
+        result = self.call(SELECT_HANDLER, [oid])
+        if isinstance(result, str):
+            return result
+        encoder, reply_oid, status, data = result
+        require(encoder == SELECT_ENCODER and reply_oid == oid and len(data) == 20, "select response shape")
+        return status, data
+
+    def transceive(self, command, timeout, frame, oid=0):
+        payload = bytes([command, timeout]) + frame
+        result = self.call(TRANSCEIVE_HANDLER, [oid, len(payload), FRAME], payload)
+        if isinstance(result, str):
+            return result
+        encoder, reply_oid, status, data = result
+        require(encoder == TRANSCEIVE_ENCODER and reply_oid == oid and len(data) >= 4, "transceive response shape")
+        bits = data[2] | data[3] << 8
+        return status, data[0], data[1], bits, data[4:]
+
+
+SELECT_HANDLER, TRANSCEIVE_HANDLER = 0x0800B228, 0x08009990
+
+
+def check_rfid(patched: bytes) -> None:
+    def table(number):
+        return struct.unpack_from("<HBBB3xII", patched, COMMAND_TABLE + 16 * number - BASE)
+
+    def encoder(address):
+        msgid, max_size, count, types = struct.unpack_from("<HBBI", patched, address - BASE)
+        return msgid, max_size, list(patched[types - BASE:types - BASE + count])
+
+    require(table(15)[5] == SELECT_HANDLER | 1 and table(15)[1:4:2] == (1, 1), "command 15 is not fm17550_select oid=%c")
+    t17 = table(17)
+    require(t17[5] == TRANSCEIVE_HANDLER | 1 and (t17[1], t17[3]) == (3, 2)
+            and list(patched[t17[4] - BASE:t17[4] - BASE + 2]) == [4, 7], "command 17 is not fm17550_transceive oid=%c data=%*s")
+    require(table(18)[5] == table(19)[5] == table(9)[5], "commands 18 and 19 do not point at debug_nop")
+    require(encoder(SELECT_ENCODER) == (0x68, 0x40, [4, 4, 7]) and encoder(TRANSCEIVE_ENCODER) == (0x6A, 0x40, [4, 4, 7]),
+            "response encoders are not oid=%c status=%c data=%*s")
+
+    reader = Reader(patched)
+    require(reader.select() == (0, bytes(20)), "no tag: select did not report status 0 with empty data")
+    require(reader.select(oid=1) == "shutdown" and reader.select(oid=3) == "shutdown", "invalid oid did not shut down")
+    require(Reader(patched, Tag("ntag"), faulty=True).select()[0] == 2, "unresponsive reader not reported as status 2")
+    print("rfid: tables, encoders, no tag, invalid oid, reader fault OK")
+
+    tag = Tag("ntag")
+    reader = Reader(patched, tag)
+    status, data = reader.select()
+    expected = bytes([0x44, 0]) + b"\x88" + tag.uid[:3] + bytes([0x88 ^ tag.uid[0] ^ tag.uid[1] ^ tag.uid[2]]) \
+        + tag.uid[3:] + bytes([tag.uid[3] ^ tag.uid[4] ^ tag.uid[5] ^ tag.uid[6]]) + bytes(5) + bytes([0x04, 0x00, 0x00])
+    require(status == 1 and data == expected, f"NTAG select: {status} {data.hex()}")
+    require(("execute", 0x0C, b"\x52") in reader.calls, "select did not send WUPA")
+    status, error, _status2, bits, reply = reader.transceive(0x0C, 3, b"\x30\x04")
+    require((status, error, bits, reply) == (1, 0, 128, bytes(range(16, 32))), "NTAG READ page 4")
+    require(reader.transceive(0x0C, 10, b"\xa2\x04QIDI")[1:] == (0, reader.regs.get(0x08, 0), 4, b"\x0a"), "NTAG WRITE ack")
+    require(reader.transceive(0x0C, 3, b"\x30\x04")[4][:4] == b"QIDI", "NTAG write did not read back")
+    status, error, _status2, bits, reply = reader.transceive(0x0C, 3, b"\x3a\x00\x0f")
+    require(status == 1 and bits == 512 and reply == bytes(tag.memory[:44]), "long reply not capped at 44 bytes")
+    reader.transceive(0x0C, 1, b"\x50\x00")
+    require(tag.state == "halt" and reader.select()[0] == 1, "WUPA did not wake a halted tag")
+    calls = len(reader.calls)
+    for command, frame in ((0x01, b"\x00"), (0x0C, b""), (0x0C, bytes(33))):
+        require(reader.transceive(command, 1, frame) == (0, 0xFF, 0, 0, b""), "invalid transceive input was not refused")
+    require(len(reader.calls) == calls, "invalid transceive input reached the reader")
+    print("rfid: NTAG select, WUPA, READ, WRITE, reply cap, HLTA, input limits OK")
+
+    tag = Tag("classic")
+    reader = Reader(patched, tag)
+    status, data = reader.select()
+    require(status == 1 and data[:7] == bytes([0x04, 0]) + tag.uid + bytes([tag.uid[0] ^ tag.uid[1] ^ tag.uid[2] ^ tag.uid[3]])
+            and data[17:] == bytes([0x08, 0, 0]), f"Classic select: {status} {data.hex()}")
+    require(reader.transceive(0x0C, 3, b"\x30\x04")[0] == 0, "Classic READ before authentication succeeded")
+    reader.select()
+    status, error, status2, _bits, _reply = reader.transceive(0x0E, 2, b"\x60\x04" + b"\xff" * 6 + tag.uid)
+    require(status == 1 and error == 0 and status2 & 0x08, "MIFARE authentication with the default key")
+    block = bytes.fromhex("41001155667700000000000000000000")
+    require(reader.transceive(0x0C, 3, b"\xa0\x04")[3:] == (4, b"\x0a"), "Classic WRITE command ack")
+    require(reader.transceive(0x0C, 10, block)[3:] == (4, b"\x0a"), "Classic WRITE data ack")
+    require(reader.transceive(0x0C, 3, b"\x30\x04")[4] == block, "Classic block 4 did not read back")
+    reader.select()
+    require(reader.transceive(0x0E, 2, b"\x60\x04" + b"\x00" * 6 + tag.uid)[2] & 0x08 == 0, "wrong key authenticated")
+    print("rfid: MIFARE Classic select, authentication, block 4 READ and WRITE OK")
 
 
 # ---- bootloader emulation --------------------------------------------------
@@ -360,6 +648,7 @@ def main() -> int:
         manifest = load_manifest()
         stock = args.stock_image.read_bytes()
         patched = check_image(stock, manifest)
+        check_rfid(patched)
         if args.bootloader_backup:
             boot = args.bootloader_backup.read_bytes()
             require(tool.digest(boot) in BOOTLOADER_HOOKS, "bootloader backup is not an admitted build")

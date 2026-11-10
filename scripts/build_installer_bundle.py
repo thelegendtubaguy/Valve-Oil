@@ -38,7 +38,7 @@ ALLOWED_FILES = [
     "firmware/max4-thr-lis2dw-fifo-v1.json",
     "scripts/flash_box_firmware.py",
     "scripts/build_box_firmware.py",
-    "firmware/max4-box-shutdown-fix-v1.json",
+    "firmware/max4-box-rfid-v1.json",
     "firmware/BOX_FIRMWARE.md",
     "scripts/flash_mcu_firmware.py",
     "scripts/build_mcu_firmware.py",
