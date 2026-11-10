@@ -13,9 +13,9 @@ The v1 parser does not check that the ID exists in the database, and it does not
 
 ## Goals / Non-Goals
 
-**Goals:** read QIDI, Anycubic, and Elegoo tags; put both brands' filaments in QIDI's database; keep QIDI's read flow, slot saving, touchscreen, and Fluidd paths unchanged; collect reports for unknown tags.
+**Goals:** read QIDI, Anycubic, Elegoo, and Bambu Lab tags; put the three brands' filaments in QIDI's database; keep QIDI's read flow, slot saving, touchscreen, and Fluidd paths unchanged; collect reports for unknown tags.
 
-**Non-Goals:** writing tags and keeping operator database edits across QIDI updates (a later change; the firmware commands already allow both); RS-485 Boxes; Bambu, Creality, and other encrypted or signed formats; changing QIDI's read timing or motion.
+**Non-Goals:** writing tags and keeping operator database edits across QIDI updates (a later change; the firmware commands already allow both); RS-485 Boxes; writing Bambu Lab tags (their data is RSA-signed); Creality and other encrypted formats; changing QIDI's read timing or motion.
 
 ## Decisions
 
@@ -44,7 +44,7 @@ QIDI's read on insert or `READ_RFID` feeds the slot toward the hub, which turned
 
 The module wraps each reader's `fm17550_read_card` query. When the Box runs the new firmware, each poll selects the tag and reads it by type:
 
-- SAK `0x08`: MIFARE login and block 4, returned as is. This also fixes QIDI's stale-buffer result when the login fails.
+- SAK `0x08`: MIFARE login and block 4, returned as is. When that login fails, the Bambu Lab read below. This also fixes QIDI's stale-buffer result when both logins fail.
 - SAK `0x00` (the last cascade level's; a 7-byte UID reports `0x04` first): NTAG pages 4 to 31. Anycubic and Elegoo data is decoded and mapped to a database ID and colors; QIDI-layout data in pages 4 to 7 is returned as is.
 - Anything else, or no tag: QIDI's no-tag result. A page read cut short, as when the tag leaves the field mid-read, also answers no tag, so QIDI keeps polling instead of ending the read as an unrecognized label.
 
@@ -54,9 +54,27 @@ The result goes back to QIDI's parser as a v1 block, so slot saving, two-read co
 
 Elegoo tags are NTAG213-class with no password. Pages 16 to 24 hold the data, big-endian: a `0x36` header and `EE` manufacturer bytes, the material as decimal ASCII codes, a 16-bit subtype, RGB color with a finish byte, nozzle temperatures, and diameter and weight. The material and subtype codes come from `Savion/elegoo-rfid-editor` (MIT) and are mapped to ElegooSlicer filament names in the catalog.
 
-### Anycubic and Elegoo filaments in QIDI's database
+### Bambu Lab tags
 
-`scripts/generate_filament_catalog.py` builds the catalog from OrcaSlicer's Anycubic profiles and ElegooSlicer's Elegoo profiles: names, types, and the nozzle range of the variant that reaches highest (some base profiles understate it), with QIDI's Box, chamber, and drying fields from the QIDI entry for the same kind of material. 0.2 mm files omit filled, particle, silk, and flexible filaments, and 0.8 mm files omit silk and PEBA, as QIDI's own files do. IDs use letters QIDI does not use (`QFX`, `QFY`); QIDI's v1 parser and its RS-485 path accept any letter. The generator never reassigns an ID, because Box slots, and later tags, carry it.
+Bambu Lab tags are MIFARE Classic 1K with 4-byte UIDs. Each sector's key A is 6 bytes of HKDF-SHA256 (RFC 5869) output: input the UID, salt `9a759cf2c4f7caff222cb9769b41bc96`, info `RFID-A\0`, 96 bytes split into 16 keys. Python's `hmac` and `hashlib` compute it, so the module needs no new dependency. The layout comes from the Bambu Lab RFID Tag Guide (`queengooborg/Bambu-Lab-RFID-Tag-Guide`); the module reads only:
+
+| Block | Contents |
+|---:|---|
+| 1 | material variant ID (bytes 0–7, `A00-K0`) and Bambu filament ID (bytes 8–15, `GFA00`), ASCII |
+| 2 | filament type, ASCII (`PLA`) |
+| 4 | detailed filament type, ASCII (`PLA Basic`) |
+| 5 | color as R, G, B, A |
+| 16 | format `0x0002` (u16 LE), color count (u16 LE), second color as A, B, G, R |
+
+QIDI's failed block 4 login leaves the tag idle, so the read selects it again, logs in to sector 0 with its derived key, and reads blocks 1 and 2, then logs in to sectors 1 and 4. A refused sector login is retried from a fresh select, in case the reader cannot switch sectors with Crypto1 on, then with the default key.
+
+Owners copy Bambu tags onto blank "magic" MIFARE tags (Gen 2 CUID, FUID, Gen 4), which Bambu's AMS accepts (guide issue 3). A copy with the original UID and sector trailers is indistinguishable from the original. A copy that kept the blank tag's default key opens with QIDI's block 4 login, and Bambu text such as `PLA Basic` passes QIDI's v1 checks (`P`, 76, version 4), which would give the slot a nonexistent `QFP76`. A block 4 that is NUL-padded printable text is therefore never returned as a QIDI block; the tag is read as a Bambu tag with the default key instead. QIDI v1 blocks are binary (byte 2 is `0x11..0x14`), so QIDI tags are unaffected. Decoding requires text in block 2 (filament type), so other default-key tags are not taken for Bambu's. A sector 0 login failure means the tag is not Bambu's (reported as locked); a later failure means the tag left the field (no tag). The filament ID maps through the catalog's `bambu_ids` to a filament name; an ID the catalog lacks falls back to the detailed type, then the filament type, through the same name lookup as other brands.
+
+Sectors 10–15 hold an RSA-2048 signature over the data, so changed data would not pass a Bambu printer's check, and the module never writes. Reports zero block 9, the spool's serial number, as well as the UID.
+
+### Anycubic, Elegoo, and Bambu Lab filaments in QIDI's database
+
+`scripts/generate_filament_catalog.py` builds the catalog from OrcaSlicer's Anycubic profiles, ElegooSlicer's Elegoo profiles, and BambuStudio's Bambu Lab profiles: names, types, and the nozzle range of the variant that reaches highest (some base profiles understate it), with QIDI's Box, chamber, and drying fields from the QIDI entry for the same kind of material. 0.2 mm files omit filled, particle, silk, flexible, Aero, and PA support filaments, and 0.8 mm files omit silk, PEBA, and Aero, as QIDI's own files do. Filaments that are not 1.75 mm, and names QIDI's database already has (Bambu ABS), are left out; the Bambu ID map still names QIDI's entry. Bambu Lab entries use QIDI's existing `Bambu` vendor. IDs use letters QIDI does not use (`QFX`, `QFY`, `QFZ`); QIDI's v1 parser and its RS-485 path accept any letter. The generator never reassigns an ID, because Box slots, and later tags, carry it.
 
 The module adds missing catalog entries at each Klipper start. QIDI's `multi_color_controller` reads the 0.4 mm file after it, so the Box card and Fluidd see them at once; `qidi-client` may have started before Klipper, so the touchscreen lists them after its next start. Adding at Klipper start, instead of in the installer, re-adds them after any QIDI update once the package is reinstalled, with no installer ownership to record. Uninstall leaves them, because Box slots may refer to them.
 
