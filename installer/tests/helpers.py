@@ -327,6 +327,7 @@ def moonraker_urlopen(
     raw_payload=None,
     saved_variables_path: Path | None = None,
     box_status: dict | None = None,
+    heater_targets: dict[str, float] | None = None,
 ):
     payload = raw_payload
     if payload is None:
@@ -386,9 +387,26 @@ def moonraker_urlopen(
             return _JsonResponse({"result": "ok"})
         if "/printer/info" in url:
             return _JsonResponse({"result": {"state": "ready", "process_id": process["pid"]}})
+        heater_status = _heater_status(url, heater_targets)
+        if heater_status is not None:
+            return _JsonResponse(heater_status)
         return _JsonResponse(payload)
 
     return urlopen
+
+
+def _heater_status(url: str, heater_targets: dict[str, float] | None):
+    """Answer the installer's heater queries: Klipper ready, with these heaters and targets."""
+    from urllib.parse import unquote, urlsplit
+
+    parts = urlsplit(url)
+    names = [unquote(name) for name in parts.query.split("&") if name]
+    targets = heater_targets or {}
+    if names == ["webhooks", "heaters"]:
+        return {"result": {"status": {"webhooks": {"state": "ready"}, "heaters": {"available_heaters": list(targets)}}}}
+    if names and all(name in targets for name in names):
+        return {"result": {"status": {name: {"target": targets[name]} for name in names}}}
+    return None
 
 
 @contextmanager
@@ -412,7 +430,7 @@ def moonraker_server(state: str | None = "standby", *, raw_payload=None):
             if self.path.endswith("/printer/info"):
                 self._respond({"result": {"state": "ready", "process_id": process["pid"]}})
             else:
-                self._respond(payload)
+                self._respond(_heater_status(self.path, None) or payload)
 
         def do_POST(self):
             if self.path.endswith("/machine/services/restart"):

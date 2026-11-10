@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from .errors import ActivePrintError, FreeSpaceError, InstallerError, KlipperBusyError, PrinterStateError, RecoveryRequiredError
+from .errors import ActivePrintError, FreeSpaceError, HeaterOnError, InstallerError, KlipperBusyError, PrinterStateError, RecoveryRequiredError
 
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
@@ -66,7 +66,12 @@ def ensure_printer_idle(
     urlopen: UrlOpenFn = urllib.request.urlopen,
     wait_seconds: float = 0.0,
 ) -> str:
-    """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts."""
+    """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts.
+
+    A heater with a target counts as busy: restarting Klipper or rebooting the host stops the heater updates, and the
+    MCU then shuts itself down, so Klipper comes back with "Can not update MCU ... config as it is shutdown" until a
+    firmware restart. Heating outside a print, such as a preheat, leaves print_stats at standby.
+    """
     deadline = time.monotonic() + wait_seconds
     while True:
         try:
@@ -81,7 +86,26 @@ def ensure_printer_idle(
             time.sleep(2.0)
     if state in {"printing", "paused"}:
         raise ActivePrintError()
+    if _heater_on(url, timeout=timeout, urlopen=urlopen):
+        raise HeaterOnError()
     return state
+
+
+def _heater_on(url: str, *, timeout: int, urlopen: UrlOpenFn) -> bool:
+    try:
+        status = _query_objects(url, ("webhooks", "heaters"), timeout=timeout, urlopen=urlopen)
+        if status["webhooks"]["state"] != "ready":
+            # A shut-down Klipper has already turned its heaters off.
+            return False
+        heaters = status["heaters"]["available_heaters"]
+        if not isinstance(heaters, list) or not all(isinstance(name, str) and name for name in heaters):
+            raise PrinterStateError()
+        if not heaters:
+            return False
+        status = _query_objects(url, tuple(heaters), timeout=timeout, urlopen=urlopen)
+        return any(_finite(status[name]["target"]) != 0 for name in heaters)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PrinterStateError() from exc
 
 
 def ensure_klipper_idle(
