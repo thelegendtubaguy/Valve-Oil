@@ -1,5 +1,5 @@
-# QIDI Box RFID tags for Valve Oil: Anycubic and Elegoo spools, and the
-# Anycubic and Elegoo filaments in QIDI's filament database.
+# QIDI Box RFID tags for Valve Oil: Anycubic, Elegoo, and Bambu Lab spools,
+# and those brands' filaments in QIDI's filament database.
 #
 # At startup, catalog entries (tltg_filament_catalog) that QIDI's filament database
 # files lack are added to them. Existing entries, QIDI's or the operator's,
@@ -10,8 +10,11 @@
 # (fm17550_select and fm17550_transceive), each poll is answered here instead:
 #
 # - MIFARE Classic tags: QIDI's block 4 login and read, so QIDI tags read as
-#   they do in stock. A failed login returns empty data, never the reader's
-#   previous buffer.
+#   they do in stock. When that login fails, or block 4 holds text instead
+#   of a QIDI block, the tag is read as a Bambu Lab tag: with the keys
+#   derived from its UID, or the default key on copies written to blank
+#   tags. Bambu data is turned into a QIDI v1 block. A tag that opens to
+#   neither returns empty data, never the reader's previous buffer.
 # - NFC Type 2 tags: pages are read and Anycubic, Elegoo, or QIDI-layout data
 #   is turned into a QIDI v1 block for the matching database entry.
 #
@@ -19,6 +22,8 @@
 # behavior stay QIDI's. Boxes on any other firmware keep QIDI's read. The tag
 # layouts are in openspec/observations/qidi-box/material-metadata.md.
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -42,10 +47,21 @@ PUBLIC_KEYS = (("default", DEFAULT_KEY), ("mad", bytes.fromhex("a0a1a2a3a4a5")),
 MAX_AUTOMATIC_REPORTS = 20
 ANYCUBIC_HEADER = b"\x7b\x00\x65\x00"
 ELEGOO_HEADER = b"\x36\xee\xee\xee"
+# Bambu Lab tags: MIFARE Classic 1K whose sector keys come from the UID.
+BAMBU_SALT = bytes.fromhex("9a759cf2c4f7caff222cb9769b41bc96")
+BAMBU_BLOCKS = (1, 2, 4, 5, 16)  # material IDs, type, detailed type, color, extra colors
+BAMBU_PRIVATE_BLOCKS = (9,)  # the spool's serial number, left out of reports
 
 
 def ascii_field(data):
     return data.split(b"\0", 1)[0].decode("ascii", "replace").strip()
+
+
+def text_block(block):
+    """True when BLOCK is NUL-padded printable ASCII, as Bambu's text fields
+    are. QIDI v1 blocks are binary (byte 2 is 0x11..0x14)."""
+    text = block.split(b"\0", 1)[0]
+    return len(text) >= 2 and all(0x20 <= c < 0x7F for c in text) and not block[len(text):].strip(b"\0")
 
 
 def qidi_block_valid(block):
@@ -89,6 +105,38 @@ def decode_elegoo(memory, catalog):
         return None
     red, green, blue = memory[offset + 16:offset + 19]
     return "Elegoo", subtype or material, ["%02X%02X%02X" % (red, green, blue)]
+
+
+def bambu_keys(uid):
+    """Bambu Lab's key A for each of the 16 sectors: HKDF-SHA256 (RFC 5869)
+    of the tag's UID with Bambu's salt and the info string "RFID-A\\0"."""
+    prk = hmac.new(BAMBU_SALT, uid, hashlib.sha256).digest()
+    output, block = b"", b""
+    for counter in (1, 2, 3):
+        block = hmac.new(prk, block + b"RFID-A\0" + bytes([counter]), hashlib.sha256).digest()
+        output += block
+    return [output[6 * sector:6 * sector + 6] for sector in range(16)]
+
+
+def decode_bambu(blocks, catalog):
+    """blocks: {block: 16 bytes} for BAMBU_BLOCKS. Returns (brand, material,
+    [RRGGBB], filament type) or None. The material is the catalog name for
+    Bambu's filament ID (block 1), else the tag's detailed type."""
+    if not text_block(blocks[2]):
+        return None  # every Bambu tag names its filament type here
+    material_id = ascii_field(blocks[1][8:16])
+    filament_type = ascii_field(blocks[2])
+    name = catalog["bambu_ids"].get(material_id)
+    material = name[len("Bambu "):] if name else ascii_field(blocks[4]) or filament_type
+    if not material:
+        return None
+    red, green, blue = blocks[5][0:3]
+    colors = ["%02X%02X%02X" % (red, green, blue)]
+    extra = blocks[16]
+    if extra[0:2] == b"\x02\x00" and int.from_bytes(extra[2:4], "little") >= 2:
+        alpha, blue, green, red = extra[4:8]
+        colors.append("%02X%02X%02X" % (red, green, blue))
+    return "Bambu", material, colors, filament_type
 
 
 class FilamentDatabase:
@@ -171,7 +219,7 @@ class TagReader:
         self.owner, self.name, self.rfid = owner, name, rfid
         self.select, self.transceive, self.original = select, transceive, original
         self.mutex = owner.reactor.mutex()
-        self.last = {}
+        self.last, self.last_tag = {}, {}  # latest poll, and latest poll that found a tag
 
     def _select(self):
         params = self.select.send([self.rfid.oid])
@@ -190,6 +238,40 @@ class TagReader:
         ok, status2, _ = self._xfer(MFAUTHENT_CMD, 2, bytes([0x60, block]) + key + uid_tail(ident))
         return ok and bool(status2 & 0x08)
 
+    def _sector_login(self, ident, block, keys):
+        """Log in to BLOCK's sector with the first of KEYS that opens it. The
+        first try goes to the tag as it is; a refused login leaves the tag
+        idle, so each later try selects it again. Returns the ident or None."""
+        for attempt, key in enumerate(keys):
+            if attempt:
+                status, ident = self._select()
+                if status != 1:
+                    return None
+            if self._login(ident, block, key):
+                return ident
+        return None
+
+    def _bambu_blocks(self, ident):
+        """Bambu blocks from the selected tag. Each sector opens with its key
+        derived from the UID, tried again from a fresh select in case the
+        reader can't switch sectors with Crypto1 on, or with the default key,
+        which copies on blank tags may keep. Returns (blocks, None),
+        (None, "locked") when no key opens sector 0, or (None, "lost") when
+        the tag left the field mid-read."""
+        keys = bambu_keys(uid_tail(ident))
+        blocks, sector = {}, None
+        for block in BAMBU_BLOCKS:
+            if block // 4 != sector:
+                sector = block // 4
+                ident = self._sector_login(ident, block, (keys[sector], keys[sector], DEFAULT_KEY))
+                if ident is None:
+                    return None, "lost" if blocks else "locked"
+            ok, _, data = self._xfer(TRANSCEIVE_CMD, 3, bytes([0x30, block]))
+            if not ok or len(data) < 16:
+                return None, "lost"
+            blocks[block] = data[:16]
+        return blocks, None
+
     def _type2_pages(self, first, count):
         memory = bytearray()
         for page in range(first, first + count, 4):
@@ -205,6 +287,8 @@ class TagReader:
 
     def _record(self, **info):
         self.last = dict(info, time=self.owner.reactor.monotonic())
+        if info.get("tag"):
+            self.last_tag = self.last
 
     def send(self, data, *args, **kwargs):
         oid = data[0]
@@ -222,16 +306,34 @@ class TagReader:
             return self._empty(status, oid)
         sak = tag_sak(ident)
         if sak & 0x08:
+            block = None
             if self._login(ident, 4, DEFAULT_KEY):
-                ok, _, block = self._xfer(TRANSCEIVE_CMD, 3, b"\x30\x04")
-                if ok and len(block) >= 16:
-                    layout = "qidi" if qidi_block_valid(block) else "unknown"
-                    self._record(tag="mifare_classic", layout=layout)
-                    if layout == "unknown":
-                        self.owner.capture(self, ident, {"block_4": block[:16].hex()}, "unknown")
-                    return {"oid": oid, "status": 1, "data": block[:16]}
-            self._record(tag="mifare_classic", layout="locked")
-            self.owner.capture(self, ident, {}, "locked")
+                ok, _, data = self._xfer(TRANSCEIVE_CMD, 3, b"\x30\x04")
+                if ok and len(data) >= 16:
+                    block = data[:16]
+                    if qidi_block_valid(block) and not text_block(block):
+                        self._record(tag="mifare_classic", layout="qidi")
+                        return {"oid": oid, "status": 1, "data": block}
+                # The tag is still selected: try it as a Bambu tag below.
+            else:
+                status, ident = self._select()  # the refused login left the tag idle
+                if status != 1:
+                    self._record(tag="mifare_classic", layout="read_failed")
+                    return self._empty(0, oid)
+            blocks, failure = self._bambu_blocks(ident)
+            if failure == "lost":
+                self._record(tag="mifare_classic", layout="read_failed")
+                return self._empty(0, oid)
+            decoded = blocks and decode_bambu(blocks, self.owner.catalog)
+            if decoded:
+                data = {"blocks": {str(b): blocks[b].hex() for b in BAMBU_BLOCKS}}
+                return self._answer(oid, ident, "mifare_classic", decoded, data)
+            if block is None and blocks is None:
+                self._record(tag="mifare_classic", layout="locked")
+                self.owner.capture(self, ident, {}, "locked")
+            else:
+                self._record(tag="mifare_classic", layout="unknown")
+                self.owner.capture(self, ident, {"block_4": (block or blocks[4]).hex()}, "unknown")
             return self._empty(1, oid)
         if sak & 0x7F:
             self._record(tag="sak_%02x" % (sak,), layout="unsupported")
@@ -251,12 +353,18 @@ class TagReader:
             self._record(tag="type2", layout="unknown")
             self.owner.capture(self, ident, {"first_page": 4, "pages": memory.hex()}, "unknown")
             return self._empty(1, oid)
-        brand, material, colors = decoded
+        return self._answer(oid, ident, "type2", decoded, {"first_page": 4, "pages": memory.hex()})
+
+    def _answer(self, oid, ident, tag, decoded, data):
+        """QIDI v1 block for a decoded vendor tag's database entry."""
+        brand, material, colors = decoded[:3]
         name, filament_id = self.owner.database.find(brand, material)
-        self._record(tag="type2", layout=brand.lower(), material=material, colors=colors,
+        if filament_id is None and len(decoded) > 3:
+            name, filament_id = self.owner.database.find(brand, decoded[3])  # Bambu's filament type
+        self._record(tag=tag, layout=brand.lower(), material=material, colors=colors,
                      filament=name, filament_id=filament_id)
         if filament_id is None:
-            self.owner.capture(self, ident, {"first_page": 4, "pages": memory.hex()}, "no_database_entry")
+            self.owner.capture(self, ident, data, "no_database_entry")
             return self._empty(1, oid)
         return {"oid": oid, "status": 1, "data": qidi_block(filament_id, colors)}
 
@@ -265,8 +373,9 @@ class TagReader:
         sak = tag_sak(ident)
         if sak & 0x08:
             sectors = {}
+            keys = bambu_keys(uid_tail(ident))
             for sector in range(16):
-                for name, key in PUBLIC_KEYS:
+                for name, key in PUBLIC_KEYS + (("bambu", keys[sector]),):
                     status, ident = self._select()
                     if status != 1 or not self._login(ident, sector * 4, key):
                         continue
@@ -278,7 +387,18 @@ class TagReader:
                         blocks[0] = "00" * 5 + blocks[0][10:]  # UID and BCC
                     sectors[sector] = {"key_a": name, "blocks": blocks}
                     break
-            return {"tag": "mifare_classic", "readable_sectors": sectors}
+            report = {"tag": "mifare_classic", "readable_sectors": sectors}
+            found = {block: bytes.fromhex(sectors[block // 4]["blocks"][block % 4] or "")
+                     for block in BAMBU_BLOCKS if block // 4 in sectors}
+            decoded = (len(found) == len(BAMBU_BLOCKS) and all(len(b) == 16 for b in found.values())
+                       and decode_bambu(found, self.owner.catalog))
+            if decoded:
+                report["decoded"] = {"brand": decoded[0], "material": decoded[1], "colors": decoded[2]}
+            if decoded or any(sector["key_a"] == "bambu" for sector in sectors.values()):
+                for block in BAMBU_PRIVATE_BLOCKS:
+                    if sectors.get(block // 4, {}).get("blocks", [None] * 4)[block % 4]:
+                        sectors[block // 4]["blocks"][block % 4] = "00" * 16
+            return report
         if sak & 0x7F:
             return {"tag": "sak_%02x" % (sak,)}
         ok, _, version = self._xfer(TRANSCEIVE_CMD, 3, b"\x60")
@@ -421,6 +541,7 @@ class BoxRfid:
 
     def get_status(self, eventtime):
         return {"readers": {name: reader.last for name, reader in self.readers.items()},
+                "last_tag": {name: reader.last_tag for name, reader in self.readers.items()},
                 "catalog_added": self.added, "last_report": self.last_report}
 
 

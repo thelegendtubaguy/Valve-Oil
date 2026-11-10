@@ -31,7 +31,7 @@ Add `--dry-run` for a preview without touching the board. `--yes` alone and auto
 
 QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a restart. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box drops too. The TLTG Box firmware keeps the Box connected, so Klipper shows what actually happened.
 
-It also lets the Box [read Anycubic and Elegoo spool tags](qidi-box.md#spool-tags), by giving Klipper direct access to the Box's RFID readers in place of four QIDI test commands that nothing on the printer uses. QIDI's own spool tags read as before.
+It also lets the Box [read Anycubic, Elegoo, and Bambu Lab spool tags](qidi-box.md#spool-tags), by giving Klipper direct access to the Box's RFID readers in place of four QIDI test commands that nothing on the printer uses. QIDI's own spool tags read as before.
 
 **How to install:** the installer never installs or offers it. Run it yourself over SSH from the installer folder:
 

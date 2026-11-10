@@ -51,7 +51,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - Cut, unload, and eject filament without heating the nozzle.
 - Box heater control from Fluidd, and Box processor temperatures.
 - Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
-- Read Anycubic and Elegoo spool tags, with every Anycubic and Elegoo filament in QIDI's list.
+- Read Anycubic, Elegoo, and Bambu Lab spool tags, with every one of their filaments in QIDI's list.
 
 [QIDI Box →](docs/qidi-box.md)
 
