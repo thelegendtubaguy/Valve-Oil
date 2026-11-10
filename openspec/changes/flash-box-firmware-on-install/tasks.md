@@ -11,5 +11,5 @@
 ## 3. Release
 
 - [x] 3.1 Update the operator docs and the 26.11.10.1 changelog section.
-- [ ] 3.2 Flash a test Box through the installer on the printer.
-- [ ] 3.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.
+- [x] 3.2 Flash both test Boxes through the installer on the printer (`--yes`): shutdownfix1 and rfid1 rebuilt from stock, verified by readback, Klipper ready on `02.03.01.21-valve-oil.1`.
+- [x] 3.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.

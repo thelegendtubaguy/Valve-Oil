@@ -86,7 +86,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 - [Every setting and command in one table](docs/settings.md)
 - [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
-- [Optional firmware fixes](docs/firmware.md) for the toolhead board, the QIDI Box, and the Max 4 mainboard
+- [Firmware fixes](docs/firmware.md) for the QIDI Box, which the installer flashes, and optional ones for the toolhead board and the Max 4 mainboard
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)
 - [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)
