@@ -922,6 +922,45 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             self.assertEqual(result.action, expected_action)
         self.assertEqual((printer_root / "config/saved_variables.cfg").read_bytes(), before)
 
+    def test_new_release_waits_while_a_heater_is_on_outside_a_print(self):
+        # Restarting Klipper with a heater on shuts its MCU down until a firmware restart.
+        printer_root, paths, _ = self._fixture("01.01.06.03")
+        old_checksum = "1" * 64
+        state_path(paths).write_text(json.dumps({"latest_checksum": old_checksum}), encoding="utf-8")
+        enrollment_path(paths).write_text("1\n", encoding="utf-8")
+
+        for heater_targets in (
+            {"extruder": 0.0, "heater_bed": 100.0, "heater_generic chamber": 0.0},
+            {"extruder": 0.0, "heater_bed": 0.0, "heater_generic chamber": 60.0},
+        ):
+            with self.subTest(heater_targets=heater_targets):
+                printer = moonraker_urlopen("standby", heater_targets=heater_targets)
+                opened_urls = []
+
+                def urlopen(request, timeout=0):
+                    url = getattr(request, "full_url", str(request))
+                    opened_urls.append(url)
+                    if url.endswith(".sha256"):
+                        return _BytesResponse(f"{'2' * 64} bundle\n".encode())
+                    return printer(request, timeout=timeout)
+
+                result = run_auto_update_check(
+                    paths=paths,
+                    reporter=PlainReporter(io.StringIO()),
+                    environ={
+                        "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
+                        "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/latest.tar.gz",
+                    },
+                    urlopen=urlopen,
+                    run=lambda command, **kwargs: self.fail(f"Unexpected command: {command}"),
+                )
+
+                self.assertEqual(result.action, "skipped-active-print")
+                self.assertFalse(any(url.endswith(".tar.gz") for url in opened_urls))
+                self.assertEqual(
+                    json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], old_checksum
+                )
+
     def test_unenrolled_changed_checksum_records_latest_without_installing(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
         old_checksum = "1" * 64
@@ -937,9 +976,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             if url.endswith(".sha256"):
                 return _BytesResponse(f"{checksum} bundle\n".encode())
             if "printer/objects/query" in url:
-                return _JsonResponse(
-                    {"result": {"status": {"print_stats": {"state": "standby"}}}}
-                )
+                return moonraker_urlopen()(request, timeout=timeout)
             self.fail(f"Unexpected URL: {url}")
 
         result = run_auto_update_check(
@@ -1118,9 +1155,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             if url.endswith(".tar.gz"):
                 return _BytesResponse(b"not the advertised archive")
             if "printer/objects/query" in url:
-                return _JsonResponse(
-                    {"result": {"status": {"print_stats": {"state": "standby"}}}}
-                )
+                return moonraker_urlopen()(request, timeout=timeout)
             self.fail(f"Unexpected URL: {url}")
 
         with self.assertRaises(AutoUpdateError):
@@ -1312,7 +1347,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 def uninstall_urlopen(request, timeout=0):
                     nonlocal idle_checks
                     url = getattr(request, "full_url", str(request))
-                    if "/printer/objects/query" in url:
+                    if "/printer/objects/query?print_stats" in url:
                         idle_checks += 1
                     return base_urlopen(request, timeout=timeout)
 

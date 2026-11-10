@@ -53,6 +53,13 @@ class ActivePrintError(InstallerError):
         super().__init__(messages.CANNOT_CONTINUE_ACTIVE_PRINT)
 
 
+class HeaterOnError(ActivePrintError):
+    """A heater has a target outside a print; a Klipper restart or host reboot would shut the MCU down."""
+
+    def __init__(self):
+        InstallerError.__init__(self, messages.CANNOT_CONTINUE_HEATER_ON)
+
+
 class KlipperBusyError(InstallerError):
     def __init__(self):
         super().__init__(messages.KLIPPER_BUSY)

@@ -47,7 +47,7 @@ Every install and update applies these, including on printers where an earlier i
 
 When an install or update turns on zram swap, the CPU setting, the service priorities, or the storage repair, they take effect straight away, and the printer then reboots by itself, never during a print, to confirm they start at boot:
 
-- An install reboots the printer about 10 seconds after it finishes, without asking, unless a print is running or paused. It checks again just before rebooting.
+- An install reboots the printer about 10 seconds after it finishes, without asking, unless a print is running or paused or a heater is on. It checks again just before rebooting.
 - An automatic update reboots only once Klipper has been idle for 10 minutes: no print running or paused, no command running, the toolhead still, and every heater, including the Box dryers, off. Until then, each hourly check tries again.
 
 ### Zram swap
@@ -80,9 +80,11 @@ The two do the same thing; only their placeholder syntax differs. Files sliced w
 
 Run the install command again. Updates keep your settings.
 
+The installer won't install, update, or uninstall while a print is running or paused, or while any heater, including the chamber and the Box dryers, has a target. It says `Cannot continue while a heater is on.` Install, update, and uninstall restart Klipper, and Klipper restarted while a heater is on comes back with its mainboard shut down, which needs a firmware restart. Turn the heaters off and run it again.
+
 ### Automatic updates
 
-If you turn them on, the printer checks for a new release every hour and installs it, skipping any check while a print is running or paused. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes.
+If you turn them on, the printer checks for a new release 5 minutes after it starts and then every hour, and installs it, skipping any check while a print is running or paused or a heater is on, such as during a preheat. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes.
 
 Turning them on needs `sudo` once. The installer uses QIDI's public default password (`qiditech`), or the `TLTG_OPTIMIZED_SUDO_PASSWORD` environment variable if set, and asks for a password if that doesn't work.
 
