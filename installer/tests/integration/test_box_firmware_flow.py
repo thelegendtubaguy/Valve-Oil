@@ -154,6 +154,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         (bundle / box_firmware.MANIFEST).write_text(json.dumps(manifest))
         data = root / "printer_data"
         (data / "config").mkdir(parents=True)
+        (data / "logs").mkdir()
         (data / "config/box.cfg").write_text("".join(f"[mcu {name}]\nserial: /dev/serial/by-id/{name}\n\n" for name in apps))
         (root / "klippy-env/bin").mkdir(parents=True)
         (root / "klippy-env/bin/python").write_text("")
@@ -211,12 +212,20 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="unknown-boot")
         automatic = {LOCK_HELD_ENV: "1"}
         backups = paths.printer_data_root / box_firmware.BACKUP_DIRECTORY
+        logs = paths.printer_data_root / "logs"
+        # A report left for a Box no longer in box.cfg goes away.
+        (logs / "tltg_box_firmware_box2.json").write_text("{}")
         self.after_install(paths, printer, reporter, environ=automatic)
         captures = list(backups.iterdir())
         self.assertEqual((len(captures), printer.transfers, printer.states), (1, [], printer.original))
+        # Fluidd's banner and Logs get the shareable report.
+        published = json.loads((logs / "tltg_box_firmware_box1.json").read_text())
+        self.assertFalse(published["supported_bootloader"])
+        self.assertEqual([path.name for path in logs.iterdir()], ["tltg_box_firmware_box1.json"])
         changes = printer.service_changes
         self.after_install(paths, printer, reporter, environ=automatic)
         self.assertEqual((list(backups.iterdir()), printer.service_changes), (captures, changes))
+        self.assertTrue((logs / "tltg_box_firmware_box1.json").is_file())
         # A later release admits the bootloader the capture found.
         manifest_path = paths.bundle_root / box_firmware.MANIFEST
         admitted = json.loads(manifest_path.read_text())
@@ -225,6 +234,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         printer.manifest = admitted
         self.after_install(paths, printer, reporter, environ=automatic)
         self.assertEqual((printer.transfers, printer.states), ([("mcu_box1", False)], printer.original))
+        self.assertEqual(list(logs.iterdir()), [])
 
     def test_unsafe_states_and_cancellation_never_touch_services(self):
         for case in ("printing", "chamber-hot", "cancel", "automatic-update-restore"):

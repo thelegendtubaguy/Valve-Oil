@@ -35,6 +35,8 @@ BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
 SERIAL_LINE = re.compile(r"^serial\s*[:=]\s*(\S+)")
 WARNING = "Box firmware: keep the printer and every Box powered on until this finishes."
 SUPPORT_ISSUE_URL = REPOSITORY_URL + "/issues/new?template=printer-support.yml"
+# Klipper's printer warnings show a Fluidd banner for each, and Fluidd's Logs offers it for download.
+LOG_REPORT = re.compile(r"^tltg_box_firmware_box(\d+)\.json$")
 
 
 class BoxFirmwareError(InstallerError):
@@ -118,6 +120,38 @@ def _describe(version: str | None, manifest: dict) -> str:
 def unsupported_board_note(report: Path) -> str:
     return ("its bootloader or firmware is not supported yet. To get it supported, open an issue at "
             + SUPPORT_ISSUE_URL + " and attach only " + str(report) + ". Keep the .bin files beside it private.")
+
+
+def _log_report(paths, number: int) -> Path:
+    return paths.printer_data_root / "logs" / f"tltg_box_firmware_box{number}.json"
+
+
+def _publish_unsupported(paths, box: Box, report: Path) -> None:
+    target = _log_report(paths, box.number)
+    try:
+        ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
+        atomic_write_text(target, report.read_text(encoding="utf-8"), mode=0o644)
+    except (OSError, InstallerError):
+        pass
+
+
+def _clear_unsupported(paths, numbers) -> None:
+    for number in numbers:
+        try:
+            _log_report(paths, number).unlink()
+        except OSError:
+            pass
+
+
+def _prune_unsupported(paths, configured) -> None:
+    """Drop reports of Boxes no longer in box.cfg."""
+    try:
+        names = os.listdir(paths.printer_data_root / "logs")
+    except OSError:
+        return
+    configured_numbers = {box.number for box in configured}
+    _clear_unsupported(paths, {int(match.group(1)) for match in map(LOG_REPORT.match, names)
+                               if match and int(match.group(1)) not in configured_numbers})
 
 
 def _unsupported_capture(backup_root: Path, box: Box, manifest: dict) -> Path | None:
@@ -250,6 +284,8 @@ def run_box_firmware(
 
     target = "patched" if action == "install" else "stock"
     automatic = env.get(LOCK_HELD_ENV) == "1"
+    if action == "install":
+        _prune_unsupported(paths, configured)
     if action == "rescue":
         box = selected[0]
         rescue_backup = admitted_backup(backup_root.glob(f"*/{box.name}/before"), manifest)
@@ -292,6 +328,8 @@ def run_box_firmware(
             wanted = manifest["box"]["patched_version" if target == "patched" else "stock_version"]
             if version == wanted:
                 previous[box.name] = "already " + ("installed" if target == "patched" else "stock")
+                if target == "patched":
+                    _clear_unsupported(paths, [box.number])
             elif box.usb is None or version is None:
                 previous[box.name] = "skipped: not connected"
             elif version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
@@ -300,6 +338,7 @@ def run_box_firmware(
             elif automatic and (capture := _unsupported_capture(backup_root, box, manifest)) is not None:
                 # Reading it again would only stop Klipper and save the same capture.
                 previous[box.name] = "skipped by automatic updates, as an earlier capture found: " + unsupported_board_note(capture)
+                _publish_unsupported(paths, box, capture)
             else:
                 plan.append((box, box.usb))
                 if version in _superseded_versions(manifest) and stock_image is None:
@@ -395,11 +434,15 @@ def run_box_firmware(
                 snapshot = command(box_dir, "snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
                 if snapshot.returncode == protocol.UNSUPPORTED:
                     results[box.name] = "not changed: " + unsupported_board_note(before / "report.json")
+                    if target == "patched":
+                        _publish_unsupported(paths, box, before / "report.json")
                     continue
                 boot, app = protocol.load_backup(before, manifest)
                 current = protocol.image_identity(app, manifest)
                 if current == target:
                     results[box.name] = "already " + ("installed" if target == "patched" else "stock") + " (verified by readback)"
+                    if target == "patched":
+                        _clear_unsupported(paths, [box.number])
                     continue
                 if target == "patched":
                     image = build_box_firmware.patch_box(app if current == "stock" else stock_image, manifest)
@@ -418,6 +461,8 @@ def run_box_firmware(
                                                 expected_bootloader=(before / "bootloader.bin").read_bytes())
             atomic_write_text(box_dir / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
             results[box.name] = ("Valve Oil Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
+            if target == "patched":
+                _clear_unsupported(paths, [box.number])
             pending = False
             record.update(phase="verified", box=box.name)
             atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)

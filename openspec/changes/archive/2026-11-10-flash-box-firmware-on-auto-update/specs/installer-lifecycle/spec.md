@@ -27,6 +27,11 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 - **WHEN** an install finishes while a heater target is nonzero, Klipper is not ready, or an earlier build needs QIDI's stock image and none is found
 - **THEN** no Box is touched, the install succeeds, and the output says the Box firmware was not updated and why
 
+#### Scenario: Install finds a Box it doesn't support yet
+- **WHEN** an install leaves a USB Box unchanged because its bootloader or firmware is not admitted, or an automatic update skips it for an earlier such capture
+- **THEN** the capture's shareable summary is copied to Klipper's log folder as `tltg_box_firmware_box<N>.json`, and from Klipper's next start `tltg_printer_warnings.warnings` lists a `warning` entry for that Box that names the file and where to open a support issue
+- **AND** the copy, and with it the warning, is removed once an install finds that Box on the bundled firmware or the Box is no longer in `box.cfg`
+
 #### Scenario: Install's Box flash fails
 - **WHEN** a Box transfer or readback fails during an install or an automatic update's install after programming may have started
 - **THEN** the install fails, Klipper, the touchscreen, and the automatic-update timer stay stopped, and the output names the `rescue` command
