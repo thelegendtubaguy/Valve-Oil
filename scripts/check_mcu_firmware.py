@@ -58,6 +58,15 @@ BOOTLOADER_HOOKS = {
         # SystemInit, clocks, GPIO, delay, USB core init, CDC sent (returns 1), CDC re-arm, USB deinit.
         stubs=(0x080002C0, 0x080033F4, 0x080026CC, 0x080003EC, 0x0800283C, 0x08000DEC, 0x08000E28, 0x080028B0),
         sent_check=0x08000DEC, device=0x200003F8),
+    # Later build: frames end after a run of empty receive polls instead of at their
+    # header length, the last packet is written as a full 1 KiB with a zero-filled
+    # tail, and a programming session that times out resets the chip.
+    "d180a22cbe4155c1a3355e1016de78938fb13b257c2e8a0b8105c8d0ad8dfee2": dict(
+        reset=0x08003424, main_entry=0x08003418, main_loop=0x08003184, systick=0x08002478,
+        tx=0x08002814, jump=0x080029AC, system_reset=0x080029D8,
+        error=(0x08002466, 0x08002468, 0x0800246A, 0x0800246C, 0x0800246E, 0x08003360, 0x08003386, 0x08003474),
+        stubs=(0x0800030C, 0x08003308, 0x08002724, 0x08000438, 0x08002894, 0x08000E38, 0x08000E74, 0x08002908),
+        sent_check=0x08000E38, device=0x200003F8, polls_per_ms=10, packet_fill=0x00),
 }
 FLASH_END = 0x08080000
 PAGE = 0x1000
@@ -301,8 +310,8 @@ class Board:
         elif address == hooks["tx"]:
             self.sent.append(bytes(uc.mem_read(uc.reg_read(UC_ARM_REG_R0), uc.reg_read(UC_ARM_REG_R1))))
             self._return()
-        elif address == hooks["jump"] or address in hooks["error"]:
-            self.halted = "jump" if address == hooks["jump"] else f"error at {address:#x}"
+        elif address == hooks["jump"] or address == hooks.get("system_reset") or address in hooks["error"]:
+            self.halted = {hooks["jump"]: "jump", hooks.get("system_reset"): "reset"}.get(address, f"error at {address:#x}")
             uc.emu_stop()
 
     def _controller(self, uc, access, address, size, value, user):
@@ -354,8 +363,8 @@ class Board:
         for _ in range(milliseconds):
             self.ms += 1
             self.call(self.hooks["systick"])
-            self.call(self.hooks["main_loop"])
-            self.call(self.hooks["main_loop"])
+            for _ in range(self.hooks.get("polls_per_ms", 2)):
+                self.call(self.hooks["main_loop"])
 
     def usb_out(self, raw: bytes):
         for offset in range(0, len(raw), 64):
@@ -402,7 +411,8 @@ class EmulatedPort:
 def check_transfers(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -> None:
     profile = tool.bootloader_profile(boot, manifest)
     padded = (len(stock) + 1023) // 1024 * 1024
-    installed = stock + b"\xff" * (padded - len(stock))
+    fill = bytes([BOOTLOADER_HOOKS[digest(boot)].get("packet_fill", 0xFF)]) * (padded - len(stock))
+    installed = stock + fill
 
     def board(app_region=installed):
         b = Board(boot, app_region)
@@ -423,7 +433,7 @@ def check_transfers(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -
         b = board(region)
         result = client(b, drop).transfer(image, manifest)
         b.tick(3000)
-        require(result["transfer_acknowledged"] and b.flash(BASE, FLASH_END - BASE) == image + b"\xff" * (FLASH_END - BASE - len(image)),
+        require(result["transfer_acknowledged"] and b.flash(BASE, FLASH_END - BASE) == image + fill + b"\xff" * (FLASH_END - BASE - padded),
                 f"{name}: flash differs from the image")
         require(intact(b) and b.halted == "jump", f"{name}: bootloader changed, bad write, or application not started")
         print(f"transfer: {name} OK")
@@ -435,6 +445,11 @@ def check_transfers(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -
     except tool.TransferFailed:
         pass
     b.tick(27000)
+    if b.halted == "reset":
+        # A build that resets after the expired session must come back up resident.
+        require(intact(b), "packet 0 failure: bootloader changed or bad write before the reset")
+        b = board(b.flash(BASE, FLASH_END - BASE))
+        b.tick(27000)
     require(set(b.flash(BASE, PAGE)) == {0xFF} and intact(b) and b.halted is None,
             "packet 0 failure: first application page not blank, bootloader changed, or bootloader left")
     print("transfer: unacknowledged packet 0 leaves the bootloader resident OK")

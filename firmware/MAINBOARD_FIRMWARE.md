@@ -47,6 +47,8 @@ The mainboard's bootloader is never erased or written. If a transfer stops part 
 
 Rescue flashes QIDI's stock firmware from the backup or from `~/update` through the waiting bootloader, verifies it, and starts the services again. If the transfer failed before anything was erased, the old firmware is still running, and rescue resets the mainboard into its bootloader first. If it reports no reply from the bootloader, wait 15 seconds and run it again. Until the pending record is cleared, the installer refuses other operations.
 
+Rescue flashes only with a backup of a validated bootloader. If every backup is from a bootloader the script doesn't recognize, rescue changes nothing. If a pending record exists and the mainboard is still running its firmware, rescue starts Klipper and the touchscreen again and clears the record. Before 26.11.09.1, rescue on such a mainboard stopped the services and then kept saying the firmware was unverified, though the mainboard was never touched.
+
 **Keep the printer powered on while it flashes.** If power is lost during the transfer, the bootloader may start the partly written firmware at the next power-on instead of waiting, because the printer's computer isn't up within the bootloader's 2-second window. No recovery path for that case has been verified.
 
 Uninstall and `restore.sh` do not change mainboard firmware. Use `./mainboard-firmware.sh restore`. A QIDI firmware update that reflashes the mainboard also restores stock firmware.
@@ -60,4 +62,4 @@ python3 scripts/check_mcu_firmware.py --stock-image QD_MAX4_MCU_02.01.01.12_2026
   [--bootloader-backup bootloader.bin]
 ```
 
-With a captured bootloader, it runs the transfer tool against that bootloader's own code: stock and patched transfers, lost acknowledgements, a resident bootloader, an unacknowledged first packet, and a non-erasing identity probe. No bootloader binary is shipped in the repository.
+With a captured bootloader of either admitted build, it runs the transfer tool against that bootloader's own code: stock and patched transfers, lost acknowledgements, a resident bootloader, an unacknowledged first packet, and a non-erasing identity probe. No bootloader binary is shipped in the repository.

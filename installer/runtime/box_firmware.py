@@ -132,15 +132,51 @@ def _stock_image(paths, manifest) -> bytes | None:
     return None
 
 
+def admitted_backup(candidates, manifest) -> Path | None:
+    """The newest backup the transfer tool accepts: a validated bootloader and firmware."""
+    from scripts.flash_box_firmware import load_backup
+    admitted = []
+    for directory in candidates:
+        try:
+            load_backup(directory, manifest)
+            admitted.append((directory.stat().st_mtime, directory))
+        except (OSError, ValueError):
+            continue
+    return max(admitted)[1] if admitted else None
+
+
+def pending_record(marker: Path) -> dict:
+    try:
+        record = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def start_recorded_services(states, *, run, password, paths, urlopen, sleep, clock, marker, subject, error) -> None:
+    try:
+        for service in SERVICES:
+            if states.get(service) == "active":
+                result = run_sudo(["systemctl", "start", service], run=run, password=password, timeout=60)
+                if result.returncode:
+                    raise error("Could not start " + service)
+        if states.get("klipper.service") == "active":
+            wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, subject=subject)
+        atomic_delete(marker)
+    except BaseException as exc:
+        raise error(subject + " service restoration is incomplete; recovery record retained: " + str(marker)) from exc
+
+
 def run_box_firmware(
     *, paths, reporter, action, boxes=None, input_stream=None, environ=None,
     run=None, urlopen=urllib.request.urlopen, sleep=time.sleep, clock=time.monotonic,
-    resolve_usb=usb_path_for_serial,
+    resolve_usb=usb_path_for_serial, usb_state=None,
 ) -> int:
     from scripts import build_box_firmware
     from scripts import flash_box_firmware as protocol
 
     run = subprocess.run if run is None else run
+    usb_state = protocol.usb_state if usb_state is None else usb_state
     env = {} if environ is None else environ
     manifest = build_box_firmware.load_manifest(paths.bundle_root / "firmware/max4-box-shutdown-fix-v1.json")
     configured = discover_boxes(paths, resolve_usb=resolve_usb)
@@ -173,6 +209,24 @@ def run_box_firmware(
         ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
 
     target = "patched" if action == "install" else "stock"
+    if action == "rescue":
+        box = selected[0]
+        rescue_backup = admitted_backup(backup_root.glob(f"*/{box.name}/before"), manifest)
+        if rescue_backup is None:
+            # Every transfer needs a backup of a validated bootloader, so an operation
+            # recorded without one stopped before it reached a Box that still runs.
+            unfinished = pending_record(marker)
+            usb = box.usb or unfinished.get("usb")
+            if (not unfinished or unfinished.get("box", box.name) != box.name or usb is None
+                    or usb_state(usb)[0] != protocol.APP_IDS):
+                raise BoxFirmwareError(f"No backup of a validated {box.label} bootloader; rescue needs one from an "
+                                       "earlier box-firmware run. No Box firmware was changed.")
+            reporter.line(f"{box.label}: not changed. The unfinished operation stopped before it reached {box.label}, "
+                          "which still runs its firmware. Starting Klipper and the touchscreen again.")
+            password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
+            start_recorded_services(unfinished.get("services") or {}, run=run, password=password, paths=paths, urlopen=urlopen,
+                                    sleep=sleep, clock=clock, marker=marker, subject=SUBJECT, error=BoxFirmwareError)
+            return 0
     stock_image = None
     if action in ("restore", "rescue"):
         stock_image = _stock_image(paths, manifest)
@@ -181,11 +235,6 @@ def run_box_firmware(
                                    + " was found in the Box firmware backups or ~/update.")
     previous = {}
     if action == "rescue":
-        box = selected[0]
-        previous_dirs = sorted(backup_root.glob(f"*/{box.name}/before/bootloader.bin"))
-        if not previous_dirs:
-            raise BoxFirmwareError(f"No earlier backup of {box.label}'s bootloader; rescue needs one from a previous box-firmware run.")
-        rescue_backup = previous_dirs[-1].parent
         usb = box.usb
         if usb is None:
             record = rescue_backup.parent / "box.json"
@@ -325,15 +374,8 @@ def run_box_firmware(
         reporter.line(f"{box} firmware is unverified. Klipper and the touchscreen stay stopped. "
                       f"Run ./box-firmware.sh rescue --box {number} and follow its prompt.")
         raise BoxFirmwareError("Box firmware operation failed: " + str(failure) + ". Recovery files: " + str(directory)) from failure
-    try:
-        for service in SERVICES:
-            if states.get(service) == "active":
-                service_action("start", service)
-        if states.get("klipper.service") == "active":
-            wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, subject=SUBJECT)
-        atomic_delete(marker)
-    except BaseException as exc:
-        raise BoxFirmwareError("Box firmware service restoration is incomplete; recovery record retained: " + str(marker)) from exc
+    start_recorded_services(states, run=run, password=password, paths=paths, urlopen=urlopen, sleep=sleep, clock=clock,
+                            marker=marker, subject=SUBJECT, error=BoxFirmwareError)
     labels = {box.name: box.label for box in configured}
     for name, outcome in results.items():
         reporter.line(f"{labels.get(name, name)}: {outcome}")
