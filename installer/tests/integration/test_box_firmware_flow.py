@@ -206,17 +206,19 @@ class BoxFirmwareFlowTests(unittest.TestCase):
             self, paths, reporter, paths.printer_data_root / BOX_RECOVERY_MARKER, "mcu_box1", boxes=[1])
 
     def test_unsafe_states_and_cancellation_never_touch_services(self):
-        for case in ("printing", "chamber-hot", "cancel", "automatic-update"):
+        for case in ("printing", "chamber-hot", "cancel", "automatic-update-restore"):
             with self.subTest(case=case):
-                paths, printer, reporter = self.fixture({"mcu_box1": "stock"})
+                paths, printer, reporter = self.fixture({"mcu_box1": "patched" if case.endswith("restore") else "stock"})
                 printer.print_state = "printing" if case == "printing" else "standby"
                 printer.chamber = 60 if case == "chamber-hot" else 0
-                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
                 if case == "cancel":
                     self.assertEqual(self.execute(paths, printer, reporter, "install", answer="flash\n"), 1)
+                elif case == "automatic-update-restore":
+                    with self.assertRaisesRegex(InstallerError, "automatic-update"):
+                        self.execute(paths, printer, reporter, "restore", environ={LOCK_HELD_ENV: "1"})
                 else:
                     with self.assertRaises(InstallerError):
-                        self.execute(paths, printer, reporter, "install", environ=environ)
+                        self.execute(paths, printer, reporter, "install")
                 self.assertEqual(printer.transfers, [])
                 self.assertEqual(printer.states, printer.original)
 
@@ -244,23 +246,25 @@ class BoxFirmwareFlowTests(unittest.TestCase):
             clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
             usb_state=printer.usb_state)
 
-    def test_install_flashes_every_box_that_needs_it_without_a_prompt(self):
-        paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
-        self.after_install(paths, printer, reporter)
-        self.assertEqual(printer.transfers, [("mcu_box1", False)])
-        self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
-        self.assertEqual(printer.states, printer.original)
-        self.after_install(paths, printer, reporter)
-        self.assertEqual(len(printer.transfers), 1)
+    def test_install_and_automatic_update_flash_every_box_that_needs_it_without_a_prompt(self):
+        for case in ("install", "automatic-update"):
+            with self.subTest(case=case):
+                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
+                paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(printer.transfers, [("mcu_box1", False)])
+                self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
+                self.assertEqual(printer.states, printer.original)
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(len(printer.transfers), 1)
 
     def test_install_leaves_boxes_alone_when_it_cannot_flash_safely(self):
-        for case in ("automatic-update", "dry-run", "chamber-hot", "no-stock-image"):
+        for case in ("dry-run", "chamber-hot", "no-stock-image"):
             with self.subTest(case=case):
                 paths, printer, reporter = self.fixture(
                     {"mcu_box1": "superseded" if case == "no-stock-image" else "stock"})
                 printer.chamber = 60 if case == "chamber-hot" else 0
-                self.after_install(paths, printer, reporter, dry_run=case == "dry-run",
-                                   environ={LOCK_HELD_ENV: "1"} if case == "automatic-update" else None)
+                self.after_install(paths, printer, reporter, dry_run=case == "dry-run")
                 self.assertEqual((printer.transfers, printer.states), ([], printer.original))
                 if case in ("chamber-hot", "no-stock-image"):
                     self.assertIn("Box firmware not updated", reporter.stream.getvalue())

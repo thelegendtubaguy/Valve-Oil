@@ -1,7 +1,7 @@
 """Valve Oil QIDI Box firmware (shutdown fix and RFID commands): status, install, restore, and rescue.
 
-box-firmware.sh runs every action. An interactive or --yes install also brings
-each USB Box to the bundled firmware; automatic updates never flash a Box.
+box-firmware.sh runs every action. Every install, including --yes and the
+automatic update's child install, also brings each USB Box to the bundled firmware.
 """
 from __future__ import annotations
 
@@ -200,8 +200,8 @@ def run_box_firmware(
             reporter.line("A Box firmware operation did not finish; run ./box-firmware.sh rescue --box N. Record: " + str(marker))
         return 0
 
-    if env.get(LOCK_HELD_ENV) == "1":
-        raise BoxFirmwareError("Box firmware programming is not allowed in automatic-update child installs.")
+    if env.get(LOCK_HELD_ENV) == "1" and action != "install":
+        raise BoxFirmwareError("Box firmware " + action + " is not allowed in automatic-update child installs.")
     if paths.restart_marker_path.exists():
         raise BoxFirmwareError("Complete pending Klipper source activation before Box firmware programming.")
     ensure_no_pending_firmware(paths.recovery_sentinel_path, allow_box=action == "rescue")
@@ -407,13 +407,11 @@ def run_box_firmware(
 def flash_box_firmware_after_install(*, paths, reporter, dry_run=False, environ=None, input_stream=None, **seams) -> None:
     """Bring every USB Box to the bundled firmware at the end of an install.
 
-    Someone ran the installer, so no FLASH prompt; automatic updates never get here.
+    The installer was run or automatic updates were turned on, so no FLASH prompt.
     Anything that stops before a write leaves the install successful and says so.
     An unverified flash still stops here with the rescue instructions.
     """
     env = {} if environ is None else environ
-    if env.get(LOCK_HELD_ENV) == "1":
-        return
     resolve_usb = seams.get("resolve_usb", usb_path_for_serial)
     if not discover_boxes(paths, resolve_usb=resolve_usb):
         return

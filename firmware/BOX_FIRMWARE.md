@@ -23,7 +23,7 @@ The firmware reports its version as `02.03.01.21-valve-oil.1`, which is QIDI's v
 
 ## Commands
 
-Every install and update, including one run with `--yes`, flashes each USB Box that needs it after the rest of the install finishes, without asking. It does what `install` below does, except for the `FLASH` prompt. If it can't flash a Box safely, for example because a heater is on, it leaves that Box as it is, says why, and the install still succeeds. Automatic updates never flash a Box.
+Every install and update, including one run with `--yes` and each release an automatic update installs, flashes each USB Box that needs it after the rest of the install finishes, without asking. It does what `install` below does, except for the `FLASH` prompt. If it can't flash a Box safely, for example because a heater is on, it leaves that Box as it is, says why, and the install still succeeds.
 
 Run these from the unpacked installer folder (`~/tltg-optimized-macros`) over SSH:
 
@@ -57,7 +57,7 @@ Rescue waits for the Box's bootloader, flashes QIDI's stock firmware from the ba
 
 Rescue flashes only with a backup of a validated bootloader. If every backup of that Box is from a bootloader the script doesn't recognize, rescue changes nothing. If a pending record exists and the Box is still running its firmware, rescue starts Klipper and the touchscreen again and clears the record.
 
-Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware. Either way, the next install flashes the Valve Oil Box firmware again.
+Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware. Either way, the next install, or the next release an automatic update installs, flashes the Valve Oil Box firmware again.
 
 ## Checks for developers
 
