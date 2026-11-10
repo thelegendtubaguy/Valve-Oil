@@ -46,7 +46,7 @@ The module wraps each reader's `fm17550_read_card` query. When the Box runs the 
 
 - SAK `0x08`: MIFARE login and block 4, returned as is. This also fixes QIDI's stale-buffer result when the login fails.
 - SAK `0x00` (the last cascade level's; a 7-byte UID reports `0x04` first): NTAG pages 4 to 31. Anycubic and Elegoo data is decoded and mapped to a database ID and colors; QIDI-layout data in pages 4 to 7 is returned as is.
-- Anything else, or no tag: QIDI's no-tag result.
+- Anything else, or no tag: QIDI's no-tag result. A page read cut short, as when the tag leaves the field mid-read, also answers no tag, so QIDI keeps polling instead of ending the read as an unrecognized label.
 
 The result goes back to QIDI's parser as a v1 block, so slot saving, two-read confirmation, `info_from_rfid`, and every client stay QIDI's. A Box on stock or earlier firmware gets QIDI's query unchanged.
 

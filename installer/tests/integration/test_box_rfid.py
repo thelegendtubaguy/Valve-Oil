@@ -51,7 +51,7 @@ class Reader:
     """fm17550_select and fm17550_transceive answered from a tag model."""
 
     def __init__(self, tag=None):
-        self.tag, self.crypto, self.log = tag, False, []
+        self.tag, self.crypto, self.log, self.lost_after = tag, False, [], None
 
     def select(self, args):
         self.crypto = False
@@ -78,6 +78,8 @@ class Reader:
         if command == 0x0E:
             self.crypto = tag.kind == "classic" and frame[2:8] == tag.key and frame[8:12] == tag.uid
             return reply(ok=self.crypto)
+        if self.lost_after is not None and len(self.log) > self.lost_after:
+            return reply(ok=False)
         if tag.kind == "ntag":
             if frame == b"\x60":
                 return reply(bytes.fromhex("0053040201000f03"))
@@ -245,6 +247,9 @@ class BoxRfidTests(unittest.TestCase):
         self.assertTrue(box_rfid.qidi_block_valid(block))
         self.assertEqual(block[:6], b"X" + bytes([16, 0x11]) + bytes.fromhex("e10600"))
         self.assertEqual(box_rfid.CATALOG["filaments"]["Anycubic PLA High Speed"]["entry"]["filament_id"], "QFX16")
+        # A tag that leaves the field mid-read reads as no tag, so QIDI keeps polling.
+        self.reader.lost_after = len(self.reader.log) + 2
+        self.assertEqual(self.qidi_read(), {"oid": 21, "status": 0, "data": b""})
         self.module(Tag("ntag", ELEGOO))
         # The operator's own Elegoo PLA entry wins over the catalog's.
         self.assertEqual(self.qidi_read()["data"][:6], b"A" + bytes([94, 0x11]) + bytes.fromhex("ff0000"))

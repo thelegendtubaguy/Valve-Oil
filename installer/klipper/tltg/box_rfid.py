@@ -239,8 +239,10 @@ class TagReader:
             return self._empty(1, oid)
         memory, failed = self._type2_pages(4, TYPE2_PAGE_COUNT)
         if failed is not None:
+            # The tag left the field mid-read: answer "no tag" so QIDI keeps polling
+            # instead of ending the read as an unrecognized label.
             self._record(tag="type2", layout="read_failed", page=failed)
-            return self._empty(1, oid)
+            return self._empty(0, oid)
         decoded = decode_anycubic(memory) or decode_elegoo(memory, self.owner.catalog)
         if decoded is None:
             if qidi_block_valid(memory[:16]):
