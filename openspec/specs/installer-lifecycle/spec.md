@@ -54,6 +54,7 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **WHEN** a mutating operation starts
 - **THEN** it validates printer state, prior state, targets, paths, bundle contents, and required storage before backup or writes
 - **AND** printing, paused, unknown, malformed, concurrent, or recovery-blocked state fails closed
+- **AND** while Klipper is ready, any nonzero heater target, including the chamber and Box heaters, fails closed even with no print running, because restarting Klipper or rebooting the host while a heater is on leaves that heater's MCU shut down until a firmware restart
 
 #### Scenario: Any build of this package can be updated
 - **WHEN** installed state was written by any build of this package, including an unreleased development build or a newer build
@@ -445,7 +446,7 @@ Automatic updates SHALL require durable operator enrollment, use the same admiss
 
 #### Scenario: Enrolled release installation is idle and integrity checked
 - **WHEN** an enrolled updater observes a new release checksum or missing or drifted optimized installation state
-- **THEN** update proceeds only while the printer is idle and after archive integrity and path safety are verified
+- **THEN** update proceeds only while the printer is idle, with no print running or paused and every heater target 0, and after archive integrity and path safety are verified
 - **AND** missing or drifted state runs the current release installer even when its checksum is unchanged
 - **AND** the bundled noninteractive installer performs the change
 - **AND** release state advances only after install and required Klipper activation succeed
@@ -765,11 +766,11 @@ As an optional OS optimization, the installer SHALL have QIDI's CPU frequency se
 - **AND** declining restoration leaves the CPU at full speed
 
 ### Requirement: Reboot after host tuning
-After an install or automatic update that applies zram swap, the CPU governor, a service priority, the CPU tuning replacement, or the Rockchip repair, the installer SHALL reboot the printer without asking, never during a print, and for automatic updates only once Klipper has been idle for 10 minutes.
+After an install or automatic update that applies zram swap, the CPU governor, a service priority, the CPU tuning replacement, or the Rockchip repair, the installer SHALL reboot the printer without asking, never during a print or while a heater is on, and for automatic updates only once Klipper has been idle for 10 minutes.
 
 #### Scenario: An install reboots without asking
 - **WHEN** an install, interactive or `--yes`, applied any of those changes in this boot, or leaves a Rockchip reboot pending
-- **THEN** it schedules a reboot about 10 seconds later, which runs only if no print is running or paused both when it is scheduled and when it runs
+- **THEN** it schedules a reboot about 10 seconds later, which runs only if no print is running or paused and every heater target is 0, both when it is scheduled and when it runs
 - **AND** an install during a print, or one that cannot read the printer state, reboots nothing and tells the operator to reboot
 
 #### Scenario: Automatic updates reboot once Klipper is idle

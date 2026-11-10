@@ -16,6 +16,12 @@ QIDI's touchscreen shows `Printer service failed to start` (`QDC_400_005_015_001
 
 If Fluidd can't connect either, Moonraker isn't running. Over SSH, `systemctl status moonraker` shows why, and the end of `~/printer_data/logs/moonraker.log` usually names the error.
 
+## The touchscreen says "Update failed. Please ensure the MCU is properly connected"
+
+QIDI's touchscreen shows `Update failed. Please ensure the MCU is properly connected, then click "Restart Firmware" or retry the update.` (`QDC_100_005_000_001`) when Klipper reports `Can not update MCU 'mcu' config as it is shutdown`. Nothing was being flashed. Klipper restarted while a heater was on. The board running that heater turns it off and shuts down once Klipper stops updating it, and Klipper can't use the board again until a firmware restart. Press **Restart Firmware** on the touchscreen, or run `FIRMWARE_RESTART` from Fluidd's console.
+
+Before 26.11.09.2, an automatic update could restart Klipper during a preheat, since it checked only for a running print. Updates now wait until every heater is off.
+
 ## The camera doesn't show in Fluidd
 
 At boot, QIDI's `makerbase-webcam.service` writes the camera into `~/printer_data/config/crowsnest.conf`. It could run before the camera's device link existed and write an empty `device:` line instead, and then crowsnest, which streams the camera, doesn't start and Fluidd shows no camera. The package makes it wait for the camera, so the next reboot fills the line in again.
