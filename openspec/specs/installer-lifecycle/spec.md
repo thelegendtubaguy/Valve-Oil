@@ -73,11 +73,21 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** install and update set it to the patch's desired value and record the live value as the value uninstall restores
 - **AND** a value at or below the maximum that matches neither the stock nor a prior-managed value is preserved as user-modified
 
+#### Scenario: Guarded section patches keep Klipper's SAVE_CONFIG data
+- **WHEN** install deletes, or uninstall restores, a guarded section in a file with Klipper's `SAVE_CONFIG` block
+- **THEN** the section never includes the block, and uninstall puts the section back above it
+- **AND** the block is left unchanged, so Klipper still loads it
+
 #### Scenario: Uninstall respects ownership
 - **WHEN** uninstall processes a valid ownership ledger
 - **THEN** only unchanged installer-owned state is reverted
 - **AND** user-modified state is preserved and reported
 - **AND** installed state is removed only after successful postflight
+
+#### Scenario: Uninstall keeps QIDI's current values
+- **WHEN** uninstall processes an option patch whose desired value is QIDI's value in the bundled stock snapshot for the detected firmware
+- **THEN** uninstall leaves the option at that value instead of the value recorded before install
+- **AND** an option the operator changed from that value is preserved and reported as user-modified
 
 #### Scenario: Restore reconstructs the archived runtime
 - **WHEN** restore receives explicit confirmation for a validated installer archive

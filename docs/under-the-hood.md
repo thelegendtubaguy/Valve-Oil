@@ -15,9 +15,10 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 | What | Change |
 |---|---|
-| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, the [top speed](fixes.md#xy-motors-skipping-at-top-speed), Z-tilt and mesh travel speed, the Max 4's closed-loop homing timing, and a few others. |
+| `printer.cfg` | Adds `[include tltg-optimized-macros/*.cfg]`, and changes recognized QIDI values for homing speed and retraction, the [top speed](fixes.md#xy-motors-skipping-at-top-speed), Z-tilt and mesh travel speed, the Max 4's closed-loop homing timing, and a few others. On the Max 4 with firmware `01.01.06.04` or later, it also sets values QIDI changed in that firmware, which a QIDI update leaves as they were: the closed-loop motors' `query_cycle` from 5 to 10, and the chamber protection sensor's `max_temp` from 150 to 170. |
 | `config/tltg-optimized-macros/` | The optimized macros. QIDI's own macros in `klipper-macros-qd/` stay in place, so files sliced with stock G-code print as before. `homing.cfg`, `nozzle_motion.cfg`, and `printer_profile.cfg` hold the printer's own homing, cutter, wiper, and chute moves and positions; the installer picks them for the printer it detects. |
 | QIDI's `RESUME`, `CUT_FILAMENT_1`, `M106`, `M109.0`, `homing_override`, `_km_apply_print_offset`, and external spool sensor sections | Removed from QIDI's files and replaced by optimized versions. |
+| `officiall_filas_list.cfg` | On the Max 4 with firmware `01.01.06.04` or later, renames QIDI's filament 25 from `PA-CF` to `PA6-CF`, as QIDI did in that firmware. |
 | `saved_variables.cfg` | Adds missing defaults for [this project's settings](settings.md) and repairs missing QIDI Box tool mappings. Existing values are kept. |
 | `config/qidi_filament_config` | A link to QIDI's filament files, for [editing them in Fluidd](qidi-box.md#editing-qidis-filament-list). Max 4 firmware `01.01.07.01` only. |
 
@@ -61,6 +62,6 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 ## What uninstall does
 
-Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the `msgspec` and `uvloop` added for Moonraker and Klipper, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, the service priorities and CPUs, the tuning and `irqbalance` changes, which brings QIDI's tuning script back, and the filament folder link, and restores Moonraker's service list. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
+Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the `msgspec` and `uvloop` added for Moonraker and Klipper, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, the service priorities and CPUs, the tuning and `irqbalance` changes, which brings QIDI's tuning script back, and the filament folder link, and restores Moonraker's service list. Values that QIDI's own configuration has for the printer's firmware, such as `query_cycle` 10, stay as they are. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
 Firmware is never changed by install, update, or uninstall unless you [ask for it](firmware.md).
