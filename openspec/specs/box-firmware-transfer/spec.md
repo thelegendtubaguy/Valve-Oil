@@ -13,11 +13,11 @@ The Box and mainboard transfer tools SHALL refuse serial access unless the opera
 - **THEN** the tool fails before opening the board's serial port
 
 ### Requirement: Only the board scripts and installs reach the transfer tools
-`box-firmware.sh`, `mainboard-firmware.sh`, and, for USB Boxes only, the end of an install or update SHALL be the only callers of the transfer tools. Automatic updates MUST NOT reach either tool, and `--yes` MUST NOT reach the mainboard tool.
+`box-firmware.sh`, `mainboard-firmware.sh`, and, for USB Boxes only, the end of an install or update, including the install an automatic update runs, SHALL be the only callers of the transfer tools. Automatic updates MUST reach the Box tool only through the install flow and MUST NOT reach the mainboard tool, and `--yes` MUST NOT reach the mainboard tool.
 
 #### Scenario: Automatic update
 - **WHEN** an automatic update installs a release
-- **THEN** neither transfer tool runs
+- **THEN** the mainboard transfer tool does not run, and the Box transfer tool runs only to install the bundled Box firmware
 
 ### Requirement: Transfers admit only known images and bootloaders
 The tools SHALL program only the pinned stock or patched application for that board, and only through a bootloader whose exact build has been validated, using backups of that board's bootloader and application. The mainboard fix is offered only on the Max 4. An erasing transfer MUST require explicit write confirmation. It MUST NOT resend the start command or an unacknowledged first data packet, because the bootloader's write position only rewinds at reset.
@@ -46,11 +46,11 @@ A Box or mainboard flash SHALL be reported as installed only when a full applica
 - **THEN** verification fails regardless of acknowledgements or version
 
 ### Requirement: Unrecognized builds are captured without reset
-When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, and MUST NOT reset, erase, or program that board.
+When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, SHALL ask the operator to attach only that summary to a support issue, and MUST NOT reset, erase, or program that board.
 
 #### Scenario: Unrecognized bootloader
 - **WHEN** a board's bootloader matches no admitted build
-- **THEN** that board is reported as not changed with the summary's location, and no reset, erase, or programming command is sent to it
+- **THEN** that board is reported as not changed with the summary's location and where to open a support issue, and no reset, erase, or programming command is sent to it
 
 ### Requirement: Unverified flashes block until rescue
 When programming may have begun and readback has not verified the board, the flow SHALL leave Klipper and the touchscreen stopped and keep a pending record that blocks every installer operation except that board's rescue. Rescue SHALL program QIDI's stock application from a verified backup or the printer's update folder through the waiting bootloader and verify it by readback before restoring services and clearing the record.

@@ -35,7 +35,7 @@ The script:
 2. Saves the read-back under `~/printer_data/.tltg_mainboard_firmware_backups/`.
 3. Builds the patched image from the mainboard's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged.
 
-A mainboard that already has the requested firmware is skipped. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a GitHub issue; the `.bin` files stay private.
+A mainboard that already has the requested firmware is skipped. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private.
 
 ## If a flash fails
 

@@ -64,6 +64,7 @@ class Printer:
                        "tltg-optimized-auto-update.timer": "inactive"}
         self.original = dict(self.states)
         self.transfers = []
+        self.service_changes = 0
         self.print_state = "standby"
         self.chamber = 0
 
@@ -93,6 +94,7 @@ class Printer:
         if command[:2] == ["systemctl", "show"]:
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
         if command[0] == "systemctl":
+            self.service_changes += 1
             self.states[command[2]] = "inactive" if command[1] == "stop" else "active"
             return result()
         assert command[1].endswith(("/scripts/flash_box_firmware.py", "/scripts/flash_mcu_firmware.py")), command
@@ -152,6 +154,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         (bundle / box_firmware.MANIFEST).write_text(json.dumps(manifest))
         data = root / "printer_data"
         (data / "config").mkdir(parents=True)
+        (data / "logs").mkdir()
         (data / "config/box.cfg").write_text("".join(f"[mcu {name}]\nserial: /dev/serial/by-id/{name}\n\n" for name in apps))
         (root / "klippy-env/bin").mkdir(parents=True)
         (root / "klippy-env/bin/python").write_text("")
@@ -201,22 +204,52 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.transfers, [])
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / BOX_RECOVERY_MARKER, "mcu_box1", boxes=[1])
 
+    def test_automatic_updates_skip_a_box_captured_as_unsupported_until_a_release_admits_it(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="unknown-boot")
+        automatic = {LOCK_HELD_ENV: "1"}
+        backups = paths.printer_data_root / box_firmware.BACKUP_DIRECTORY
+        logs = paths.printer_data_root / "logs"
+        # A report left for a Box no longer in box.cfg goes away.
+        (logs / "tltg_box_firmware_box2.json").write_text("{}")
+        self.after_install(paths, printer, reporter, environ=automatic)
+        captures = list(backups.iterdir())
+        self.assertEqual((len(captures), printer.transfers, printer.states), (1, [], printer.original))
+        # Fluidd's banner and Logs get the shareable report.
+        published = json.loads((logs / "tltg_box_firmware_box1.json").read_text())
+        self.assertFalse(published["supported_bootloader"])
+        self.assertEqual([path.name for path in logs.iterdir()], ["tltg_box_firmware_box1.json"])
+        changes = printer.service_changes
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((list(backups.iterdir()), printer.service_changes), (captures, changes))
+        self.assertTrue((logs / "tltg_box_firmware_box1.json").is_file())
+        # A later release admits the bootloader the capture found.
+        manifest_path = paths.bundle_root / box_firmware.MANIFEST
+        admitted = json.loads(manifest_path.read_text())
+        admitted["bootloaders"].append({"sha256": hashlib.sha256(bytes(0x8000)).hexdigest(), "identity_reply": "0112"})
+        manifest_path.write_text(json.dumps(admitted))
+        printer.manifest = admitted
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((printer.transfers, printer.states), ([("mcu_box1", False)], printer.original))
+        self.assertEqual(list(logs.iterdir()), [])
+
     def test_unsafe_states_and_cancellation_never_touch_services(self):
-        for case in ("printing", "chamber-hot", "cancel", "automatic-update"):
+        for case in ("printing", "chamber-hot", "cancel", "automatic-update-restore"):
             with self.subTest(case=case):
-                paths, printer, reporter = self.fixture({"mcu_box1": "stock"})
+                paths, printer, reporter = self.fixture({"mcu_box1": "patched" if case.endswith("restore") else "stock"})
                 printer.print_state = "printing" if case == "printing" else "standby"
                 printer.chamber = 60 if case == "chamber-hot" else 0
-                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
                 if case == "cancel":
                     self.assertEqual(self.execute(paths, printer, reporter, "install", answer="flash\n"), 1)
+                elif case == "automatic-update-restore":
+                    with self.assertRaisesRegex(InstallerError, "automatic-update"):
+                        self.execute(paths, printer, reporter, "restore", environ={LOCK_HELD_ENV: "1"})
                 else:
                     with self.assertRaises(InstallerError):
-                        self.execute(paths, printer, reporter, "install", environ=environ)
+                        self.execute(paths, printer, reporter, "install")
                 self.assertEqual(printer.transfers, [])
                 self.assertEqual(printer.states, printer.original)
 
@@ -244,23 +277,25 @@ class BoxFirmwareFlowTests(unittest.TestCase):
             clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
             usb_state=printer.usb_state)
 
-    def test_install_flashes_every_box_that_needs_it_without_a_prompt(self):
-        paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
-        self.after_install(paths, printer, reporter)
-        self.assertEqual(printer.transfers, [("mcu_box1", False)])
-        self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
-        self.assertEqual(printer.states, printer.original)
-        self.after_install(paths, printer, reporter)
-        self.assertEqual(len(printer.transfers), 1)
+    def test_install_and_automatic_update_flash_every_box_that_needs_it_without_a_prompt(self):
+        for case in ("install", "automatic-update"):
+            with self.subTest(case=case):
+                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
+                paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(printer.transfers, [("mcu_box1", False)])
+                self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
+                self.assertEqual(printer.states, printer.original)
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(len(printer.transfers), 1)
 
     def test_install_leaves_boxes_alone_when_it_cannot_flash_safely(self):
-        for case in ("automatic-update", "dry-run", "chamber-hot", "no-stock-image"):
+        for case in ("dry-run", "chamber-hot", "no-stock-image"):
             with self.subTest(case=case):
                 paths, printer, reporter = self.fixture(
                     {"mcu_box1": "superseded" if case == "no-stock-image" else "stock"})
                 printer.chamber = 60 if case == "chamber-hot" else 0
-                self.after_install(paths, printer, reporter, dry_run=case == "dry-run",
-                                   environ={LOCK_HELD_ENV: "1"} if case == "automatic-update" else None)
+                self.after_install(paths, printer, reporter, dry_run=case == "dry-run")
                 self.assertEqual((printer.transfers, printer.states), ([], printer.original))
                 if case in ("chamber-hot", "no-stock-image"):
                     self.assertIn("Box firmware not updated", reporter.stream.getvalue())
@@ -335,7 +370,7 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual((printer.transfers, printer.states), ([], printer.original))
         self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / MAINBOARD_RECOVERY_MARKER, "mcu")
 

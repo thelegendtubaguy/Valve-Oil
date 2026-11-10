@@ -232,6 +232,9 @@ class Printer:
     def get_reactor(self):
         return self.reactor
 
+    def get_start_args(self):
+        return {}
+
     def lookup_object(self, name, default=None):
         return self.objects.get(name, default)
 

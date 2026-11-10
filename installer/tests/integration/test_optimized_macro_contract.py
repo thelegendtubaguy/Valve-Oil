@@ -5,7 +5,7 @@ import re
 import types
 import unittest
 
-from installer.tests.helpers import REPO_ROOT
+from installer.tests.helpers import REPO_ROOT, temp_path
 from installer.tests.integration.test_macro_call_graph import (
     PRINTER_MACRO_ROOT,
     extract_gcode_lines,
@@ -1014,22 +1014,43 @@ spec.loader.exec_module(printer_warnings)
 
 class PrinterWarningsTest(unittest.TestCase):
     """Fluidd's banner and the console show one error while an axis has no
-    input shaper or no saved calibration, and none once both have one."""
+    input shaper or no saved calibration, and none once both have one, and a
+    warning for each Box the installer left a firmware report for."""
 
-    def warnings(self, shaper, unshaped_accel=10000):
+    def warnings(self, shaper, unshaped_accel=10000, log_dir=None):
         objects = {
             "tltg_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper),
             "gcode_macro _tltg_optimized_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
         }
+        handlers = {}
 
         class Printer:
+            def get_printer(self):
+                return self
+
+            def get_start_args(self):
+                return {"log_file": str(log_dir / "klippy.log")} if log_dir else {}
+
+            def register_event_handler(self, event, handler):
+                handlers[event] = handler
+
             def lookup_object(self, name, default=None):
                 return objects.get(name, default)
 
-        warnings = object.__new__(printer_warnings.PrinterWarnings)
-        warnings.printer = Printer()
-        warnings.failed = False
+        warnings = printer_warnings.PrinterWarnings(Printer())
+        handlers["klippy:ready"]()
         return warnings.get_status(1.)["warnings"]
+
+    def test_unsupported_box_firmware_reports(self) -> None:
+        calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
+        log_dir = temp_path("printer-warnings-")
+        for name in ("klippy.log", "tltg_box_firmware_box2.json", "tltg_rfid_1.json"):
+            (log_dir / name).write_text("{}")
+        box, = self.warnings(calibrated, log_dir=log_dir)
+        self.assertEqual((box["id"], box["level"]), ("box_firmware_unsupported_box2", "warning"))
+        self.assertIn("tltg_box_firmware_box2.json", box["message"])
+        (log_dir / "tltg_box_firmware_box2.json").unlink()
+        self.assertEqual(self.warnings(calibrated, log_dir=log_dir), [])
 
     def test_input_shaper_states(self) -> None:
         self.assertEqual(self.warnings({"loaded": True, "unshaped_axes": "", "saved": True}), [])

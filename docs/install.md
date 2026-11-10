@@ -86,7 +86,7 @@ The installer won't install, update, or uninstall while a print is running or pa
 
 ### Automatic updates
 
-If you turn them on, the printer checks for a new release 5 minutes after it starts and then every hour, and installs it, skipping any check while a print is running or paused or a heater is on, such as during a preheat. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes. Automatic updates never flash [QIDI Box firmware](firmware.md#qidi-box-firmware). When a release brings a new one, run the install command again.
+If you turn them on, the printer checks for a new release 5 minutes after it starts and then every hour, and installs it, skipping any check while a print is running or paused or a heater is on, such as during a preheat. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes. Like an install, an automatic update flashes the [QIDI Box firmware](firmware.md#qidi-box-firmware) to each USB Box that needs it, which stops Klipper and the touchscreen for about four minutes per Box. Keep the printer and every Box powered on while an update runs.
 
 Turning them on needs `sudo` once. The installer uses QIDI's public default password (`qiditech`), or the `TLTG_OPTIMIZED_SUDO_PASSWORD` environment variable if set, and asks for a password if that doesn't work.
 
