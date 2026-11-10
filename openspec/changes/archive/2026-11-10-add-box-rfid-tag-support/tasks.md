@@ -32,5 +32,5 @@
 ## 6. Release
 
 - [x] 6.1 Update `firmware/BOX_FIRMWARE.md`, `docs/firmware.md`, `docs/qidi-box.md`, `docs/settings.md`, `docs/under-the-hood.md`, and the README.
-- [ ] 6.2 Bump the package version and add the `CHANGELOG.md` section.
-- [ ] 6.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.
+- [x] 6.2 Bump the package version and add the `CHANGELOG.md` section.
+- [x] 6.3 Run `openspec validate --all --strict`, the installer core tests, and the bundle smoke test.

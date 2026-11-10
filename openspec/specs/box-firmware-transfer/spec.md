@@ -30,6 +30,14 @@ The tools SHALL program only the pinned stock or patched application for that bo
 - **WHEN** the image, backup, confirmation, or bootloader identity is not admitted
 - **THEN** no reset or erase command is sent
 
+### Requirement: Earlier Box builds are updated from QIDI's stock image
+A Box application that matches an earlier build of this project listed in the manifest SHALL be admitted for backups and replaced, and its patched image SHALL be built from QIDI's stock application found in the Box firmware backups or the printer's update folder.
+
+#### Scenario: Earlier Valve Oil Box firmware is updated
+- **WHEN** `box-firmware.sh install` finds a Box running an earlier build of this project
+- **THEN** it builds the current image from QIDI's verified stock application and installs it
+- **AND** with no verified stock application available it stops before any service is stopped or Box is reset
+
 ### Requirement: Installation evidence uses readback
 A Box or mainboard flash SHALL be reported as installed only when a full application readback matches the selected image and the bootloader readback matches the pre-transfer backup. Transfer acknowledgements and the reported version string are not installation evidence.
 

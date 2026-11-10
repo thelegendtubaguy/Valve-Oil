@@ -26,13 +26,29 @@ The generated THR SHALL immediately request another task when the LIS2DW FIFO co
 - **AND** sample reporting and overflow accounting remain intact
 - **AND** all other archive members and the THR protocol dictionary are byte-identical to the input
 
-### Requirement: Box changes are limited to the shutdown fix
-The Box image SHALL be generated only from the pinned stock `02.03.01.21` application and SHALL differ from it only in skipping QIDI's faulty Box feeder shutdown block, the data dictionary's version string `02.03.01.21-tltg-shutdownfix1`, and the `identify` length constants for that dictionary. The bundle MUST NOT contain a QIDI Box image; the installer generates the patched image on the printer from the Box's own readback.
+### Requirement: Box changes are limited to the shutdown fix and RFID commands
+The Box image SHALL be generated only from the pinned stock `02.03.01.21` application. It SHALL differ from it only in skipping QIDI's faulty Box feeder shutdown block, in the RFID commands' handlers, command-table entries, and response encoders, and in its data dictionary. The bundle MUST NOT contain a QIDI Box image; the installer generates the patched image on the printer.
 
 #### Scenario: Patched Box handles a shutdown
 - **WHEN** a Box running the patched image shuts down
 - **THEN** it completes its shutdown handlers and reports the original shutdown reason instead of re-entering shutdown
-- **AND** the data dictionary it serves is identical to stock apart from the version
+
+### Requirement: Box RFID commands replace QIDI's unused reader commands
+The `fm17550_select` and `fm17550_transceive` handlers built from `firmware/box-rfid/` SHALL replace the bodies of QIDI's `fm17550_write_card_cb`, `fm17550_init_cb`, and `fm17550_read_regs_cb`, and commands whose old bodies hold new code MUST be dispatched to `debug_nop`. The data dictionary SHALL differ from stock only in those commands and responses and the version `02.03.01.21-valve-oil.1`, with matching `identify` length constants. QIDI's `fm17550_read_card_cb` MUST stay unchanged.
+
+#### Scenario: Select reports any ISO14443A tag
+- **WHEN** the host sends `fm17550_select` for a reader with a tag in its field, including a tag halted by an earlier read
+- **THEN** the Box wakes the tag with WUPA, selects it through every cascade level, and returns status 1 with its ATQA, UID bytes, and SAK
+- **AND** with no tag it returns status 0, and with an unresponsive reader status 2
+
+#### Scenario: Transceive runs one reader exchange
+- **WHEN** the host sends `fm17550_transceive` with Transceive or MFAuthent and a frame of 1 to 32 bytes
+- **THEN** the Box runs that exchange on the selected tag and returns the reader's error flags, Status2, the received bit count, and at most 44 received bytes
+- **AND** any other reader command or frame length is refused without touching the reader
+
+#### Scenario: QIDI's read is unchanged
+- **WHEN** QIDI's host software reads a tag with `fm17550_read_card_cb`
+- **THEN** the Box behaves exactly as stock
 
 ### Requirement: Mainboard changes are limited to the closed-loop reply fix
 The Max 4 mainboard image SHALL be generated only from the pinned stock `02.01.01.12` application and SHALL differ from it only in its closed-loop reply-length lookup, the dictionary version `02.01.01.12-tltg-clreplies1` with matching `identify` lengths, and the lookup placed in the space the recompressed dictionary frees. The lookup MUST list only function codes whose driver replies have one fixed length. The bundle MUST NOT contain a QIDI mainboard image.
