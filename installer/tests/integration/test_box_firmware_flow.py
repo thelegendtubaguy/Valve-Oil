@@ -22,7 +22,7 @@ from scripts.build_box_firmware import apply_patches
 USB = {"mcu_box1": "2-1.4.2", "mcu_box2": "2-1.4.1.2", "mcu": "2-1.3"}
 
 
-def synthetic_manifest(name="max4-box-shutdown-fix-v1.json"):
+def synthetic_manifest(name="max4-box-valve-oil-v1.json"):
     manifest = json.loads((REPO_ROOT / "firmware" / name).read_text())
     box = protocol.image_spec(manifest)
     stock = bytearray(box["size"])
@@ -42,20 +42,29 @@ def synthetic_manifest(name="max4-box-shutdown-fix-v1.json"):
         image[offset:offset + len(value)] = value
     box["stock_sha256"] = hashlib.sha256(stock).hexdigest()
     box["patched_sha256"] = hashlib.sha256(image).hexdigest()
+    if "superseded" in box:
+        box["superseded"] = [{"patch_id": "earlier", "version": box["stock_version"] + "-earlier",
+                              "sha256": hashlib.sha256(superseded_image(stock)).hexdigest()}]
     boot = bytes(range(256)) * 128
     manifest["bootloaders"] = [{"sha256": hashlib.sha256(boot).hexdigest(), "identity_reply": "0112"}]
     return manifest, bytes(stock), boot
 
 
+def superseded_image(stock):
+    return b"\x01" + stock[1:]
+
+
 class Printer:
     def __init__(self, manifest, stock, boot, apps, *, failure=None):
         self.manifest, self.boot, self.failure = manifest, boot, failure
-        self.apps = {name: (apply_patches(stock, protocol.image_spec(manifest), "test") if kind == "patched" else stock)
-                     for name, kind in apps.items()}
+        images = {"stock": stock, "patched": apply_patches(stock, protocol.image_spec(manifest), "test"),
+                  "superseded": superseded_image(stock)}
+        self.apps = {name: images[kind] for name, kind in apps.items()}
         self.states = {"klipper.service": "active", "qidi-client.service": "active",
                        "tltg-optimized-auto-update.timer": "inactive"}
         self.original = dict(self.states)
         self.transfers = []
+        self.service_changes = 0
         self.print_state = "standby"
         self.chamber = 0
 
@@ -66,7 +75,9 @@ class Printer:
                   "extruder": {"target": 0}, "heater_bed": {"target": 0}, "heater_generic chamber": {"target": self.chamber}}
         for name, app in self.apps.items():
             kind = protocol.image_identity(app, self.manifest)
-            version = protocol.image_spec(self.manifest)["patched_version" if kind == "patched" else "stock_version"]
+            spec = protocol.image_spec(self.manifest)
+            version = (spec["superseded"][0]["version"] if kind == "superseded"
+                       else spec["patched_version" if kind == "patched" else "stock_version"])
             status["mcu" if name == "mcu" else "mcu " + name] = {"mcu_version": version}
         return io.BytesIO(json.dumps({"result": {"status": status}}).encode())
 
@@ -83,6 +94,7 @@ class Printer:
         if command[:2] == ["systemctl", "show"]:
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
         if command[0] == "systemctl":
+            self.service_changes += 1
             self.states[command[2]] = "inactive" if command[1] == "stop" else "active"
             return result()
         assert command[1].endswith(("/scripts/flash_box_firmware.py", "/scripts/flash_mcu_firmware.py")), command
@@ -139,14 +151,16 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         (bundle / "scripts").mkdir(parents=True)
         (bundle / "firmware").mkdir()
         (bundle / "scripts/flash_box_firmware.py").write_text("# fixture")
-        (bundle / "firmware/max4-box-shutdown-fix-v1.json").write_text(json.dumps(manifest))
+        (bundle / box_firmware.MANIFEST).write_text(json.dumps(manifest))
         data = root / "printer_data"
         (data / "config").mkdir(parents=True)
+        (data / "logs").mkdir()
         (data / "config/box.cfg").write_text("".join(f"[mcu {name}]\nserial: /dev/serial/by-id/{name}\n\n" for name in apps))
         (root / "klippy-env/bin").mkdir(parents=True)
         (root / "klippy-env/bin/python").write_text("")
         paths = resolve_runtime_paths(bundle_root=bundle, environ=build_env(data, moonraker_url="http://printer.invalid/printer/objects/query"))
         printer = Printer(manifest, stock, boot, apps, **kwargs)
+        printer.stock = stock
         reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
         return paths, printer, reporter
 
@@ -171,28 +185,71 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(protocol.image_identity(printer.apps["mcu_box2"], printer.manifest), "stock")
         self.assertEqual(printer.states, printer.original)
 
+    def test_install_updates_earlier_tltg_firmware_from_qidi_stock_image(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "superseded", "mcu_box2": "stock"})
+        with self.assertRaises(InstallerError):
+            self.execute(paths, printer, reporter, "install")
+        self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+        update = paths.printer_data_root.parent / "update"
+        update.mkdir()
+        (update / "QD_MAX4_BOX_02.03.01.21_20260124.bin").write_bytes(printer.stock)
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual(sorted(printer.transfers), [("mcu_box1", False), ("mcu_box2", False)])
+        self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
+        self.assertEqual(printer.states, printer.original)
+
     def test_unsupported_bootloader_is_captured_without_programming(self):
         paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="unknown-boot")
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual(printer.transfers, [])
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / BOX_RECOVERY_MARKER, "mcu_box1", boxes=[1])
 
+    def test_automatic_updates_skip_a_box_captured_as_unsupported_until_a_release_admits_it(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="unknown-boot")
+        automatic = {LOCK_HELD_ENV: "1"}
+        backups = paths.printer_data_root / box_firmware.BACKUP_DIRECTORY
+        logs = paths.printer_data_root / "logs"
+        # A report left for a Box no longer in box.cfg goes away.
+        (logs / "tltg_box_firmware_box2.json").write_text("{}")
+        self.after_install(paths, printer, reporter, environ=automatic)
+        captures = list(backups.iterdir())
+        self.assertEqual((len(captures), printer.transfers, printer.states), (1, [], printer.original))
+        # Fluidd's banner and Logs get the shareable report.
+        published = json.loads((logs / "tltg_box_firmware_box1.json").read_text())
+        self.assertFalse(published["supported_bootloader"])
+        self.assertEqual([path.name for path in logs.iterdir()], ["tltg_box_firmware_box1.json"])
+        changes = printer.service_changes
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((list(backups.iterdir()), printer.service_changes), (captures, changes))
+        self.assertTrue((logs / "tltg_box_firmware_box1.json").is_file())
+        # A later release admits the bootloader the capture found.
+        manifest_path = paths.bundle_root / box_firmware.MANIFEST
+        admitted = json.loads(manifest_path.read_text())
+        admitted["bootloaders"].append({"sha256": hashlib.sha256(bytes(0x8000)).hexdigest(), "identity_reply": "0112"})
+        manifest_path.write_text(json.dumps(admitted))
+        printer.manifest = admitted
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((printer.transfers, printer.states), ([("mcu_box1", False)], printer.original))
+        self.assertEqual(list(logs.iterdir()), [])
+
     def test_unsafe_states_and_cancellation_never_touch_services(self):
-        for case in ("printing", "chamber-hot", "cancel", "automatic-update"):
+        for case in ("printing", "chamber-hot", "cancel", "automatic-update-restore"):
             with self.subTest(case=case):
-                paths, printer, reporter = self.fixture({"mcu_box1": "stock"})
+                paths, printer, reporter = self.fixture({"mcu_box1": "patched" if case.endswith("restore") else "stock"})
                 printer.print_state = "printing" if case == "printing" else "standby"
                 printer.chamber = 60 if case == "chamber-hot" else 0
-                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
                 if case == "cancel":
                     self.assertEqual(self.execute(paths, printer, reporter, "install", answer="flash\n"), 1)
+                elif case == "automatic-update-restore":
+                    with self.assertRaisesRegex(InstallerError, "automatic-update"):
+                        self.execute(paths, printer, reporter, "restore", environ={LOCK_HELD_ENV: "1"})
                 else:
                     with self.assertRaises(InstallerError):
-                        self.execute(paths, printer, reporter, "install", environ=environ)
+                        self.execute(paths, printer, reporter, "install")
                 self.assertEqual(printer.transfers, [])
                 self.assertEqual(printer.states, printer.original)
 
@@ -213,7 +270,45 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
 
-    def test_box_firmware_is_only_reachable_through_its_own_mode(self):
+    def after_install(self, paths, printer, reporter, *, environ=None, dry_run=False):
+        box_firmware.flash_box_firmware_after_install(
+            paths=paths, reporter=reporter, dry_run=dry_run, environ=environ, input_stream=None,
+            run=printer.run, urlopen=printer.urlopen, sleep=lambda seconds: None,
+            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
+            usb_state=printer.usb_state)
+
+    def test_install_and_automatic_update_flash_every_box_that_needs_it_without_a_prompt(self):
+        for case in ("install", "automatic-update"):
+            with self.subTest(case=case):
+                environ = {LOCK_HELD_ENV: "1"} if case == "automatic-update" else None
+                paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(printer.transfers, [("mcu_box1", False)])
+                self.assertEqual({protocol.image_identity(app, printer.manifest) for app in printer.apps.values()}, {"patched"})
+                self.assertEqual(printer.states, printer.original)
+                self.after_install(paths, printer, reporter, environ=environ)
+                self.assertEqual(len(printer.transfers), 1)
+
+    def test_install_leaves_boxes_alone_when_it_cannot_flash_safely(self):
+        for case in ("dry-run", "chamber-hot", "no-stock-image"):
+            with self.subTest(case=case):
+                paths, printer, reporter = self.fixture(
+                    {"mcu_box1": "superseded" if case == "no-stock-image" else "stock"})
+                printer.chamber = 60 if case == "chamber-hot" else 0
+                self.after_install(paths, printer, reporter, dry_run=case == "dry-run")
+                self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+                if case in ("chamber-hot", "no-stock-image"):
+                    self.assertIn("Box firmware not updated", reporter.stream.getvalue())
+
+    def test_install_stops_with_rescue_instructions_after_an_unverified_flash(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="transfer")
+        with self.assertRaises(box_firmware.BoxFirmwareError):
+            self.after_install(paths, printer, reporter)
+        self.assertTrue((paths.printer_data_root / BOX_RECOVERY_MARKER).is_file())
+        self.assertTrue(all(state == "inactive" for state in printer.states.values()))
+        self.assertIn("rescue --box 1", reporter.stream.getvalue())
+
+    def test_installs_reach_box_firmware_and_other_modes_do_not(self):
         self.assertEqual(parse_args(["box-firmware", "install", "--box", "1"]).box, [1])
         for argv in (["box-firmware"], ["box-firmware", "install", "--yes"], ["install", "--box", "1"], ["install", "install"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
@@ -221,8 +316,9 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         root = copy_base_runtime()
         env = build_env(root, moonraker_url="http://printer.invalid")
         with patch("installer.runtime.cli.run_install", return_value=InstallResult((), (), "label", None)), \
-                patch("installer.runtime.cli.run_box_firmware", side_effect=AssertionError("Unexpected Box firmware access")):
+                patch("installer.runtime.cli.flash_box_firmware_after_install") as after_install:
             self.assertEqual(main(["install", "--yes", "--plain"], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO()), 0)
+        self.assertFalse(after_install.call_args.kwargs["dry_run"])
 
 
 class MainboardFirmwareFlowTests(unittest.TestCase):
@@ -274,7 +370,7 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual((printer.transfers, printer.states), ([], printer.original))
         self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / MAINBOARD_RECOVERY_MARKER, "mcu")
 

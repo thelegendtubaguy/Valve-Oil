@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the hash-locked QIDI Box shutdown fix from a stock Box image."""
+"""Generate the hash-locked QIDI Box firmware (shutdown fix and RFID commands) from a stock Box image."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-box-shutdown-fix-v1.json"
+PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-box-valve-oil-v1.json"
 
 
 def sha256(data: bytes) -> str:

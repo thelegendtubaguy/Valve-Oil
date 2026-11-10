@@ -33,7 +33,7 @@ If you want to help support content like this, consider subscribing on YouTube o
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
 5. Slice using your printer's TLTG Optimized profile, `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode` on the Max 4. Optionally, make a copy and customize it.
 
-The installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**; see [Firmware fixes](docs/firmware.md).
+The installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**. At the end, it flashes the [QIDI Box firmware](docs/firmware.md#qidi-box-firmware) to each USB Box that needs it, which stops Klipper and the touchscreen for about four minutes per Box. See [Firmware fixes](docs/firmware.md).
 
 [Dry run, automatic updates, updating, and uninstalling →](docs/install.md)
 
@@ -51,6 +51,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 - Cut, unload, and eject filament without heating the nozzle.
 - Box heater control from Fluidd, and Box processor temperatures.
 - Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
+- Read Anycubic, Elegoo, and Bambu Lab spool tags, with every one of their filaments in QIDI's list.
 
 [QIDI Box →](docs/qidi-box.md)
 
@@ -85,7 +86,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 - [Every setting and command in one table](docs/settings.md)
 - [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
-- [Optional firmware fixes](docs/firmware.md) for the toolhead board, the QIDI Box, and the Max 4 mainboard
+- [Firmware fixes](docs/firmware.md) for the QIDI Box, which the installer flashes, and optional ones for the toolhead board and the Max 4 mainboard
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)
 - [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)

@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_thr_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if tool_help.returncode != 0:
         raise SystemExit(tool_help.stdout + tool_help.stderr)
-    for relative in ("box-firmware.sh", "scripts/flash_box_firmware.py", "scripts/build_box_firmware.py", "firmware/max4-box-shutdown-fix-v1.json", "firmware/BOX_FIRMWARE.md"):
+    for relative in ("box-firmware.sh", "scripts/flash_box_firmware.py", "scripts/build_box_firmware.py", "firmware/max4-box-valve-oil-v1.json", "firmware/BOX_FIRMWARE.md"):
         if not (bundle_root / relative).is_file():
             raise SystemExit("bundle is missing Box firmware support: " + relative)
     box_tool_help = run_command([sys.executable, str(bundle_root / "scripts/flash_box_firmware.py"), "--help"], cwd=bundle_root, env=os.environ.copy())
@@ -199,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
             for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
                          "box_heater_refresh", "klipper_health", "macro_status", "printer_warnings", "klipper_fixes", "save_variables_fast",
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
-                         "box_slot_jog", "box_flow_recovery", "cold_cut",
+                         "box_slot_jog", "box_rfid", "filament_catalog", "box_flow_recovery", "cold_cut",
                          "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard", "step_loss_monitor", "velocity_limit",
                          "resonance_sweep", "pause_timeout")
         }

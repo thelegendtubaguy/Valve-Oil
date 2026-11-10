@@ -58,7 +58,9 @@ def image_identity(data: bytes, manifest: dict) -> str | None:
     spec = image_spec(manifest)
     if len(data) != spec["size"]:
         return None
-    return {spec["stock_sha256"]: "stock", spec["patched_sha256"]: "patched"}.get(digest(data))
+    known = {entry["sha256"]: "superseded" for entry in spec.get("superseded", ())}
+    known.update({spec["stock_sha256"]: "stock", spec["patched_sha256"]: "patched"})
+    return known.get(digest(data))
 
 
 def admitted_image(data: bytes, manifest: dict) -> str:

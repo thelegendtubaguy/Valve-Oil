@@ -60,7 +60,7 @@ Each Box generates:
 
 For `box0`, generated slots are `slot0` through `slot3`, heater/sensor/fan names end in `box1`, and RFID readers are `card_reader_1` and `card_reader_2`. For `box1`, generated slots are `slot4` through `slot7`, names end in `box2`, and readers are `card_reader_3` and `card_reader_4`.
 
-A one-Box generated graph creates two reader objects while `multi_color_controller.LocalAdapter.connect()` was recovered looking up readers `1` through `4`. Four-slot-to-two-chip-select reader multiplexing is unresolved.
+A one-Box generated graph creates two reader objects while `multi_color_controller.LocalAdapter.connect()` was recovered looking up readers `1` through `4`. **Harness-recovered:** `box_stepper` reads slot `N` through `card_reader_{N//2+1}`, so each reader serves two adjacent slots.
 
 An older include inventory named `temperature_sensor box1_env`; generated-source and Moonraker captures identify `heater_temp_a_box1` and `heater_temp_b_box1` as the active generated NTC sensor names, with a separate `aht20_f heater_box1` object.
 

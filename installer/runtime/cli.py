@@ -46,7 +46,7 @@ from .system_optimizations import (
 )
 from .uninstall import run_uninstall
 from .thr_firmware import flash_thr_firmware, validate_thr_firmware_request
-from .box_firmware import run_box_firmware
+from .box_firmware import flash_box_firmware_after_install, run_box_firmware
 from .mainboard_firmware import run_mainboard_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
@@ -401,6 +401,10 @@ def main(
                         paths=paths, reporter=reporter, dry_run=args.dry_run,
                         input_stream=input_stream, environ=env,
                     )
+                flash_box_firmware_after_install(
+                    paths=paths, reporter=reporter, dry_run=args.dry_run,
+                    input_stream=input_stream, environ=env,
+                )
             else:
                 run_uninstall(
                     paths,

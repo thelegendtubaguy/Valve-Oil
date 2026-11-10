@@ -20,6 +20,8 @@ The installer checks which printer it's on and its firmware (see [Supported prin
 - **QIDI Box setup**, when Box support is off or tool numbers don't match slot numbers.
 - **Restarting Klipper** to apply the changes.
 
+At the end, without asking, it flashes the [QIDI Box firmware](firmware.md#qidi-box-firmware) to each USB Box that needs it. Klipper and the touchscreen stop for about four minutes per Box. Keep the printer and every Box powered on until the installer finishes.
+
 It applies the [OS optimizations](#os-optimizations) without asking. The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes. When they need a reboot, the installer reboots the printer about 10 seconds after it finishes.
 
 After installing, close every Fluidd tab and open Fluidd again.
@@ -84,7 +86,7 @@ The installer won't install, update, or uninstall while a print is running or pa
 
 ### Automatic updates
 
-If you turn them on, the printer checks for a new release 5 minutes after it starts and then every hour, and installs it, skipping any check while a print is running or paused or a heater is on, such as during a preheat. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes.
+If you turn them on, the printer checks for a new release 5 minutes after it starts and then every hour, and installs it, skipping any check while a print is running or paused or a heater is on, such as during a preheat. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes. Like an install, an automatic update flashes the [QIDI Box firmware](firmware.md#qidi-box-firmware) to each USB Box that needs it, which stops Klipper and the touchscreen for about four minutes per Box. Keep the printer and every Box powered on while an update runs.
 
 Turning them on needs `sudo` once. The installer uses QIDI's public default password (`qiditech`), or the `TLTG_OPTIMIZED_SUDO_PASSWORD` environment variable if set, and asks for a password if that doesn't work.
 
