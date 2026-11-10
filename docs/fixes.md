@@ -65,6 +65,12 @@ QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These l
 
 `klippy.log` lists the fixes applied at each start. A fix is skipped, and listed as skipped, if the Klipper code it replaces isn't exactly the version it was written for.
 
+## Probe points retrying forever
+
+When a point's two probe samples disagree by more than `samples_tolerance` (0.02 mm), Klipper probes the point again, up to `samples_tolerance_retries` times (10). QIDI's Klipper restarted that count on every retry, so a point whose samples never agreed was probed forever, and print start hung on it. The point now gets at most that many retries, then the bed mesh, `Z_TILT_ADJUST`, or `PROBE` fails with `Probe samples exceed samples_tolerance`, as in upstream Klipper. During print start that error stops the print.
+
+QIDI also re-zeroed the nozzle load cell for the retry while the nozzle was still pressed on the bed. On a Max 4, the samples after it read 45–57 µm low, and they went into the mesh. The load cell is now re-zeroed once the nozzle has lifted off the bed, as it is before every point. The Max 4 and the Plus 5 have the same code. This fix comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check.
+
 ## Motors turning on late
 
 On the Max 4, QIDI's Klipper turns a motor on 0.3 seconds before it moves, so the motor holds its position first. After homing turns X and Y off, the first homing move starts only about 0.16 seconds ahead, so the turn-on was scheduled in the past. The mainboard ran it as soon as it arrived and logged `Timer too close` in `klippy.log`, nearly always between the `ENABLE delay: stepper=stepper_x` and `stepper_y` lines. The turn-on now goes as early as the mainboard can still take it on time, about 0.14 seconds before the move during homing, and never after the move. When 0.3 seconds early is still possible, nothing changes. QIDI's `ENABLE delay` line in `klippy.log` shows the time used. It comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check. The Plus 5's Klipper turns motors on at the move, so it needs no change.

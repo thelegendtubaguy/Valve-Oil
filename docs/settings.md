@@ -35,6 +35,8 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 | [`TLTG_RESET_TOOL_MAPPINGS`](tools.md) | Restores the default Box tool-to-slot mapping. Idle only. |
 | [`TLTG_STEP_LOSS_CORRECT`](tools.md#correcting-the-position-after-a-slip) | Moves Klipper's X/Y position by the slip the X and Y motors report since X and Y were homed, instead of homing. Needs the step-loss monitor on. Max 4 only. |
 | [`TLTG_TEST_PROBE CONFIRM=1`](tools.md#nozzle-load-cell-check) | Checks the nozzle load cell without moving. |
+| [`TLTG_BED_SOAK BED= [CHAMBER=]`](tools.md#bed-soak-test) | Measures how long the bed and chamber take to reach temperature and the bed to stop moving. |
+| [`TLTG_BED_SOAK_STOP`](tools.md#bed-soak-test) | Stops the bed soak test. |
 | [`TLTG_PROBE_ACCURACY_CENTER`](tools.md) | Probe accuracy at the bed center. |
 | [`TLTG_CORNER_BED_SCREW_CHECK`](tools.md) | Levels, then shows bed screw adjustments. |
 | [`SHAPER_CALIBRATE`, `TEST_RESONANCES` with `SWEEPING_PERIOD=`, `SWEEPING_ACCEL=`, `ACCEL_PER_HZ=`](tools.md#input-shaper-calibration) | Klipper's resonance test settings for one run. `SWEEPING_PERIOD=0` runs QIDI's test. |

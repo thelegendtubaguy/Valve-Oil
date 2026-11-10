@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.10.1"
+  version: "26.11.10.2"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -94,6 +94,7 @@ install:
       - "input_shaper.cfg"
       - "printer_warnings.cfg"
       - "resonance_sweep.cfg"
+      - "bed_soak.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -180,6 +181,12 @@ install:
     - id: pause_timeout
       source: "klipper/tltg/pause_timeout.py"
       destination: "klippy/extras/tltg_pause_timeout.py"
+    - id: probe_report
+      source: "klipper/tltg/probe_report.py"
+      destination: "klippy/extras/tltg_probe_report.py"
+    - id: bed_soak
+      source: "klipper/tltg/bed_soak.py"
+      destination: "klippy/extras/tltg_bed_soak.py"
 
   source_patches:
     - id: qidi_homing
@@ -600,10 +607,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-1ad1676
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-1ad1676/fluidd.zip
+    version: v1.37.7-tltg-8c1748d
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-8c1748d/fluidd.zip
     archive: system/fluidd.zip
-    sha256: fa4f94cc89555f6e42cf6c44d7b9a5ae90df654f6bc2868b0e32193663eff8ed
+    sha256: efcdb51f4755a2797e1756d93fac6b0b4eb896c5ebeb34ecb1fe289841421f29
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:

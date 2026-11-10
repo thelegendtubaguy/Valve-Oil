@@ -9,7 +9,7 @@
 - [QIDI Box](qidi-box.md): load and unload speed, eject, stuck and failed loads, Box heater, editing QIDI's filament list, Anycubic, Elegoo, and Bambu Lab spool tags, RS-485 Boxes
 - [Spoolman](spoolman.md): setting it up, a spool for each Box slot
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
-- [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor, input shaper calibration
+- [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor, input shaper calibration, bed soak test
 - [Settings and commands](settings.md): everything you can change, in one table
 
 ## When something's wrong
