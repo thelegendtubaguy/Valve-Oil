@@ -10,6 +10,8 @@ OPTION_RE = re.compile(
     r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_.-]+)(?P<sep>\s*[:=]\s*)(?P<rest>.*?)(?P<newline>\r?\n?)$"
 )
 COMMENT_PREFIXES = ("#", ";")
+# Klipper reads everything from this line on as SAVE_CONFIG data, and ignores all of it if anything else follows.
+AUTOSAVE_HEADER = "#*# <---------------------- SAVE_CONFIG ---------------------->"
 
 
 class TargetResolutionError(ValueError):
@@ -129,8 +131,15 @@ def delete_section(text: str, section_name: str) -> str:
 
 
 def append_section(text: str, section_text: str) -> str:
-    separator = "" if not text or text.endswith(("\n", "\r\n")) else "\n"
-    return text + separator + section_text
+    """Add a section at the end of the file's regular config, ahead of any SAVE_CONFIG block."""
+    lines = text.splitlines(keepends=True)
+    header_index = _autosave_header_index(lines)
+    if header_index is None:
+        separator = "" if not text or text.endswith(("\n", "\r\n")) else "\n"
+        return text + separator + section_text
+    if not section_text.endswith(("\n", "\r\n")):
+        section_text += "\n"
+    return "".join(lines[:header_index]) + section_text + "".join(lines[header_index:])
 
 
 
@@ -161,12 +170,32 @@ def parse_option_line(raw_line: str) -> ParsedOptionLine | None:
 
 
 
+def _autosave_header_index(lines: list[str]) -> int | None:
+    for index, line in enumerate(lines):
+        if line.strip() == AUTOSAVE_HEADER:
+            return index
+    return None
+
+
+
 def _section_spans(lines: list[str]) -> list[SectionSpan]:
     sections: list[SectionSpan] = []
     current_name = None
     current_header_index = None
     current_start = None
     for index, line in enumerate(lines):
+        if current_name is not None and line.strip() == AUTOSAVE_HEADER:
+            # The SAVE_CONFIG block belongs to no section.
+            sections.append(
+                SectionSpan(
+                    name=current_name,
+                    header_index=current_header_index,
+                    option_start=current_start,
+                    option_end=index,
+                )
+            )
+            current_name = None
+            continue
         stripped = line.lstrip()
         if not stripped or stripped.startswith(COMMENT_PREFIXES):
             continue

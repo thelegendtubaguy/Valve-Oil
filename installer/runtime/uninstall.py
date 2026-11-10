@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import shutil
 import subprocess
 import urllib.request
@@ -49,6 +50,7 @@ from .models import (
     InstalledState,
     ManagedTreeIntent,
     Manifest,
+    PatchLedgerEntry,
     RuntimePaths,
     StateFileIntent,
     SystemOptimizationCliOptions,
@@ -237,6 +239,7 @@ def run_uninstall(
         include_line=include_line,
         backup_label=backup_label,
         managed_tree_drift=managed_tree_drift,
+        current_firmware=current_firmware,
     )
     reporter.debug(
         event="uninstall.plan.built",
@@ -338,8 +341,12 @@ def build_uninstall_plan(
     include_line: EnsureLineSpec,
     backup_label: str,
     managed_tree_drift: tuple[DriftRecord, ...],
+    current_firmware: str | None = None,
 ) -> UninstallPlan:
-    patch_results = _collect_uninstall_patch_results(paths=paths, state=state)
+    ledger = _uninstall_patch_ledger(
+        paths=paths, manifest=manifest, state=state, firmware=current_firmware
+    )
+    patch_results = _collect_uninstall_patch_results(paths=paths, ledger=ledger)
     include_line_intents = _collect_uninstall_include_line_intents(
         paths=paths,
         include_line=include_line,
@@ -354,7 +361,7 @@ def build_uninstall_plan(
         backup_label=backup_label,
         file_changes=_build_uninstall_file_changes(
             paths=paths,
-            state=state,
+            ledger=ledger,
             include_line=include_line,
         ),
         managed_tree_intent=managed_tree_intent,
@@ -569,11 +576,44 @@ def _disable_enrolled_auto_updates(*, paths: RuntimePaths, reporter, input_strea
 
 
 
+def _uninstall_patch_ledger(
+    *, paths: RuntimePaths, manifest: Manifest, state: InstalledState, firmware: str | None
+) -> tuple[PatchLedgerEntry, ...]:
+    """Option patches whose desired value is QIDI's own for the installed firmware stay at it.
+
+    A QIDI firmware update doesn't rewrite the config, so these patches bring a printer that came from older
+    firmware up to QIDI's newer values; uninstall leaves QIDI's current value instead of the older one.
+    """
+    printer = manifest.printer_for_firmware(firmware) if firmware else None
+    if printer is None:
+        return state.patch_ledger
+    stock_root = paths.installer_root / printer.stock_snapshots / firmware
+    ledger = []
+    for entry in state.patch_ledger:
+        if (
+            entry.option != "__section__"
+            and entry.expected != entry.desired
+            and _stock_option_value(stock_root / entry.file, entry) == entry.desired
+        ):
+            entry = dataclasses.replace(entry, expected=entry.desired)
+        ledger.append(entry)
+    return tuple(ledger)
+
+
+def _stock_option_value(path, entry: PatchLedgerEntry) -> str | None:
+    try:
+        return klipper_cfg.resolve_unique_option(
+            klipper_cfg.read_text(path), entry.section, entry.option
+        ).value
+    except (OSError, klipper_cfg.TargetResolutionError):
+        return None
+
+
 def _collect_uninstall_patch_results(
-    *, paths: RuntimePaths, state: InstalledState
+    *, paths: RuntimePaths, ledger: tuple[PatchLedgerEntry, ...]
 ) -> tuple:
     results = []
-    for entry in state.patch_ledger:
+    for entry in ledger:
         path = paths.printer_data_root / entry.file
         text = klipper_cfg.read_text(path)
         if entry.option == "__section__":
@@ -586,10 +626,10 @@ def _collect_uninstall_patch_results(
 
 
 def _build_uninstall_file_changes(
-    *, paths: RuntimePaths, state: InstalledState, include_line: EnsureLineSpec
+    *, paths: RuntimePaths, ledger: tuple[PatchLedgerEntry, ...], include_line: EnsureLineSpec
 ):
     file_plan = FileChangePlan()
-    for entry in state.patch_ledger:
+    for entry in ledger:
         path = paths.printer_data_root / entry.file
         text = file_plan.text(path)
         if entry.option == "__section__":

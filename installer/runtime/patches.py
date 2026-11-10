@@ -101,10 +101,10 @@ def classify_install_section_delete(
 
 
 def classify_uninstall_patch(current: str, entry: PatchLedgerEntry) -> PatchResult:
-    if current == entry.desired:
-        classification = UNINSTALL_REVERTED
-    elif current == entry.expected:
+    if current == entry.expected:
         classification = UNINSTALL_NOOP_EXPECTED
+    elif current == entry.desired:
+        classification = UNINSTALL_REVERTED
     else:
         classification = USER_MODIFIED
     return PatchResult(
