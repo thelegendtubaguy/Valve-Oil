@@ -15,10 +15,11 @@ import urllib.request
 from pathlib import Path
 
 from .auto_update import LOCK_HELD_ENV
-from .box_firmware import SERVICES, _write_image, usb_path_for_serial
+from .box_firmware import (SERVICES, _write_image, admitted_backup, pending_record, start_recorded_services,
+                           usb_path_for_serial)
 from .errors import FirmwareDetectionError, InstallerError
 from .firmware import detect_firmware
-from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
+from .fs_atomic import atomic_write_text, fsync_directory
 from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .safety import MAINBOARD_RECOVERY_MARKER, ensure_no_pending_firmware
 from .sudo import authenticate_sudo, run_sudo
@@ -103,12 +104,13 @@ def _stock_image(paths, manifest) -> bytes | None:
 def run_mainboard_firmware(
     *, paths, reporter, action, input_stream=None, environ=None,
     run=None, urlopen=urllib.request.urlopen, sleep=time.sleep, clock=time.monotonic,
-    resolve_usb=usb_path_for_serial,
+    resolve_usb=usb_path_for_serial, usb_state=None,
 ) -> int:
     from scripts import build_mcu_firmware
     from scripts import flash_box_firmware as protocol
 
     run = subprocess.run if run is None else run
+    usb_state = protocol.usb_state if usb_state is None else usb_state
     env = {} if environ is None else environ
     manifest = build_mcu_firmware.load_manifest(paths.bundle_root / MANIFEST)
     marker = paths.printer_data_root / MAINBOARD_RECOVERY_MARKER
@@ -134,6 +136,22 @@ def run_mainboard_firmware(
         ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
 
     target = "patched" if action == "install" else "stock"
+    if action == "rescue":
+        rescue_backup = admitted_backup(backup_root.glob("*/before"), manifest)
+        if rescue_backup is None:
+            # Every transfer needs a backup of a validated bootloader, so an operation
+            # recorded without one stopped before it reached a mainboard that still runs.
+            unfinished = pending_record(marker)
+            usb = unfinished.get("usb") or resolve_usb(mainboard_serial(paths))
+            if not unfinished or usb is None or usb_state(usb)[0] != protocol.APP_IDS:
+                raise MainboardFirmwareError("No backup of a validated mainboard bootloader; rescue needs one from an "
+                                             "earlier mainboard-firmware run. No mainboard firmware was changed.")
+            reporter.line("Mainboard: not changed. The unfinished operation stopped before it reached the mainboard, "
+                          "which still runs its firmware. Starting Klipper and the touchscreen again.")
+            password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
+            start_recorded_services(unfinished.get("services") or {}, run=run, password=password, paths=paths, urlopen=urlopen,
+                                    sleep=sleep, clock=clock, marker=marker, subject=SUBJECT, error=MainboardFirmwareError)
+            return 0
     stock_image = None
     if action in ("restore", "rescue"):
         stock_image = _stock_image(paths, manifest)
@@ -141,10 +159,6 @@ def run_mainboard_firmware(
             raise MainboardFirmwareError("No verified copy of QIDI's mainboard firmware " + manifest["mcu"]["stock_version"]
                                          + " was found in the mainboard firmware backups or ~/update.")
     if action == "rescue":
-        previous_dirs = sorted(backup_root.glob("*/before/bootloader.bin"))
-        if not previous_dirs:
-            raise MainboardFirmwareError("No earlier backup of the mainboard's bootloader; rescue needs one from a previous mainboard-firmware run.")
-        rescue_backup = previous_dirs[-1].parent
         record = rescue_backup.parent / "mainboard.json"
         usb = json.loads(record.read_text()).get("usb") if record.is_file() else None
         usb = usb or resolve_usb(mainboard_serial(paths))
@@ -269,15 +283,8 @@ def run_mainboard_firmware(
         reporter.line("The mainboard firmware is unverified. Klipper and the touchscreen stay stopped. "
                       "Run ./mainboard-firmware.sh rescue and follow its prompt.")
         raise MainboardFirmwareError("Mainboard firmware operation failed: " + str(failure) + ". Recovery files: " + str(directory)) from failure
-    try:
-        for service in SERVICES:
-            if states.get(service) == "active":
-                service_action("start", service)
-        if states.get("klipper.service") == "active":
-            wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, subject=SUBJECT)
-        atomic_delete(marker)
-    except BaseException as exc:
-        raise MainboardFirmwareError("Mainboard firmware service restoration is incomplete; recovery record retained: " + str(marker)) from exc
+    start_recorded_services(states, run=run, password=password, paths=paths, urlopen=urlopen, sleep=sleep, clock=clock,
+                            marker=marker, subject=SUBJECT, error=MainboardFirmwareError)
     if failure is not None:
         raise MainboardFirmwareError("Mainboard firmware operation stopped before any write: " + str(failure))
     reporter.line("Mainboard: " + outcome)

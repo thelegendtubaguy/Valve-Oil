@@ -65,6 +65,11 @@
       "sha256": "60be62899f94afb00dc733baf3620f6a1a48ca7d210e477875cbe123139cbec4",
       "identity_reply": "01010102",
       "start_timeout": 60
+    },
+    {
+      "sha256": "d180a22cbe4155c1a3355e1016de78938fb13b257c2e8a0b8105c8d0ad8dfee2",
+      "identity_reply": "0112",
+      "start_timeout": 60
     }
   ]
 }
