@@ -17,6 +17,7 @@ from installer.runtime import moonraker_allowed_services
 from installer.runtime import moonraker_speedups
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
+from installer.runtime import cpu_tuning
 from installer.runtime import restart_on_exit
 from installer.runtime import webcam_id
 from installer.runtime import service_priority
@@ -148,6 +149,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         def install_run(command, **kwargs):
             if list(command)[-3:-1] == ["systemctl", "restart"]:
                 service_events.append(list(command)[-1])
+                # A printer without the camera service still installs.
+                if list(command)[-1] == "crowsnest.service":
+                    return CompletedProcess(command, 5, stdout="", stderr="Unit crowsnest.service not found.")
             if list(command)[-2:] == ["systemctl", "daemon-reload"]:
                 service_events.append("daemon-reload")
             return host_run(command, **kwargs)
@@ -167,10 +171,14 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # changes.
         restarts = [
             zram_swap.UNIT,
+            "nginx.service",
             "moonraker.service",
             "moonraker answered",
             remote_screen.UNIT,
             "qidi-client.service",
+            "crowsnest.service",
+            cpu_tuning.TUNING_UNIT,
+            cpu_tuning.IRQBALANCE_UNIT,
             cpu_governor.SERVICE,
             "klipper.service via Moonraker",
         ]
@@ -182,9 +190,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # QIDI's camera ID script waits for the camera's index0 link from the next boot, without running it now.
         self.assertEqual((system_root / webcam_id.FILE.lstrip("/")).read_text(encoding="utf-8"), webcam_id.CONTENT)
         self.assertNotIn(webcam_id.UNIT, service_events)
-        # Klipper gets the CPU before Moonraker, and both before the touchscreen app.
+        # Klipper gets the CPU before Moonraker, and both before the touchscreen app, each on its own CPUs.
         for operation, dropin in service_priority.FILES.items():
-            self.assertIn(f"Nice={service_priority.NICE[operation]}\n", (system_root / dropin.lstrip("/")).read_text(encoding="utf-8"))
+            text = (system_root / dropin.lstrip("/")).read_text(encoding="utf-8")
+            self.assertIn(f"Nice={service_priority.NICE[operation]}\n", text)
+            if operation in service_priority.CPU_AFFINITY:
+                self.assertIn(f"CPUAffinity={service_priority.CPU_AFFINITY[operation]}\n", text)
+        # algo_app isn't started to apply them, since AI detection may be off.
+        self.assertNotIn(service_priority.SERVICES[service_priority.ALGO_APP_OPERATION], service_events)
+        # QIDI's tuning script is replaced by one run that pins the interrupts irqbalance now leaves alone.
+        for operation, dropin in cpu_tuning.FILES.items():
+            self.assertEqual((system_root / dropin.lstrip("/")).read_text(encoding="utf-8"), cpu_tuning.CONTENT[operation])
         # Zram swap's modules and boot script are root-owned under /usr/local, and its unit is enabled.
         zram = system_root / zram_swap.DESTINATION.lstrip("/")
         zram_unit = system_root / zram_swap.UNIT_FILE.lstrip("/")
@@ -449,7 +465,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         self.assertFalse((system_root / webcam_id.FILE.lstrip("/")).exists())
-        for dropin in service_priority.FILES.values():
+        for dropin in (*service_priority.FILES.values(), *cpu_tuning.FILES.values()):
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.
         self.assertTrue((zram / zram_swap.MARKER).is_file())

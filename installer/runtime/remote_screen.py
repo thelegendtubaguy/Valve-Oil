@@ -42,6 +42,8 @@ ExecStart=/home/qidi/moonraker-env/bin/python3 {SERVER_FILE}
 Restart=on-failure
 RestartSec=10
 Nice=10
+# Off Klipper's CPUs, where QIDI's tuning script used to put it by matching moonraker-env in its command line.
+CPUAffinity=0
 CPUQuota=60%
 NoNewPrivileges=yes
 ProtectSystem=strict

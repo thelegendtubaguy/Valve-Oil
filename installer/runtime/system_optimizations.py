@@ -38,6 +38,7 @@ from . import moonraker_spoolman
 from . import moonraker_used_extruders
 from . import remote_screen
 from . import restart_on_exit
+from . import cpu_tuning
 from . import service_priority
 from . import webcam_id
 from . import zram_swap
@@ -91,6 +92,7 @@ ROCKCHIP_ROOT_SYNC_OPERATION = "rockchip_root_sync"
 # Applied live, but a reboot confirms they start on their own and starts every service fresh.
 REBOOT_RECOMMENDING_OPERATIONS = frozenset({
     zram_swap.OPERATION, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION, *service_priority.SERVICES,
+    *cpu_tuning.FILES,
 })
 ROCKCHIP_UNSUPPORTED = frozenset({"unsupported", "conflicting_dropin", "unsafe_path"})
 ROCKCHIP_ALREADY_CURRENT = frozenset({"already_current_owned", "already_current_unowned"})
@@ -127,6 +129,9 @@ SERVICE_NAMES = {
     remote_screen.UNIT: "the Printer screen service",
     QIDICLIENT_SERVICE: "the touchscreen",
     cpu_governor.SERVICE: "the CPU governor",
+    "crowsnest.service": "the camera",
+    cpu_tuning.TUNING_UNIT: "QIDI's CPU tuning",
+    cpu_tuning.IRQBALANCE_UNIT: "irqbalance",
 }
 STEP_LABELS = {
     ROCKCHIP_ROOT_SYNC_OPERATION: "Speeding up file writes on the printer's storage",
@@ -162,6 +167,8 @@ class _GuardedFilePatch:
     service_unit: str | None = None
     # The file is a systemd drop-in that takes effect on daemon-reload, without restarting the service.
     reloads_units: bool = False
+    # A failed restart of restart_service doesn't fail the transaction.
+    restart_optional: bool = False
 
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
@@ -293,14 +300,29 @@ GUARDED_FILE_PATCHES = {
             label=f"{service_priority.SERVICES[operation]} priority drop-in",
             file=lambda spec, operation=operation: service_priority.FILES[operation],
             patch=service_priority.patch_dropin(operation),
-            # Nice applies when the service starts.
-            restart_service=service_priority.SERVICES[operation],
+            # Nice and CPUAffinity apply when the service starts.
+            restart_service=service_priority.RESTART.get(operation),
+            missing_message=None,
+            skip_unrecognized=True,
+            create_if_missing=True,
+            reloads_units=True,
+            restart_optional=operation in service_priority.OPTIONAL_RESTART,
+        )
+        for operation in service_priority.SERVICES
+    },
+    # The restart runs the replacement now; irqbalance's restart applies its bans.
+    **{
+        operation: _GuardedFilePatch(
+            label=f"{cpu_tuning.UNITS[operation]} drop-in",
+            file=lambda spec, operation=operation: cpu_tuning.FILES[operation],
+            patch=cpu_tuning.patch_dropin(operation),
+            restart_service=cpu_tuning.UNITS[operation],
             missing_message=None,
             skip_unrecognized=True,
             create_if_missing=True,
             reloads_units=True,
         )
-        for operation in service_priority.SERVICES
+        for operation in cpu_tuning.FILES
     },
     cpu_governor.OPERATION: _GuardedFilePatch(
         label="CPU governor settings",
@@ -625,6 +647,9 @@ def maybe_emit_system_dry_run(
                         QIDICLIENT_SERVICE: " and restart the touchscreen app",
                         zram_swap.UNIT: " and start zram swap",
                         cpu_governor.SERVICE: " and apply the CPU governor",
+                        "crowsnest.service": " and restart the camera",
+                        cpu_tuning.TUNING_UNIT: " and pin the toolhead and USB interrupts",
+                        cpu_tuning.IRQBALANCE_UNIT: " and restart irqbalance",
                     }.get(guarded.restart_service or "", "")
                     reporter.line(f"  - would apply {operation_id}{restart}")
                 else:
@@ -2102,7 +2127,7 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
     if guarded.reloads_units:
         restarts.reload_units()
     if guarded.restart_service:
-        restarts.request(guarded.restart_service, required=True)
+        restarts.request(guarded.restart_service, required=not guarded.restart_optional)
 
 
 def _apply_moonraker_metadata_patch(
@@ -2297,7 +2322,7 @@ def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], 
     if guarded.service_unit:
         restarts.reload_units()
     elif guarded.restart_service:
-        restarts.request(guarded.restart_service, required=True)
+        restarts.request(guarded.restart_service, required=not guarded.restart_optional)
     if guarded.reloads_units:
         restarts.reload_units()
 
@@ -3099,6 +3124,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION,
         *service_priority.SERVICES,
+        *cpu_tuning.FILES,
         # The path files go after the packages they point at, so restoration removes them first.
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
@@ -3177,7 +3203,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
-        webcam_id.OPERATION, *service_priority.SERVICES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
+        webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
@@ -3630,6 +3656,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,
             *service_priority.SERVICES,
+            *cpu_tuning.FILES,
             ZRAM_SWAP_OPERATION,
             zram_swap.UNIT_OPERATION,
             cpu_governor.OPERATION,
