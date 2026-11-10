@@ -1,5 +1,5 @@
 name: Printer or firmware support
-description: Valve Oil doesn't support your printer or QIDI firmware yet.
+description: Valve Oil doesn't support your printer, QIDI firmware, or a board's bootloader yet.
 title: "[Support]: "
 labels: ["enhancement"]
 body:
@@ -32,6 +32,15 @@ body:
       label: Installer output
       description: What the installer printed when it stopped, if you ran it. A dry run is enough; add `-- --dry-run` to the install command.
       render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: board_report
+    attributes:
+      label: Board firmware report
+      description: If the installer, `box-firmware.sh`, or `mainboard-firmware.sh` said a board was not changed because its bootloader or firmware is not supported yet, paste the `report.json` it named. Leave out the `.bin` files beside it.
+      render: json
     validations:
       required: false
 

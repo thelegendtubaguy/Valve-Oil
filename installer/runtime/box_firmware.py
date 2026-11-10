@@ -19,6 +19,7 @@ from pathlib import Path
 from .auto_update import LOCK_HELD_ENV
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
+from .naming import REPOSITORY_URL
 from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .safety import BOX_RECOVERY_MARKER, ensure_no_pending_firmware
 from .sudo import authenticate_sudo, run_sudo
@@ -33,6 +34,7 @@ APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
 SERIAL_LINE = re.compile(r"^serial\s*[:=]\s*(\S+)")
 WARNING = "Box firmware: keep the printer and every Box powered on until this finishes."
+SUPPORT_ISSUE_URL = REPOSITORY_URL + "/issues/new?template=printer-support.yml"
 
 
 class BoxFirmwareError(InstallerError):
@@ -111,6 +113,36 @@ def _describe(version: str | None, manifest: dict) -> str:
     if version is None:
         return "not connected or Klipper not ready"
     return "unsupported firmware (" + version + ")"
+
+
+def unsupported_board_note(report: Path) -> str:
+    return ("its bootloader or firmware is not supported yet. To get it supported, open an issue at "
+            + SUPPORT_ISSUE_URL + " and attach only " + str(report) + ". Keep the .bin files beside it private.")
+
+
+def _unsupported_capture(backup_root: Path, box: Box, manifest: dict) -> Path | None:
+    """The report of this Box's newest capture, if the bundled manifest still can't flash what it found."""
+    from scripts.flash_box_firmware import image_spec
+    if not box.serial:
+        return None
+    captures = []
+    for record in backup_root.glob(f"*/{box.name}/box.json"):
+        report_path = record.parent / "before/report.json"
+        try:
+            if json.loads(record.read_text()).get("serial") != box.serial:
+                continue
+            captures.append((record.stat().st_mtime, report_path, json.loads(report_path.read_text())))
+        except (OSError, ValueError, AttributeError):
+            continue
+    if not captures:
+        return None
+    _, report_path, report = max(captures, key=lambda capture: capture[0])
+    spec = image_spec(manifest)
+    applications = {spec["stock_sha256"], spec["patched_sha256"], *(e["sha256"] for e in spec.get("superseded", ()))}
+    bootloaders = {entry["sha256"] for entry in manifest["bootloaders"]}
+    if report.get("bootloader_sha256") in bootloaders and report.get("application_sha256") in applications:
+        return None
+    return report_path
 
 
 def _select(boxes: list[Box], requested: list[int] | None) -> list[Box]:
@@ -217,6 +249,7 @@ def run_box_firmware(
         ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
 
     target = "patched" if action == "install" else "stock"
+    automatic = env.get(LOCK_HELD_ENV) == "1"
     if action == "rescue":
         box = selected[0]
         rescue_backup = admitted_backup(backup_root.glob(f"*/{box.name}/before"), manifest)
@@ -264,6 +297,9 @@ def run_box_firmware(
             elif version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
                                  *_superseded_versions(manifest)}:
                 previous[box.name] = "skipped: unsupported firmware"
+            elif automatic and (capture := _unsupported_capture(backup_root, box, manifest)) is not None:
+                # Reading it again would only stop Klipper and save the same capture.
+                previous[box.name] = "skipped by automatic updates, as an earlier capture found: " + unsupported_board_note(capture)
             else:
                 plan.append((box, box.usb))
                 if version in _superseded_versions(manifest) and stock_image is None:
@@ -342,7 +378,8 @@ def run_box_firmware(
         for box, usb in plan:
             box_dir = directory / box.name
             box_dir.mkdir(mode=0o700)
-            atomic_write_text(box_dir / "box.json", json.dumps({"box": box.name, "usb": usb}) + "\n", mode=0o600)
+            atomic_write_text(box_dir / "box.json", json.dumps({"box": box.name, "usb": usb, "serial": box.serial}) + "\n",
+                              mode=0o600)
             if action == "rescue":
                 before = rescue_backup
                 image = stock_image
@@ -357,7 +394,7 @@ def run_box_firmware(
                 reporter.line(f"{box.label}: reading and admitting its bootloader and firmware...")
                 snapshot = command(box_dir, "snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
                 if snapshot.returncode == protocol.UNSUPPORTED:
-                    results[box.name] = "not changed: unsupported bootloader or firmware; shareable summary " + str(before / "report.json")
+                    results[box.name] = "not changed: " + unsupported_board_note(before / "report.json")
                     continue
                 boot, app = protocol.load_backup(before, manifest)
                 current = protocol.image_identity(app, manifest)

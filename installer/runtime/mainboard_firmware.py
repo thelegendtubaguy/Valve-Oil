@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .auto_update import LOCK_HELD_ENV
 from .box_firmware import (SERVICES, _write_image, admitted_backup, pending_record, start_recorded_services,
-                           usb_path_for_serial)
+                           unsupported_board_note, usb_path_for_serial)
 from .errors import FirmwareDetectionError, InstallerError
 from .firmware import detect_firmware
 from .fs_atomic import atomic_write_text, fsync_directory
@@ -251,7 +251,7 @@ def run_mainboard_firmware(
             reporter.line("Mainboard: reading and admitting its bootloader and firmware...")
             snapshot = command("snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
             if snapshot.returncode == protocol.UNSUPPORTED:
-                outcome = "not changed: unsupported bootloader or firmware; shareable summary " + str(before / "report.json")
+                outcome = "not changed: " + unsupported_board_note(before / "report.json")
             else:
                 boot, app = protocol.load_backup(before, manifest)
                 if protocol.image_identity(app, manifest) == target:

@@ -64,6 +64,7 @@ class Printer:
                        "tltg-optimized-auto-update.timer": "inactive"}
         self.original = dict(self.states)
         self.transfers = []
+        self.service_changes = 0
         self.print_state = "standby"
         self.chamber = 0
 
@@ -93,6 +94,7 @@ class Printer:
         if command[:2] == ["systemctl", "show"]:
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
         if command[0] == "systemctl":
+            self.service_changes += 1
             self.states[command[2]] = "inactive" if command[1] == "stop" else "active"
             return result()
         assert command[1].endswith(("/scripts/flash_box_firmware.py", "/scripts/flash_mcu_firmware.py")), command
@@ -201,9 +203,28 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.transfers, [])
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / BOX_RECOVERY_MARKER, "mcu_box1", boxes=[1])
+
+    def test_automatic_updates_skip_a_box_captured_as_unsupported_until_a_release_admits_it(self):
+        paths, printer, reporter = self.fixture({"mcu_box1": "stock"}, failure="unknown-boot")
+        automatic = {LOCK_HELD_ENV: "1"}
+        backups = paths.printer_data_root / box_firmware.BACKUP_DIRECTORY
+        self.after_install(paths, printer, reporter, environ=automatic)
+        captures = list(backups.iterdir())
+        self.assertEqual((len(captures), printer.transfers, printer.states), (1, [], printer.original))
+        changes = printer.service_changes
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((list(backups.iterdir()), printer.service_changes), (captures, changes))
+        # A later release admits the bootloader the capture found.
+        manifest_path = paths.bundle_root / box_firmware.MANIFEST
+        admitted = json.loads(manifest_path.read_text())
+        admitted["bootloaders"].append({"sha256": hashlib.sha256(bytes(0x8000)).hexdigest(), "identity_reply": "0112"})
+        manifest_path.write_text(json.dumps(admitted))
+        printer.manifest = admitted
+        self.after_install(paths, printer, reporter, environ=automatic)
+        self.assertEqual((printer.transfers, printer.states), ([("mcu_box1", False)], printer.original))
 
     def test_unsafe_states_and_cancellation_never_touch_services(self):
         for case in ("printing", "chamber-hot", "cancel", "automatic-update-restore"):
@@ -339,7 +360,7 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
         self.assertEqual((printer.transfers, printer.states), ([], printer.original))
         self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
-        self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        self.assertIn("not changed:", reporter.stream.getvalue())
         printer.check_rescue_with_only_an_unsupported_bootloader(
             self, paths, reporter, paths.printer_data_root / MAINBOARD_RECOVERY_MARKER, "mcu")
 

@@ -11,6 +11,11 @@ After the rest of an install or update, including one run with `--yes` and the i
 - **WHEN** an automatic update installs a new release on an idle printer with a USB Box that needs the bundled firmware
 - **THEN** that Box is flashed and verified as for an install, and the automatic-update timer is running again afterward
 
+#### Scenario: Automatic update finds a Box captured as unsupported
+- **WHEN** an automatic update installs a release and the newest capture of a USB Box found a bootloader or application that release still does not admit
+- **THEN** that Box is skipped without stopping services or capturing it again, and the output names the earlier capture's summary and where to open a support issue
+- **AND** once a release admits what the capture found, the next automatic update that installs it flashes that Box
+
 #### Scenario: Automatic updates and dry runs
 - **WHEN** an automatic update check finds the release already installed, or the installer runs with `--dry-run`
 - **THEN** no Box serial session, reset, or programming occurs

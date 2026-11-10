@@ -46,11 +46,11 @@ A Box or mainboard flash SHALL be reported as installed only when a full applica
 - **THEN** verification fails regardless of acknowledgements or version
 
 ### Requirement: Unrecognized builds are captured without reset
-When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, and MUST NOT reset, erase, or program that board.
+When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, SHALL ask the operator to attach only that summary to a support issue, and MUST NOT reset, erase, or program that board.
 
 #### Scenario: Unrecognized bootloader
 - **WHEN** a board's bootloader matches no admitted build
-- **THEN** that board is reported as not changed with the summary's location, and no reset, erase, or programming command is sent to it
+- **THEN** that board is reported as not changed with the summary's location and where to open a support issue, and no reset, erase, or programming command is sent to it
 
 ### Requirement: Unverified flashes block until rescue
 When programming may have begun and readback has not verified the board, the flow SHALL leave Klipper and the touchscreen stopped and keep a pending record that blocks every installer operation except that board's rescue. Rescue SHALL program QIDI's stock application from a verified backup or the printer's update folder through the waiting bootloader and verify it by readback before restoring services and clearing the record.

@@ -23,7 +23,7 @@ Add `--dry-run` for a preview without touching the board. `--yes` alone and auto
 
 **What it checks:** the installer checks the board's firmware and bootloader before flashing. A board that already has the fix is left alone and keeps its calibration. It saves the stock firmware under `~/printer_data/.tltg_thr_firmware_backups/`, flashes only the toolhead board, and verifies the result before restarting services.
 
-**If your board isn't supported:** the firmware is left unchanged, your services are restored, and the configuration install is kept. The installer saves a capture and points to a shareable `report.json`; attach that to a GitHub issue, but not its flash binaries.
+**If your board isn't supported:** the firmware is left unchanged, your services are restored, and the configuration install is kept. The installer saves a capture and points to a shareable `report.json`; attach that to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml), but not its flash binaries.
 
 **To go back to stock firmware:** see [Restore the stock THR firmware from backup](../firmware/README.md#restore-the-stock-thr-firmware-from-backup). Details on supported bootloaders and recovery are in [THR-only operations](../firmware/FLASHING.md).
 
@@ -35,7 +35,7 @@ It also lets the Box [read Anycubic, Elegoo, and Bambu Lab spool tags](qidi-box.
 
 **How to install:** the installer flashes it to every USB Box that doesn't have it yet, after the rest of the install finishes. Klipper and the touchscreen stop for about four minutes per Box. **Keep the printer and every Box powered on until the installer finishes.** With [automatic updates](install.md#automatic-updates) on, each new release the printer installs flashes the Boxes the same way, so a new Box firmware reaches them without running the installer. RS-485 Boxes have no firmware to flash.
 
-The installer only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`. A Box it can't flash, for example because a heater is on, is left as it is, and the install still finishes and says why. It tries again on the next install, or the next release an automatic update installs.
+The installer only flashes Box bootloader and firmware builds it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_box_firmware_backups/`. A Box it can't flash, for example because a heater is on, is left as it is, and the install still finishes and says why. It tries again on the next install, or the next release an automatic update installs. A Box whose bootloader or firmware isn't supported yet is left as it is too, and the installer points to a `report.json` to attach to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml). Automatic updates then skip that Box, without stopping Klipper, until a release supports it.
 
 A Box with this firmware reports its version as `02.03.01.21-valve-oil.1` in Fluidd and `klippy.log`. The number after `valve-oil` goes up with each new Box firmware. The installer also updates a Box with earlier firmware from this project, such as the shutdown fix (`02.03.01.21-tltg-shutdownfix1`). It builds the new firmware from QIDI's stock Box firmware, which it takes from the backups it saved when it first flashed that Box, or from `~/update`.
 
