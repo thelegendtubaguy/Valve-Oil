@@ -43,3 +43,11 @@ When programming may have begun and readback has not verified the board, the flo
 #### Scenario: Interrupted mainboard transfer
 - **WHEN** a mainboard transfer fails after the application was erased
 - **THEN** installs, updates, and Box operations refuse to run until `mainboard-firmware.sh rescue` restores and verifies stock firmware
+
+### Requirement: Rescue uses only admitted backups
+Rescue SHALL transfer only with a backup whose bootloader and application are admitted. Without one, it MUST NOT stop services or program the board. If a pending record exists and the board enumerates as its running application, no transfer can have reached it, so rescue SHALL restore the recorded services and clear the record without programming.
+
+#### Scenario: Rescue with only an unrecognized bootloader captured
+- **WHEN** rescue runs and no backup of that board has an admitted bootloader
+- **THEN** no service is stopped and no transfer is attempted
+- **AND** a pending record left while the board still runs its application is cleared and its recorded services are started again

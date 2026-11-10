@@ -1274,12 +1274,36 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     cfg.read_text(encoding="utf-8"), "bed_mesh", "speed", "700")
                 text = klipper_cfg.set_option_value(
                     text, "printer", "max_velocity", "650")
-                cfg.write_text(
-                    klipper_cfg.set_option_value(text, "z_tilt", "speed", "400"),
-                    encoding="utf-8")
+                text = klipper_cfg.set_option_value(text, "z_tilt", "speed", "400")
+                # QIDI's 01.01.06.04 config raised query_cycle to 10; X still has the older 5, as after a firmware
+                # update, which doesn't rewrite the config.
+                stock_cycle = None
+                if klipper_cfg.has_section(text, "closed_loop x"):
+                    stock_cycle = klipper_cfg.resolve_unique_option(
+                        text, "closed_loop x", "query_cycle").value
+                    text = klipper_cfg.set_option_value(text, "closed_loop x", "query_cycle", "5")
+                # The section install deletes sits last, right above Klipper's SAVE_CONFIG block.
+                sensor = klipper_cfg.resolve_unique_section(
+                    text, "filament_switch_sensor filament_switch_sensor").text
+                text = klipper_cfg.delete_section(
+                    text, "filament_switch_sensor filament_switch_sensor")
+                if klipper_cfg.AUTOSAVE_HEADER not in text:
+                    text += (
+                        f"\n{klipper_cfg.AUTOSAVE_HEADER}\n"
+                        "#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n"
+                        "#*#\n#*# [input_shaper]\n#*# shaper_freq_x = 54.2\n"
+                    )
+                regular, header, saved = text.partition(klipper_cfg.AUTOSAVE_HEADER)
+                autosave = header + saved
+                text = regular.rstrip("\n") + "\n\n" + sensor.rstrip("\n") + "\n\n" + autosave
+                cfg.write_text(text, encoding="utf-8")
                 self._run_install(paths)
                 self._assert_speeds(printer_root, max_velocity="565",
                                     bed_mesh="565", z_tilt="400")
+                installed = cfg.read_text(encoding="utf-8")
+                self.assertTrue(installed.endswith("\n" + autosave))
+                self.assertFalse(klipper_cfg.has_section(
+                    installed, "filament_switch_sensor filament_switch_sensor"))
 
                 responses = io.StringIO("Y\nunused\n")
                 base_urlopen = moonraker_urlopen()
@@ -1306,6 +1330,13 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self._assert_homing_speed(printer_root, "50")
                 self._assert_speeds(printer_root, max_velocity="650",
                                     bed_mesh="700", z_tilt="400")
+                uninstalled = cfg.read_text(encoding="utf-8")
+                if stock_cycle is not None:
+                    for axis in ("x", "y"):
+                        self.assertEqual(klipper_cfg.resolve_unique_option(
+                            uninstalled, f"closed_loop {axis}", "query_cycle").value, stock_cycle)
+                self.assertTrue(uninstalled.endswith(
+                    "\n" + sensor.rstrip("\n") + "\n\n" + autosave))
                 self.assertEqual(
                     (paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(),
                     stock_source,

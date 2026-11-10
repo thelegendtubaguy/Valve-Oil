@@ -47,6 +47,10 @@ The timer and status changes come from the same module as the [fixes from newer 
 
 QIDI runs Klipper, Moonraker, and the touchscreen app at the same CPU priority, so a busy touchscreen app or Moonraker could delay Klipper. Klipper now gets the CPU first, then Moonraker, then the touchscreen app.
 
+QIDI's `qidi-tuning` service keeps Klipper on CPUs 1 and 2, keeps the web server and camera on CPU 0, and pins the toolhead's and mainboard's connections to CPUs 2 and 3. It did this by running a script again every 35 seconds, more than 8,500 times in 3.5 days on the test Max 4, and QIDI's `irqbalance` moved the connections away in between. Within 25 seconds of a Klipper restart, it had put the mainboard's on Klipper's CPUs. Now systemd starts each service on its CPUs at its priority, the script runs once at boot, and `irqbalance` leaves the toolhead's and mainboard's connections where the script puts them.
+
+Moonraker also gets CPU 3, which has little else to do when AI detection is off. On the test Max 4 with the camera streaming and Fluidd connected, other programs interrupted Moonraker about 18 times a second instead of 45, and status updates reached Fluidd and the touchscreen in a median 8.7 ms instead of 12.5 ms. With AI detection running, the difference is small.
+
 ## Fixes from newer Klipper
 
 QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:

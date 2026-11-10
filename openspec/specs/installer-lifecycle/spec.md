@@ -73,11 +73,21 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** install and update set it to the patch's desired value and record the live value as the value uninstall restores
 - **AND** a value at or below the maximum that matches neither the stock nor a prior-managed value is preserved as user-modified
 
+#### Scenario: Guarded section patches keep Klipper's SAVE_CONFIG data
+- **WHEN** install deletes, or uninstall restores, a guarded section in a file with Klipper's `SAVE_CONFIG` block
+- **THEN** the section never includes the block, and uninstall puts the section back above it
+- **AND** the block is left unchanged, so Klipper still loads it
+
 #### Scenario: Uninstall respects ownership
 - **WHEN** uninstall processes a valid ownership ledger
 - **THEN** only unchanged installer-owned state is reverted
 - **AND** user-modified state is preserved and reported
 - **AND** installed state is removed only after successful postflight
+
+#### Scenario: Uninstall keeps QIDI's current values
+- **WHEN** uninstall processes an option patch whose desired value is QIDI's value in the bundled stock snapshot for the detected firmware
+- **THEN** uninstall leaves the option at that value instead of the value recorded before install
+- **AND** an option the operator changed from that value is preserved and reported as user-modified
 
 #### Scenario: Restore reconstructs the archived runtime
 - **WHEN** restore receives explicit confirmation for a validated installer archive
@@ -702,15 +712,22 @@ Normal install and update SHALL make QIDI's boot-time camera setup for crowsnest
 - **AND** uninstall removes only an unchanged package drop-in
 
 ### Requirement: Print-critical services get the CPU first
-Normal install and update SHALL run Klipper at a higher CPU priority than Moonraker, and Moonraker at a higher CPU priority than QIDI's touchscreen app, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+Normal install and update SHALL run Klipper at a higher CPU priority than Moonraker, and Moonraker at a higher CPU priority than QIDI's touchscreen app, SHALL keep Klipper on CPUs apart from the web server, camera, and AI detection, and SHALL replace QIDI's repeating CPU tuning script with settings systemd applies once, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 
-#### Scenario: Priorities apply when each service starts
+#### Scenario: Priorities and CPUs apply when each service starts
 - **WHEN** install or update adds or changes a service's priority drop-in
-- **THEN** systemd runs Klipper at nice -10, Moonraker at nice -5, and the touchscreen app at nice 5 once each service restarts
+- **THEN** systemd runs Klipper at nice -10 on CPUs 1–2, Moonraker at nice -5 on CPUs 0 and 3, the touchscreen app at nice 5, nginx at nice 1 and crowsnest at nice 2 on CPU 0, and `algo_app` at nice 19 on CPU 3, once each service restarts
 - **AND** the installer restarts each changed service once, after every other host change in the transaction
+- **AND** it never restarts `algo_app` to apply its drop-in, and a crowsnest restart that fails does not fail the transaction
+
+#### Scenario: QIDI's tuning script is replaced
+- **WHEN** install or update applies the CPU tuning drop-ins
+- **THEN** `qidi-tuning.service` runs once per boot, pinning the toolhead serial interrupt to CPU 2 and the USB host controllers' interrupts to CPU 3, instead of rerunning QIDI's script every 35 s
+- **AND** `irqbalance` starts with those interrupts banned, so they keep their CPUs across Klipper restarts
+- **AND** uninstall removes unchanged drop-ins and restarts both services, which brings back QIDI's script
 
 #### Scenario: Operator unit changes are preserved
-- **WHEN** a file already exists at a priority drop-in path without the package marker
+- **WHEN** a file already exists at a priority or CPU tuning drop-in path without the package marker
 - **THEN** install and update leave it unchanged and report it
 - **AND** uninstall removes only an unchanged package drop-in
 
@@ -748,7 +765,7 @@ As an optional OS optimization, the installer SHALL have QIDI's CPU frequency se
 - **AND** declining restoration leaves the CPU at full speed
 
 ### Requirement: Reboot after host tuning
-After an install or automatic update that applies zram swap, the CPU governor, a service priority, or the Rockchip repair, the installer SHALL reboot the printer without asking, never during a print, and for automatic updates only once Klipper has been idle for 10 minutes.
+After an install or automatic update that applies zram swap, the CPU governor, a service priority, the CPU tuning replacement, or the Rockchip repair, the installer SHALL reboot the printer without asking, never during a print, and for automatic updates only once Klipper has been idle for 10 minutes.
 
 #### Scenario: An install reboots without asking
 - **WHEN** an install, interactive or `--yes`, applied any of those changes in this boot, or leaves a Rockchip reboot pending

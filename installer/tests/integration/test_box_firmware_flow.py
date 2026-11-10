@@ -96,6 +96,10 @@ class Printer:
             ok = report["supported_bootloader"] and report["application"] != "unrecognized"
             return result(0 if ok else protocol.UNSUPPORTED)
         if command[2] == "transfer":
+            try:
+                protocol.load_backup(Path(command[command.index("--backup-dir") + 1]), self.manifest)
+            except ValueError:
+                return result(1)
             self.transfers.append((name, "--rescue" in command))
             if self.failure == "transfer" and not self.transfers[-1][1]:
                 self.apps[name] = b""
@@ -103,6 +107,28 @@ class Printer:
             self.apps[name] = Path(command[command.index("--image") + 1]).read_bytes()
             return result()
         raise AssertionError(command)
+
+    def usb_state(self, usb):
+        name = {usb: box for box, usb in USB.items()}[usb]
+        return (protocol.APP_IDS if self.apps.get(name) else ("28e9", "018a")), "/dev/ttyACM0"
+
+    def check_rescue_with_only_an_unsupported_bootloader(self, test, paths, reporter, marker, name, **kwargs):
+        with test.assertRaises(InstallerError):
+            test.execute(paths, self, reporter, "rescue", **kwargs)
+        test.assertEqual((self.transfers, self.states), ([], self.original))
+        test.assertFalse(marker.exists())
+        # Earlier releases recorded such a rescue as unfinished and left the services stopped.
+        marker.write_text(json.dumps({"services": self.original, "action": "rescue", "phase": "programming",
+                                      "box": name, "usb": USB[name]}))
+        self.states = dict.fromkeys(self.states, "inactive")
+        self.apps[name], app = b"", self.apps[name]
+        with test.assertRaises(InstallerError):
+            test.execute(paths, self, reporter, "rescue", **kwargs)
+        test.assertTrue(marker.exists())
+        self.apps[name] = app
+        test.assertEqual(test.execute(paths, self, reporter, "rescue", **kwargs), 0)
+        test.assertEqual((self.transfers, self.states), ([], self.original))
+        test.assertFalse(marker.exists())
 
 
 class BoxFirmwareFlowTests(unittest.TestCase):
@@ -128,7 +154,8 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         return box_firmware.run_box_firmware(
             paths=paths, reporter=reporter, action=action, input_stream=io.StringIO(answer),
             run=printer.run, urlopen=printer.urlopen, sleep=lambda seconds: None,
-            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]], **kwargs)
+            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
+            usb_state=printer.usb_state, **kwargs)
 
     def test_install_and_restore_flash_only_boxes_that_need_it_and_verify(self):
         paths, printer, reporter = self.fixture({"mcu_box1": "stock", "mcu_box2": "patched"})
@@ -151,6 +178,8 @@ class BoxFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / BOX_RECOVERY_MARKER).exists())
         self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        printer.check_rescue_with_only_an_unsupported_bootloader(
+            self, paths, reporter, paths.printer_data_root / BOX_RECOVERY_MARKER, "mcu_box1", boxes=[1])
 
     def test_unsafe_states_and_cancellation_never_touch_services(self):
         for case in ("printing", "chamber-hot", "cancel", "automatic-update"):
@@ -220,7 +249,8 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         return mainboard_firmware.run_mainboard_firmware(
             paths=paths, reporter=reporter, action=action, input_stream=io.StringIO(answer),
             run=printer.run, urlopen=printer.urlopen, sleep=lambda seconds: None,
-            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]], **kwargs)
+            clock=iter(range(0, 10 ** 6, 10)).__next__, resolve_usb=lambda serial: USB[serial.rsplit("/", 1)[1]],
+            usb_state=printer.usb_state, **kwargs)
 
     def identity(self, printer):
         return protocol.image_identity(printer.apps["mcu"], printer.manifest)
@@ -245,6 +275,8 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual((printer.transfers, printer.states), ([], printer.original))
         self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
         self.assertIn("not changed: unsupported bootloader", reporter.stream.getvalue())
+        printer.check_rescue_with_only_an_unsupported_bootloader(
+            self, paths, reporter, paths.printer_data_root / MAINBOARD_RECOVERY_MARKER, "mcu")
 
     def test_unsafe_states_and_cancellation_never_touch_services(self):
         for case in ("printing", "chamber-hot", "cancel", "automatic-update", "not-max4"):

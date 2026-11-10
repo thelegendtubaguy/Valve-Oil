@@ -38,6 +38,8 @@ The Box's bootloader is never erased or written. If a transfer stops part way, t
 
 Rescue waits for the Box's bootloader, flashes QIDI's stock firmware from the backup or from `~/update`, verifies it, and starts the services again. If the Box is not already waiting, turn that Box off and on again when the script asks. Until the pending record is cleared, the installer refuses other operations.
 
+Rescue flashes only with a backup of a validated bootloader. If every backup of that Box is from a bootloader the script doesn't recognize, rescue changes nothing. If a pending record exists and the Box is still running its firmware, rescue starts Klipper and the touchscreen again and clears the record.
+
 Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware.
 
 ## Checks for developers
