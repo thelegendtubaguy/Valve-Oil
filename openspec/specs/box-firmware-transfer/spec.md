@@ -6,11 +6,18 @@ Provide an explicitly operated transfer path for the USB QIDI Box and the Max 4 
 ## Requirements
 
 ### Requirement: Board serial operations require explicit safe ownership
-The Box and mainboard transfer tools SHALL refuse serial access unless the operator confirms the printer is idle and Klipper, the touchscreen client, and the automatic-update timer are stopped. They MUST NOT modify printer configuration, control heaters or motion, or flash any board other than the addressed USB Box or the mainboard. Only `box-firmware.sh` and `mainboard-firmware.sh` reach them; install, update, automatic updates, and `--yes` never do.
+The Box and mainboard transfer tools SHALL refuse serial access unless the operator confirms the printer is idle and Klipper, the touchscreen client, and the automatic-update timer are stopped. They MUST NOT modify printer configuration, control heaters or motion, or flash any board other than the addressed USB Box or the mainboard.
 
 #### Scenario: Serial ownership is unsafe
 - **WHEN** idle confirmation is absent or a required service is still running
 - **THEN** the tool fails before opening the board's serial port
+
+### Requirement: Only the board scripts and installs reach the transfer tools
+`box-firmware.sh`, `mainboard-firmware.sh`, and, for USB Boxes only, the end of an install or update SHALL be the only callers of the transfer tools. Automatic updates MUST NOT reach either tool, and `--yes` MUST NOT reach the mainboard tool.
+
+#### Scenario: Automatic update
+- **WHEN** an automatic update installs a release
+- **THEN** neither transfer tool runs
 
 ### Requirement: Transfers admit only known images and bootloaders
 The tools SHALL program only the pinned stock or patched application for that board, and only through a bootloader whose exact build has been validated, using backups of that board's bootloader and application. The mainboard fix is offered only on the Max 4. An erasing transfer MUST require explicit write confirmation. It MUST NOT resend the start command or an unacknowledged first data packet, because the bootloader's write position only rewinds at reset.
