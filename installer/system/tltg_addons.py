@@ -337,8 +337,118 @@ def obico_status() -> dict:
     return result
 
 
-STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status}
-EXTRA_ACTIONS = {("octoeverywhere", "link-code"): octoeverywhere_link_code}
+TAILSCALE_CLI = ADDONS_ROOT / "tailscale/app/tailscale"
+TAILSCALE_SOCKET = ADDONS_ROOT / "tailscale-data/tailscaled.sock"
+# How long a login waits for Tailscale's server to hand tailscaled a new sign-in address.
+TAILSCALE_LOGIN_WAIT = 12.0
+TAILSCALE_UNAVAILABLE = "Tailscale isn't answering yet. It can take a few seconds after starting."
+
+
+def _tailscale(*args: str, timeout: float) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(TAILSCALE_CLI), f"--socket={TAILSCALE_SOCKET}", *args],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _tailscale_state() -> dict | None:
+    try:
+        data = json.loads(_tailscale("status", "--json", "--peers=false", timeout=5.0).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get("BackendState"), str) else None
+
+
+def _tailscale_login_url(data: dict) -> str | None:
+    url = data.get("AuthURL")
+    return url if isinstance(url, str) and re.fullmatch(r"https?://[!-~]{1,300}", url) else None
+
+
+def tailscale_status() -> dict:
+    data = _tailscale_state()
+    if data is None:
+        return {"unavailable": TAILSCALE_UNAVAILABLE}
+    state = data["BackendState"]
+    node = data.get("Self") if isinstance(data.get("Self"), dict) else {}
+    tailnet = data.get("CurrentTailnet") if isinstance(data.get("CurrentTailnet"), dict) else {}
+    result = {
+        # NeedsLogin, NeedsMachineAuth (waiting for approval in the tailnet's admin console), Stopped, Starting, Running.
+        "state": state,
+        "connected": state == "Running",
+        "name": str(node.get("DNSName") or "").rstrip("."),
+        "addresses": [address for address in data.get("TailscaleIPs") or [] if isinstance(address, str)],
+        "tailnet": str(tailnet.get("Name") or ""),
+        "key_expiry": node.get("KeyExpiry") if isinstance(node.get("KeyExpiry"), str) else None,
+        # What tailscaled reports wrong while connected; before that it only says it is stopped or starting.
+        "problems": [problem for problem in data.get("Health") or [] if isinstance(problem, str)][:5] if state == "Running" else [],
+    }
+    if state == "NeedsLogin":
+        result["login_url"] = _tailscale_login_url(data)
+    return result
+
+
+def tailscale_login() -> dict:
+    """Connect the printer to a tailnet: a sign-in address for a printer that isn't logged in, or reconnect one that is."""
+    data = _tailscale_state()
+    if data is None:
+        raise RequestError(HTTPStatus.BAD_GATEWAY, TAILSCALE_UNAVAILABLE)
+    if data["BackendState"] != "NeedsLogin":
+        # Logged in but stopped, as after `tailscale down`: bring it back up with its settings as they are.
+        try:
+            result = _tailscale("up", "--timeout=10s", timeout=15.0)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RequestError(HTTPStatus.BAD_GATEWAY, "Tailscale didn't connect.") from exc
+        if result.returncode != 0:
+            log(f"tailscale up failed: {result.stdout.strip()}")
+            raise RequestError(HTTPStatus.BAD_GATEWAY, "Tailscale didn't connect. Run `tailscale up` over SSH to see why.")
+        return tailscale_status()
+    # `tailscale login` asks for a new sign-in address and then waits for the sign-in; the address stays valid after
+    # it gives up, so it is left to time out while the panel shows the address.
+    previous = _tailscale_login_url(data)
+    try:
+        process = subprocess.Popen(
+            [str(TAILSCALE_CLI), f"--socket={TAILSCALE_SOCKET}", "login", "--timeout=30s"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise RequestError(HTTPStatus.BAD_GATEWAY, TAILSCALE_UNAVAILABLE) from exc
+    threading.Thread(target=process.wait, daemon=True).start()
+    deadline = time.monotonic() + TAILSCALE_LOGIN_WAIT
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        data = _tailscale_state()
+        if data is None:
+            continue
+        if data["BackendState"] != "NeedsLogin" or _tailscale_login_url(data) not in {None, previous}:
+            return tailscale_status()
+    raise RequestError(HTTPStatus.BAD_GATEWAY, "Tailscale's server didn't answer. Check the printer's internet connection and try again.")
+
+
+def tailscale_logout() -> dict:
+    try:
+        result = _tailscale("logout", timeout=20.0)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RequestError(HTTPStatus.BAD_GATEWAY, "Tailscale didn't log out.") from exc
+    if result.returncode != 0:
+        log(f"tailscale logout failed: {result.stdout.strip()}")
+        raise RequestError(HTTPStatus.BAD_GATEWAY, "Tailscale didn't log out.")
+    return tailscale_status()
+
+
+STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status, "tailscale": tailscale_status}
+EXTRA_ACTIONS = {
+    ("octoeverywhere", "link-code"): octoeverywhere_link_code,
+    ("tailscale", "login"): tailscale_login,
+    ("tailscale", "logout"): tailscale_logout,
+}
 
 
 def printer_busy() -> bool:

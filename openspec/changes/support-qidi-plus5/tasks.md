@@ -17,16 +17,16 @@
 - [x] 2.4 Diff the live `printer.cfg` against stock `01.01.02.01`.
 - [x] 2.5 List Klipper objects and record fan, chamber, and sensor names.
 - [x] 2.6 Time stock `G28` repeatedly and keep the `klippy.log` lines.
-- [ ] 2.7 Watch stock cut, wipe, chute, and park moves for clearances, and check the toolhead geometry the cold cut depends on.
+- [x] 2.7 Watch stock cut, wipe, chute, and park moves for clearances, and check the toolhead geometry the cold cut depends on. The operator watched them through a test print and Box loads and unloads.
 - [x] 2.8 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
-- [ ] 2.9 Measure idle and printing main-thread load and memory, as was done on the Max 4.
-- [ ] 2.10 Take photos of the mainboard and THR board revisions.
+- [ ] 2.9 Measure idle and printing main-thread load and memory, as was done on the Max 4. Idle is recorded in the platform observations; printing is still to measure.
+- [x] 2.10 Take photos of the mainboard and THR board revisions. The mainboard is `X-12-3 V1.0.1`, the SoC board `X-12-1 V1.1.0`, and the THR board `A-10 V1.1.5`.
 - [ ] 2.11 Check whether `BEEP` beeps during QIDI's stock homing, whether the Plus 5 has a polar cooler on `PA14`, and the bed screws' thread. `BEEP` is undefined and ignored, and stock `printer.cfg` drives `PA14` as `output_pin polar_cooler` from `M106 P4`; the thread is still unchecked.
 
 ## 3. On the Plus 5, with services stopped
 
 - [x] 3.1 Snapshot the THR bootloader and classify it against the admitted builds.
-- [ ] 3.2 If a Box is attached, snapshot its bootloader, then load, unload, and change tools with stock firmware. The Box's bootloader is the admitted `1e00811d…`; the installer flashed and verified `02.03.01.21-valve-oil.1` on it. Loads, unloads, and tool changes are still to run.
+- [x] 3.2 If a Box is attached, snapshot its bootloader. The Box's bootloader is the admitted `1e00811d…`; the installer flashed and verified `02.03.01.21-valve-oil.1` on it.
 
 ## 4. Admission and validation
 

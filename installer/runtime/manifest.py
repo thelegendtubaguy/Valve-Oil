@@ -444,9 +444,17 @@ def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
             raise ManifestValidationError(f"Invalid add-on id: {addon_id}")
         if any(addon.id == addon_id for addon in catalog):
             raise ManifestValidationError(f"Duplicate add-on id: {addon_id}")
-        wheels = tuple(_addon_artifact(wheel, f"addons.catalog.{addon_id}.wheels") for wheel in _require_list_of_mapping(item, "wheels"))
-        if not wheels:
+        download = item.get("download", False)
+        if not isinstance(download, bool):
+            raise ManifestValidationError(f"Expected a boolean at addons.catalog.{addon_id}.download.")
+        wheels = tuple(
+            _addon_artifact(wheel, f"addons.catalog.{addon_id}.wheels")
+            for wheel in (_require_list_of_mapping(item, "wheels") if "wheels" in item or not download else ())
+        )
+        if not wheels and not download:
             raise ManifestValidationError(f"Expected non-empty list at addons.catalog.{addon_id}.wheels.")
+        if "sdists" in item and not wheels:
+            raise ManifestValidationError(f"addons.catalog.{addon_id}.sdists needs wheels to build with.")
         catalog.append(
             AddonSpec(
                 id=addon_id,
@@ -457,6 +465,7 @@ def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
                     _addon_artifact(sdist, f"addons.catalog.{addon_id}.sdists")
                     for sdist in (_require_list_of_mapping(item, "sdists") if "sdists" in item else ())
                 ),
+                download=download,
             )
         )
     return AddonsSpec(

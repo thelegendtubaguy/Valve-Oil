@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tarfile
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -19,8 +20,9 @@ from .models import AddonSpec, AddonsSpec, SystemWheelSpec
 from .sudo import run_sudo
 
 
-# Optional add-ons live in their own directories under ROOT, each with its own Python environment built from wheels
-# the package ships, and a systemd unit. Nothing outside ROOT and the unit file changes: no system packages, no
+# Optional add-ons live in their own directories under ROOT, each with a systemd unit. A Python add-on gets its own
+# environment built from wheels the package ships; a program the package doesn't ship is downloaded, and checked
+# against the sha256 the manifest pins, when the operator installs it. Nothing outside ROOT and the unit file changes: no system packages, no
 # configuration under printer_data/config, and no Moonraker update manager entries.
 ROOT = "/home/qidi/tltg-addons"
 UNIT_DIR = "/etc/systemd/system"
@@ -38,6 +40,9 @@ START_SETTLE_SECONDS = 20.0
 START_TIMEOUT_SECONDS = 45.0
 MAX_SOURCE_ENTRIES = 8192
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
+DOWNLOAD_NAME = ".download"
+DOWNLOAD_TIMEOUT_SECONDS = 60.0
+BEFORE_REMOVE_TIMEOUT_SECONDS = 15.0
 # Files the package adds to an add-on's source come from here.
 PAYLOAD_DIR = Path(__file__).resolve().parents[1] / "system"
 
@@ -47,6 +52,7 @@ UPDATE_AVAILABLE = "update_available"
 FOREIGN = "foreign"
 
 RunFn = Callable[..., subprocess.CompletedProcess]
+UrlOpenFn = Callable[..., Any]
 
 
 class AddonError(InstallerError):
@@ -75,6 +81,10 @@ class AddonDefinition:
     exclusive_group: str | None = None
     # Where the add-on keeps its server and account link, for relinking: (config file, section, server key, token key).
     link_settings: tuple[str, str, str, str] | None = None
+    # Where the operator finds the add-on's log when it doesn't keep running.
+    log_hint: str = "its log in Fluidd"
+    # A command run, without waiting long or minding its result, before a removal stops the service.
+    before_remove: Callable[["AddonPaths"], list[str]] | None = None
 
     @property
     def unit(self) -> str:
@@ -251,7 +261,57 @@ OBICO = AddonDefinition(
     link_settings=(OBICO_CONFIG, "server", "url", "auth_token"),
 )
 
-DEFINITIONS: dict[str, AddonDefinition] = {OCTOEVERYWHERE.id: OCTOEVERYWHERE, OBICO.id: OBICO}
+
+# Tailscale's packages need a TUN device, netfilter, and policy routing, none of which QIDI's kernel has, and they
+# install system-wide as root. Here tailscaled runs as the qidi user with its userspace network stack, which needs none
+# of them: it hands connections arriving from the tailnet to the printer's own services over loopback, and changes
+# no routes, firewall rules, or DNS settings. The printer itself can't open connections to other tailnet devices.
+TAILSCALE_SOCKET = "tailscaled.sock"
+# Tailscale's usual port, so routers that already forward or map it keep giving direct connections.
+TAILSCALE_PORT = 41641
+
+
+def _tailscale_unit(paths: AddonPaths) -> str:
+    return TAILSCALE.unit_marker + f"""\
+# Tailscale, installed by Valve Oil. Remove it from Fluidd's Settings or with addons.sh remove tailscale.
+[Unit]
+Description=Tailscale (Valve Oil add-on)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists={paths.code}/{MARKER}
+
+[Service]
+Type=simple
+User=qidi
+WorkingDirectory={paths.data}
+ExecStart={paths.app}/tailscaled --tun=userspace-networking --statedir={paths.data} --socket={paths.data}/{TAILSCALE_SOCKET} --port={TAILSCALE_PORT}
+Restart=always
+RestartSec=10
+# Off Klipper's CPUs and behind it for CPU time.
+Nice=10
+CPUAffinity=0 3
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+TAILSCALE = AddonDefinition(
+    id="tailscale",
+    name="Tailscale",
+    description="Reach Fluidd, the camera, and SSH from your own devices anywhere, over your private Tailscale network.",
+    homepage="https://tailscale.com",
+    # Tailscale's own packages use the same unit name, so their install shows as one made outside Valve Oil.
+    service="tailscaled",
+    foreign_paths=("/usr/sbin/tailscaled", "/var/lib/tailscale"),
+    render_unit=_tailscale_unit,
+    settings={},
+    log_hint="`journalctl -u tailscaled` over SSH",
+    # Removal deletes the printer's node key, so tell the tailnet the key is finished with first.
+    before_remove=lambda paths: [f"{paths.app}/tailscale", f"--socket={paths.data}/{TAILSCALE_SOCKET}", "logout"],
+)
+
+DEFINITIONS: dict[str, AddonDefinition] = {OCTOEVERYWHERE.id: OCTOEVERYWHERE, OBICO.id: OBICO, TAILSCALE.id: TAILSCALE}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -370,6 +430,7 @@ def install_addon(
     run: RunFn = subprocess.run,
     status: Callable[[str], None] = lambda message: None,
     sleep: Callable[[float], None] = time.sleep,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> str:
     """Install the pinned add-on, or bring an installed one to the pinned build. Returns the resulting state."""
     definition, addon = _resolve(addon_id, spec)
@@ -404,36 +465,48 @@ def install_addon(
     _remove_tree(staging, root=root)
     _remove_tree(previous, root=root)
     staging.mkdir(parents=True)
-    _extract_source(installer_root / addon.source.archive, staging / "app")
+    if addon.download:
+        status(f"Downloading {definition.name} {addon.version}")
+        archive = staging / DOWNLOAD_NAME
+        try:
+            _download(addon.source, archive, urlopen=urlopen)
+            _extract_source(archive, staging / "app")
+        except AddonError:
+            _remove_tree(staging, root=root)
+            raise
+        archive.unlink()
+    else:
+        _extract_source(installer_root / addon.source.archive, staging / "app")
     for relative, data in _package_files(definition).items():
         target = staging / "app" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-    status("Creating its Python environment")
-    _checked(run, [SYSTEM_PYTHON, "-m", "venv", "--without-pip", str(staging / "env")], "Could not create the add-on's Python environment.")
-    status(f"Installing {len(addon.wheels)} Python packages")
-    pip = installer_root / spec.pip_wheel.archive
-    _checked(
-        run,
-        [
-            str(staging / "env/bin/python3"), f"{pip}/pip", "install", "--quiet", "--no-index", "--no-deps",
-            "--no-compile", "--no-cache-dir", "--disable-pip-version-check", "--no-warn-script-location",
-            *(str(installer_root / wheel.archive) for wheel in addon.wheels),
-        ],
-        "Could not install the add-on's Python packages.",
-    )
-    if addon.sdists:
-        status(f"Building {len(addon.sdists)} Python packages")
-        # Pure-Python sources, built offline with the setuptools from the wheels above.
+    if addon.wheels:
+        status("Creating its Python environment")
+        _checked(run, [SYSTEM_PYTHON, "-m", "venv", "--without-pip", str(staging / "env")], "Could not create the add-on's Python environment.")
+        status(f"Installing {len(addon.wheels)} Python packages")
+        pip = installer_root / spec.pip_wheel.archive
         _checked(
             run,
             [
                 str(staging / "env/bin/python3"), f"{pip}/pip", "install", "--quiet", "--no-index", "--no-deps",
-                "--no-build-isolation", "--no-cache-dir", "--disable-pip-version-check", "--no-warn-script-location",
-                *(str(installer_root / sdist.archive) for sdist in addon.sdists),
+                "--no-compile", "--no-cache-dir", "--disable-pip-version-check", "--no-warn-script-location",
+                *(str(installer_root / wheel.archive) for wheel in addon.wheels),
             ],
-            "Could not build the add-on's Python packages.",
+            "Could not install the add-on's Python packages.",
         )
+        if addon.sdists:
+            status(f"Building {len(addon.sdists)} Python packages")
+            # Pure-Python sources, built offline with the setuptools from the wheels above.
+            _checked(
+                run,
+                [
+                    str(staging / "env/bin/python3"), f"{pip}/pip", "install", "--quiet", "--no-index", "--no-deps",
+                    "--no-build-isolation", "--no-cache-dir", "--disable-pip-version-check", "--no-warn-script-location",
+                    *(str(installer_root / sdist.archive) for sdist in addon.sdists),
+                ],
+                "Could not build the add-on's Python packages.",
+            )
     _write_json(staging / MARKER, {"id": addon_id, "version": addon.version, "build": build_id(addon, definition)})
     _ensure_data(definition, root=root)
 
@@ -480,6 +553,11 @@ def remove_addon(
             raise AddonError(f"{definition.name} was installed outside Valve Oil; Valve Oil leaves it alone.")
         return False
     status(f"Removing {definition.name}")
+    if marker is not None and definition.before_remove is not None:
+        try:
+            run(definition.before_remove(paths), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=BEFORE_REMOVE_TIMEOUT_SECONDS, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
     if owned_unit:
         _systemctl(["disable", "--now", definition.unit], root=root, sudo_password=sudo_password, run=run, check=False)
         _remove_unit(definition, root=root, sudo_password=sudo_password, run=run)
@@ -561,6 +639,7 @@ def update_installed_addons(
     run: RunFn = subprocess.run,
     status: Callable[[str], None] = lambda message: None,
     sleep: Callable[[float], None] = time.sleep,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> list[str]:
     """Bring every installed add-on to the package's pinned build. Returns failure messages; never raises for one add-on."""
     failures = []
@@ -572,7 +651,7 @@ def update_installed_addons(
         if addon_state(definition, addon, marker, root=root) == INSTALLED and _unit_current(definition, root=root):
             continue
         try:
-            install_addon(addon.id, spec=spec, installer_root=installer_root, root=root, sudo_password=sudo_password, run=run, status=status, sleep=sleep)
+            install_addon(addon.id, spec=spec, installer_root=installer_root, root=root, sudo_password=sudo_password, run=run, status=status, sleep=sleep, urlopen=urlopen)
         except (AddonError, OSError) as exc:
             failures.append(f"{definition.name}: {exc}")
     return failures
@@ -608,8 +687,33 @@ def _resolve(addon_id: str, spec: AddonsSpec | None) -> tuple[AddonDefinition, A
 
 
 def _verify_artifacts(spec: AddonsSpec, addon: AddonSpec, installer_root: Path) -> None:
-    for artifact in (spec.pip_wheel, addon.source, *addon.wheels, *addon.sdists):
+    bundled = [*addon.wheels, *addon.sdists]
+    if addon.wheels:
+        bundled.append(spec.pip_wheel)
+    if not addon.download:
+        bundled.append(addon.source)
+    for artifact in bundled:
         _verify_artifact(artifact, installer_root)
+
+
+def _download(artifact: SystemWheelSpec, destination: Path, *, urlopen: UrlOpenFn) -> None:
+    """Fetch an add-on's source to destination, keeping it only if it is the file the manifest pins."""
+    name = PurePosixPath(artifact.archive).name
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        request = urllib.request.Request(artifact.url, headers={"User-Agent": "Valve-Oil-addons"})
+        with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, destination.open("wb") as handle:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                size += len(chunk)
+                if size > MAX_SOURCE_BYTES:
+                    raise AddonError(f"{name} is larger than an add-on download may be.")
+                digest.update(chunk)
+                handle.write(chunk)
+    except (OSError, ValueError) as exc:
+        raise AddonError(f"Could not download {name} from {artifact.url}. Check the printer's internet connection. ({exc})") from exc
+    if digest.hexdigest() != artifact.sha256:
+        raise AddonError(f"The downloaded {name} is not the file this Valve Oil release pins; nothing was installed.")
 
 
 def _verify_artifact(artifact: SystemWheelSpec, installer_root: Path) -> None:
@@ -784,7 +888,7 @@ def _start(
         restarts = count
         if active_for >= START_SETTLE_SECONDS:
             return
-    raise AddonError(f"{definition.name} did not keep running after it started; see its log in Fluidd.")
+    raise AddonError(f"{definition.name} did not keep running after it started; see {definition.log_hint}.")
 
 
 def _service_health(unit: str, *, run: RunFn) -> tuple[str, str]:

@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.11.1"
+  version: "26.11.11.2"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -653,10 +653,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-6fb3c6e
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-6fb3c6e/fluidd.zip
+    version: v1.37.7-tltg-0e6d94d
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-0e6d94d/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 132344aa56c0f328ff3a6b2ef1070a0796212070be90de352344a2c1034143a1
+    sha256: 2889b1364b309d2b50113e87ad402f02fc5e4afcf2563d29d778600a83510fad
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui
@@ -902,3 +902,11 @@ addons:
         - url: https://files.pythonhosted.org/packages/2c/39/d5994d2060edef17c03e70eb8d9c4ac44ffae0294fe7bb3dc953e67133d8/sarge-0.1.6.tar.gz
           archive: addons/obico/sdists/sarge-0.1.6.tar.gz
           sha256: f48fb904e64f10ad6bef62422eaf4736acfd9b13ab64ba44822637a9dbb53265
+    - id: tailscale
+      version: "1.104.6"
+      # Not in the bundle: the printer downloads this file when the add-on is installed or updated.
+      download: true
+      source:
+        url: https://pkgs.tailscale.com/stable/tailscale_1.104.6_arm64.tgz
+        archive: addons/tailscale/tailscale_1.104.6_arm64.tgz
+        sha256: d0e4f297da3c428d02162c6235b9948e4ddc245c64502b7b05647da9b96a0971
