@@ -42,3 +42,4 @@ Normal install and update SHALL provide a package-owned add-ons service and a Fl
 - **WHEN** OctoEverywhere is installed
 - **THEN** its panel shows whether its service runs, whether it is connected to OctoEverywhere, and whether an account is linked
 - **AND** an unlinked printer can be linked through its account-linking URL or a short link code fetched on request
+- **AND** a printer linked while OctoEverywhere is running shows as linked without restarting OctoEverywhere

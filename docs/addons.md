@@ -37,7 +37,7 @@ Fluidd uses QIDI's default sudo password to install add-ons. If you've changed t
 
 ### Linking your account
 
-After installing, the OctoEverywhere panel under **Add-ons** shows whether it's connected and whether an account is linked. To link it, click **Link account** and sign in to OctoEverywhere. To link from another device, click **Show link code** and enter the code at [octoeverywhere.com/code](https://octoeverywhere.com/code) before it expires. Once linked, the panel says **Linked**. To unlink the printer, remove it from your OctoEverywhere dashboard.
+After installing, the OctoEverywhere panel under **Add-ons** shows whether it's connected and whether an account is linked. To link it, click **Link account** and sign in to OctoEverywhere. To link from another device, click **Show link code** and enter the code at [octoeverywhere.com/code](https://octoeverywhere.com/code) before it expires. Within about half a minute of linking, the panel says **Linked**. To unlink the printer, remove it from your OctoEverywhere dashboard.
 
 ### What it changes
 

@@ -45,7 +45,10 @@ ACTION_HEADER = ("X-Valve-Oil", "addons")
 OCTOEVERYWHERE_STATUS = "http://127.0.0.1:7132/"
 OCTOEVERYWHERE_LINK_URL = "https://octoeverywhere.com/getstarted?printerid={printer_id}"
 OCTOEVERYWHERE_SHORTCODE = "https://octoeverywhere.com/api/shortcode/create"
+OCTOEVERYWHERE_PRINTER_INFO = "https://octoeverywhere.com/api/printer/info"
 OCTOEVERYWHERE_CODE_PAGE = "https://octoeverywhere.com/code"
+# OctoEverywhere's CDN refuses Python's default User-Agent.
+OCTOEVERYWHERE_HEADERS = {"Content-Type": "application/json", "User-Agent": "Valve-Oil-addons"}
 
 
 def log(message: str) -> None:
@@ -217,6 +220,52 @@ class RequestError(Exception):
         self.status = status
 
 
+class OctoEverywhereLink:
+    """Whether OctoEverywhere's service has the printer on an account.
+
+    The plugin learns whether it's linked only when it connects to OctoEverywhere, so it keeps saying it isn't after
+    the account is linked. While it says so, this asks OctoEverywhere's service in the background, at most every
+    CHECK_SECONDS, and status reads the last answer.
+    """
+
+    CHECK_SECONDS = 20.0
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._printer_id: str | None = None
+        self._linked = False
+        self._checked = 0.0
+        self._checking = False
+
+    def linked(self, printer_id: str) -> bool:
+        with self._lock:
+            if printer_id != self._printer_id:
+                self._printer_id, self._linked, self._checked = printer_id, False, 0.0
+            if not self._checking and time.monotonic() - self._checked >= self.CHECK_SECONDS:
+                self._checking = True
+                threading.Thread(target=self._check, args=(printer_id,), daemon=True).start()
+            return self._linked
+
+    def _check(self, printer_id: str) -> None:
+        linked = None
+        body = json.dumps({"Id": printer_id}).encode("utf-8")
+        request = urllib.request.Request(OCTOEVERYWHERE_PRINTER_INFO, data=body, headers=OCTOEVERYWHERE_HEADERS, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=10.0) as response:
+                linked = json.load(response)["Result"]["HasOwners"] is True
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            log(f"OctoEverywhere printer info failed: {exc}")
+        with self._lock:
+            if printer_id == self._printer_id:
+                if linked is not None:
+                    self._linked = linked
+                self._checked = time.monotonic()
+            self._checking = False
+
+
+OCTOEVERYWHERE_LINK = OctoEverywhereLink()
+
+
 def octoeverywhere_status() -> dict:
     try:
         data = _get_json(OCTOEVERYWHERE_STATUS, timeout=2.0)
@@ -226,7 +275,7 @@ def octoeverywhere_status() -> dict:
     return {
         "connected": bool(data.get("IsConnectedToOctoEverywhere")),
         "printer_connected": bool(data.get("IsConnectedToPrinter")),
-        "linked": bool(data.get("IsAccountLinked")),
+        "linked": bool(data.get("IsAccountLinked")) or OCTOEVERYWHERE_LINK.linked(printer_id),
         "printer_id": printer_id,
         "link_url": OCTOEVERYWHERE_LINK_URL.format(printer_id=printer_id),
     }
@@ -237,9 +286,7 @@ def octoeverywhere_link_code() -> dict:
     if "printer_id" not in status:
         raise RequestError(HTTPStatus.BAD_GATEWAY, status["unavailable"])
     body = json.dumps({"Type": 1, "PrinterId": status["printer_id"]}).encode("utf-8")
-    # OctoEverywhere's CDN refuses Python's default User-Agent.
-    headers = {"Content-Type": "application/json", "User-Agent": "Valve-Oil-addons"}
-    request = urllib.request.Request(OCTOEVERYWHERE_SHORTCODE, data=body, headers=headers, method="POST")
+    request = urllib.request.Request(OCTOEVERYWHERE_SHORTCODE, data=body, headers=OCTOEVERYWHERE_HEADERS, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=10.0) as response:
             result = json.load(response)["Result"]
