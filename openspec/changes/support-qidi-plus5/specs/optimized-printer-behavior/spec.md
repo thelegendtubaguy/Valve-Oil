@@ -29,6 +29,10 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **WHEN** any X, Y, or Z motor is on on a Plus 5
 - **THEN** the mainboard fan runs, where QIDI ran it only with the Z motors
 
+#### Scenario: Plus 5 X/Y drivers switch at 400 V/µs
+- **WHEN** Klipper starts on a Plus 5 with Valve Oil installed
+- **THEN** both TMC2240 X/Y drivers run with `slope_control` 2, and QIDI's `printer.cfg` driver sections are unchanged
+
 #### Scenario: Plus 5 speed limits stay at QIDI's values
 - **WHEN** install or update runs on a Plus 5
 - **THEN** `max_velocity`, Z tilt `speed`, and bed mesh `speed` keep the Plus 5's own values rather than the Max 4's 565 mm/s cap

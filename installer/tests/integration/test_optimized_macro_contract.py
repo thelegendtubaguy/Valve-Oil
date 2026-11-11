@@ -241,14 +241,22 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 self.assertNotIn("G4 P1000", gcode)
 
     def test_printer_folders_define_the_same_sections(self):
-        sections = {
-            printer: sorted(
+        # Driver sections only add options to the printer's own stock driver sections, which differ by printer.
+        sections = {}
+        for printer, stock_root in NEWEST_STOCK.items():
+            stock = {
+                name.lower()
+                for name, _, _ in iter_sections((stock_root / "config/printer.cfg").read_text(encoding="utf-8").splitlines())
+            }
+            names = [
                 name.lower()
                 for path in (PRINTER_MACRO_ROOT / printer).glob("*.cfg")
                 for name, _, _ in iter_sections(path.read_text(encoding="utf-8").splitlines())
-            )
-            for printer in NEWEST_STOCK
-        }
+            ]
+            drivers = {name for name in names if name.startswith("tmc")}
+            with self.subTest(printer=printer):
+                self.assertLessEqual(drivers, stock)
+            sections[printer] = sorted(name for name in names if name not in drivers)
         self.assertEqual(sections["plus5"], sections["max4"])
 
     def test_plus5_homes_sensorless_without_closed_loop_commands(self):
