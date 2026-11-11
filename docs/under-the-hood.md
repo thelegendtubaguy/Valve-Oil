@@ -46,15 +46,18 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 |---|---|
 | `~/tltg-fluidd` | This project's [Fluidd build](fluidd.md). Updates replace it whole. |
 | `~/fluidd` | QIDI's Fluidd, left untouched as the fallback. |
-| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, sending its ready-made `.gz` copies of scripts, styles, and images (`gzip_static`) instead of compressing them on each request, and adds a `/tltg-screen/` route for the Printer screen card. |
+| `~/tltg-valve-oil-ui` | [Valve Oil UI](valve-oil-ui.md). Updates replace it whole. |
+| Fluidd's nginx configuration | Serves `~/tltg-fluidd` instead of `~/fluidd`, sending its ready-made `.gz` copies of scripts, styles, and images (`gzip_static`) instead of compressing them on each request, and adds a `/tltg-screen/` route for the Printer screen card and a `/tltg-addons/` route for the Add-ons settings. Adds a `/valve-oil/` route that serves `~/tltg-valve-oil-ui`, only while that directory holds the installer's current build. Its page and `version.json` are never cached, so open tabs see an update. |
 | `tltg-remote-screen` service | Streams the touchscreen to the [Printer screen](fluidd.md#printer-screen) card, sending a new image only when the screen changes. It only listens on the printer itself, and Moonraker checks every connection. It runs on CPU 0, away from Klipper's CPUs. |
+| `tltg-addons` service | Lists, installs, and removes [add-ons](addons.md) for Fluidd's **Add-ons** settings by running `addons.sh`, and reads each add-on's status. It only listens on the printer itself, and Moonraker checks every request through the web server's `/tltg-addons/` route. It runs on CPU 0, and keeps its last change's log in `~/.cache/tltg-addons/`. |
 | `~/printer_data/moonraker.asvc` | Adds `qidi-client`, so Fluidd can [restart the touchscreen app](fluidd.md#restart-the-touchscreen-app). Moonraker restarts. |
 
 ## System
 
 | What | Change |
 |---|---|
-| `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, `box-firmware.sh`, and `mainboard-firmware.sh`. |
+| `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, `box-firmware.sh`, `mainboard-firmware.sh`, and `addons.sh`. |
+| `~/tltg-addons/` and each add-on's service, such as `/etc/systemd/system/octoeverywhere.service` or `/etc/systemd/system/moonraker-obico.service` | Only for [add-ons](addons.md) you install. Each add-on has its own folder and a data folder for its settings. |
 | USB QIDI Box firmware and `~/printer_data/.tltg_box_firmware_backups/` | Each install and automatic update flashes the [Valve Oil Box firmware](firmware.md#qidi-box-firmware) to every USB Box that needs it and keeps the Box's stock firmware in the backups folder. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box_firmware_box<N>.json` | The shareable report for a USB Box whose bootloader or firmware the installer [doesn't support yet](firmware.md#qidi-box-firmware). Fluidd shows a banner while it's there. An install removes it once the Box has the Valve Oil firmware or leaves `box.cfg`. |
@@ -67,6 +70,6 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 
 ## What uninstall does
 
-Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, the `msgspec` and `uvloop` added for Moonraker and Klipper, the Printer screen service, the Moonraker and Klipper restart-on-exit settings, the service priorities and CPUs, the tuning and `irqbalance` changes, which brings QIDI's tuning script back, and the filament folder link, and restores Moonraker's service list. The Anycubic and Elegoo filaments stay in QIDI's filament list, since Box slots may use them. Values that QIDI's own configuration has for the printer's firmware, such as `query_cycle` 10, stay as they are. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
+Uninstall removes the optimized macros and added modules, restores every QIDI file above, points the web server back at QIDI's Fluidd, removes `~/tltg-fluidd`, `~/tltg-valve-oil-ui`, the `msgspec` and `uvloop` added for Moonraker and Klipper, the Printer screen and add-ons services, every installed add-on with its settings, the Moonraker and Klipper restart-on-exit settings, the service priorities and CPUs, the tuning and `irqbalance` changes, which brings QIDI's tuning script back, and the filament folder link, and restores Moonraker's service list. The Anycubic and Elegoo filaments stay in QIDI's filament list, since Box slots may use them. Values that QIDI's own configuration has for the printer's firmware, such as `query_cycle` 10, stay as they are. It asks before undoing the OS optimizations. Files you changed after installing are kept and listed.
 
 Installs, updates, and automatic updates flash the [QIDI Box firmware](firmware.md#qidi-box-firmware). Other firmware changes only when you [ask for it](firmware.md). Uninstall doesn't change firmware. `./box-firmware.sh restore` puts QIDI's Box firmware back.

@@ -106,6 +106,21 @@ def validate_thr_firmware_request(*, paths, environ):
         raise ThrFirmwareError("The THR FIFO firmware option supports only Max 4 firmware 01.01.07.01.")
 
 
+def _stock_thr_image(paths, backup_root, manifest) -> bytes | None:
+    from scripts.flash_thr_firmware import digest
+    thr = manifest["thr"]
+    candidates = sorted(backup_root.glob("thr-*/before/application.bin"))
+    candidates += sorted((paths.printer_data_root.parent / "update").glob("QD_MAX4_THR_" + thr["stock_version"] + "_*.bin"))
+    for candidate in candidates:
+        try:
+            data = candidate.read_bytes()
+        except OSError:
+            continue
+        if len(data) == thr["size"] and digest(data) == thr["stock_sha256"]:
+            return data
+    return None
+
+
 def flash_thr_firmware(
     *, paths, reporter, dry_run=False, input_stream=None, environ=None,
     run=None, urlopen=urllib.request.urlopen, sleep=time.sleep, clock=time.monotonic,
@@ -124,7 +139,7 @@ def flash_thr_firmware(
         reporter.line("THR firmware dry-run: would back up and admit THR, skip an already-patched image, or flash and verify the FIFO fix. No UART or services accessed.")
         return
 
-    manifest = json.loads((paths.bundle_root / "firmware/max4-thr-lis2dw-fifo-v1.json").read_text())
+    manifest = json.loads((paths.bundle_root / "firmware/max4-thr-valve-oil-v1.json").read_text())
     tool = paths.bundle_root / "scripts/flash_thr_firmware.py"
     python = paths.printer_data_root.parent / "klippy-env/bin/python"
     if not tool.is_file() or tool.is_symlink() or not python.is_file():
@@ -203,6 +218,22 @@ def flash_thr_firmware(
             evidence = protocol.verify_readback(app, before, manifest)
             reporter.line("THR FIFO fix is already installed; no reset, erase, or transfer required.")
         else:
+            stock_backup = before
+            if protocol.digest(app) != manifest["thr"]["stock_sha256"]:
+                # An earlier build of the fix: the update is built from, and falls back to,
+                # QIDI's stock image, which the board no longer holds.
+                stock = _stock_thr_image(paths, backup_root, manifest)
+                if stock is None:
+                    raise ThrFirmwareError("Updating the earlier THR FIFO fix needs QIDI's THR firmware "
+                                           + manifest["thr"]["stock_version"] + " from the THR firmware backups or "
+                                           "~/update; none was found. THR firmware was not changed.")
+                stock_backup = directory / "stock"
+                stock_backup.mkdir(mode=0o700)
+                atomic_write_bytes(stock_backup / "application.bin", stock, mode=0o600)
+                atomic_write_bytes(stock_backup / "bootloader.bin", boot, mode=0o600)
+                fsync_directory(directory)
+                app = stock
+                reporter.line("THR has an earlier build of the FIFO fix; updating it from QIDI's stock THR firmware.")
             image = patch_thr(app, manifest)
             image_path = directory / "patched-thr.bin"
             atomic_write_bytes(image_path, image, mode=0o600)
@@ -211,7 +242,7 @@ def flash_thr_firmware(
             firmware_may_have_changed = True
             reporter.line("Flashing the admitted THR FIFO fix; keep printer power on...")
             recovery = ("--recover-to-stock",) if protocol.identify_bootloader(boot).recoverable else ()
-            transfer = command("transfer", "--image", image_path, "--backup-dir", before, "--reset", "--confirm-write",
+            transfer = command("transfer", "--image", image_path, "--backup-dir", stock_backup, "--reset", "--confirm-write",
                                *recovery, allow=(protocol.FELL_BACK, protocol.END_UNCONFIRMED) if recovery else ())
             fell_back = transfer.returncode == protocol.FELL_BACK
             sleep(12)

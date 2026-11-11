@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import urllib.request
 
+from .addons_cli import maybe_remove_addons
 from . import klipper_cfg, messages, patches
 from .auto_update import (
     AutoUpdateError,
@@ -499,6 +500,7 @@ def _execute_uninstall(
         backup_label=plan.backup_label,
         backup_zip_path=backup_zip_path,
     )
+    maybe_remove_addons(paths=paths, reporter=reporter, input_stream=input_stream, environ=environ, run=run)
     reporter.emit_uninstall_success(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,

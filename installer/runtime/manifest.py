@@ -9,6 +9,8 @@ import yaml
 
 from .backup import CONFIG_BACKUP_IGNORED_SYMLINKS
 from .models import (
+    AddonSpec,
+    AddonsSpec,
     BackupSpec,
     EnsureLineSpec,
     ExtraModuleSpec,
@@ -33,6 +35,7 @@ from .models import (
     SystemAptSourcesSpec,
     SystemDnsSpec,
     SystemFluiddBuildSpec,
+    SystemValveOilUiSpec,
     SystemFluiddBundleSpec,
     SystemFluiddFilamentConfigSpec,
     SystemOptionalServiceSpec,
@@ -275,6 +278,7 @@ def parse_manifest(raw: Any) -> Manifest:
         patches=patches,
         postflight=postflight,
         system_optimizations=_parse_system_optimizations(raw),
+        addons=_parse_addons(raw),
     )
 
 
@@ -425,6 +429,51 @@ def source_patch_variants_for_firmware(
     return matches
 
 
+# Add-on ids name directories, systemd units, and URL paths.
+_ADDON_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+
+
+def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
+    if "addons" not in raw:
+        return None
+    addons_raw = _require_mapping(raw, "addons")
+    catalog: list[AddonSpec] = []
+    for item in _require_list_of_mapping(addons_raw, "catalog"):
+        addon_id = _require_str(item, "id")
+        if not _ADDON_ID.match(addon_id):
+            raise ManifestValidationError(f"Invalid add-on id: {addon_id}")
+        if any(addon.id == addon_id for addon in catalog):
+            raise ManifestValidationError(f"Duplicate add-on id: {addon_id}")
+        wheels = tuple(_addon_artifact(wheel, f"addons.catalog.{addon_id}.wheels") for wheel in _require_list_of_mapping(item, "wheels"))
+        if not wheels:
+            raise ManifestValidationError(f"Expected non-empty list at addons.catalog.{addon_id}.wheels.")
+        catalog.append(
+            AddonSpec(
+                id=addon_id,
+                version=_require_str(item, "version"),
+                source=_addon_artifact(_require_mapping(item, "source"), f"addons.catalog.{addon_id}.source"),
+                wheels=wheels,
+                sdists=tuple(
+                    _addon_artifact(sdist, f"addons.catalog.{addon_id}.sdists")
+                    for sdist in (_require_list_of_mapping(item, "sdists") if "sdists" in item else ())
+                ),
+            )
+        )
+    return AddonsSpec(
+        pip_wheel=_addon_artifact(_require_mapping(addons_raw, "pip_wheel"), "addons.pip_wheel"),
+        catalog=tuple(catalog),
+    )
+
+
+def _addon_artifact(item: Any, key: str) -> SystemWheelSpec:
+    _ensure_mapping_entry(item, key)
+    return SystemWheelSpec(
+        url=_validate_https_url(_require_str(item, "url")),
+        archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("addons",)),
+        sha256=_require_sha256(item, "sha256"),
+    )
+
+
 def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec | None:
     system_raw = raw.get("system_optimizations")
     if system_raw is None:
@@ -440,6 +489,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
     fluidd_build_raw = _require_mapping(system_raw, "fluidd_build")
+    valve_oil_ui_raw = _require_mapping(system_raw, "valve_oil_ui")
     speedups_raw = _require_mapping(system_raw, "moonraker_speedups")
     wheels_raw = speedups_raw.get("wheels")
     if not isinstance(wheels_raw, list) or not wheels_raw:
@@ -505,6 +555,11 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
             url=_validate_https_url(_require_str(fluidd_build_raw, "url")),
             archive=_validate_relative_path(_require_str(fluidd_build_raw, "archive"), allowed_roots=("system",)),
             sha256=_require_sha256(fluidd_build_raw, "sha256"),
+        ),
+        valve_oil_ui=SystemValveOilUiSpec(
+            source=_validate_relative_path(_require_str(valve_oil_ui_raw, "source"), allowed_roots=("ui",)),
+            archive=_validate_relative_path(_require_str(valve_oil_ui_raw, "archive"), allowed_roots=("system",)),
+            sha256=_require_sha256(valve_oil_ui_raw, "sha256") if "sha256" in valve_oil_ui_raw else None,
         ),
         moonraker_speedups=SystemMoonrakerSpeedupsSpec(
             wheels=tuple(

@@ -7,7 +7,7 @@ import traceback
 from contextlib import nullcontext
 from pathlib import Path
 
-from . import messages, safety
+from . import addons_cli, messages, safety
 from .auto_update import (
     LOCK_HELD_ENV,
     AutoUpdateError,
@@ -67,6 +67,16 @@ def main(
         root = bundle_root or Path(__file__).resolve().parents[2]
         print(installer_version(root), file=stream or sys.stdout)
         return 0
+    if argv and argv[0] == "addons":
+        env = dict(os.environ if environ is None else environ)
+        root = bundle_root or Path(__file__).resolve().parents[2]
+        return addons_cli.main(
+            argv[1:],
+            paths=resolve_runtime_paths(bundle_root=root, environ=env),
+            stream=stream,
+            input_stream=input_stream,
+            environ=env,
+        )
     args = parse_args(argv)
     if args.show_version:
         print(installer_version(bundle_root or Path(__file__).resolve().parents[2]), file=stream or sys.stdout)

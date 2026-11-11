@@ -1,5 +1,10 @@
 # THR firmware changelog
 
+## max4-thr-valve-oil-v1
+
+- The THR reports its version as `02.02.01.08-valve-oil.1`, which is QIDI's version, the project name, and a revision that goes up with each new THR firmware. The data dictionary is recompressed with the new version into its own space, with matching `identify` length constants; it is otherwise identical. The FIFO fix is unchanged.
+- The installer updates a THR with `max4-thr-lis2dw-fifo-v1` from QIDI's stock THR image in the THR firmware backups or `~/update`, and falls back to that stock image on a failed transfer.
+
 ## max4-thr-lis2dw-fifo-v1
 
 - Corrected the inverted LIS2DW FIFO-empty decision in the Max 4 THR `02.02.01.08` image from QIDI firmware `01.01.07.01`, retaining scheduler wake behavior and changing only five image bytes.

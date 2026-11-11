@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from installer.runtime import fluidd_build
+from installer.runtime import static_build
 from installer.runtime import moonraker_speedups
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
@@ -32,17 +35,18 @@ ALLOWED_FILES = [
     "installer/release/auto-update.sh",
     "installer/release/box-firmware.sh",
     "installer/release/mainboard-firmware.sh",
+    "installer/release/addons.sh",
     "scripts/flash_thr_firmware.py",
     "scripts/thr_bootloaders.py",
     "scripts/build_thr_firmware.py",
-    "firmware/max4-thr-lis2dw-fifo-v1.json",
+    "firmware/max4-thr-valve-oil-v1.json",
     "scripts/flash_box_firmware.py",
     "scripts/build_box_firmware.py",
     "firmware/max4-box-valve-oil-v1.json",
     "firmware/BOX_FIRMWARE.md",
     "scripts/flash_mcu_firmware.py",
     "scripts/build_mcu_firmware.py",
-    "firmware/max4-mcu-closed-loop-replies-v1.json",
+    "firmware/max4-mcu-valve-oil-v1.json",
     "firmware/MAINBOARD_FIRMWARE.md",
     "firmware/FLASHING.md",
     "scripts/build_zram_modules.py",
@@ -61,6 +65,9 @@ ALLOWED_DIRECTORIES = [
 ]
 # Release downloads are cached by checksum outside the bundled tree.
 DOWNLOAD_CACHE = REPO_ROOT / "build/downloads"
+VALVE_OIL_UI_BUILD = REPO_ROOT / "build/valve-oil-ui"
+# Fixed entry metadata keeps the Valve Oil UI archive identical for identical build output.
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,7 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     validate_source_payloads(manifest)
     validate_printer_macro_trees(manifest)
     fluidd_archive = fetch_fluidd_build(manifest)
+    # Dev bundles share a package version, so the build ID tells open tabs a newer dev build was installed.
+    ui_version = manifest.package.version if args.channel == "release" else f"{manifest.package.version}+{args.build_id or 'local'}"
+    ui_archive, ui_sha256 = build_valve_oil_ui(manifest, ui_version)
     speedup_wheels = fetch_moonraker_speedups(manifest)
+    addon_files = fetch_addon_files(manifest)
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -99,14 +110,21 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
     shutil.copy2(REPO_ROOT / "installer/release/box-firmware.sh", bundle_root / "box-firmware.sh")
     shutil.copy2(REPO_ROOT / "installer/release/mainboard-firmware.sh", bundle_root / "mainboard-firmware.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/addons.sh", bundle_root / "addons.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory
         destination = bundle_root / directory
         shutil.copytree(source, destination, ignore=ignore)
     shutil.copy2(fluidd_archive, bundle_root / "installer" / manifest.system_optimizations.fluidd_build.archive)
+    shutil.copy2(ui_archive, bundle_root / "installer" / manifest.system_optimizations.valve_oil_ui.archive)
+    pin_valve_oil_ui(bundle_root / "installer/package.yaml", ui_sha256)
     for wheel, cached in speedup_wheels:
         destination = bundle_root / "installer" / wheel.archive
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cached, destination)
+    for artifact, cached in addon_files:
+        destination = bundle_root / "installer" / artifact.archive
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cached, destination)
 
@@ -206,8 +224,68 @@ def fetch_fluidd_build(manifest) -> Path:
         partial = cached.with_name(cached.name + ".partial")
         partial.write_bytes(data)
         partial.replace(cached)
-    fluidd_build.archive_files(cached, build.sha256)
+    static_build.FLUIDD.archive_files(cached, build.sha256)
     return cached
+
+
+def build_valve_oil_ui(manifest, version: str) -> tuple[Path, str]:
+    """Build Valve Oil UI from source, labelled with version, and return its archive and sha256."""
+    spec = manifest.system_optimizations.valve_oil_ui
+    if spec.sha256 is not None:
+        raise ValueError("installer/package.yaml must not pin valve_oil_ui.sha256; the bundle builder pins the archive it builds.")
+    source = REPO_ROOT / spec.source
+    npm = shutil.which("npm")
+    if npm is None:
+        raise SystemExit(
+            f"Building Valve Oil UI needs Node.js and npm; install the Node version in {spec.source}/.nvmrc."
+        )
+    environ = {**os.environ, "VO_UI_VERSION": version}
+    for command in ([npm, "ci"], [npm, "run", "build"]):
+        step = "npm " + " ".join(command[1:])
+        print(f"Running {step} in {spec.source}/", file=sys.stderr)
+        # npm's output goes to stderr; stdout lists only the built bundles.
+        result = subprocess.run(command, cwd=source, env=environ, stdout=sys.stderr)
+        if result.returncode != 0:
+            raise SystemExit(f"Valve Oil UI build failed: {step} exited with {result.returncode}.")
+    archive = VALVE_OIL_UI_BUILD / Path(spec.archive).name
+    zip_directory(source / "dist", archive)
+    sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+    static_build.VALVE_OIL_UI.archive_files(archive, sha256)
+    return archive, sha256
+
+
+def zip_directory(directory: Path, archive: Path) -> None:
+    """Zip a build output directory with sorted entries and fixed timestamps and permissions."""
+    if directory.is_symlink() or not directory.is_dir():
+        raise SystemExit(f"Build output is missing: {directory}")
+    files = []
+    for path in sorted(directory.rglob("*"), key=lambda item: item.relative_to(directory).as_posix()):
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise SystemExit(f"Build output contains a link or special file: {path}")
+        if path.is_file():
+            files.append(path)
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    partial = archive.with_name(archive.name + ".partial")
+    with zipfile.ZipFile(partial, "w") as output:
+        for path in files:
+            info = zipfile.ZipInfo(path.relative_to(directory).as_posix(), date_time=ZIP_TIMESTAMP)
+            info.external_attr = 0o100644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            output.writestr(info, path.read_bytes())
+    partial.replace(archive)
+
+
+def pin_valve_oil_ui(package_yaml: Path, sha256: str) -> None:
+    """Record the built archive's sha256 in the bundled manifest, which the installer verifies it against."""
+    text = package_yaml.read_text(encoding="utf-8")
+    pinned, count = re.subn(
+        r"(?m)^(  valve_oil_ui:\n(?:    .*\n)*?    archive: .*\n)", lambda match: f"{match.group(1)}    sha256: {sha256}\n", text
+    )
+    if count != 1:
+        raise ValueError("Could not pin valve_oil_ui.sha256 in the bundled package.yaml.")
+    package_yaml.write_text(pinned, encoding="utf-8")
+    if load_manifest(package_yaml).system_optimizations.valve_oil_ui.sha256 != sha256:
+        raise ValueError("Bundled package.yaml does not pin the built Valve Oil UI archive.")
 
 
 def fetch_moonraker_speedups(manifest) -> list[tuple[object, Path]]:
@@ -227,6 +305,27 @@ def fetch_moonraker_speedups(manifest) -> list[tuple[object, Path]]:
             partial.replace(cached)
         fetched.append((wheel, cached))
     moonraker_speedups.wheel_files((cached, wheel.sha256) for wheel, cached in fetched)
+    return fetched
+
+
+def fetch_addon_files(manifest) -> list[tuple[object, Path]]:
+    """Return every pinned add-on file, downloading each once and verifying it against the manifest."""
+    if manifest.addons is None:
+        return []
+    artifacts = [manifest.addons.pip_wheel]
+    for addon in manifest.addons.catalog:
+        artifacts += [addon.source, *addon.wheels, *addon.sdists]
+    fetched = []
+    for artifact in artifacts:
+        cached = DOWNLOAD_CACHE / f"{artifact.sha256}-{Path(artifact.archive).name}"
+        if not cached.is_file() or hashlib.sha256(cached.read_bytes()).hexdigest() != artifact.sha256:
+            with urllib.request.urlopen(artifact.url, timeout=120) as response:
+                data = response.read()
+            if hashlib.sha256(data).hexdigest() != artifact.sha256:
+                raise ValueError(f"{artifact.url} does not match the pinned sha256.")
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(data)
+        fetched.append((artifact, cached))
     return fetched
 
 

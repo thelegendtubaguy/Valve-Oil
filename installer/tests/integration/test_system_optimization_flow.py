@@ -15,6 +15,7 @@ from installer.runtime import messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
 from installer.runtime import moonraker_speedups
+from installer.runtime import addons_service
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
@@ -57,6 +58,7 @@ from installer.tests.helpers import (
     snapshot_tree,
     with_fluidd_build,
     with_moonraker_speedups,
+    with_valve_oil_ui,
 )
 
 
@@ -96,6 +98,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         nginx_site_before = nginx_site.read_bytes()
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
+        addons_unit = system_root / addons_service.UNIT_FILE.lstrip("/")
+        addons_server = system_root / addons_service.SERVER_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
         asvc_before = asvc.read_bytes()
@@ -175,6 +179,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             "moonraker.service",
             "moonraker answered",
             remote_screen.UNIT,
+            addons_service.UNIT,
             "qidi-client.service",
             "crowsnest.service",
             cpu_tuning.TUNING_UNIT,
@@ -277,10 +282,14 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b'{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1}', fluidd.read_bytes())
         self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
+        self.assertEqual(addons_server.read_bytes(), addons_service.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(state.system_ledger["outcomes"][system_optimizations.FLUIDD_BUILD_OPERATION]["status"], "missing")
+        # A repository checkout has no Valve Oil UI build, so it isn't served.
+        self.assertEqual(state.system_ledger["outcomes"][system_optimizations.VALVE_OIL_UI_OPERATION]["status"], "missing")
         # Without the package's wheels, Moonraker and Klipper are never pointed at a speedups directory.
         self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.OPERATION]["status"], "missing")
         self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.PATH_OPERATION]["status"], "skipped")
@@ -326,8 +335,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(reconciled["restore_preimages"][remote_screen.SERVER_OPERATION]["exists"])
 
         # Serving the package Fluidd build retires QIDI's bundle patches, and Moonraker gets the speedup packages; a
-        # failure first rolls both back.
-        manifest = with_moonraker_speedups(with_fluidd_build(manifest))
+        # failure first rolls both back. nginx never serves a Valve Oil UI directory the package doesn't own.
+        manifest = with_valve_oil_ui(with_moonraker_speedups(with_fluidd_build(manifest)))
+        ui = system_root / "home/qidi/tltg-valve-oil-ui"
+        (ui / "private").mkdir(parents=True)
+        (ui / "index.html").write_text("someone else's page\n", encoding="utf-8")
         build = system_root / "home/qidi/tltg-fluidd"
         previous_build = system_root / "home/qidi/tltg-fluidd.tltg-previous"
         marker = build / ".tltg-optimized-fluidd"
@@ -376,12 +388,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n    gzip_static on;\r\n", nginx_site.read_bytes())
         self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
         self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        self.assertNotIn(b"/valve-oil", nginx_site.read_bytes())
+        self.assertEqual((ui / "index.html").read_text(encoding="utf-8"), "someone else's page\n")
+        self.assertEqual(reconciled["outcomes"][system_optimizations.VALVE_OIL_UI_OPERATION]["status"], "preserved")
         self.assertEqual(fluidd.read_bytes(), fluidd_before)
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertNotIn(FLUIDD_BOX_OPERATION, reconciled["restore_preimages"])
         self.assertNotIn(fluidd_patch.SERVICE_WORKER_OPERATION, reconciled["restore_preimages"])
         self.assertEqual(reconciled["outcomes"][FLUIDD_BOX_OPERATION]["status"], "retired")
-        # Updates replace an earlier build and earlier speedups, which come back if a later change fails.
+        # Updates replace an earlier build and earlier speedups, which come back if a later change fails. Once the
+        # directory is free, Valve Oil UI is installed and served at /valve-oil/, and a failure removes both again.
+        shutil.rmtree(ui)
         marker.write_text("0" * 64 + "\n", encoding="utf-8")
         speedups_marker.write_text("0" * 64 + "\n", encoding="utf-8")
         screen_server.write_bytes(prior_server)
@@ -397,12 +414,18 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(speedups_marker.read_text(encoding="utf-8"), "0" * 64 + "\n")
         self.assertFalse(previous_speedups.exists())
         self.assertEqual(nginx_site.read_bytes(), prior_site)
+        self.assertFalse(ui.exists())
         reconciled = reconcile(reconciled)
         self.assertEqual(marker.read_text(encoding="utf-8"), manifest.system_optimizations.fluidd_build.sha256 + "\n")
         self.assertFalse(previous_build.exists())
         self.assertEqual(speedups_marker.read_text(encoding="utf-8"), speedups_digest + "\n")
         self.assertFalse(previous_speedups.exists())
         self.assertEqual(nginx_site.read_bytes().count(b"    gzip_static on;\r\n"), 1)
+        self.assertEqual((ui / ".tltg-optimized-valve-oil-ui").read_text(encoding="utf-8"), manifest.system_optimizations.valve_oil_ui.sha256 + "\n")
+        self.assertEqual((ui / "index.html").stat().st_mode & 0o777, 0o644)
+        self.assertIn(b"    location ^~ /valve-oil/ {\r\n        alias /home/qidi/tltg-valve-oil-ui/;\r\n", nginx_site.read_bytes())
+        self.assertIn(b"        alias /home/qidi/tltg-valve-oil-ui/index.html;\r\n        add_header Cache-Control \"no-store\";\r\n", nginx_site.read_bytes())
+        self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
@@ -454,6 +477,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
         self.assertEqual(asvc.read_bytes(), asvc_before)
         self.assertFalse(build.exists())
+        self.assertFalse(ui.exists())
         self.assertFalse(speedups.exists())
         self.assertFalse(speedups_path.exists())
         self.assertTrue(speedups_path.parent.is_dir())
@@ -461,6 +485,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(klipper_speedups_path.parent.is_dir())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
+        self.assertFalse(addons_unit.exists())
+        self.assertFalse(addons_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())

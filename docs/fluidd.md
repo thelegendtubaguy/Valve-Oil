@@ -26,3 +26,7 @@ If the installer doesn't recognize the printer's web server configuration, the c
 ## Restart the touchscreen app
 
 If the touchscreen freezes, restart it from Fluidd without SSH. Open Fluidd's power menu: `qidi-client`, QIDI's touchscreen app, is listed under services with **Restart**, **Stop**, and **Start**. **Stop** leaves the touchscreen off until you start it again or the printer reboots.
+
+## Add-ons
+
+Fluidd's **Settings** has an **Add-ons** section for installing optional programs such as OctoEverywhere. See [Add-ons](addons.md).

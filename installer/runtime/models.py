@@ -256,6 +256,15 @@ class SystemFluiddBuildSpec:
 
 
 @dataclass(frozen=True)
+class SystemValveOilUiSpec:
+    # Repository directory the bundle builder builds the archive from.
+    source: str
+    archive: str
+    # The bundle builder pins the archive it built in the bundled manifest; repository checkouts have none.
+    sha256: str | None
+
+
+@dataclass(frozen=True)
 class SystemWheelSpec:
     url: str
     archive: str
@@ -319,12 +328,32 @@ class SystemOptimizationsSpec:
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
     fluidd_build: SystemFluiddBuildSpec
+    valve_oil_ui: SystemValveOilUiSpec
     moonraker_speedups: SystemMoonrakerSpeedupsSpec
     zram_swap: SystemZramSwapSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec
     klipper_print_stats_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_filament_config: SystemFluiddFilamentConfigSpec
     rockchip_root_sync: SystemRockchipRootSyncSpec
+
+
+@dataclass(frozen=True)
+class AddonSpec:
+    id: str
+    version: str
+    source: SystemWheelSpec
+    wheels: tuple[SystemWheelSpec, ...]
+    # Pure-Python packages PyPI publishes only as source; installed after the wheels, built with their setuptools.
+    sdists: tuple[SystemWheelSpec, ...] = ()
+
+
+@dataclass(frozen=True)
+class AddonsSpec:
+    pip_wheel: SystemWheelSpec
+    catalog: tuple[AddonSpec, ...]
+
+    def find(self, addon_id: str) -> AddonSpec | None:
+        return next((addon for addon in self.catalog if addon.id == addon_id), None)
 
 
 @dataclass(frozen=True)
@@ -340,6 +369,7 @@ class Manifest:
     patches: PatchSetSpec
     postflight: PostflightSpec
     system_optimizations: Optional[SystemOptimizationsSpec] = None
+    addons: Optional[AddonsSpec] = None
 
     @property
     def state_file(self) -> str:

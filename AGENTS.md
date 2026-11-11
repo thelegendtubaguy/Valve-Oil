@@ -11,6 +11,7 @@
   - stock values: guarded `installer/package.yaml patches.*`, or a guarded host-file patch under `installer/runtime/` when the file is QIDI-generated with varying sections (e.g. `config/box.cfg`);
   - Klipper behavior: `installer/klipper/tltg-optimized-macros/`, with printer-specific homing, cutter/wiper/chute moves, and positions in `installer/klipper/printers/<printer>/` (same macro names on every printer; the installer layers the detected printer's folder onto the common macros);
   - slicer behavior: `orcaslicer_gcode/` and `qidistudio_gcode/`;
+  - Valve Oil UI, the web interface served at `/valve-oil/` beside Fluidd: `ui/`;
   - installer/runtime metadata: `installer/`.
 
   Call out unavoidable stock-mapped edits first and keep them minimal.
@@ -18,6 +19,10 @@
 ## Fluidd
 
 This project owns Fluidd. Make changes in the fork of upstream `fluidd-core/fluidd` (`https://github.com/thelegendtubaguy/fluidd`, branch `qidi`), rebased onto upstream releases. Installer releases pin a fork release in `installer/package.yaml` (`system_optimizations.fluidd_build`), installed alongside QIDI's Fluidd so QIDI's copy stays the rollback. The guarded patches of QIDI's bundle in `installer/runtime/fluidd_box_filaments.py` apply only when that build can't be served and take fixes only. Document Fluidd's UI in the fork, not here.
+
+## Valve Oil UI
+
+`ui/` is this project's own web interface (Vite, React, TypeScript), served at `/valve-oil/` beside Fluidd. The bundle builder builds it and pins the archive's sha256 in the bundled manifest. `ui/src/qidi/` ports the Fluidd fork's QIDI Box and printer-warning logic with its tests; keep the two in step when Box behavior changes. Operator docs are `docs/valve-oil-ui.md`; developer notes are `ui/README.md`.
 
 ## Docs
 
@@ -68,6 +73,7 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 - Installer behavior: `python3 scripts/run_installer_core_tests.py`
 - THR firmware generator or patch manifest: `scripts/check_thr_firmware.py` against a fresh `scripts/build_thr_firmware.py` build (setup in `firmware/README.md`)
 - THR flashing tool or protocol: `scripts/check_thr_flashing.py` (with `--bootloader-backup` when available) and `scripts/check_thr_recovery.py` with a recoverable build's `--bootloader-backup` (see `firmware/FLASHING.md`)
+- Valve Oil UI (`ui/`): `cd ui && npm ci && npm run typecheck && npm test && npm run build`; check screens against the fake Moonraker (`ui/README.md`)
 - Launcher, bundle, or release plumbing: `python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local --smoke-test`
 - OpenSpec: `openspec validate --all --strict`
 - Start-print behavior or contract paths: see **Start-print changes**.

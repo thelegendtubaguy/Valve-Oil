@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.10.2"
+  version: "26.11.10.3"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -607,10 +607,14 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-8c1748d
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-8c1748d/fluidd.zip
+    version: v1.37.7-tltg-e9d5793
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-e9d5793/fluidd.zip
     archive: system/fluidd.zip
-    sha256: efcdb51f4755a2797e1756d93fac6b0b4eb896c5ebeb34ecb1fe289841421f29
+    sha256: 827f4292f3f50b6724d625501f7256fa08074fb1fba57f22d5a9bd4d0159f226
+  # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
+  valve_oil_ui:
+    source: ui
+    archive: system/valve-oil-ui.zip
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:
@@ -680,3 +684,172 @@ system_optimizations:
       - mount -o remount,sync /
       - install_packages
       - touch /usr/local/first_boot_flag
+
+# Optional add-ons the operator installs, updates, and removes from Fluidd's Settings page or addons.sh. The bundle
+# builder downloads and verifies every file; scripts/lock_addon.py prints an add-on's pins for a new release.
+addons:
+  # Installs the add-on wheels offline; add-on environments get no pip of their own.
+  pip_wheel:
+    url: https://files.pythonhosted.org/packages/44/3c/d717024885424591d5376220b5e836c2d5293ce2011523c9de23ff7bf068/pip-25.3-py3-none-any.whl
+    archive: addons/pip-25.3-py3-none-any.whl
+    sha256: 9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd
+  catalog:
+    - id: octoeverywhere
+      version: "5.4.1"
+      source:
+        url: https://github.com/QuinnDamerell/OctoPrint-OctoEverywhere/archive/refs/tags/5.4.1.tar.gz
+        archive: addons/octoeverywhere/octoeverywhere-5.4.1.tar.gz
+        sha256: 76784e39b4ccca094a9d7d3060a4bfc40d36d740c415130fe9d7681999d438de
+      wheels:
+        - url: https://files.pythonhosted.org/packages/38/0e/27be9fdef66e72d64c0cdc3cc2823101b80585f8119b5c112c2e8f5f7dab/anyio-4.12.1-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/anyio-4.12.1-py3-none-any.whl
+          sha256: d405828884fc140aa80a3c667b8beed277f1dfedec42ba031bd6ac3db606ab6c
+        - url: https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/certifi-2026.10.23-py3-none-any.whl
+          sha256: e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+        - url: https://files.pythonhosted.org/packages/7a/44/a9ddc117221405ab41ba66653013f0e78e5c2cb9a5b22060ca1e7dccb1ea/charset_normalizer-3.5.2-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+          archive: addons/octoeverywhere/wheels/charset_normalizer-3.5.2-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+          sha256: 0891b9d3903c5571c03771ca669a4b0ec5618ca722a5c957d3d29cd4e5062848
+        - url: https://files.pythonhosted.org/packages/09/fe/f61e7129e9e689d9e40bbf8a36fb90f04eceb477f4617c02c6a18463e81f/configparser-7.2.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/configparser-7.2.0-py3-none-any.whl
+          sha256: fee5e1f3db4156dcd0ed95bc4edfa3580475537711f67a819c966b389d09ce62
+        - url: https://files.pythonhosted.org/packages/68/1b/e0a87d256e40e8c888847551b20a017a6b98139178505dc7ffb96f04e954/dnspython-2.7.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/dnspython-2.7.0-py3-none-any.whl
+          sha256: b4c34b7d10b51bcc3a5071e7b8dee77939f1e878477eeecc965e9835f63c6c86
+        - url: https://files.pythonhosted.org/packages/8a/0e/97c33bf5009bdbac74fd2beace167cab3f978feb69cc36f1ef79360d6c4e/exceptiongroup-1.3.1-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/exceptiongroup-1.3.1-py3-none-any.whl
+          sha256: a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
+        - url: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/h11-0.16.0-py3-none-any.whl
+          sha256: 63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
+        - url: https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/httpcore-1.0.9-py3-none-any.whl
+          sha256: 2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55
+        - url: https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/httpx-0.28.1-py3-none-any.whl
+          sha256: d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+        - url: https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/idna-3.20-py3-none-any.whl
+          sha256: ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+        - url: https://files.pythonhosted.org/packages/7e/18/6cc547e0d8d17e4ddfce960f2de9569973c5946000c8cee7943897f1703c/octoflatbuffers-24.3.27-py2.py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/octoflatbuffers-24.3.27-py2.py3-none-any.whl
+          sha256: a40b85eb05ce82a3c7bde517de75e02e66cb0ac3004eae2bccc42752a17cf179
+        - url: https://files.pythonhosted.org/packages/0b/0a/9fdaa04bbf1c911d484fe8a86292132102b5488f0c2439dfdc9ad5e724ea/octowebsocket_client-1.9.1-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/octowebsocket_client-1.9.1-py3-none-any.whl
+          sha256: e5410ae51fe8159dccc77406744dc6278624ebe84471de8d418d616afdb2abc7
+        - url: https://files.pythonhosted.org/packages/bf/af/fea4b0ee14cee6149f18d180430a14be0963b9a4fbc7875421a7de75f831/paho_mqtt-2.2.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/paho_mqtt-2.2.0-py3-none-any.whl
+          sha256: 3243630f7c2b05f71d1de8c6f59865eb04d3a59ae8c866e92377faed6753db4d
+        - url: https://files.pythonhosted.org/packages/63/dd/f296c27ffba447bfad76c6a0c44c1ea97a90cb9472b9304c94a732e8dbfb/pillow-11.3.0-cp39-cp39-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl
+          archive: addons/octoeverywhere/wheels/pillow-11.3.0-cp39-cp39-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl
+          sha256: 092c80c76635f5ecb10f3f83d76716165c96f5229addbd1ec2bdbbda7d496e06
+        - url: https://files.pythonhosted.org/packages/19/1f/3eefd5c84c35cae44549ce1c7f7e58f7945b34f5a6bce07a135438522073/pyasn1-0.6.5-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/pyasn1-0.6.5-py3-none-any.whl
+          sha256: 4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587
+        - url: https://files.pythonhosted.org/packages/33/fd/8762f7ee3e4e4be6d1d846cffb4916dd9bb02b2f800d3603718a0efe494c/pybind11-3.1.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/pybind11-3.1.0-py3-none-any.whl
+          sha256: b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0
+        - url: https://files.pythonhosted.org/packages/74/ab/df8d889fd01139db68ae9e5cb5c8f0ea016823559a6ecb427582d52b07dc/qrcode-8.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/qrcode-8.0-py3-none-any.whl
+          sha256: 9fc05f03305ad27a709eb742cf3097fa19e6f6f93bb9e2f039c0979190f6f1b1
+        - url: https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/requests-2.32.5-py3-none-any.whl
+          sha256: 2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6
+        - url: https://files.pythonhosted.org/packages/64/8d/0133e4eb4beed9e425d9a98ed6e081a55d195481b7632472be1af08d2f6b/rsa-4.9.1-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/rsa-4.9.1-py3-none-any.whl
+          sha256: 68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762
+        - url: https://files.pythonhosted.org/packages/55/b1/736d4b4b308694b0071844a533522ac06669ad61751687b94edfbf863f17/sentry_sdk-2.74.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/sentry_sdk-2.74.0-py3-none-any.whl
+          sha256: 40b205af015649df3ec9986e057ce24ce85956bee3fb75efa72c93aa7036bdff
+        - url: https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/typing_extensions-4.16.0-py3-none-any.whl
+          sha256: 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+        - url: https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl
+          archive: addons/octoeverywhere/wheels/urllib3-2.6.3-py3-none-any.whl
+          sha256: bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4
+        - url: https://files.pythonhosted.org/packages/5c/71/e14820b61a1c137966b7667b400b72fa4a45c836257e443f3d77607db268/zstandard-0.25.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+          archive: addons/octoeverywhere/wheels/zstandard-0.25.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+          sha256: 3b870ce5a02d4b22286cf4944c628e0f0881b11b3f14667c1d62185a99e04f53
+    - id: obico
+      version: "2.2.4"
+      source:
+        url: https://github.com/TheSpaghettiDetective/moonraker-obico/archive/refs/tags/v2.2.4.tar.gz
+        archive: addons/obico/obico-2.2.4.tar.gz
+        sha256: 98dcb4d58dbe01da41ff54ce3569c6300176874e1aa668912725641629893abd
+      wheels:
+        - url: https://files.pythonhosted.org/packages/d7/dd/88df7d5b2077825d6757a674123062c6e7545cc61556b42739e8757b7b65/backoff-1.11.1-py2.py3-none-any.whl
+          archive: addons/obico/wheels/backoff-1.11.1-py2.py3-none-any.whl
+          sha256: 61928f8fa48d52e4faa81875eecf308eccfb1016b018bb6bd21e05b5d90a96c5
+        - url: https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl
+          archive: addons/obico/wheels/certifi-2026.10.23-py3-none-any.whl
+          sha256: e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+        - url: https://files.pythonhosted.org/packages/06/b3/24afc8868eba069a7f03650ac750a778862dc34941a4bebeb58706715726/charset_normalizer-2.0.12-py3-none-any.whl
+          archive: addons/obico/wheels/charset_normalizer-2.0.12-py3-none-any.whl
+          sha256: 6881edbebdb17b39b4eaaa821b438bf6eddffb4468cf344f09f89def34a8b1df
+        - url: https://files.pythonhosted.org/packages/7e/d4/7ebdbd03970677812aac39c869717059dbb71a4cfc033ca6e5221787892c/click-8.1.8-py3-none-any.whl
+          archive: addons/obico/wheels/click-8.1.8-py3-none-any.whl
+          sha256: 63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2
+        - url: https://files.pythonhosted.org/packages/25/b7/b3c4270a11414cb22c6352ebc7a83aaa3712043be29daa05018fd5a5c956/distro-1.5.0-py2.py3-none-any.whl
+          archive: addons/obico/wheels/distro-1.5.0-py2.py3-none-any.whl
+          sha256: df74eed763e18d10d0da624258524ae80486432cd17392d9c3d96f5e83cd2799
+        - url: https://files.pythonhosted.org/packages/9f/1a/8b6d48162861009d1e017a9740431c78d860809773b66cac220a11aa3310/Flask-2.2.5-py3-none-any.whl
+          archive: addons/obico/wheels/Flask-2.2.5-py3-none-any.whl
+          sha256: 58107ed83443e86067e41eff4631b058178191a355886f8e479e347fa1285fdf
+        - url: https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl
+          archive: addons/obico/wheels/idna-3.20-py3-none-any.whl
+          sha256: ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+        - url: https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl
+          archive: addons/obico/wheels/importlib_metadata-8.7.1-py3-none-any.whl
+          sha256: 5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151
+        - url: https://files.pythonhosted.org/packages/04/96/92447566d16df59b2a776c0fb82dbc4d9e07cd95062562af01e408583fc4/itsdangerous-2.2.0-py3-none-any.whl
+          archive: addons/obico/wheels/itsdangerous-2.2.0-py3-none-any.whl
+          sha256: c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef
+        - url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
+          archive: addons/obico/wheels/jinja2-3.1.6-py3-none-any.whl
+          sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+        - url: https://files.pythonhosted.org/packages/98/fe/dbcabd91abdb382f9fbd2ae1b02354c727d90bbdcce79db98cfb687d70b0/markupsafe-3.0.4-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+          archive: addons/obico/wheels/markupsafe-3.0.4-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+          sha256: 6768d67d1bce64270e0fdc2e69309d68b9b18ae56ddf6c711d168e9d051c2cac
+        - url: https://files.pythonhosted.org/packages/ff/cd/9cdfea8fc45c56680b798db6a55fa60a22e2d3d3ccf54fc729d083b50ce4/netaddr-0.8.0-py2.py3-none-any.whl
+          archive: addons/obico/wheels/netaddr-0.8.0-py2.py3-none-any.whl
+          sha256: 9666d0232c32d2656e5e5f8d735f58fd6c7457ce52fc21c98d45f2af78f990ac
+        - url: https://files.pythonhosted.org/packages/35/97/20e04661d607df6b73844fb03914aeee2c6cacd5f97a040ba3d266a92983/pathvalidate-2.5.0-py3-none-any.whl
+          archive: addons/obico/wheels/pathvalidate-2.5.0-py3-none-any.whl
+          sha256: e5b2747ad557363e8f4124f0553d68878b12ecabd77bcca7e7312d5346d20262
+        - url: https://files.pythonhosted.org/packages/5a/17/cebee01d1c0c1441174cf0456ddc91b280d79acb65340c05e41d77866ee8/python_dateutil-3.0.0-py2.py3-none-any.whl
+          archive: addons/obico/wheels/python_dateutil-3.0.0-py2.py3-none-any.whl
+          sha256: 3c79630202e4152c6add678446984236efe4f57e84d8e892aab0637bab82e9fd
+        - url: https://files.pythonhosted.org/packages/92/96/144f70b972a9c0eabbd4391ef93ccd49d0f2747f4f6a2a2738e99e5adc65/requests-2.26.0-py2.py3-none-any.whl
+          archive: addons/obico/wheels/requests-2.26.0-py2.py3-none-any.whl
+          sha256: 6c1246513ecd5ecd4528a0906f910e8f0f9c6b8ec72030dc9fd154dc1a6efd24
+        - url: https://files.pythonhosted.org/packages/19/3e/23af11049f2ff6242afbd428c4cf92e2996e151f4f5d46c2210e8204900e/sentry_sdk-1.23.1-py2.py3-none-any.whl
+          archive: addons/obico/wheels/sentry_sdk-1.23.1-py2.py3-none-any.whl
+          sha256: a884e2478e0b055776ea2b9234d5de9339b4bae0b3a5e74ae43d131db8ded27e
+        - url: https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl
+          archive: addons/obico/wheels/setuptools-82.0.1-py3-none-any.whl
+          sha256: a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb
+        - url: https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl
+          archive: addons/obico/wheels/six-1.17.0-py2.py3-none-any.whl
+          sha256: 4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+        - url: https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl
+          archive: addons/obico/wheels/tzdata-2026.6-py2.py3-none-any.whl
+          sha256: 0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec
+        - url: https://files.pythonhosted.org/packages/33/cf/8435d5a7159e2a9c83a95896ed596f68cf798005fe107cc655b5c5c14704/urllib3-1.26.20-py2.py3-none-any.whl
+          archive: addons/obico/wheels/urllib3-1.26.20-py2.py3-none-any.whl
+          sha256: 0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e
+        - url: https://files.pythonhosted.org/packages/55/44/030ea47390896c8d6dc9995c8e9a4c5df3a161cd45416d88119036c73eda/websocket_client-1.2.1-py2.py3-none-any.whl
+          archive: addons/obico/wheels/websocket_client-1.2.1-py2.py3-none-any.whl
+          sha256: 0133d2f784858e59959ce82ddac316634229da55b498aac311f1620567a710ec
+        - url: https://files.pythonhosted.org/packages/fd/21/0a674dfe66e9df9072c46269c882e9f901d36d987d8ea50ead033a9c1e01/werkzeug-2.3.8-py3-none-any.whl
+          archive: addons/obico/wheels/werkzeug-2.3.8-py3-none-any.whl
+          sha256: bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748
+        - url: https://files.pythonhosted.org/packages/08/8a/0861bec20485572fbddf3dfba2910e38fe249796cb73ecdeb74e07eeb8d3/zipp-3.23.1-py3-none-any.whl
+          archive: addons/obico/wheels/zipp-3.23.1-py3-none-any.whl
+          sha256: 0b3596c50a5c700c9cb40ba8d86d9f2cc4807e9bedb06bcdf7fac85633e444dc
+      sdists:
+        - url: https://files.pythonhosted.org/packages/4d/53/7c534a38850f2252275d7f949aed2219095e90df1e2d180a9c8ed139e499/bson-0.5.10.tar.gz
+          archive: addons/obico/sdists/bson-0.5.10.tar.gz
+          sha256: d6511b2ab051139a9123c184de1a04227262173ad593429d21e443d6462d6590
+        - url: https://files.pythonhosted.org/packages/2c/39/d5994d2060edef17c03e70eb8d9c4ac44ffae0294fe7bb3dc953e67133d8/sarge-0.1.6.tar.gz
+          archive: addons/obico/sdists/sarge-0.1.6.tar.gz
+          sha256: f48fb904e64f10ad6bef62422eaf4736acfd9b13ab64ba44822637a9dbb53265
