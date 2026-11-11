@@ -15,8 +15,8 @@
 
 - [x] 3.1 Run `tailscaled` in userspace mode as `qidi` on QIDI's kernel and get a sign-in address.
 - [x] 3.2 Install, remove, and reinstall through `addons.sh` and Fluidd; get a sign-in address from the panel.
-- [ ] 3.3 Sign in to a tailnet; open Fluidd, the camera, and SSH from another tailnet device.
-- [ ] 3.4 Log out from Fluidd; measure a connected Tailscale idle.
+- [x] 3.3 Sign in to a tailnet; open Fluidd, the camera, and SSH from another tailnet device.
+- [x] 3.4 Log out from Fluidd; measure a connected Tailscale idle.
 
 ## 4. Docs
 

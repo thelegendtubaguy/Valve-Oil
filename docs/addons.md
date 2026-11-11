@@ -103,13 +103,13 @@ Installing Tailscale needs the printer to be online. Valve Oil downloads Tailsca
 
 ### Logging in
 
-After installing, the Tailscale panel under **Add-ons** says **Not logged in**. Click **Log in**. The panel shows a sign-in address and a **Sign in to Tailscale** button. Open it on any device, sign in to Tailscale, and approve the printer. **New link** gives a fresh address if the first one has gone stale.
+After installing, the Tailscale panel under **Add-ons** says **Not logged in**. Click **Log in**. The panel shows a sign-in address and a **Sign in to Tailscale** button. Open it on any device, sign in to Tailscale, and approve the printer. **New link** gives a fresh address and makes the earlier one useless, so sign in with the newest one.
 
 Within about 10 seconds of signing in, the panel says **Connected** and shows your tailnet, the printer's name and addresses on it, and when its sign-in expires. The name and address are links that open the printer's Fluidd over Tailscale. From another device on your tailnet, open `http://<the printer's Tailscale name or address>/`.
 
 Tailscale signs devices out after 180 days unless you turn off key expiry for the printer in Tailscale's admin console. When that happens the panel says **Not logged in** again, and **Log in** brings it back.
 
-**Log out** takes the printer off your tailnet. If your tailnet approves new devices by hand, the panel says the printer is waiting for approval until you approve it in the admin console.
+**Log out** takes the printer off your tailnet. It stays listed in Tailscale's admin console, signed out, until you remove it there. If your tailnet approves new devices by hand, the panel says the printer is waiting for approval until you approve it in the admin console.
 
 ### What tailnet devices can reach
 
@@ -130,10 +130,12 @@ Tailscale's own packages install system-wide and expect a tunnel device, firewal
 - the printer's Tailscale identity and settings in `~/tltg-addons/tailscale-data/`;
 - the `tailscaled` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
+On the test Plus 5, a connected Tailscale that nobody is using takes about 34 MB of memory and under 0.5% of one CPU core. Watching the camera over Tailscale took about 27% of one core, since Tailscale encrypts everything it carries. Devices on the same home network as the printer connect to it directly, and Tailscale relays through its servers only when no direct path exists.
+
 Its log is in the system journal. Read it with `journalctl -u tailscaled` over SSH. To use Tailscale's command line, name its socket:
 
 ```bash
 ~/tltg-addons/tailscale/app/tailscale --socket=$HOME/tltg-addons/tailscale-data/tailscaled.sock status
 ```
 
-Removing Tailscale logs the printer out of your tailnet and deletes its identity, so installing it again later means logging in again. If you installed Tailscale some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.
+Removing Tailscale logs the printer out of your tailnet and deletes its identity, so installing it again later means logging in again, and it joins as a new machine. If you installed Tailscale some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.
