@@ -21,7 +21,7 @@
 - [x] 2.8 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
 - [ ] 2.9 Measure idle and printing main-thread load and memory, as was done on the Max 4.
 - [ ] 2.10 Take photos of the mainboard and THR board revisions.
-- [ ] 2.11 Check whether `BEEP` beeps during QIDI's stock homing, whether the Plus 5 has a polar cooler on `PA14`, and the bed screws' thread.
+- [ ] 2.11 Check whether `BEEP` beeps during QIDI's stock homing, whether the Plus 5 has a polar cooler on `PA14`, and the bed screws' thread. `BEEP` is undefined and ignored, and stock `printer.cfg` drives `PA14` as `output_pin polar_cooler` from `M106 P4`; the thread is still unchecked.
 
 ## 3. On the Plus 5, with services stopped
 
@@ -31,7 +31,7 @@
 ## 4. Admission and validation
 
 - [x] 4.1 Add the `plus5` printer to `installer/package.yaml` with its variants, macro folder, and stock snapshot. Update `installer/supported_upgrade_sources.yaml`.
-- [ ] 4.2 Run the installer core tests, the known-versions check, the config formatter, the slicer macro check, the start-print contract check, OpenSpec validation, and the bundle smoke test.
+- [x] 4.2 Run the installer core tests, the known-versions check, the config formatter, the slicer macro check, the start-print contract check, OpenSpec validation, and the bundle smoke test.
 - [ ] 4.3 Install on the Plus 5. Confirm admission, guarded patches, full, XY, and single-axis homing, print start through each slicer pack, cut, wipe, chute, rear-bed scrape, end print, and the screen card.
 - [ ] 4.4 Exercise update, uninstall, restore, and recovery after a QIDI firmware update on the Plus 5.
 - [x] 4.5 Decide zram and the THR fix for the Plus 5 from 2.2 and 3.1, and record the decision. Both ship: the kernels match apart from the build string, and the THR bootloader is the admitted `46358f30…`.
