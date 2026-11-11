@@ -15,6 +15,7 @@ from pathlib import Path
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
 BASE_RUNTIME_FIXTURE = FIXTURES_ROOT / "runtime" / "base"
+from installer.runtime import qidiclient_firmware_popup
 from installer.runtime.manifest import load_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -84,6 +85,17 @@ def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
 
 
 
+def fake_qidiclient() -> tuple[bytes, bytes]:
+    # A small stand-in for QIDI's touchscreen executable and its patched form, admitted as a reviewed build.
+    popup = qidiclient_firmware_popup
+    stock = b"\x7fELF\xff\xfe" + bytes(58) + popup.BRANCH_IF_EQUAL + bytes(64) + popup.BRANCH_IF_EQUAL + bytes(60)
+    patched = stock.replace(popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER)
+    popup.BUILDS[hashlib.sha256(stock).hexdigest()] = popup.Build(
+        size=len(stock), patched_sha256=hashlib.sha256(patched).hexdigest(), branches=(64, 132),
+    )
+    return stock, patched
+
+
 def fake_system_root(
     *,
     include_moonraker_cache: bool = False,
@@ -94,9 +106,15 @@ def fake_system_root(
     include_nginx_site: bool = False,
     include_moonraker_asvc: bool = False,
     include_moonraker_metadata: bool = False,
+    include_qidiclient: bool = False,
     qidi_kernel: bool = True,
 ) -> Path:
     root = temp_path("system-optimization-flow-")
+    if include_qidiclient:
+        qidiclient = root / qidiclient_firmware_popup.FILE.lstrip("/")
+        qidiclient.parent.mkdir(parents=True)
+        qidiclient.write_bytes(fake_qidiclient()[0])
+        qidiclient.chmod(0o755)
     if qidi_kernel:
         zram = load_manifest(REPO_ROOT / "installer/package.yaml").system_optimizations.zram_swap
         (root / "proc/sys/kernel").mkdir(parents=True)
