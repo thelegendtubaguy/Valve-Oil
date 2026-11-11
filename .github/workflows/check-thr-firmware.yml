@@ -5,6 +5,7 @@ on:
     paths:
       - 'firmware/**'
       - 'scripts/build_thr_firmware.py'
+      - 'scripts/build_box_firmware.py'
       - 'scripts/check_thr_firmware.py'
       - 'scripts/flash_thr_firmware.py'
       - 'scripts/check_thr_flashing.py'
@@ -27,23 +28,23 @@ jobs:
       - name: Download pinned Max 4 release
         run: |
           mkdir -p build
-          url=$(python3 -c 'import json; print(json.load(open("firmware/max4-thr-lis2dw-fifo-v1.json"))["stock_archive"]["url"])')
+          url=$(python3 -c 'import json; print(json.load(open("firmware/max4-thr-valve-oil-v1.json"))["stock_archive"]["url"])')
           curl --fail --location --retry 3 "$url" --output build/stock-max4.zip
       - name: Build patched firmware package
-        run: python3 scripts/build_thr_firmware.py --stock-archive build/stock-max4.zip --output-dir dist/max4-thr-fifo-v1
+        run: python3 scripts/build_thr_firmware.py --stock-archive build/stock-max4.zip --output-dir dist/max4-thr-valve-oil-v1
       - name: Verify package, instruction behavior, and rejection boundaries
-        run: python3 scripts/check_thr_firmware.py --stock-archive build/stock-max4.zip --patched-dir dist/max4-thr-fifo-v1
+        run: python3 scripts/check_thr_firmware.py --stock-archive build/stock-max4.zip --patched-dir dist/max4-thr-valve-oil-v1
       - name: Verify transfer safety without hardware
         run: |
           python3 - <<'PY'
           import json, zipfile
           from pathlib import Path
-          manifest = json.loads(Path('firmware/max4-thr-lis2dw-fifo-v1.json').read_text())
+          manifest = json.loads(Path('firmware/max4-thr-valve-oil-v1.json').read_text())
           with zipfile.ZipFile('build/stock-max4.zip') as archive:
               Path('build/stock-thr.bin').write_bytes(archive.read(manifest['thr']['member']))
           PY
-          python3 scripts/check_thr_flashing.py --stock-image build/stock-thr.bin --patched-image dist/max4-thr-fifo-v1/QD_MAX4_THR_02.02.01.08_20260303_TLTG_FIFO_v1.bin
+          python3 scripts/check_thr_flashing.py --stock-image build/stock-thr.bin --patched-image dist/max4-thr-valve-oil-v1/QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin
       - name: Verify reproducible artifacts
         run: |
           python3 scripts/build_thr_firmware.py --stock-archive build/stock-max4.zip --output-dir build/thr-repeat
-          diff --recursive dist/max4-thr-fifo-v1 build/thr-repeat
+          diff --recursive dist/max4-thr-valve-oil-v1 build/thr-repeat

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check Max 4 firmware artifacts and emulate the bounded LIS2DW FIFO query."""
+"""Check the Valve Oil Max 4 THR artifacts, emulate the bounded LIS2DW FIFO query, and the identify dictionary."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,9 @@ import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / "firmware/max4-thr-lis2dw-fifo-v1.json"
+MANIFEST = ROOT / "firmware/max4-thr-valve-oil-v1.json"
+# Stock 02.02.01.08 identify handler and the sendf it tail-calls.
+IDENTIFY, SENDF = 0x080097A4, 0x0800848C
 
 
 def require(condition: bool, message: str) -> None:
@@ -62,19 +64,31 @@ def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict) -> tupl
     require(len(stock) == len(patched) == manifest["thr"]["size"], "THR image size changed")
     require(hashlib.sha256(stock).hexdigest() == manifest["thr"]["stock_sha256"], "Stock THR hash mismatch")
     require(hashlib.sha256(patched).hexdigest() == manifest["thr"]["patched_sha256"], "Patched THR hash mismatch")
-    expected = {}
+    allowed, fifo = set(), {}
     for patch in manifest["thr"]["patches"]:
         offset = int(patch["offset"], 0)
-        before, after = bytes.fromhex(patch["before"]), bytes.fromhex(patch["after"])
-        require(len(before) == len(after), "Instruction replacement changes length")
-        require(stock[offset:offset + len(before)] == before, "Instruction preimage mismatch")
-        require(patched[offset:offset + len(after)] == after, "Instruction replacement mismatch")
-        expected.update({offset + i: (old, new) for i, (old, new) in enumerate(zip(before, after)) if old != new})
-    actual = {i: (old, new) for i, (old, new) in enumerate(zip(stock, patched)) if old != new}
-    require(actual == expected and len(actual) == 5, "Unexpected THR byte delta")
-    require(stock[0x7534:] == patched[0x7534:], "THR dictionary bytes changed")
-    dictionary = json.loads(zlib.decompress(patched[0x7534:]))
-    require(dictionary["version"] == "02.02.01.08", "Vendor identity changed")
+        after = bytes.fromhex(patch["after"])
+        require(patched[offset:offset + len(after)] == after, "Patch replacement mismatch")
+        allowed.update(range(offset, offset + len(after)))
+        if "before" in patch:
+            before = bytes.fromhex(patch["before"])
+            require(len(before) == len(after), "Instruction replacement changes length")
+            require(stock[offset:offset + len(before)] == before, "Instruction preimage mismatch")
+            if offset < IDENTIFY - int(manifest["thr"]["load_address"], 0):
+                fifo.update({offset + i: (old, new) for i, (old, new) in enumerate(zip(before, after)) if old != new})
+        else:
+            require(hashlib.sha256(stock[offset:offset + len(after)]).hexdigest() == patch["before_sha256"],
+                    "Dictionary preimage mismatch")
+    changed = {i for i, (old, new) in enumerate(zip(stock, patched)) if old != new}
+    require(changed <= allowed, "THR bytes changed outside the manifest")
+    require({i: (stock[i], patched[i]) for i in changed if i in fifo} == fifo and len(fifo) == 5,
+            "Unexpected FIFO instruction delta")
+    stock_dictionary = json.loads(zlib.decompress(emulate_identify(stock, manifest)))
+    patched_dictionary = json.loads(zlib.decompress(emulate_identify(patched, manifest)))
+    require(stock_dictionary["version"] == manifest["thr"]["stock_version"], "Stock THR dictionary version")
+    require(patched_dictionary["version"] == manifest["thr"]["patched_version"], "Patched THR dictionary version")
+    patched_dictionary["version"] = stock_dictionary["version"]
+    require(patched_dictionary == stock_dictionary, "THR dictionary differs beyond the version")
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     require(report == {
@@ -87,8 +101,43 @@ def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict) -> tupl
         "members": members,
         "artifacts": [{"name": path.name, "sha256": file_hash(path)} for path in (archive, raw_path)],
     }, "Provenance report mismatch")
-    print("Verified: five changed THR bytes; other payloads, ZIP member metadata, and protocol dictionary unchanged")
+    print("Verified: five FIFO instruction bytes and the version-only identify dictionary changed; "
+          "other payloads and ZIP member metadata unchanged")
     return stock, patched
+
+
+def emulate_identify(image: bytes, manifest: dict) -> bytes:
+    """Run the THR's identify handler and collect the data dictionary it serves."""
+    from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
+    from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_SP
+
+    base, sentinel, args = int(manifest["thr"]["load_address"], 0), 0x08000001, 0x20001000
+    machine = Uc(UC_ARCH_ARM, UC_MODE_MCLASS | UC_MODE_THUMB)
+    machine.mem_map(0x08000000, 0x100000)
+    machine.mem_write(base, image)
+    machine.mem_map(0x20000000, 0x10000)
+    captured = []
+
+    def sendf(uc, address, size, user_data):
+        captured.append((uc.reg_read(UC_ARM_REG_R1), uc.reg_read(UC_ARM_REG_R2), uc.reg_read(UC_ARM_REG_R3)))
+        uc.emu_stop()
+
+    machine.hook_add(UC_HOOK_CODE, sendf, begin=SENDF, end=SENDF + 1)
+    data = b""
+    while True:
+        machine.mem_write(args, struct.pack("<II", len(data), 40))
+        machine.reg_write(UC_ARM_REG_R0, args)
+        machine.reg_write(UC_ARM_REG_SP, 0x2000F000)
+        machine.reg_write(UC_ARM_REG_LR, sentinel)
+        captured.clear()
+        machine.emu_start(IDENTIFY | 1, sentinel & ~1, count=200)
+        require(len(captured) == 1, "THR identify did not send a response")
+        offset, count, pointer = captured[0]
+        require(offset == len(data), "THR identify answered the wrong offset")
+        chunk = bytes(machine.mem_read(pointer, count)) if count else b""
+        data += chunk
+        if len(chunk) < 40:
+            return data
 
 
 def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
@@ -101,6 +150,8 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
 
     base = int(manifest["thr"]["load_address"], 0)
     for patch in manifest["thr"]["patches"]:
+        if "before" not in patch:
+            continue
         offset = int(patch["offset"], 0)
         instructions = Cs(CS_ARCH_ARM, CS_MODE_MCLASS | CS_MODE_THUMB).disasm(
             patched[offset:offset + len(bytes.fromhex(patch["after"]))], base + offset

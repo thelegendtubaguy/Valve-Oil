@@ -1,6 +1,6 @@
 # Max 4 mainboard closed-loop reply fix
 
-`max4-mcu-closed-loop-replies-v1` changes how the Max 4 mainboard (firmware `02.01.01.12`) passes the closed-loop X and Y drivers' replies to Klipper. QIDI's firmware forwards a reply as soon as it ends only for status (`0x37`) and version (`0x40`). Every other reply, including encoder (`0x31`), position error (`0x39`), temperature (`0x3b`), and the acknowledgement of every setting QIDI sends, waits until the drivers' bus has been silent for 50 ms, so each takes about 70 ms. With the fix, the mainboard knows the length of those replies and forwards each one at its last byte. Replies with any other function code are handled exactly as before, including the 50 ms wait.
+`max4-mcu-valve-oil-v1` changes how the Max 4 mainboard (firmware `02.01.01.12`) passes the closed-loop X and Y drivers' replies to Klipper. QIDI's firmware forwards a reply as soon as it ends only for status (`0x37`) and version (`0x40`). Every other reply, including encoder (`0x31`), position error (`0x39`), temperature (`0x3b`), and the acknowledgement of every setting QIDI sends, waits until the drivers' bus has been silent for 50 ms, so each takes about 70 ms. With the fix, the mainboard knows the length of those replies and forwards each one at its last byte. Replies with any other function code are handled exactly as before, including the 50 ms wait.
 
 | On the test printer, 30 reads per motor | Stock | Fixed |
 | --- | --- | --- |
@@ -12,7 +12,7 @@
 
 `G28 X Y` took 12.5–12.7 s on stock and 12.8 s with the fix.
 
-The fixed firmware reports its version as `02.01.01.12-tltg-clreplies1`. You can see it in `klippy.log` (`Loaded MCU 'mcu' … (02.01.01.12-tltg-clreplies1 …`), in Fluidd's system information, and with `./mainboard-firmware.sh status`.
+The fixed firmware reports its version as `02.01.01.12-valve-oil.1`, which is QIDI's version, the project name, and a revision that goes up with each new mainboard firmware. You can see it in `klippy.log` (`Loaded MCU 'mcu' … (02.01.01.12-valve-oil.1 …`), in Fluidd's system information, and with `./mainboard-firmware.sh status`. The earlier build, `02.01.01.12-tltg-clreplies1`, has the same fix; `install` replaces it.
 
 The fix changes four instructions, the version string, and the space the shorter data dictionary frees, which holds the new reply-length table. Nothing else about the mainboard changes. The Plus 5 ships the same mainboard image, but the fix is only offered on the Max 4.
 
@@ -35,7 +35,7 @@ The script:
 2. Saves the read-back under `~/printer_data/.tltg_mainboard_firmware_backups/`.
 3. Builds the patched image from the mainboard's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged.
 
-A mainboard that already has the requested firmware is skipped. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private.
+A mainboard that already has the requested firmware is skipped. A mainboard with the earlier build is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private.
 
 ## If a flash fails
 
