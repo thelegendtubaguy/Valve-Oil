@@ -752,15 +752,8 @@ class Box485Monitor:
                     if not klipper_mcu]
         if adapters:
             signals["usb_serial_adapter"] = adapters
-        identity = None
-        controller = self.printer.lookup_object("multi_color_controller", None)
-        try:
-            box = controller.get_status(self.reactor.monotonic()).get("box")
-            identity = box.get("identity")
-        except Exception:
-            pass
-        if identity not in (None, "", "box_v1"):
-            signals["box_identity"] = identity
+        # multi_color_controller's box identity is no signal: QIDI picks its
+        # RS-485 adapter (box_v2) on every printer without a USB Box.
         return signals
 
     def _register_ids(self):

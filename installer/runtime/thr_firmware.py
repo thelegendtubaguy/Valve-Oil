@@ -89,11 +89,16 @@ def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None, s
             sleep(1)
 
 
+# QIDI firmware that ships the stock THR 02.02.01.08 application the fix is built from. The Plus 5's THR board and
+# image are the Max 4's.
+THR_FIX_FIRMWARE = ("01.01.07.01", "01.01.02.01")
+
+
 def confirm_thr_firmware(*, paths, reporter, explicit=False, dry_run=False, input_stream=None, environ=None):
     env = {} if environ is None else environ
     if explicit or dry_run or input_stream is None or env.get(LOCK_HELD_ENV) == "1":
         return explicit
-    if detect_firmware_version(paths.firmware_manifest_path) != "01.01.07.01":
+    if detect_firmware_version(paths.firmware_manifest_path) not in THR_FIX_FIRMWARE:
         return False
     reporter.emit_prompt(question=messages.THR_FIRMWARE_PROMPT, instruction=messages.THR_FIRMWARE_PROMPT_INSTRUCTION)
     return input_stream.readline().strip().upper() in {"Y", "YES"}
@@ -102,8 +107,8 @@ def confirm_thr_firmware(*, paths, reporter, explicit=False, dry_run=False, inpu
 def validate_thr_firmware_request(*, paths, environ):
     if environ.get(LOCK_HELD_ENV) == "1":
         raise ThrFirmwareError("THR firmware programming is not allowed in automatic-update child installs.")
-    if detect_firmware_version(paths.firmware_manifest_path) != "01.01.07.01":
-        raise ThrFirmwareError("The THR FIFO firmware option supports only Max 4 firmware 01.01.07.01.")
+    if detect_firmware_version(paths.firmware_manifest_path) not in THR_FIX_FIRMWARE:
+        raise ThrFirmwareError("The THR FIFO firmware option supports only Max 4 firmware 01.01.07.01 and Plus 5 firmware 01.01.02.01.")
 
 
 def _stock_thr_image(paths, backup_root, manifest) -> bytes | None:

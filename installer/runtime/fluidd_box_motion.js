@@ -15,9 +15,11 @@ const TltgBoxMotion = (() => {
     ["unload_accel", "Unload accel", v => v.unload_accel],
     ["unload_extruder_length", "Extruder retract", v => v.unload_extruder_length]
   ];
-  // Settings that apply to every slot and have no per-slot override.
+  // Settings that apply to every slot and have no per-slot override, when status doesn't list them.
   const GLOBAL_ONLY = ["unload_extruder_length"];
-  const fieldsFor = scope => FIELDS.filter(([key]) => scope === "global" || !GLOBAL_ONLY.includes(key));
+  // Only the settings this printer's Box code publishes limits for; the Plus 5's take no per-slot overrides.
+  const fieldsFor = (scope, motion) => FIELDS.filter(([key]) =>
+    motion.limits[key] && (scope === "global" || !(motion.global_only || GLOBAL_ONLY).includes(key)));
   const UNAVAILABLE = "Box motion settings unavailable";
   const isSet = value => value !== null && value !== undefined;
   const slotNumber = key => {
@@ -87,7 +89,7 @@ const TltgBoxMotion = (() => {
         const clear = scope === "global" ? "vendor" : "global";
         const params = [];
         let invalid = false;
-        for (const [key] of fieldsFor(scope)) {
+        for (const [key] of fieldsFor(scope, this.motion)) {
           if (!(key in drafts)) {
             this.badSaved(key, current[key]) && params.push(key.toUpperCase() + "=" + clear);
             continue;
@@ -141,7 +143,7 @@ const TltgBoxMotion = (() => {
 
       renderFields(h, scope, values, placeholder) {
         const drafts = this.drafts[scope] || {};
-        return h(Y, { props: { dense: true } }, fieldsFor(scope).map(([key, label]) => {
+        return h(Y, { props: { dense: true } }, fieldsFor(scope, this.motion).map(([key, label]) => {
           const saved = values[key];
           const bad = !(key in drafts) && this.badSaved(key, saved);
           const value = key in drafts ? drafts[key] : isSet(saved) && !bad ? String(saved) : "";

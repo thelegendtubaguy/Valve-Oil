@@ -68,6 +68,15 @@ SOURCE_CASES = (
 RESTORE_CASES = (SOURCE_CASES[0], SOURCE_CASES[3])
 
 
+def _section_hashes(data: bytes) -> dict[str, str]:
+    text = data.decode("utf-8").replace("\r\n", "\n")
+    names = [line[1:line.index("]")] for line in text.splitlines() if line.startswith("[") and "]" in line]
+    return {
+        name: klipper_cfg.normalized_section_sha256(klipper_cfg.resolve_unique_section(text, name).text)
+        for name in names
+    }
+
+
 class SourcePatchLifecycleMatrixTests(unittest.TestCase):
     def setUp(self):
         self.manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
@@ -77,17 +86,15 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
     def _fixture(self, firmware: str, *, source_variant: str = "standard"):
         printer_root = copy_base_runtime()
+        printer = self.manifest.printer_for_firmware(firmware)
         if firmware != "01.01.06.03":
             shutil.copytree(
-                REPO_ROOT
-                / "installer/stock/qidi-max4-defaults/firmwares"
-                / firmware
-                / "config",
+                REPO_ROOT / "installer" / printer.stock_snapshots / firmware / "config",
                 printer_root / "config",
                 dirs_exist_ok=True,
             )
         (printer_root / "firmware_manifest.json").write_text(
-            json.dumps({"SOC": {"file": f"QD_MAX4_SOC_{firmware}_Release_NA", "version": firmware}}),
+            json.dumps({"SOC": {"file": f"{printer.soc_file_prefix}{firmware}_Release_NA", "version": firmware}}),
             encoding="utf-8",
         )
         paths = resolve_runtime_paths(
@@ -176,18 +183,78 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
 
     def test_install_refuses_firmware_whose_soc_file_names_another_printer(self):
-        printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
-        (printer_root / "firmware_manifest.json").write_text(
-            json.dumps({"SOC": {"file": "QD_PLUS5_SOC_01.01.07.01_Release_NA", "version": "01.01.07.01"}}),
-            encoding="utf-8",
+        for firmware, other_prefix in (("01.01.07.01", "QD_PLUS5_SOC_"), ("01.01.02.01", "QD_MAX4_SOC_")):
+            with self.subTest(firmware=firmware):
+                printer_root, paths, _ = self._fixture(firmware, source_variant="sync-reset")
+                (printer_root / "firmware_manifest.json").write_text(
+                    json.dumps({"SOC": {"file": f"{other_prefix}{firmware}_Release_NA", "version": firmware}}),
+                    encoding="utf-8",
+                )
+                before = (printer_root / "config/printer.cfg").read_bytes()
+
+                with self.assertRaises(UnsupportedFirmwareError):
+                    self._run_install(paths)
+
+                self.assertEqual((printer_root / "config/printer.cfg").read_bytes(), before)
+                self.assertFalse((printer_root / "config/tltg_optimized_state.yaml").exists())
+
+    def test_plus5_install_uses_the_plus5_baseline_and_uninstall_restores_it(self):
+        printer_root, paths, stock_source = self._fixture("01.01.02.01", source_variant="sync-reset")
+        stock = {
+            name: (printer_root / "config" / name).read_bytes()
+            for name in ("printer.cfg", "klipper-macros-qd/kinematics.cfg", "klipper-macros-qd/filament.cfg",
+                         "klipper-macros-qd/fans.cfg")
+        }
+        self._run_install(paths)
+
+        printer_cfg = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
+        # Sensorless X/Y homing stays single-touch at 55 mm/s, and the Plus 5 keeps its own speed limits.
+        for stepper in ("stepper_x", "stepper_y"):
+            self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_speed").value, "55")
+            self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_retract_dist").value, "0")
+        self._assert_speeds(printer_root, max_velocity="600", bed_mesh="150", z_tilt="150")
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(printer_cfg, "virtual_sdcard", "on_error_gcode").value,
+            "OPTIMIZED_CANCEL_PRINT_ON_ERROR",
         )
-        before = (printer_root / "config/printer.cfg").read_bytes()
+        self.assertFalse(klipper_cfg.has_section(printer_cfg, "filament_switch_sensor filament_switch_sensor"))
+        self.assertIn(b"\r\n", (printer_root / "config/printer.cfg").read_bytes())
+        self.assertFalse(klipper_cfg.has_section(
+            (printer_root / "config/klipper-macros-qd/kinematics.cfg").read_text(encoding="utf-8"), "homing_override"))
 
-        with self.assertRaises(UnsupportedFirmwareError):
-            self._run_install(paths)
+        installed = printer_root / "config/tltg-optimized-macros"
+        homing = (installed / "homing.cfg").read_text(encoding="utf-8")
+        self.assertIn("SET_TMC_CURRENT STEPPER=stepper_x", homing)
+        self.assertNotIn("ENFORCE_MODE", homing)
+        self.assertNotIn("SET_HOMING_MODE", homing)
+        self.assertIn("switch_pin: !THR:PA1", (installed / "printer_profile.cfg").read_text(encoding="utf-8"))
+        # The Plus 5 gets its own Box motion defaults: a fast push long enough to reach the toolhead sensor.
+        saved_variables = (printer_root / "config/saved_variables.cfg").read_text(encoding="utf-8")
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(saved_variables, "Variables", "tltg_box_load_fast_length").value, "850"
+        )
+        self.assertNotIn("tltg_box_load_approach_speed =", saved_variables)
+        self.assertEqual(
+            hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
+            SYNC_RESET_DESIRED_HOMING_SHA256,
+        )
 
-        self.assertEqual((printer_root / "config/printer.cfg").read_bytes(), before)
-        self.assertFalse((printer_root / "config/tltg_optimized_state.yaml").exists())
+        run_uninstall(
+            paths,
+            self.manifest,
+            self.compatibility,
+            PlainReporter(io.StringIO()),
+            input_stream=io.StringIO("Y\n"),
+            urlopen=self._fixture_urlopen(printer_root),
+        )
+        # Uninstall puts a removed section back at the end of its file, in the file's line endings.
+        for name, data in stock.items():
+            with self.subTest(restored=name):
+                restored = (printer_root / "config" / name).read_bytes()
+                self.assertEqual(restored.count(b"\n"), restored.count(b"\r\n"))
+                self.assertEqual(_section_hashes(restored), _section_hashes(data))
+        self.assertFalse(installed.exists())
+        self.assertEqual((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(), stock_source)
 
     def test_install_leaves_extra_modules_readable_by_klipper(self):
         # Klipper may run as another user than the installer.
@@ -243,8 +310,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                         self.assertNotIn(f"{name} =", saved_variables)
 
     def test_install_updates_box_motion_left_at_earlier_defaults(self):
-        # The load pair and the extruder pull-back are still at earlier defaults; the operator changed one
-        # unload speed.
+        # The load pair, the extruder pull-back, and the approach speed are still at earlier defaults; the
+        # operator changed one unload speed.
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
@@ -253,7 +320,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             + "tltg_box_load_fast_speed_2 = 100\n"
             + "tltg_box_unload_speed_1 = 115\n"
             + "tltg_box_unload_speed_2 = 90\n"
-            + "tltg_box_unload_extruder_length = 50\n",
+            + "tltg_box_unload_extruder_length = 50\n"
+            + "tltg_box_load_approach_speed = 15\n",
             encoding="utf-8",
         )
 
@@ -266,6 +334,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             ("tltg_box_unload_speed_1", "115"),
             ("tltg_box_unload_speed_2", "90"),
             ("tltg_box_unload_extruder_length", "55"),
+            ("tltg_box_load_approach_speed", "25"),
         ):
             self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
         self.assertNotIn("tltg_box_load_fast_length =", saved_variables)

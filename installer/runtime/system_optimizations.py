@@ -2211,7 +2211,7 @@ def _apply_moonraker_metadata_patch(
     path = spec.moonraker_metadata_3mf.file
     mapped = _map_path(root, path)
     _reject_symlink_path(mapped, root=root)
-    patched = _patched_moonraker_metadata_text(mapped.read_text(encoding="utf-8"))
+    patched = _patched_moonraker_metadata_text(mapped.read_bytes().decode("utf-8"))
     _write_file_preserving_preimage(path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
     restarts.request(spec.moonraker_metadata_3mf.restart_service)
 
@@ -2220,6 +2220,9 @@ def _apply_moonraker_metadata_patch(
 def _patched_moonraker_metadata_text(text: str) -> str:
     if MOONRAKER_METADATA_PATCH_MARKER in text:
         return text
+    # QIDI ships the Plus 5's metadata.py with CRLF line endings; the patched file keeps them.
+    if "\r\n" in text:
+        return _patched_moonraker_metadata_text(text.replace("\r\n", "\n")).replace("\n", "\r\n")
     helper = '''\n\ndef _3mf_plate_path(plate_index: int, suffix: str) -> str:\n    return f"Metadata/plate_{plate_index}.{suffix}"\n\n\ndef _3mf_slice_info_root(xml_data: str):\n    try:\n        return ET.fromstring(xml_data)\n    except Exception:\n        return None\n\n\ndef _3mf_selected_plate_index(xml_data: str) -> int:\n    root = _3mf_slice_info_root(xml_data)\n    if root is None:\n        return 1\n    try:\n        for item in root.findall(".//metadata"):\n            if item.get("key") == "index":\n                index = int(item.get("value", "1"))\n                return index if index > 0 else 1\n    except Exception:\n        pass\n    return 1\n'''
     text = text.replace('_3MF_PLATE_1_GCODE_PATH = "Metadata/plate_1.gcode"\n', '_3MF_PLATE_1_GCODE_PATH = "Metadata/plate_1.gcode"\n' + helper, 1)
     replacements = {

@@ -28,33 +28,51 @@ Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MC
 
 ## Load and unload speed
 
-A load pushes filament fast for most of the way, then approaches slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back before the Box retracts it.
+A load pushes filament from the spool to the Box hub, then fast toward the toolhead, then slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back, the Box pull it back to the hub, and then back to its parked position.
 
-The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. The fast and unload speeds match QIDI's; the shorter extruder pull-back and the faster approach save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload, and a 50 mm extruder pull-back. Updating lowers either speed pair to QIDI's speeds if both of its speeds are still at those values, raises a pull-back still at 50 mm to 55 mm, and keeps anything you've changed. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and each slot's profile.
+The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and the motion they give.
+
+**Max 4.** The fast push runs in two stages, and the unload pulls back to the hub in two stages. The fast and unload speeds match QIDI's; the longer fast push, the faster approach, and the shorter extruder pull-back save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload, a 50 mm extruder pull-back, and a 15 mm/s approach. Updating lowers either speed pair to QIDI's speeds if both of its speeds are still at those values, raises a pull-back still at 50 mm to 55 mm and an approach still at 15 mm/s to 25 mm/s, and keeps anything you've changed.
 
 | Parameter | What it sets | This project | QIDI | Allowed |
 |---|---|---|---|---|
+| `HUB_SPEED` | Speed from the spool to the Box hub, in mm/s. All slots only. | QIDI's | 85 | 10–150 |
 | `FAST_LENGTH` | How far the fast push goes, in mm | 950 | 930 | 100–2000 |
 | `FAST_SPEED_1` | Speed of the first fast stage, in mm/s | 85 | 85 | 10–150 |
 | `FAST_SPEED_2` | Speed of the second fast stage, in mm/s | 65 | 65 | 10–150 |
-| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 15 | 10 | 2–40, below both fast speeds |
+| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | 25 | 10 | 2–40, below both fast speeds |
 | `LOAD_ACCEL` | Load acceleration | QIDI's | 100 | 20–400 |
-| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two unload stages, in mm/s | 65, 85 | 65, 85 | 10–150, must differ |
-| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
 | `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm. All slots only. | 55 | 120 | 20–300 |
+| `UNLOAD_SPEED_1`, `UNLOAD_SPEED_2` | Speeds of the two stages back to the hub, in mm/s | 65, 85 | 65, 85 | 10–150, must differ |
+| `UNLOAD_ACCEL` | Unload acceleration | QIDI's | 100 | 20–400 |
+| `PARK_SPEED` | Speed from the hub back to the parked position, in mm/s. All slots only. | QIDI's | 80 | 10–150 |
+
+**Plus 5.** The fast push and the pull back to the hub are each one move, and every setting applies to all slots. QIDI's 720 mm fast push stopped about 125 mm short of the toolhead sensor on a Plus 5, leaving the rest to QIDI's 25 mm/s approach, so this project pushes 850 mm.
+
+| Parameter | What it sets | This project | QIDI | Allowed |
+|---|---|---|---|---|
+| `HUB_SPEED` | Speed from the spool to the Box hub, in mm/s | QIDI's | 85 | 10–150 |
+| `FAST_LENGTH` | How far the fast push goes before the approach, in mm | 850 | 720 | 100–2000 |
+| `FAST_SPEED` | Speed of the fast push, in mm/s | QIDI's | 100 | 10–150 |
+| `APPROACH_SPEED` | Speed for the rest of the way to the toolhead sensor, in mm/s | QIDI's | 25 | 2–40 |
+| `LOAD_ACCEL` | Acceleration of the fast push | QIDI's | 100 | 20–400 |
+| `UNLOAD_EXTRUDER_LENGTH` | How far the extruder pulls filament back before the Box takes over, in mm | QIDI's | 100 | 20–300 |
+| `UNLOAD_SPEED` | Speed back to the hub, in mm/s | QIDI's | 100 | 10–150 |
+| `UNLOAD_ACCEL` | Acceleration back to the hub | QIDI's | 50 | 20–400 |
+| `PARK_SPEED` | Speed from the hub back to the parked position, in mm/s | QIDI's | 80 | 10–150 |
 
 ```gcode
-TLTG_BOX_MOTION FAST_SPEED_1=100 FAST_SPEED_2=100 APPROACH_SPEED=20
+TLTG_BOX_MOTION HUB_SPEED=120 PARK_SPEED=120
 ```
 
-Settings take effect on the next load or unload, without a restart. The command refuses a combination the Box can't run and says why.
+Settings take effect on the next load or unload, without a restart. The command refuses a combination the Box can't run, or a setting this printer's Box code doesn't use, and says why.
 
-- **One setting back to QIDI's:** `PARAM=vendor`, for example `FAST_SPEED_1=vendor`.
+- **One setting back to QIDI's:** `PARAM=vendor`, for example `HUB_SPEED=vendor`.
 - **Everything back to QIDI's,** including slot settings: `TLTG_BOX_MOTION RESET=1`. Updates won't reapply this project's defaults after that.
 
 ### Per-slot settings
 
-Any setting can also be set for one slot, which overrides the all-slots setting. For example, to load slot 2 more gently:
+On the Max 4, the fast push, approach, and unload settings can also be set for one slot, which overrides the all-slots setting. For example, to load slot 2 more gently:
 
 ```gcode
 TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
@@ -64,7 +82,7 @@ Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the car
 
 ### Choosing values
 
-- **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. Set it past the sensor and filament reaches the toolhead at full speed.
+- **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. On a Plus 5, it reached the sensor about 845 mm into the push. The fast push stops at the toolhead sensor, so set it past the sensor and filament reaches the toolhead at full speed.
 - **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If unloads fail with `QDE_004_008` (`Extruder unloading failure.`) and nothing is caught between the Box and the toolhead, set it back to QIDI's with `TLTG_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
 
 If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
@@ -222,7 +240,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's Max 4 firmware `01.01.07.01` includes support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
