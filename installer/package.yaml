@@ -611,6 +611,10 @@ system_optimizations:
     url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a112250/fluidd.zip
     archive: system/fluidd.zip
     sha256: 4f7dded56f1a839b893e4ace0f74c8c921d3ff23d268552ffba3bd056b1cbf96
+  # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
+  valve_oil_ui:
+    source: ui
+    archive: system/valve-oil-ui.zip
   # Wheels for QIDI's Moonraker virtualenv (Python 3.9, aarch64); the bundle builder downloads and verifies them.
   moonraker_speedups:
     wheels:

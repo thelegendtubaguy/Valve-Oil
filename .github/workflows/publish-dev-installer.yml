@@ -23,6 +23,11 @@ jobs:
       - name: Capture short sha
         id: sha
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Build dev installer bundle
         run: python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id '${{ steps.sha.outputs.short_sha }}'
       - name: Update prerelease tag

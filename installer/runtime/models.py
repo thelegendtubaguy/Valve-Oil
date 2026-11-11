@@ -256,6 +256,15 @@ class SystemFluiddBuildSpec:
 
 
 @dataclass(frozen=True)
+class SystemValveOilUiSpec:
+    # Repository directory the bundle builder builds the archive from.
+    source: str
+    archive: str
+    # The bundle builder pins the archive it built in the bundled manifest; repository checkouts have none.
+    sha256: str | None
+
+
+@dataclass(frozen=True)
 class SystemWheelSpec:
     url: str
     archive: str
@@ -319,6 +328,7 @@ class SystemOptimizationsSpec:
     moonraker_file_manager: SystemMoonrakerMetadata3mfSpec
     fluidd_box_filament_ids: SystemFluiddBundleSpec
     fluidd_build: SystemFluiddBuildSpec
+    valve_oil_ui: SystemValveOilUiSpec
     moonraker_speedups: SystemMoonrakerSpeedupsSpec
     zram_swap: SystemZramSwapSpec
     klipper_box_config: SystemMoonrakerMetadata3mfSpec

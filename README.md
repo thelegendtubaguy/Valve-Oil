@@ -71,6 +71,11 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 [Add-ons →](docs/addons.md)
 
+### Valve Oil UI
+- An early second web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, with the dashboard, files, and QIDI Box screens.
+
+[Valve Oil UI →](docs/valve-oil-ui.md)
+
 ### Fixes for QIDI bugs
 - The real error instead of a bare `MCU shutdown`.
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.

@@ -35,6 +35,7 @@ from .models import (
     SystemAptSourcesSpec,
     SystemDnsSpec,
     SystemFluiddBuildSpec,
+    SystemValveOilUiSpec,
     SystemFluiddBundleSpec,
     SystemFluiddFilamentConfigSpec,
     SystemOptionalServiceSpec,
@@ -484,6 +485,7 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     moonraker_file_manager_raw = _require_mapping(system_raw, "moonraker_file_manager")
     fluidd_box_raw = _require_mapping(system_raw, "fluidd_box_filament_ids")
     fluidd_build_raw = _require_mapping(system_raw, "fluidd_build")
+    valve_oil_ui_raw = _require_mapping(system_raw, "valve_oil_ui")
     speedups_raw = _require_mapping(system_raw, "moonraker_speedups")
     wheels_raw = speedups_raw.get("wheels")
     if not isinstance(wheels_raw, list) or not wheels_raw:
@@ -549,6 +551,11 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
             url=_validate_https_url(_require_str(fluidd_build_raw, "url")),
             archive=_validate_relative_path(_require_str(fluidd_build_raw, "archive"), allowed_roots=("system",)),
             sha256=_require_sha256(fluidd_build_raw, "sha256"),
+        ),
+        valve_oil_ui=SystemValveOilUiSpec(
+            source=_validate_relative_path(_require_str(valve_oil_ui_raw, "source"), allowed_roots=("ui",)),
+            archive=_validate_relative_path(_require_str(valve_oil_ui_raw, "archive"), allowed_roots=("system",)),
+            sha256=_require_sha256(valve_oil_ui_raw, "sha256") if "sha256" in valve_oil_ui_raw else None,
         ),
         moonraker_speedups=SystemMoonrakerSpeedupsSpec(
             wheels=tuple(

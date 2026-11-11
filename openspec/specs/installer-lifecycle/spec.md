@@ -665,6 +665,30 @@ Normal install and update SHALL serve the package's pinned build of the project'
 - **THEN** the unchanged nginx site is restored before the build is removed
 - **AND** the build is removed only while it carries the package marker and nginx no longer serves it; otherwise it is preserved and reported
 
+### Requirement: Package-built Valve Oil UI
+Normal install and update SHALL serve the package's Valve Oil UI build at `/valve-oil/` on the Fluidd nginx site, alongside the Fluidd that site serves at its root, independently of optional OS optimization policy. The release bundle builder SHALL build it from the repository's `ui/` source for the package version and pin the archive's checksum in the bundled manifest; the installer verifies, extracts, marks, replaces, and removes it under the same rules as the package-built Fluidd.
+
+#### Scenario: The release bundle carries a pinned build
+- **WHEN** the release bundle is built
+- **THEN** the builder builds Valve Oil UI from source with the package version, archives it with sorted entries and fixed timestamps and permissions, and records the archive's checksum in the bundled manifest
+- **AND** the bundle build fails when Node.js or npm is unavailable or the UI build fails
+
+#### Scenario: The build is served at /valve-oil/
+- **WHEN** install or update runs with the build in the package, the build directory free or package-owned, and a recognized Fluidd nginx site that serves the package Fluidd
+- **THEN** the build is extracted, verified against the pinned checksum, and marked as package-owned before the nginx site gains the `/valve-oil/` route, in the same guarded change as the Fluidd root and printer-screen route
+- **AND** the route serves the build's files with no fallback page, `/valve-oil` redirects to `/valve-oil/`, and the build's page and `version.json` are served with caching disabled
+- **AND** the Fluidd that nginx serves at its root is unchanged
+
+#### Scenario: Nginx never serves a directory the package does not own
+- **WHEN** the package has no Valve Oil UI build, or the build directory is not the current package build
+- **THEN** the nginx site has no `/valve-oil/` route, and a route added by an earlier run is removed in place
+- **AND** an existing directory without the package marker is left unchanged and the outcome is recorded without failing other host operations
+
+#### Scenario: Restoration removes Valve Oil UI
+- **WHEN** uninstall runs
+- **THEN** the unchanged nginx site is restored before the build is removed
+- **AND** the build is removed only while it carries the package marker and nginx no longer serves it; otherwise it is preserved and reported
+
 ### Requirement: Touchscreen app control in Fluidd
 Normal install and update SHALL let Fluidd's service controls restart, stop, and start QIDI's touchscreen app by allowing it in Moonraker's allowed-services list, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 
