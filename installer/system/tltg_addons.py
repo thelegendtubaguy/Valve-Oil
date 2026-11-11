@@ -8,6 +8,7 @@ this service restarts. nginx authorizes every request through Moonraker before i
 
 from __future__ import annotations
 
+import configparser
 import json
 import os
 import re
@@ -36,7 +37,9 @@ JOB_RC = STATE_DIR / "job.rc"
 MOONRAKER_PRINT_STATS = "http://127.0.0.1:7125/printer/objects/query?print_stats=state"
 LIST_TIMEOUT = 120.0
 LOG_LINES = 200
-ACTIONS = ("install", "update", "remove")
+ACTIONS = ("install", "update", "remove", "relink")
+# Longest server address a relink accepts; addons.sh checks the address itself.
+MAX_SERVER_URL = 200
 ADDON_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # POSTs must carry this header. A web page from another origin can't add it without a CORS preflight, which this
 # server never approves, so it can't make a browser on a trusted address start a job.
@@ -140,7 +143,7 @@ class Jobs:
         job = self._read()
         return bool(job and job.get("state") == "running")
 
-    def start(self, addon: str, action: str) -> dict:
+    def start(self, addon: str, action: str, options: tuple[str, ...] = ()) -> dict:
         with self._lock:
             if self.busy():
                 raise Conflict("Another add-on change is still running.")
@@ -148,7 +151,7 @@ class Jobs:
             JOB_RC.unlink(missing_ok=True)
             with JOB_LOG.open("w", encoding="utf-8") as output:
                 process = subprocess.Popen(
-                    ["/bin/sh", "-c", '"$@"; echo $? > "$TLTG_ADDONS_RC"', "sh", str(ADDONS_SH), action, addon, "--plain", "--yes"],
+                    ["/bin/sh", "-c", '"$@"; echo $? > "$TLTG_ADDONS_RC"', "sh", str(ADDONS_SH), action, addon, *options, "--plain", "--yes"],
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.STDOUT,
@@ -300,7 +303,41 @@ def octoeverywhere_link_code() -> dict:
     return {"code": code, "url": OCTOEVERYWHERE_CODE_PAGE, "expires_in": expires}
 
 
-STATUS_PROBES = {"octoeverywhere": octoeverywhere_status}
+OBICO_DATA = ADDONS_ROOT / "obico-data"
+OBICO_CONFIG = OBICO_DATA / "moonraker-obico.cfg"
+# Written by Valve Oil's Obico launcher while the plugin waits to be linked.
+OBICO_STATUS = OBICO_DATA / "tltg-status.json"
+OBICO_CLOUD = "https://app.obico.io"
+
+
+def _obico_state() -> tuple[str, bool, dict]:
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read_string(OBICO_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, configparser.Error):
+        pass
+    server = (parser.get("server", "url", fallback="") or OBICO_CLOUD).strip().rstrip("/")
+    linked = bool(parser.get("server", "auth_token", fallback="").strip())
+    try:
+        status = json.loads(OBICO_STATUS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        status = {}
+    return server, linked, status if isinstance(status, dict) else {}
+
+
+def obico_status() -> dict:
+    server, linked, status = _obico_state()
+    result = {"server": server, "cloud": server == OBICO_CLOUD, "linked": linked, "discovering": False}
+    if not linked:
+        # The code Obico's server gave the plugin while it waits to be linked; it changes while it waits.
+        result["discovering"] = status.get("discovering") is True
+        code = status.get("one_time_passcode")
+        if result["discovering"] and isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9]{1,32}", code):
+            result["link_code"] = code
+    return result
+
+
+STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status}
 EXTRA_ACTIONS = {("octoeverywhere", "link-code"): octoeverywhere_link_code}
 
 
@@ -347,7 +384,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            self._check_post()
+            body = self._check_post()
             route = self._route()
             if len(route) != 3 or route[0] != "addons" or not ADDON_ID.match(route[1]):
                 raise RequestError(HTTPStatus.NOT_FOUND, "Not found.")
@@ -362,13 +399,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise RequestError(HTTPStatus.NOT_FOUND, f"Unknown add-on: {addon}")
             if action != "remove" and printer_busy():
                 raise Conflict("Add-ons can be changed only while the printer is not printing.")
-            self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(addon, action)})
+            self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(addon, action, _options(action, body))})
         except Conflict as exc:
             self._send(HTTPStatus.CONFLICT, {"error": str(exc)})
         except RequestError as exc:
             self._send(exc.status, {"error": str(exc)})
 
-    def _check_post(self) -> None:
+    def _check_post(self) -> dict:
         name, value = ACTION_HEADER
         if self.headers.get(name) != value:
             raise RequestError(HTTPStatus.FORBIDDEN, f"Missing {name} header.")
@@ -381,8 +418,13 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length > 4096:
             raise RequestError(HTTPStatus.BAD_REQUEST, "Request too large.")
-        if length:
-            self.rfile.read(length)
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+        except ValueError as exc:
+            raise RequestError(HTTPStatus.BAD_REQUEST, "Expected a JSON request.") from exc
+        if not isinstance(body, dict):
+            raise RequestError(HTTPStatus.BAD_REQUEST, "Expected a JSON object.")
+        return body
 
     def _route(self) -> tuple[str, ...]:
         # nginx strips its /tltg-addons/ prefix; the API lives under api/.
@@ -399,6 +441,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+
+def _options(action: str, body: dict) -> tuple[str, ...]:
+    """addons.sh options for a request: a relink may name the server to link to."""
+    server = body.get("server")
+    if server is None:
+        return ()
+    if action != "relink" or not isinstance(server, str) or not server.strip() or len(server) > MAX_SERVER_URL:
+        raise RequestError(HTTPStatus.BAD_REQUEST, "Invalid server address.")
+    return (f"--server={server.strip()}",)
 
 
 def _get_json(url: str, *, timeout: float) -> dict:

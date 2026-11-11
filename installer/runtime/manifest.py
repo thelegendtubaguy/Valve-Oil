@@ -453,6 +453,10 @@ def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
                 version=_require_str(item, "version"),
                 source=_addon_artifact(_require_mapping(item, "source"), f"addons.catalog.{addon_id}.source"),
                 wheels=wheels,
+                sdists=tuple(
+                    _addon_artifact(sdist, f"addons.catalog.{addon_id}.sdists")
+                    for sdist in (_require_list_of_mapping(item, "sdists") if "sdists" in item else ())
+                ),
             )
         )
     return AddonsSpec(

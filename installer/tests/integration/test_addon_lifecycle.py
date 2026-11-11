@@ -18,6 +18,7 @@ from installer.runtime import addons
 from installer.runtime.models import AddonSpec, AddonsSpec, SystemWheelSpec
 
 ADDON = addons.OCTOEVERYWHERE
+OBICO = addons.OBICO
 PATHS = addons.addon_paths(ADDON.id)
 UNIT_FILE = f"{addons.UNIT_DIR}/{ADDON.unit}"
 
@@ -57,30 +58,34 @@ class FakeHost:
         return sum(1 for command in self.commands if command[1:3] == ["-m", "venv"])
 
 
-def _bundle(installer_root: Path, version: str) -> AddonsSpec:
+def _bundle(installer_root: Path, version: str, ids: tuple[str, ...] = (ADDON.id,)) -> AddonsSpec:
     def artifact(relative: str, data: bytes) -> SystemWheelSpec:
         path = installer_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         return SystemWheelSpec(url=f"https://example.invalid/{relative}", archive=relative, sha256=hashlib.sha256(data).hexdigest())
 
-    source = io.BytesIO()
-    with tarfile.open(fileobj=source, mode="w:gz") as tar:
-        data = f"VERSION = {version!r}\n".encode("utf-8")
-        info = tarfile.TarInfo(f"OE-{version}/moonraker_octoeverywhere/__main__.py")
-        info.size = len(data)
-        tar.addfile(info, io.BytesIO(data))
-    return AddonsSpec(
-        pip_wheel=artifact("addons/pip-25.3-py3-none-any.whl", b"pip"),
-        catalog=(
-            AddonSpec(
-                id=ADDON.id,
-                version=version,
-                source=artifact(f"addons/{ADDON.id}/{ADDON.id}-{version}.tar.gz", source.getvalue()),
-                wheels=(artifact(f"addons/{ADDON.id}/wheels/example-{version}-py3-none-any.whl", version.encode("utf-8")),),
-            ),
-        ),
-    )
+    def addon(addon_id: str) -> AddonSpec:
+        source = io.BytesIO()
+        with tarfile.open(fileobj=source, mode="w:gz") as tar:
+            data = f"VERSION = {version!r}\n".encode("utf-8")
+            for name in ("app/__main__.py", "lib/plugin.so.0.0"):
+                info = tarfile.TarInfo(f"{addon_id}-{version}/{name}")
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            # Release archives name shared libraries through links to the file beside them.
+            link = tarfile.TarInfo(f"{addon_id}-{version}/lib/plugin.so")
+            link.type, link.linkname = tarfile.SYMTYPE, "plugin.so.0.0"
+            tar.addfile(link)
+        return AddonSpec(
+            id=addon_id,
+            version=version,
+            source=artifact(f"addons/{addon_id}/{addon_id}-{version}.tar.gz", source.getvalue()),
+            wheels=(artifact(f"addons/{addon_id}/wheels/example-{version}-py3-none-any.whl", version.encode("utf-8")),),
+            sdists=(artifact(f"addons/{addon_id}/sdists/pure-{version}.tar.gz", version.encode("utf-8")),) if addon_id == OBICO.id else (),
+        )
+
+    return AddonsSpec(pip_wheel=artifact("addons/pip-25.3-py3-none-any.whl", b"pip"), catalog=tuple(addon(addon_id) for addon_id in ids))
 
 
 class AddonLifecycleTests(unittest.TestCase):
@@ -95,9 +100,9 @@ class AddonLifecycleTests(unittest.TestCase):
     def path(self, absolute: str) -> Path:
         return self.root / absolute.lstrip("/")
 
-    def install(self, spec: AddonsSpec) -> str:
+    def install(self, spec: AddonsSpec, addon_id: str = ADDON.id) -> str:
         return addons.install_addon(
-            ADDON.id, spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None
+            addon_id, spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None
         )
 
     def test_install_update_and_remove_touch_only_the_addon(self) -> None:
@@ -110,7 +115,8 @@ class AddonLifecycleTests(unittest.TestCase):
         unit = self.path(UNIT_FILE).read_text(encoding="utf-8")
         self.assertTrue(unit.startswith(ADDON.unit_marker))
         self.assertIn('"DisableMoonrakerConfigFileWrites":true', __import__("base64").b64decode(unit.split('"')[-2]).decode())
-        self.assertEqual(self.path(f"{PATHS.app}/moonraker_octoeverywhere/__main__.py").read_text(encoding="utf-8"), "VERSION = '1.0'\n")
+        self.assertEqual(self.path(f"{PATHS.app}/app/__main__.py").read_text(encoding="utf-8"), "VERSION = '1.0'\n")
+        self.assertEqual(self.path(f"{PATHS.app}/lib/plugin.so").read_text(encoding="utf-8"), "VERSION = '1.0'\n")
         self.assertIn(["systemctl", "enable", ADDON.unit], self.host.commands)
         listed = addons.list_addons(spec, root=self.root, run=self.host)[0]
         self.assertEqual((listed["state"], listed["installed_version"], listed["service"]["active"]), (addons.INSTALLED, "1.0", "active"))
@@ -146,7 +152,7 @@ class AddonLifecycleTests(unittest.TestCase):
                 with self.assertRaises(addons.AddonError):
                     self.install(_bundle(self.installer_root, "2.0"))
         self.assertEqual(addons.read_marker(ADDON.id, root=self.root)["version"], "1.0")
-        self.assertEqual(self.path(f"{PATHS.app}/moonraker_octoeverywhere/__main__.py").read_text(encoding="utf-8"), "VERSION = '1.0'\n")
+        self.assertEqual(self.path(f"{PATHS.app}/app/__main__.py").read_text(encoding="utf-8"), "VERSION = '1.0'\n")
         self.assertTrue(self.path(UNIT_FILE).exists())
 
         # A first install that never stays running leaves nothing behind but its data.
@@ -171,6 +177,68 @@ class AddonLifecycleTests(unittest.TestCase):
                 self.assertEqual(path.read_text(encoding="utf-8"), "[Unit]\n")
                 path.unlink()
         self.assertEqual(self.host.builds(), 0)
+
+    def test_obico_keeps_its_server_and_relinks_without_touching_printer_config(self) -> None:
+        spec = _bundle(self.installer_root, "1.0", ids=(OBICO.id,))
+        paths = addons.addon_paths(OBICO.id)
+        self.install(spec, OBICO.id)
+        # The launcher that keeps the plugin out of printer.cfg runs in place of the plugin's own entry point.
+        unit = self.path(f"{addons.UNIT_DIR}/{OBICO.unit}").read_text(encoding="utf-8")
+        self.assertIn(f"-m tltg_obico -c {paths.data}/{addons.OBICO_CONFIG}", unit)
+        self.assertEqual(self.path(f"{paths.app}/tltg_obico.py").read_bytes(), (addons.PAYLOAD_DIR / "tltg_obico.py").read_bytes())
+        self.assertTrue(any("--no-build-isolation" in command and command[-1].endswith("pure-1.0.tar.gz") for command in self.host.commands))
+        self.assertFalse(self.path("/home/qidi/printer_data/config").exists())
+
+        config = self.path(f"{paths.data}/{addons.OBICO_CONFIG}")
+        text = config.read_text(encoding="utf-8")
+        self.assertIn(f"url = {addons.OBICO_CLOUD}", text)
+        self.assertIn("dest_port = 80", text)
+        # A self-hosted server and its link survive updates; the package's Moonraker and log settings are enforced.
+        config.write_text("[server]\nurl = http://192.168.1.10:3334\nauth_token = secret\n[logging]\npath = /tmp/x.log\n", encoding="utf-8")
+        self.install(_bundle(self.installer_root, "2.0", ids=(OBICO.id,)), OBICO.id)
+        text = config.read_text(encoding="utf-8")
+        self.assertIn("url = http://192.168.1.10:3334", text)
+        self.assertIn("auth_token = secret", text)
+        self.assertIn(f"path = {addons.OBICO_LOG}", text)
+
+        def relink(server=None) -> None:
+            addons.relink_addon(OBICO.id, server=server, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None)
+
+        for bad in ("ftp://server", "http://server\nauth_token = stolen", "http://server/?next=x"):
+            with self.subTest(server=bad):
+                commands = len(self.host.commands)
+                with self.assertRaises(addons.AddonError):
+                    relink(bad)
+                self.assertEqual(len(self.host.commands), commands)
+        self.assertIn("auth_token = secret", config.read_text(encoding="utf-8"))
+        relink("https://obico.example.com/")
+        text = config.read_text(encoding="utf-8")
+        self.assertIn("url = https://obico.example.com\n", text)
+        self.assertNotIn("auth_token", text)
+        self.assertIn(["systemctl", "restart", OBICO.unit], self.host.commands)
+        with self.assertRaises(addons.AddonError):
+            addons.relink_addon(ADDON.id, root=self.root, sudo_password=None, run=self.host)
+
+    def test_remote_access_addons_are_installed_one_at_a_time(self) -> None:
+        spec = _bundle(self.installer_root, "1.0", ids=(ADDON.id, OBICO.id))
+        self.install(spec)
+        listed = {entry["id"]: entry for entry in addons.list_addons(spec, root=self.root, run=self.host)}
+        self.assertEqual((listed[OBICO.id]["state"], listed[OBICO.id]["blocked_by"]), (addons.NOT_INSTALLED, [ADDON.name]))
+        with self.assertRaises(addons.AddonError):
+            self.install(spec, OBICO.id)
+        self.assertIsNone(addons.read_marker(OBICO.id, root=self.root))
+        # An installed add-on still updates, and an Obico installed with its own installer blocks OctoEverywhere too.
+        self.install(_bundle(self.installer_root, "2.0", ids=(ADDON.id, OBICO.id)))
+        addons.remove_addon(ADDON.id, root=self.root, sudo_password=None, run=self.host)
+        foreign = self.path("/home/qidi/moonraker-obico/install.sh")
+        foreign.parent.mkdir(parents=True)
+        foreign.write_text("", encoding="utf-8")
+        with self.assertRaises(addons.AddonError):
+            self.install(spec)
+        foreign.unlink()
+        foreign.parent.rmdir()
+        self.install(spec, OBICO.id)
+        self.assertEqual(addons.read_marker(OBICO.id, root=self.root)["version"], "1.0")
 
     def test_files_that_do_not_match_the_manifest_are_refused(self) -> None:
         spec = _bundle(self.installer_root, "1.0")
@@ -200,7 +268,7 @@ class AddonServiceRequestTests(unittest.TestCase):
             error = None
 
             def entries(self):
-                return [{"id": "octoeverywhere", "state": "not_installed"}]
+                return [{"id": "octoeverywhere", "state": "not_installed"}, {"id": "obico", "state": "installed"}]
 
             def reload(self, *, force=False):
                 pass
@@ -212,8 +280,8 @@ class AddonServiceRequestTests(unittest.TestCase):
             def current(self):
                 return None
 
-            def start(self, addon, action):
-                started.append((addon, action))
+            def start(self, addon, action, options=()):
+                started.append((addon, action, *options))
                 return {"addon": addon, "action": action, "state": "running"}
 
         server.printer_busy = lambda: False
@@ -229,8 +297,8 @@ class AddonServiceRequestTests(unittest.TestCase):
         cls.httpd.shutdown()
         cls.httpd.server_close()
 
-    def request(self, path: str, *, method: str = "POST", headers: dict[str, str] | None = None) -> tuple[int, dict]:
-        request = urllib.request.Request(self.base + path, data=b"{}" if method == "POST" else None, method=method, headers=headers or {})
+    def request(self, path: str, *, method: str = "POST", headers: dict[str, str] | None = None, body: bytes = b"{}") -> tuple[int, dict]:
+        request = urllib.request.Request(self.base + path, data=body if method == "POST" else None, method=method, headers=headers or {})
         try:
             with urllib.request.urlopen(request, timeout=5) as response:
                 return response.status, json.load(response)
@@ -255,6 +323,14 @@ class AddonServiceRequestTests(unittest.TestCase):
         status, body = self.request("/api/addons/octoeverywhere/install", headers=good)
         self.assertEqual((status, body["job"]["action"]), (202, "install"))
         self.assertEqual(self.started, [("octoeverywhere", "install")])
+        # A relink may name a server, passed to addons.sh as a single option; nothing else takes a body.
+        for body in (b'{"server": ["x"]}', b'{"server": "' + b"a" * 300 + b'"}', b"[]", b"not json"):
+            with self.subTest(body=body[:20]):
+                self.assertEqual(self.request("/api/addons/obico/relink", headers=good, body=body)[0], 400)
+        self.assertEqual(self.request("/api/addons/obico/install", headers=good, body=b'{"server": "http://x"}')[0], 400)
+        status, _ = self.request("/api/addons/obico/relink", headers=good, body=b'{"server": "--help http://x"}')
+        self.assertEqual(status, 202)
+        self.assertEqual(self.started[-1], ("obico", "relink", "--server=--help http://x"))
         status, body = self.request("/api/addons", method="GET")
         self.assertEqual((status, body["addons"][0]["id"], body["busy"]), (200, "octoeverywhere", False))
 

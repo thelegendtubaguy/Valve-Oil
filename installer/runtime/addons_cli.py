@@ -29,15 +29,18 @@ def main(
     run=subprocess.run,
 ) -> int:
     parser = argparse.ArgumentParser(prog="addons.sh", description="Install, update, or remove Valve Oil add-ons.")
-    parser.add_argument("action", choices=["list", "install", "update", "remove"])
+    parser.add_argument("action", choices=["list", "install", "update", "remove", "relink"])
     parser.add_argument("addon", nargs="?", help="Add-on id, such as octoeverywhere.")
+    parser.add_argument("--server", help="relink: the server to link to, such as https://app.obico.io.")
     parser.add_argument("--json", action="store_true", help="list: print JSON.")
     parser.add_argument("--plain", action="store_true", help="Use plain text output.")
     parser.add_argument("--yes", action="store_true", help="Don't ask for a sudo password; fail instead.")
     parser.add_argument("--debug", action="store_true", help="Print debug events and tracebacks on failure.")
     args = parser.parse_args(argv)
     if (args.action == "list") == (args.addon is not None):
-        parser.error("list takes no add-on; install, update, and remove need one.")
+        parser.error("list takes no add-on; install, update, remove, and relink need one.")
+    if args.server is not None and args.action != "relink":
+        parser.error("--server is only for relink.")
 
     out = stream or sys.stdout
     manifest = load_manifest(paths.installer_root / "package.yaml")
@@ -74,7 +77,9 @@ def main(
                         "sudo didn't accept the printer's default password. Run "
                         f"~/tltg-optimized-macros/addons.sh {args.action} {args.addon} over SSH and enter it there."
                     ) from exc
-            if args.action == "remove":
+            if args.action == "relink":
+                addons.relink_addon(args.addon, server=args.server, root=root, sudo_password=sudo_password, run=run, status=reporter.status)
+            elif args.action == "remove":
                 if not addons.remove_addon(args.addon, root=root, sudo_password=sudo_password, run=run, status=reporter.status):
                     reporter.status(f"{addons.DEFINITIONS[args.addon].name} is not installed.")
             else:

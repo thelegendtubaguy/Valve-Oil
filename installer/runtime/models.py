@@ -344,6 +344,8 @@ class AddonSpec:
     version: str
     source: SystemWheelSpec
     wheels: tuple[SystemWheelSpec, ...]
+    # Pure-Python packages PyPI publishes only as source; installed after the wheels, built with their setuptools.
+    sdists: tuple[SystemWheelSpec, ...] = ()
 
 
 @dataclass(frozen=True)
