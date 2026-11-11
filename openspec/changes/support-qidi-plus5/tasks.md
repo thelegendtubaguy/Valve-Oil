@@ -34,5 +34,5 @@
 - [x] 4.2 Run the installer core tests, the known-versions check, the config formatter, the slicer macro check, the start-print contract check, OpenSpec validation, and the bundle smoke test.
 - [ ] 4.3 Install on the Plus 5. Confirm admission, guarded patches, full, XY, and single-axis homing, print start through each slicer pack, cut, wipe, chute, rear-bed scrape, end print, and the screen card.
 - [ ] 4.4 Exercise update, uninstall, restore, and recovery after a QIDI firmware update on the Plus 5.
-- [x] 4.5 Decide zram and the THR fix for the Plus 5 from 2.2 and 3.1, and record the decision. Both ship: the kernels match apart from the build string, and the THR bootloader is the admitted `46358f30…`.
+- [x] 4.5 Decide zram and the THR fix for the Plus 5 from 2.2 and 3.1, and record the decision. Both ship: the kernels match apart from the build string, and the THR bootloader is the admitted `46358f30…`. The fix was flashed and verified on the project Plus 5. The mainboard has the admitted `60be6289…` bootloader, but the closed-loop reply fix stays Max 4-only because the Plus 5 has no closed-loop drivers.
 - [x] 4.6 Update the README supported printers, `docs/`, the version, and `CHANGELOG.md`.
