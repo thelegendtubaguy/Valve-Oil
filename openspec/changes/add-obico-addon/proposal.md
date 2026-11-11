@@ -4,7 +4,7 @@ Operators asked for Obico alongside OctoEverywhere, through Obico's cloud or the
 
 ## What Changes
 
-- Add Obico (moonraker-obico 2.2.4) as an add-on. Valve Oil's launcher runs the plugin without its `printer.cfg` include, with the Raspberry Pi Debian 11 Janus build, and with its link code written to a status file instead of a macro.
+- Add Obico (moonraker-obico 2.2.4) as an add-on. Valve Oil's launcher runs the plugin without its `printer.cfg` include, with the Raspberry Pi Debian 11 Janus build, with its link code written to a status file instead of a macro, and with its snapshot-based camera stream running only while someone views the printer.
 - Add-ons can pin pure-Python packages that PyPI publishes only as source; the printer builds them offline after the wheels. Same-directory symlinks in an add-on's source archive are extracted as copies.
 - Add `addons.sh relink <id> [--server URL]`, and a matching Fluidd action, to forget an add-on's account link, optionally move it to another server, and restart it so it can be linked again.
 - OctoEverywhere and Obico can't be installed together; the add-ons list says which installed add-on blocks an install.

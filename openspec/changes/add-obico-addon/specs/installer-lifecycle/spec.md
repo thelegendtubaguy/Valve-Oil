@@ -33,6 +33,7 @@ The package SHALL let the operator install, update, and remove the add-ons pinne
 #### Scenario: Obico leaves the printer configuration alone
 - **WHEN** Obico is installed and running
 - **THEN** it does not add includes to `printer.cfg` or files to `printer_data/config`, and it streams video with the Raspberry Pi Debian 11 Janus build in its source
+- **AND** without an H.264 encoder it sends camera frames to Janus only while Obico's server reports someone viewing the printer, and until that has been off for a minute
 - **AND** a plugin release without the entry points the package's launcher replaces fails to start, so its install or update is rolled back
 
 #### Scenario: Obico keeps its server and link across updates

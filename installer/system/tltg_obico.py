@@ -11,6 +11,9 @@ plugin starts, it changes three things:
   QIDI printer it finds none and streams no video. QIDI's Debian 11 runs the Raspberry Pi Debian 11 build.
 - The plugin shows its link code only through a Klipper macro. Here it is written to TLTG_OBICO_STATUS instead,
   where Valve Oil's add-ons service reads it for Fluidd.
+- Without an H.264 encoder, which QIDI's boards lack, the plugin streams the camera by fetching full-size snapshots
+  and sending them to Janus about 1.5 times a second, whether or not anyone is watching: a quarter of a CPU core on a
+  Max 4. Here it sends them only while Obico's server says someone is viewing the printer.
 
 A plugin release without what these changes replace fails to start, so its install is rolled back.
 """
@@ -18,13 +21,25 @@ A plugin release without what these changes replace fails to start, so its insta
 from __future__ import annotations
 
 import json
+import logging
 import os
 import runpy
 import sys
 import threading
+import time
 
 STATUS_PATH = os.environ.get("TLTG_OBICO_STATUS", "")
 JANUS_BOARD = "rpi"
+# How often the paused camera stream checks whether someone started viewing.
+VIEWING_POLL_SECONDS = 0.5
+# Obico's server reports nobody viewing for a few seconds at a time while someone is; the stream keeps running until
+# that has lasted this long.
+VIEWING_GRACE_SECONDS = 60.0
+
+_logger = logging.getLogger("obico.tltg_launcher")
+_app_model = None
+_viewing = None
+_last_viewed = float("-inf")
 
 _status_lock = threading.Lock()
 _status: dict = {"discovering": False, "one_time_passcode": ""}
@@ -84,6 +99,51 @@ def install_patches() -> None:
 
     discovery.set_obico_link_status = set_obico_link_status
     discovery.start_and_block = start_and_block_reporting
+
+    from moonraker_obico import webcam_stream
+
+    streamer = webcam_stream.WebcamStreamer
+    streamer_init = _require(streamer, "__init__")
+    capture_jpeg = _require(webcam_stream, "capture_jpeg")
+    nested = {const.co_name for const in _require(streamer, "mjpeg_webrtc").__code__.co_consts if hasattr(const, "co_name")}
+    if "mjpeg_loop" not in nested:
+        raise SystemExit("moonraker-obico's mjpeg_webrtc has no mjpeg_loop; Valve Oil's Obico launcher needs updating.")
+
+    def init_recording_model(self, server_conn, moonrakerconn, client_conn, app_model, sentry):
+        global _app_model
+        _app_model = app_model
+        streamer_init(self, server_conn, moonrakerconn, client_conn, app_model, sentry)
+
+    def capture_jpeg_while_viewed(webcam_config, *args, **kwargs):
+        # Only the live stream's loop waits; the resolution check and the snapshots for AI detection don't.
+        if sys._getframe(1).f_code.co_name == "mjpeg_loop":
+            _wait_for_viewer()
+        return capture_jpeg(webcam_config, *args, **kwargs)
+
+    streamer.__init__ = init_recording_model
+    webcam_stream.capture_jpeg = capture_jpeg_while_viewed
+
+
+def _viewed() -> bool:
+    global _last_viewed
+    status = getattr(_app_model, "remote_status", None)
+    # Before the plugin has its model, stream as it would.
+    if not isinstance(status, dict) or status.get("viewing"):
+        _last_viewed = time.monotonic()
+        return True
+    return time.monotonic() - _last_viewed < VIEWING_GRACE_SECONDS
+
+
+def _wait_for_viewer() -> None:
+    global _viewing
+    while not _viewed():
+        if _viewing is not False:
+            _viewing = False
+            _logger.info("Nobody has viewed the printer for a minute; the camera stream is paused.")
+        time.sleep(VIEWING_POLL_SECONDS)
+    if _viewing is not True:
+        _viewing = True
+        _logger.info("Someone is viewing the printer; the camera stream is running.")
 
 
 def main() -> None:

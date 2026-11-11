@@ -82,8 +82,8 @@ Obico's own installer also installs system packages, adds itself to Moonraker's 
 
 Its log is `moonraker-obico.log` in Fluidd's **Logs**. Fluidd's power menu lists the `moonraker-obico` service once Moonraker has restarted. Valve Oil sets Obico's remote access to open the Fluidd on port 80, and keeps the server you chose when Obico is updated.
 
-Obico streams the camera with the WebRTC server it ships for Raspberry Pi's Debian 11, which runs on QIDI's Debian 11. Out of the box it looks for one made for the printer's board and, finding none, streams no video. Obico's first-layer scan needs a nozzle camera and its macros in `printer.cfg`, so it is not used.
+Obico streams the camera with the WebRTC server it ships for Raspberry Pi's Debian 11, which runs on QIDI's Debian 11. Out of the box it looks for one made for the printer's board and, finding none, streams no video. On a board without a video encoder, such as QIDI's, Obico streams by sending the camera's full-size snapshots, and it does that all the time, whether or not anyone is watching. Valve Oil's Obico sends them only while someone has the printer open in Obico, and for a minute after. Obico's first-layer scan needs a nozzle camera and its macros in `printer.cfg`, so it is not used.
 
-While it waits to be linked, Obico checks in with the server every 2 seconds for its link code, and answers on port 46793, which the Obico app uses to find printers on its network. On the test Max 4 that took about 11% of one CPU core and 38 MB of memory.
+On the test Max 4, a linked Obico that nobody is watching uses about 4% of one CPU core and 55 MB of memory, its WebRTC server included. Streaming all the time, as Obico does by itself, took about 30% of one core. While it waits to be linked, Obico checks in with the server every 2 seconds for its link code, which takes about 11% of one core, and answers on port 46793, which the Obico app uses to find printers on its network.
 
 Removing Obico deletes its settings and account link. If you installed Obico with its own installer, Fluidd shows it as installed outside Valve Oil and leaves it alone.
