@@ -5,6 +5,7 @@ import subprocess
 import urllib.request
 from dataclasses import replace
 
+from .addons_cli import maybe_update_installed_addons
 from . import klipper_cfg, messages, patches, safety
 from .auto_update import (
     LOCK_HELD_ENV,
@@ -591,6 +592,14 @@ def _execute_install(
     reporter.emit_install_success(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
+    )
+    maybe_update_installed_addons(
+        paths=paths,
+        manifest=manifest,
+        reporter=reporter,
+        input_stream=input_stream,
+        environ=environ,
+        run=run,
     )
     if not maybe_repair_configured_auto_updates(
         paths=paths,

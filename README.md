@@ -66,6 +66,11 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 [Installing and undoing it →](docs/fluidd.md)
 
+### Add-ons
+- Install optional programs from Fluidd's Settings with one click, starting with OctoEverywhere for remote access, without the system changes its own installer makes.
+
+[Add-ons →](docs/addons.md)
+
 ### Fixes for QIDI bugs
 - The real error instead of a bare `MCU shutdown`.
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.

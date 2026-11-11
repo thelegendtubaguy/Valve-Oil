@@ -15,6 +15,7 @@ from installer.runtime import messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
 from installer.runtime import moonraker_speedups
+from installer.runtime import addons_service
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
@@ -96,6 +97,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         nginx_site_before = nginx_site.read_bytes()
         screen_unit = system_root / remote_screen.UNIT_FILE.lstrip("/")
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
+        addons_unit = system_root / addons_service.UNIT_FILE.lstrip("/")
+        addons_server = system_root / addons_service.SERVER_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
         asvc_before = asvc.read_bytes()
@@ -175,6 +178,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             "moonraker.service",
             "moonraker answered",
             remote_screen.UNIT,
+            addons_service.UNIT,
             "qidi-client.service",
             "crowsnest.service",
             cpu_tuning.TUNING_UNIT,
@@ -277,6 +281,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b'{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1}', fluidd.read_bytes())
         self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
+        self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
+        self.assertEqual(addons_server.read_bytes(), addons_service.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
@@ -461,6 +467,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(klipper_speedups_path.parent.is_dir())
         self.assertFalse(screen_unit.exists())
         self.assertFalse(screen_server.exists())
+        self.assertFalse(addons_unit.exists())
+        self.assertFalse(addons_server.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
