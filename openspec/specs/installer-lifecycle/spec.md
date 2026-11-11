@@ -703,6 +703,20 @@ Normal install and update SHALL let Fluidd's service controls restart, stop, and
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
 
+### Requirement: Touchscreen firmware notice accepts package board firmware
+Normal install and update SHALL patch reviewed builds of QIDI's touchscreen executable so its firmware-version notices treat a board version that starts with QIDI's manifest version as current, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
+
+#### Scenario: A reviewed touchscreen executable is patched
+- **WHEN** install or update finds a touchscreen executable whose SHA-256 is a reviewed QIDI build
+- **THEN** it backs up the original, replaces the executable atomically with the reviewed patched build, keeps its mode and owner, and restarts the touchscreen app once
+- **AND** an executable that is already the reviewed patched build is left unchanged
+- **AND** the executable is hashed and copied in pieces, never held in memory whole
+
+#### Scenario: Other touchscreen executables are preserved
+- **WHEN** the touchscreen executable is missing, is not a reviewed build, or was modified after installation
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged patched executable to QIDI's original and restarts the touchscreen app
+
 ### Requirement: Klipper and Moonraker come back after exiting outside systemd
 Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 
