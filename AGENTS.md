@@ -58,6 +58,7 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 - Include graph: `config/printer.cfg` → `MCU_ID.cfg`, `timelapse.cfg`, `klipper-macros-qd/*.cfg`, `tltg-optimized-macros/*.cfg`, `box.cfg` (active).
 - Stock/optimized pairs: `start_end.cfg`, `kinematics.cfg` (homing; optimized homing sequence in `printers/<printer>/homing.cfg`), `filament.cfg`, `bed_mesh.cfg` plus optimized wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
 - Cooling: `installer/klipper/tltg-optimized-macros/cooling.cfg`; pause/resume/cancel: `config/klipper-macros-qd/pause_resume_cancel.cfg`.
+- To see what QIDI's Box code does on a live printer (calls, settings lookups, G-code, motor positions), use `scripts/box_trace/` instead of writing a new tracer.
 
 ## Versions and changelog
 
