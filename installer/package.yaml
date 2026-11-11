@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.10.3"
+  version: "26.11.10.4"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -643,11 +643,14 @@ system_optimizations:
       - url: https://files.pythonhosted.org/packages/d4/f0/855cfe0abc7e51a05b13311a017fcc967142067180f24cdcfe7ba047e4f3/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
         archive: system/moonraker-speedups/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
         sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
-  # Compressed swap in RAM for QIDI's kernel, which ships without zram. The modules load only on this exact kernel
-  # build; scripts/build_zram_modules.py rebuilds them from kernel/ and checks these hashes.
+  # Compressed swap in RAM for QIDI's kernel, which ships without zram. The modules load only on these exact kernel
+  # builds; scripts/build_zram_modules.py rebuilds them from kernel/ and checks these hashes. The Plus 5's #3 differs
+  # from the Max 4's #4 only in its build string and the bytes that string shifts (kernel/README.md).
   zram_swap:
     kernel_release: 5.10.160
-    kernel_version: "#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025"
+    kernel_versions:
+      - "#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025"
+      - "#3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025"
     modules:
       - name: lz4_compress
         archive: system/zram/lz4_compress.ko

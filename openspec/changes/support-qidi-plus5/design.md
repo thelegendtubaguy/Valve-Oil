@@ -43,8 +43,8 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 
 **D3. Gate on hardware facts, not on the printer name, where a fact exists.**
 - The step-loss monitor already stays inert without `cl_interface`.
-- zram already loads only on a declared kernel build string.
-- THR and Box fixes already require a recognized bootloader.
+- zram already loads only on a declared kernel build string. The Plus 5's `#3` differs from the Max 4's `#4` only in its build string and the bytes it shifts, so both are declared.
+- THR and Box fixes already require a recognized bootloader. The project Plus 5's THR has the Max 4 test printer's `46358f30…` build and the same stock application, so the THR fix is offered on Plus 5 `01.01.02.01` as on Max 4 `01.01.07.01`.
 - The 565 mm/s cap comes from the closed-loop motors' belt-speed limit, so its patch variants are Max 4-only. The Plus 5 keeps QIDI's 600 unless measurement says otherwise.
 - The mainboard closed-loop fix is offered only on printers with closed-loop X/Y.
 
@@ -94,9 +94,8 @@ All read-only unless noted. Results go into the Plus 5 observations.
 
 ## Open Questions
 
-- Does the THR on shipping Plus 5s carry a bootloader build already admitted for the Max 4?
+- Do other shipping Plus 5s carry THR bootloader builds other than `46358f30…`? Unrecognized builds are refused before reset, as on the Max 4.
 - Does Plus 5 `box_stepper.so`'s `extruder_load_length_2`/`_3` change load lengths that the package's Box feed-motion settings assume?
 - Is the Plus 5's toolhead geometry, which the cold cut and the cutter position depend on, the same as the Max 4's?
 - Is there a Plus 5 rear-bed cable-collision risk like the Max 4's, which the optimized rear-bed scrape avoids?
-- Does an idle Plus 5 without AI detection need zram at all?
-- Does the icSpring camera link `index0` to the stream node the way the Max 4 camera does?
+- How much memory does a printing Plus 5 use? zram ships on it either way, as on a Max 4 with AI detection off.

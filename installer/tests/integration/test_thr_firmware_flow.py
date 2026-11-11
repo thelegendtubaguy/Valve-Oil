@@ -162,6 +162,9 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             with self.subTest(answer=answer):
                 self.assertTrue(confirm(input_stream=io.StringIO(answer)))
         self.assertTrue(confirm(explicit=True))
+        # The Plus 5 ships the same THR board and stock image.
+        paths.firmware_manifest_path.write_text('{"SOC":{"version":"01.01.02.01"}}')
+        self.assertTrue(confirm(input_stream=io.StringIO('yes\n')))
         self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
         self.assertIn('input shaper calibration', reporter.stream.getvalue())
 

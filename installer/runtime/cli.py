@@ -591,7 +591,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--demo-tui", action="store_true", help="Render a demo of the install/uninstall TUI without writing changes.")
     parser.add_argument("--backup", help="Backup label or path to restore with restore-backup mode.")
     parser.add_argument("--yes", action="store_true", help="Run non-interactively using default yes-mode choices.")
-    parser.add_argument("--flash-thr-fifo", action="store_true", help="Explicitly opt in to the Max 4 01.01.07.01 THR FIFO firmware fix; requires idle/ready state, zero heater targets, and verified readback. Not enabled by --yes or automatic updates.")
+    parser.add_argument("--flash-thr-fifo", action="store_true", help="Explicitly opt in to the THR FIFO firmware fix (Max 4 01.01.07.01, Plus 5 01.01.02.01); requires idle/ready state, zero heater targets, and verified readback. Not enabled by --yes or automatic updates.")
     parser.add_argument("--disable-ai-detection", action="store_true", help="Disable the QIDI AI detection backend service when system optimizations run.")
     parser.add_argument("--keep-ai-detection", action="store_true", help="Keep the QIDI AI detection backend service enabled when system optimizations run.")
     parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, keep the DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")

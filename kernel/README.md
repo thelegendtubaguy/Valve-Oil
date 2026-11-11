@@ -1,12 +1,15 @@
 # Zram swap kernel modules
 
-QIDI's Max 4 kernel can swap but ships without zram, so the installer's [zram swap](../docs/install.md#os-optimizations) brings its own modules: `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram`. They are committed in [`installer/system/zram/`](../installer/system/zram/), and [`installer/package.yaml`](../installer/package.yaml) (`system_optimizations.zram_swap`) records their SHA-256 hashes, load order, and the one kernel build they load on:
+QIDI's Max 4 and Plus 5 kernels can swap but ship without zram, so the installer's [zram swap](../docs/install.md#os-optimizations) brings its own modules: `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram`. They are committed in [`installer/system/zram/`](../installer/system/zram/), and [`installer/package.yaml`](../installer/package.yaml) (`system_optimizations.zram_swap`) records their SHA-256 hashes, load order, and the kernel builds they load on:
 
 ```text
-5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025
+5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025    (Max 4)
+5.10.160 #3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025   (Plus 5)
 ```
 
-Both the installer and the boot script compare `/proc/sys/kernel/osrelease` and `/proc/sys/kernel/version` with that build and load nothing on any other kernel.
+Both the installer and the boot script compare `/proc/sys/kernel/osrelease` and `/proc/sys/kernel/version` with those builds and load nothing on any other kernel.
+
+The modules are built for `#4`. The Plus 5's `#3` was checked against it from both printers' boot partitions and `/proc/kallsyms`. The decompressed `Image` files are the same size and differ in 173 bytes, all from the build string: the version banner and string, the build ID, and data and instructions shifted by the one-character-longer date. The built-in symbols, addresses included, and the 9,593 exported symbols are identical, and every symbol the modules import is exported. A QIDI-built Wi-Fi module with the same hash loads on both kernels and has the modules' 0x300-byte `struct module`.
 
 ## Rebuild and check
 

@@ -101,7 +101,7 @@ def fake_system_root(
         zram = load_manifest(REPO_ROOT / "installer/package.yaml").system_optimizations.zram_swap
         (root / "proc/sys/kernel").mkdir(parents=True)
         (root / "proc/sys/kernel/osrelease").write_text(f"{zram.kernel_release}\n", encoding="utf-8")
-        (root / "proc/sys/kernel/version").write_text(f"{zram.kernel_version}\n", encoding="utf-8")
+        (root / "proc/sys/kernel/version").write_text(f"{zram.kernel_versions[-1]}\n", encoding="utf-8")
     (root / "etc/resolvconf/resolv.conf.d").mkdir(parents=True)
     (root / "etc/resolv.conf").write_text("nameserver 114.114.114.114\n", encoding="utf-8")
     (root / "etc/resolvconf/resolv.conf.d/head").write_text("nameserver 8.8.8.8\n", encoding="utf-8")

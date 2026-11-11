@@ -286,7 +286,8 @@ class SystemKernelModuleSpec:
 @dataclass(frozen=True)
 class SystemZramSwapSpec:
     kernel_release: str
-    kernel_version: str
+    # Exact `/proc/sys/kernel/version` strings of the builds the modules load on.
+    kernel_versions: tuple[str, ...]
     # In load order.
     modules: tuple[SystemKernelModuleSpec, ...]
     size_mb: int
