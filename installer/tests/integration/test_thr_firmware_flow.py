@@ -115,6 +115,8 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         bundle = root / 'bundle'
         (bundle / 'scripts').mkdir(parents=True)
         (bundle / 'firmware').mkdir()
+        (bundle / 'installer').mkdir()
+        shutil.copy2(REPO_ROOT / 'installer/package.yaml', bundle / 'installer/package.yaml')
         for name in ('flash_thr_firmware.py', 'thr_bootloaders.py', 'build_thr_firmware.py', 'build_box_firmware.py'):
             shutil.copy2(REPO_ROOT / 'scripts' / name, bundle / 'scripts' / name)
         manifest = json.loads((REPO_ROOT / 'firmware/max4-thr-valve-oil-v1.json').read_text())
@@ -175,9 +177,11 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             with self.subTest(answer=answer):
                 self.assertTrue(confirm(input_stream=io.StringIO(answer)))
         self.assertTrue(confirm(explicit=True))
-        # The Plus 5 ships the same THR board and stock image.
-        paths.firmware_manifest_path.write_text('{"SOC":{"version":"01.01.02.01"}}')
+        # The Plus 5 ships the same THR board and stock image; the Smart 5's 01.01.02.01 ships a different THR image.
+        paths.firmware_manifest_path.write_text('{"SOC":{"file":"QD_PLUS5_SOC_01.01.02.01_Release_NA","version":"01.01.02.01"}}')
         self.assertTrue(confirm(input_stream=io.StringIO('yes\n')))
+        paths.firmware_manifest_path.write_text('{"SOC":{"file":"S5_SOC_01.01.02.01_Release_NA","version":"01.01.02.01"}}')
+        self.assertFalse(confirm(input_stream=io.StringIO('yes\n')))
         self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
         self.assertIn('input shaper calibration', reporter.stream.getvalue())
 

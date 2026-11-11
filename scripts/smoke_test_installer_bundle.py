@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bundle smoke test is missing qidiclient static GIF archive")
     for printer in load_manifest(bundle_root / "installer/package.yaml").printers:
         for firmware in printer.firmware:
-            snapshot_root = bundle_root / "installer" / printer.stock_snapshots / firmware / "config"
+            snapshot_root = bundle_root / "installer" / printer.stock_snapshot(firmware) / "config"
             printer_config = snapshot_root / "printer.cfg"
             if not printer_config.exists():
                 raise SystemExit(f"bundle smoke test is missing {firmware} stock config snapshot")

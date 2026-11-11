@@ -136,3 +136,8 @@ source_patches:
   firmware: 01.01.02.01
   original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
   desired_sha256: 09a57808075b7022ad65619f5a23deeec80c5d682a43e8ee101f8d62c984f33a
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: smart5-01.01.02.01
+  original_sha256: 9c2d0a479f0fc43e1ec2234e1357e6a19b9d9dadff7fcbd3f85a0d2bf3f9b00f
+  desired_sha256: 0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3

@@ -61,6 +61,8 @@ The installer saves this project's defaults, unless you've already saved any of 
 | `UNLOAD_ACCEL` | Acceleration back to the hub | QIDI's | 50 | 20–400 |
 | `PARK_SPEED` | Speed from the hub back to the parked position, in mm/s | QIDI's | 80 | 10–150 |
 
+**Smart 5.** The settings are off on the Smart 5, whose Box loads and unloads at QIDI's values, until a Smart 5 Box load has been measured.
+
 ```gcode
 TLTG_BOX_MOTION HUB_SPEED=120 PARK_SPEED=120
 ```
@@ -240,7 +242,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 ## RS-485 Boxes
 
-QIDI's Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
+QIDI's Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.

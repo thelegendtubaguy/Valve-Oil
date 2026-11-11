@@ -56,10 +56,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 35)
-        self.assertEqual(len(self.envelope.source_patches), 6)
+        self.assertEqual(len(self.envelope.source_patches), 7)
         self.assertEqual(
             digest,
-            "cb249eee59881c469faa939ebb6e1888b2246c0053d698c080cb0773f669cfe1",
+            "60b0baf96dfca7a144e96bb11e9db686b250aad06f8b5e6aeab51cf009c3610b",
         )
 
     def test_manifest_rejects_printers_that_share_an_identity(self) -> None:
@@ -69,7 +69,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         max4 = raw["printers"][0]
         shared_firmware = {**max4, "id": "other", "soc_file_prefix": "QD_OTHER_SOC_", "firmware": [max4["firmware"][-1]]}
         shared_prefix = {**max4, "id": "other", "soc_file_prefix": "QD_MAX4_", "firmware": ["09.09.09.09"]}
-        for other in (shared_firmware, shared_prefix):
+        # A printer whose versions repeat another's must key every firmware with its prefix.
+        unkeyed = {**max4, "id": "other", "soc_file_prefix": "QD_OTHER_SOC_", "firmware_key_prefix": "other-",
+                   "firmware": ["other-09.09.09.09", "09.09.09.08"]}
+        for other in (shared_firmware, shared_prefix, unkeyed):
             with self.subTest(other=other["soc_file_prefix"]):
                 with self.assertRaises(ManifestValidationError):
                     parse_manifest({**raw, "printers": [max4, other]})

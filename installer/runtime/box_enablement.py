@@ -156,9 +156,11 @@ BOX_MOTION_DEFAULTS = {
 PLUS5_BOX_MOTION_DEFAULTS = {
     "tltg_box_load_fast_length": "850",
 }
+# No Smart 5 Box load has been traced yet, so it keeps QIDI's values.
 BOX_MOTION_DEFAULTS_BY_PRINTER = {
     "max4": BOX_MOTION_DEFAULTS,
     "plus5": PLUS5_BOX_MOTION_DEFAULTS,
+    "smart5": {},
 }
 # Settings earlier releases saved as defaults, in groups. Update moves a group
 # the operator left at those values to the current defaults; a group with any
@@ -171,6 +173,7 @@ PREVIOUS_BOX_MOTION_DEFAULTS = {
         {"tltg_box_load_approach_speed": "15"},
     ),
     "plus5": (),
+    "smart5": (),
 }
 BOX_MOTION_SETTINGS = frozenset(BOX_MOTION_DEFAULTS) | {
     "tltg_box_load_accel",

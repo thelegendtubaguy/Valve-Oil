@@ -279,7 +279,7 @@ Forbidden patterns:
 
 Condition: `tltg_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:240-276`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:240-278`
 
 Direct visible macro calls in branch slice:
 
@@ -327,7 +327,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:277-318`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:279-322`
 
 Direct visible macro calls in branch slice:
 
@@ -379,7 +379,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:319-353`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:323-359`
 
 Direct visible macro calls in branch slice:
 
@@ -711,7 +711,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:506-552`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:512-558`
 
 Direct visible macro calls in branch slice:
 

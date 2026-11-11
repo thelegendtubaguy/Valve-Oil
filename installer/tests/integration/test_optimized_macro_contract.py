@@ -20,7 +20,16 @@ MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
 NEWEST_STOCK = {
     "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
     "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+    "smart5": REPO_ROOT / "installer/stock/qidi-smart5-defaults/firmwares/01.01.02.01",
 }
+# Behind the bed some printers' toolheads fit only around the chute: (rear Y, lowest X, highest X).
+REAR_CHUTE_WINDOW = {
+    # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
+    "plus5": (320, 75, 231),
+    # Behind the Smart 5's bed QIDI moves only between X66 and X100.
+    "smart5": (180, 66, 100),
+}
+TRAVEL = {"plus5": {"X": (-7, 326), "Y": (-5, 340)}, "smart5": {"X": (-2, 185), "Y": (-4, 200)}}
 
 
 class OptimizedMacroContractTests(unittest.TestCase):
@@ -257,6 +266,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
 
     def test_printer_folders_define_the_same_sections(self):
         # Driver sections only add options to the printer's own stock driver sections, which differ by printer.
+        # Bed screw positions are set up only for printers whose screws have been measured.
         sections = {}
         for printer, stock_root in NEWEST_STOCK.items():
             stock = {
@@ -271,8 +281,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
             drivers = {name for name in names if name.startswith("tmc")}
             with self.subTest(printer=printer):
                 self.assertLessEqual(drivers, stock)
-            sections[printer] = sorted(name for name in names if name not in drivers)
+            sections[printer] = sorted(name for name in names if name not in drivers and name != "screws_tilt_adjust")
         self.assertEqual(sections["plus5"], sections["max4"])
+        self.assertEqual(sections["smart5"], sections["max4"])
 
     def test_plus5_homes_sensorless_without_closed_loop_commands(self):
         text = "\n".join(path.read_text(encoding="utf-8") for path in (PRINTER_MACRO_ROOT / "plus5").glob("*.cfg"))
@@ -309,10 +320,14 @@ class OptimizedMacroContractTests(unittest.TestCase):
             homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
         )
 
-    def test_plus5_nozzle_moves_stay_inside_its_travel(self):
-        limits = {"X": (-7, 326), "Y": (-5, 340)}
-        text = (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8")
-        profile = (PRINTER_MACRO_ROOT / "plus5/printer_profile.cfg").read_text(encoding="utf-8")
+    def test_nozzle_moves_stay_inside_the_printers_travel(self):
+        for printer, limits in TRAVEL.items():
+            with self.subTest(printer=printer):
+                self._assert_nozzle_moves_inside(printer, limits)
+
+    def _assert_nozzle_moves_inside(self, printer, limits):
+        text = (PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg").read_text(encoding="utf-8")
+        profile = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
         relative = False
         for line in text.splitlines():
             command = line.split("#")[0].strip()
@@ -327,10 +342,13 @@ class OptimizedMacroContractTests(unittest.TestCase):
             low, high = limits[axis.upper()]
             self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
 
-    def test_plus5_rear_moves_stay_inside_the_chute_x_window(self):
-        # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
-        rear_y, x_low, x_high = 320, 75, 231
-        globals_cfg = (NEWEST_STOCK["plus5"] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
+    def test_rear_moves_stay_inside_the_chute_x_window(self):
+        for printer, window in REAR_CHUTE_WINDOW.items():
+            with self.subTest(printer=printer):
+                self._assert_rear_moves_inside(printer, *window)
+
+    def _assert_rear_moves_inside(self, printer, rear_y, x_low, x_high):
+        globals_cfg = (NEWEST_STOCK[printer] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
         km = types.SimpleNamespace(**{
             name: float(re.search(rf"^variable_{name}: *([\d.]+)", globals_cfg, re.M).group(1))
             for name in ("park_x", "park_y")
@@ -340,7 +358,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             match.group(1): match.group(2)
             for match in re.finditer(
                 r"^\[gcode_macro (\S+)\]\n(.*?)(?=^\[|\Z)",
-                (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8"),
+                (PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg").read_text(encoding="utf-8"),
                 re.M | re.S,
             )
         }
@@ -413,19 +431,22 @@ class OptimizedMacroContractTests(unittest.TestCase):
                     position = target
             return position
 
-        # Unknown, mid-bed, parked in the chute, and behind the wipers at the wipe's exit.
-        starts = (None, (160.0, 160.0), (km.park_x, km.park_y), (140.0, km.park_y))
+        # Unknown, mid-bed, parked in the chute, and at the wipe's far end.
+        center = km.print_max[0] / 2
+        wipe_end = {"plus5": (140.0, km.park_y), "smart5": (66.0, km.park_y)}[printer]
+        starts = (None, (center, center), (km.park_x, km.park_y), wipe_end)
         for name in bodies:
             for start in starts:
                 with self.subTest(macro=name, start=start):
                     run(name, bodies[name], start)
-        for pack in ("orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
+        for pack in (f"orcaslicer_gcode/{printer}", f"qidistudio_gcode/{printer}"):
             for path in sorted((REPO_ROOT / pack).glob("*.gcode")):
                 with self.subTest(file=f"{pack}/{path.name}"):
                     run(path.name, path.read_text(encoding="utf-8"), None)
 
     def test_slicer_filament_change_serves_both_box_command_surfaces(self):
-        for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
+        for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5",
+                     "orcaslicer_gcode/smart5", "qidistudio_gcode/smart5"):
             with self.subTest(pack=pack):
                 text = (REPO_ROOT / pack / "change_filament.gcode").read_text(encoding="utf-8")
                 self.assert_ordered(

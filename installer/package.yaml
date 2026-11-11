@@ -26,6 +26,16 @@ printers:
     macros: klipper/printers/plus5
     firmware:
       - "01.01.02.01"
+  # QIDI numbers each printer's firmware on its own, and Smart 5 versions repeat the Plus 5's, so Smart 5 firmware
+  # keys carry the printer id. The firmware manifest's SOC file name tells the two apart.
+  - id: smart5
+    display_name: QIDI Smart 5
+    soc_file_prefix: S5_SOC_
+    firmware_key_prefix: "smart5-"
+    stock_snapshots: stock/qidi-smart5-defaults/firmwares
+    macros: klipper/printers/smart5
+    firmware:
+      - "smart5-01.01.02.01"
 
 backup:
   source_directory: "config"
@@ -222,6 +232,11 @@ install:
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
           desired_sha256: "09a57808075b7022ad65619f5a23deeec80c5d682a43e8ee101f8d62c984f33a"
+        # The Smart 5's homing.py has no closed-loop homing scripts; only the 1 s dwell before each X/Y home shortens.
+        - firmware: "smart5-01.01.02.01"
+          source: "klipper/qidi/homing-smart5.py"
+          expected_sha256: "9c2d0a479f0fc43e1ec2234e1357e6a19b9d9dadff7fcbd3f85a0d2bf3f9b00f"
+          desired_sha256: "0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3"
 
 patches:
   set_options:
@@ -385,7 +400,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "CANCEL_PRINT"
           desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
 
@@ -397,7 +412,7 @@ patches:
         - firmwares: ["01.01.06.03", "01.01.06.04"]
           expected: "0.0015"
           desired: "0.00075"
-        - firmwares: ["01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "0.0005"
           desired: "0.00075"
 
@@ -419,7 +434,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "True"
           desired: "False"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "True"
           desired: "False"
 
@@ -533,7 +548,7 @@ patches:
           expected_normalized_sha256: "82ddb60dd79950a1b0e551295aca9c3c05cd3f4f0ed77ac2888d4faf18c724a8"
         - firmwares: ["01.01.07.01"]
           expected_normalized_sha256: "4466d08166d675b207e2256e4072b1b79ca5b3d83b07a272efc2bef4d41ab4cc"
-        - firmwares: ["01.01.02.01"]
+        - firmwares: ["01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "171e3cdbbb8f049a2c1aa43a7ad0176e8a5027ba0c51c8acbf95794a13877112"
 
     - id: pause_resume_cancel_resume
@@ -544,7 +559,7 @@ patches:
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
         - firmwares: ["01.01.06.04", "01.01.06.05"]
           expected_normalized_sha256: "b11be3af49980c38029cfeaf9dcbd4db8bb2e5970f40b2bb7626fe7337a86017"
-        - firmwares: ["01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "866bc3a0ab78901653e69116a13ad723f700622dd5df0d0541fcfac12099293b"
 
     - id: filament_cut_filament_1
@@ -557,6 +572,8 @@ patches:
           expected_normalized_sha256: "79234acad35e02bf68724057dc355e2e85e29c5f001fce4566e2550f3d1d5c44"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "ffae6fa66d2b77ef6be5f5ac8ba70537448e1e527edc9278acc5b2b497e74f1e"
+        - firmwares: ["smart5-01.01.02.01"]
+          expected_normalized_sha256: "946104d879cf23285845e33357c82a54c3c51307a542ee463dcc026b3c4ff4f0"
 
     - id: qd_macro_move_to_trash
       file: "config/klipper-macros-qd/qd_macro.cfg"
@@ -566,12 +583,14 @@ patches:
           expected_normalized_sha256: "3510755c71af7170afe61359d960844076027190f85d92e11b8c34b5c7c80f48"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "92dd2dffbd15797ddd742a1638ba43ed56e17dd0f7531d384924ea325cb8dd18"
+        - firmwares: ["smart5-01.01.02.01"]
+          expected_normalized_sha256: "4a98e1a1f478c9a9d5869342dc6883b4637a850b24403a7e0ae56e16496523c9"
 
     - id: heaters_m109_0
       file: "config/klipper-macros-qd/heaters.cfg"
       section: "gcode_macro m109.0"
       variants:
-        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "50260f1efe090bd27f49c61a34b960989cfa2cdff5656bc5193cbbfc6a387b77"
 
     - id: fans_m106
@@ -582,6 +601,8 @@ patches:
           expected_normalized_sha256: "07741866908f39c8c37ec70f47cc682aeb5c0d2e38396cd5ba64c6915b1d2bf0"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "2d4964dccaf400fe1c6c25a47f80db0817eeae34e276688a0b3a448f5c272a84"
+        - firmwares: ["smart5-01.01.02.01"]
+          expected_normalized_sha256: "40813f8a8e267e429cc52870536cd4bf7a0373c788270315d61a4f671b5da307"
 
     - id: kinematics_homing_override
       file: "config/klipper-macros-qd/kinematics.cfg"
@@ -593,6 +614,8 @@ patches:
           expected_normalized_sha256: "6a924478b351dea193bf1060f5747b151bba3de4c5627c7faac741ad7b164cf4"
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "9606aaf2bae0cf123b5e73615aa45631e5f93b1a7704638a1c9bbe7de16e7a1b"
+        - firmwares: ["smart5-01.01.02.01"]
+          expected_normalized_sha256: "a52fde8a2f815dce84b6d358ada58ebb29422289131f0093c73c6fee87ade519"
 
     - id: start_end_apply_print_offset
       file: "config/klipper-macros-qd/start_end.cfg"
@@ -600,7 +623,7 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected_normalized_sha256: "ea8be4dae3bc5bbe881b8e3ca5c49e0b28a74b17cb9a4d8515d598bd006ce3a7"
 
 postflight:

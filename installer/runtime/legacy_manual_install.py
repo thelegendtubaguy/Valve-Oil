@@ -188,7 +188,7 @@ def _stock_config_source(*, paths: RuntimePaths, manifest: Manifest, detected_fi
     printer = manifest.printer_for_firmware(detected_firmware)
     if printer is None:
         raise LegacyManualInstallError(f"No bundled stock config snapshot for firmware {detected_firmware}.")
-    return paths.installer_root / printer.stock_snapshots / detected_firmware / "config"
+    return paths.installer_root / printer.stock_snapshot(detected_firmware) / "config"
 
 
 def _restore_stock_files(*, source_root: Path, paths: RuntimePaths, journal: RollbackJournal) -> None:

@@ -65,7 +65,12 @@ class MacroCallGraphTests(unittest.TestCase):
 
     def test_installed_runtime_macro_call_graph_is_acyclic(self):
         plus5_root = REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01"
-        for printer, root, firmware in (("max4", REPO_ROOT, None), ("plus5", plus5_root, "01.01.02.01")):
+        smart5_root = REPO_ROOT / "installer/stock/qidi-smart5-defaults/firmwares/01.01.02.01"
+        for printer, root, firmware in (
+            ("max4", REPO_ROOT, None),
+            ("plus5", plus5_root, "01.01.02.01"),
+            ("smart5", smart5_root, "smart5-01.01.02.01"),
+        ):
             with self.subTest(printer=printer):
                 files = unique_paths(
                     (

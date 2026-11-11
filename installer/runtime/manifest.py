@@ -282,8 +282,9 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
-# Firmware versions identify the printer, so no version may belong to two printers. The firmware manifest's
-# SOC file name (QD_MAX4_SOC_..., QD_PLUS5_SOC_...) cross-checks that identity at runtime.
+# Firmware keys identify the printer, so no key may belong to two printers. A printer whose SOC versions repeat
+# another printer's gives its keys a firmware_key_prefix. The firmware manifest's SOC file name (QD_MAX4_SOC_...,
+# QD_PLUS5_SOC_..., S5_SOC_...) picks between printers that share a version at runtime.
 def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
     printers: list[PrinterSpec] = []
     ids: set[str] = set()
@@ -299,7 +300,12 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
                 _require_str(item, "stock_snapshots"), allowed_roots=("stock",)
             ),
             macros=_validate_relative_path(_require_str(item, "macros"), allowed_roots=("klipper",)),
+            firmware_key_prefix=_require_str(item, "firmware_key_prefix") if "firmware_key_prefix" in item else "",
         )
+        if any(not key.startswith(printer.firmware_key_prefix) for key in printer.firmware):
+            raise ManifestValidationError(
+                f"Printer {printer.id} firmware must start with its firmware_key_prefix."
+            )
         if printer.id in ids:
             raise ManifestValidationError(f"Duplicate printer id: {printer.id}")
         if any(
