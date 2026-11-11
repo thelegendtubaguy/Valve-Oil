@@ -231,7 +231,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             with self.subTest(section=section):
                 self.assertEqual(commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", section)), stock)
 
-    def test_plus5_cut_strikes_the_cutter_once(self):
+    def test_plus5_cut_presses_the_cutter_once(self):
         for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
             with self.subTest(section=section):
                 gcode = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg", section)
