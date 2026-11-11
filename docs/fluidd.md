@@ -29,4 +29,4 @@ If the touchscreen freezes, restart it from Fluidd without SSH. Open Fluidd's po
 
 ## Add-ons
 
-Fluidd's **Settings** has an **Add-ons** section for installing optional programs such as OctoEverywhere. See [Add-ons](addons.md).
+Fluidd's **Settings** has an **Add-ons** section for installing optional programs such as OctoEverywhere, Obico, and Tailscale. See [Add-ons](addons.md).

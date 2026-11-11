@@ -57,7 +57,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | What | Change |
 |---|---|
 | `~/tltg-optimized-macros/` | The installer, `restore.sh`, `auto-update.sh`, `box-firmware.sh`, `mainboard-firmware.sh`, and `addons.sh`. |
-| `~/tltg-addons/` and each add-on's service, such as `/etc/systemd/system/octoeverywhere.service` or `/etc/systemd/system/moonraker-obico.service` | Only for [add-ons](addons.md) you install. Each add-on has its own folder and a data folder for its settings. |
+| `~/tltg-addons/` and each add-on's service, such as `/etc/systemd/system/octoeverywhere.service`, `/etc/systemd/system/moonraker-obico.service`, or `/etc/systemd/system/tailscaled.service` | Only for [add-ons](addons.md) you install. Each add-on has its own folder and a data folder for its settings. Tailscale's programs are downloaded from `pkgs.tailscale.com` when you install it. |
 | USB QIDI Box firmware and `~/printer_data/.tltg_box_firmware_backups/` | Each install and automatic update flashes the [Valve Oil Box firmware](firmware.md#qidi-box-firmware) to every USB Box that needs it and keeps the Box's stock firmware in the backups folder. |
 | `/etc/systemd/system/tltg-optimized-auto-update.{service,timer}` | Only if you turn on [automatic updates](install.md#automatic-updates). |
 | `~/printer_data/logs/tltg_box_firmware_box<N>.json` | The shareable report for a USB Box whose bootloader or firmware the installer [doesn't support yet](firmware.md#qidi-box-firmware). Fluidd shows a banner while it's there. An install removes it once the Box has the Valve Oil firmware or leaves `box.cfg`. |

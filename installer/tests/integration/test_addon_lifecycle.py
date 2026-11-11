@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import tarfile
 import tempfile
 import threading
@@ -19,6 +20,7 @@ from installer.runtime.models import AddonSpec, AddonsSpec, SystemWheelSpec
 
 ADDON = addons.OCTOEVERYWHERE
 OBICO = addons.OBICO
+TAILSCALE = addons.TAILSCALE
 PATHS = addons.addon_paths(ADDON.id)
 UNIT_FILE = f"{addons.UNIT_DIR}/{ADDON.unit}"
 
@@ -239,6 +241,67 @@ class AddonLifecycleTests(unittest.TestCase):
         foreign.parent.rmdir()
         self.install(spec, OBICO.id)
         self.assertEqual(addons.read_marker(OBICO.id, root=self.root)["version"], "1.0")
+
+    def test_a_downloaded_addon_installs_only_the_file_the_manifest_pins(self) -> None:
+        def release(version: str) -> tuple[AddonsSpec, bytes]:
+            data = io.BytesIO()
+            with tarfile.open(fileobj=data, mode="w:gz") as tar:
+                for name in ("tailscale", "tailscaled"):
+                    info = tarfile.TarInfo(f"tailscale_{version}_arm64/{name}")
+                    info.size, info.mode = len(version), 0o755
+                    tar.addfile(info, io.BytesIO(version.encode("utf-8")))
+            source = SystemWheelSpec(
+                url=f"https://example.invalid/tailscale_{version}_arm64.tgz",
+                archive=f"addons/tailscale/tailscale_{version}_arm64.tgz",
+                sha256=hashlib.sha256(data.getvalue()).hexdigest(),
+            )
+            base = _bundle(self.installer_root, "1.0", ids=(OBICO.id,))
+            return AddonsSpec(pip_wheel=base.pip_wheel, catalog=(*base.catalog, AddonSpec(id=TAILSCALE.id, version=version, source=source, wheels=(), download=True))), data.getvalue()
+
+        served: dict[str, bytes] = {}
+
+        def urlopen(request, timeout=None):
+            if request.full_url not in served:
+                raise OSError("no route to host")
+            return io.BytesIO(served[request.full_url])
+
+        def install(spec: AddonsSpec) -> str:
+            return addons.install_addon(
+                TAILSCALE.id, spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None, urlopen=urlopen
+            )
+
+        paths = addons.addon_paths(TAILSCALE.id)
+        spec, data = release("1.0")
+        # Another file at the pinned address, or no connection, installs nothing.
+        for response in (b"another file", None):
+            with self.subTest(response=response):
+                served.clear()
+                if response is not None:
+                    served[spec.catalog[-1].source.url] = response
+                with self.assertRaises(addons.AddonError):
+                    install(spec)
+                self.assertFalse(self.path(paths.code).exists())
+                self.assertFalse(self.path(f"{addons.UNIT_DIR}/{TAILSCALE.unit}").exists())
+
+        # It installs beside a remote-access add-on, with no Python environment and nothing read from the bundle.
+        self.install(spec, OBICO.id)
+        served[spec.catalog[-1].source.url] = data
+        self.assertEqual(install(spec), addons.INSTALLED)
+        self.assertEqual(self.host.builds(), 1)
+        self.assertTrue(os.access(self.path(f"{paths.app}/tailscaled"), os.X_OK))
+        self.assertFalse(self.path(paths.env).exists())
+        unit = self.path(f"{addons.UNIT_DIR}/{TAILSCALE.unit}").read_text(encoding="utf-8")
+        self.assertIn("--tun=userspace-networking", unit)
+        self.assertIn("User=qidi", unit)
+
+        # A release whose download fails leaves the installed build running and reports it.
+        newer, _ = release("2.0")
+        failures = addons.update_installed_addons(
+            spec=newer, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None, urlopen=urlopen
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(addons.read_marker(TAILSCALE.id, root=self.root)["version"], "1.0")
+        self.assertEqual(self.path(f"{paths.app}/tailscaled").read_text(encoding="utf-8"), "1.0")
 
     def test_files_that_do_not_match_the_manifest_are_refused(self) -> None:
         spec = _bundle(self.installer_root, "1.0")
