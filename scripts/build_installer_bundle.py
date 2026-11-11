@@ -314,7 +314,7 @@ def fetch_addon_files(manifest) -> list[tuple[object, Path]]:
         return []
     artifacts = [manifest.addons.pip_wheel]
     for addon in manifest.addons.catalog:
-        artifacts += [addon.source, *addon.wheels]
+        artifacts += [addon.source, *addon.wheels, *addon.sdists]
     fetched = []
     for artifact in artifacts:
         cached = DOWNLOAD_CACHE / f"{artifact.sha256}-{Path(artifact.archive).name}"
