@@ -147,7 +147,8 @@ Comparisons in this section are against Max 4 firmware `01.01.07.01`, released t
   - X/Y driver slope: QIDI's Plus 5 `printer.cfg` has `#driver_SLOPE_CONTROL:2` commented out in both `[tmc2240 stepper_x|y]` sections, so Klipper's default 0 (100 V/µs) applies; `DUMP_TMC REGISTER=DRV_CONF` reads `00000001` (`current_range=1`, `slope_control=0`). Set live with `SET_TMC_FIELD`, values 1–3 ran the drivers 17–30 °C cooler at standstill with no driver error flags or MCU retransmits.
   - USB Box (connected after install): it enumerates as `QIDI_BOX_V2_1.2.1` behind the hub, `qidiclient` writes `[mcu mcu_box1]` and `[box_config box0]` into `box.cfg` and restarts Klipper, `box_count` becomes 1, and `multi_color_controller` reports `box.identity` `box_v1`. The Box ran stock `02.03.01.21` with `COLOR_BOOT` bootloader SHA-256 `1e00811df777a8cf21098b1386319a440c90e04aa2a9ab0aeef11dc810891b1e` and application `dcf6bb19…`.
   - Camera: the stream served snapshots while `crowsnest.conf` named the Max 4's MGM1 camera, because the update's `preinst` had restored stock `crowsnest.conf` after `makerbase-webcam.service` had already pointed crowsnest at the icSpring camera that boot. The script splits the `device:` line on `': '`, which QIDI's line lacks, so it rewrites the line at every boot.
-- **Unresolved:** for the Plus 5, Box load, unload, and tool-change timing; the THR, mainboard, and SoC board revisions; host load while printing; and whether Klipper reaches ready with a USB Box or an RS-485 device attached.
+- **Runtime-confirmed (operator photos, 2026-11-11):** the Plus 5 mainboard is `X-12-3 V1.0.1`, the SoC board `X-12-1 V1.1.0` (the Max 4's board, labelled `PLUS5 0409`), and the THR board `A-10 V1.1.5`.
+- **Unresolved:** for the Plus 5, Box tool-change timing; host load while printing; and whether Klipper reaches ready with an RS-485 device attached.
 
 ## Klipper shutdown reporting
 
