@@ -129,6 +129,8 @@ Release bundles carry unmodified copies of the add-on files pinned under `addons
 - Python source archives from PyPI, which the printer builds into packages: each carries its own license.
 - Python wheels from PyPI, including pip: each wheel carries its own license in its `.dist-info` directory.
 
+Tailscale is not carried in release bundles. When the operator installs the Tailscale add-on, the printer downloads Tailscale's own unmodified build for arm64 from <https://pkgs.tailscale.com>, pinned by sha256 under `addons:`. Tailscale is licensed under the BSD 3-Clause License; its source is at <https://github.com/tailscale/tailscale>.
+
 ## Valve Oil UI
 
 `ui/` is repository-authored and covered by the repository license, except as follows.

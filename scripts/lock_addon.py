@@ -8,6 +8,10 @@ over the add-on's entry; the bundle builder downloads and verifies the same file
 
     python3 scripts/lock_addon.py octoeverywhere 5.4.1
     python3 scripts/lock_addon.py obico 2.2.4
+
+An add-on the printer downloads when it is installed has no Python packages; only its file is pinned.
+
+    python3 scripts/lock_addon.py tailscale 1.104.6
 """
 from __future__ import annotations
 
@@ -46,6 +50,11 @@ ADDONS = {
         # Pure-Python packages PyPI has no wheel for; the printer builds them from the pinned source.
         "sdists": ["bson", "sarge"],
     },
+    # Tailscale's static build for arm64, downloaded by the printer.
+    "tailscale": {
+        "source_url": "https://pkgs.tailscale.com/stable/tailscale_{version}_arm64.tgz",
+        "download": True,
+    },
 }
 
 
@@ -58,6 +67,16 @@ def main(argv: list[str] | None = None) -> int:
 
     source_url = spec["source_url"].format(version=args.version)
     source = _download(source_url)
+    if spec.get("download"):
+        print(f"    - id: {args.addon}")
+        print(f'      version: "{args.version}"')
+        print("      # Not in the bundle: the printer downloads this file when the add-on is installed or updated.")
+        print("      download: true")
+        print("      source:")
+        print(f"        url: {source_url}")
+        print(f"        archive: addons/{args.addon}/{source_url.rsplit('/', 1)[-1]}")
+        print(f"        sha256: {hashlib.sha256(source).hexdigest()}")
+        return 0
     requirements = _member_text(source, spec["requirements"]) + "\n" + "\n".join(spec["extra"]) + "\n"
     sdists = spec.get("sdists", [])
 

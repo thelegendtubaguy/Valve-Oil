@@ -2,9 +2,13 @@
 
 [← Back to the docs](README.md)
 
-Add-ons are optional programs that Valve Oil installs, updates, and removes for you. Each one runs from its own folder with its own copy of the Python packages it needs, which ship with Valve Oil. Installing one doesn't install system packages, doesn't change files in `printer_data/config`, and doesn't turn on Moonraker's update manager. QIDI firmware updates leave add-ons and their settings in place.
+Add-ons are optional programs that Valve Oil installs, updates, and removes for you. Each one runs from its own folder. OctoEverywhere and Obico come with their own copy of the Python packages they need, which ship with Valve Oil. Tailscale is downloaded from Tailscale when you install it. Installing an add-on doesn't install system packages, doesn't change files in `printer_data/config`, and doesn't turn on Moonraker's update manager. QIDI firmware updates leave add-ons and their settings in place.
 
-The add-ons are [OctoEverywhere](#octoeverywhere) and [Obico](#obico). Both give remote access to Fluidd and the camera, print notifications, and AI failure detection, so only one of them can be installed at a time. To switch, remove the one you have first. Fluidd's **Install** for the other says which one to remove.
+The add-ons are [OctoEverywhere](#octoeverywhere), [Obico](#obico), and [Tailscale](#tailscale).
+
+OctoEverywhere and Obico both give remote access to Fluidd and the camera, print notifications, and AI failure detection, so only one of them can be installed at a time. To switch, remove the one you have first. Fluidd's **Install** for the other says which one to remove.
+
+Tailscale puts the printer on your own private network, so your devices reach it from anywhere as if they were at home. It can be installed alongside OctoEverywhere or Obico.
 
 ## Installing from Fluidd
 
@@ -16,7 +20,7 @@ Fluidd's **Add-ons** section talks to the printer it was opened from. Moonraker 
 
 ## Updating
 
-Each Valve Oil release pins the version of every add-on it offers. When you install or update Valve Oil, including through automatic updates, installed add-ons move to that release's version. If an add-on's new version doesn't keep running, the version you had is put back and the install says so. Valve Oil also says when an add-on update fails, and the rest of the update still goes ahead.
+Each Valve Oil release pins the version of every add-on it offers. When you install or update Valve Oil, including through automatic updates, installed add-ons move to that release's version. If an add-on's new version doesn't keep running, or Tailscale's new version can't be downloaded, the version you had stays and the install says so. Valve Oil also says when an add-on update fails, and the rest of the update still goes ahead.
 
 ## From SSH
 
@@ -28,6 +32,7 @@ Each Valve Oil release pins the version of every add-on it offers. When you inst
 ~/tltg-optimized-macros/addons.sh update octoeverywhere
 ~/tltg-optimized-macros/addons.sh remove octoeverywhere
 ~/tltg-optimized-macros/addons.sh relink obico --server http://192.168.1.10:3334
+~/tltg-optimized-macros/addons.sh install tailscale
 ```
 
 `relink` is for Obico. See [Changing the server or unlinking](#changing-the-server-or-unlinking).
@@ -87,3 +92,50 @@ Obico streams the camera with the WebRTC server it ships for Raspberry Pi's Debi
 On the test Max 4, a linked Obico that nobody is watching uses about 4% of one CPU core and 57 MB of memory, its WebRTC server included. Streaming all the time, as Obico does by itself, took about 30% of one core. While it waits to be linked, Obico checks in with the server every 2 seconds for its link code, which takes about 11% of one core, and answers on port 46793, which the Obico app uses to find printers on its network.
 
 Removing Obico deletes its settings and account link. If you installed Obico with its own installer, Fluidd shows it as installed outside Valve Oil and leaves it alone.
+
+## Tailscale
+
+[Tailscale](https://tailscale.com) joins the printer to your tailnet, the private network between your own devices. Any device on your tailnet can then open Fluidd, watch the camera, and use SSH from anywhere, at the printer's Tailscale name or address. Nothing is opened to the internet, and you need a Tailscale account, which is free for personal use.
+
+### Installing
+
+Installing Tailscale needs the printer to be online. Valve Oil downloads Tailscale 1.104.6 for the printer, a 38 MB file, from `pkgs.tailscale.com`, and installs it only if it is exactly the file this Valve Oil release names. It takes about a minute.
+
+### Logging in
+
+After installing, the Tailscale panel under **Add-ons** says **Not logged in**. Click **Log in**. The panel shows a sign-in address and a **Sign in to Tailscale** button. Open it on any device, sign in to Tailscale, and approve the printer. **New link** gives a fresh address and makes the earlier one useless, so sign in with the newest one.
+
+Within about 10 seconds of signing in, the panel says **Connected** and shows your tailnet, the printer's name and addresses on it, and when its sign-in expires. The name and address are links that open the printer's Fluidd over Tailscale. From another device on your tailnet, open `http://<the printer's Tailscale name or address>/`.
+
+Tailscale signs devices out after 180 days unless you turn off key expiry for the printer in Tailscale's admin console. When that happens the panel says **Not logged in** again, and **Log in** brings it back.
+
+**Log out** takes the printer off your tailnet. It stays listed in Tailscale's admin console, signed out, until you remove it there. If your tailnet approves new devices by hand, the panel says the printer is waiting for approval until you approve it in the admin console.
+
+### What tailnet devices can reach
+
+Connections from your tailnet arrive at the printer as if they came from the printer itself. That means:
+
+- Fluidd and Moonraker treat every device on your tailnet as trusted, the same as a device on your home network, with no login.
+- Every service on the printer answers, SSH included, and so do the ones that otherwise answer only to the printer itself.
+
+Add the printer only to a tailnet whose devices and people you'd let use it. To narrow who can reach it, use [Tailscale's access controls](https://tailscale.com/kb/1018/acls), or share only this printer with someone instead of inviting them to your tailnet.
+
+The printer's own programs can't open connections to other devices on your tailnet. Only connections coming in to the printer work.
+
+### What it changes
+
+Tailscale's own packages install system-wide and expect a tunnel device, firewall, and routing features that QIDI's Linux kernel doesn't have, so they don't work on a QIDI printer. Valve Oil runs Tailscale's own programs in their userspace networking mode, which needs none of those, as the `qidi` user instead of root. It changes no routes, firewall rules, or DNS settings. It installs:
+
+- Tailscale's `tailscaled` and `tailscale` programs, unmodified, in `~/tltg-addons/tailscale/`;
+- the printer's Tailscale identity and settings in `~/tltg-addons/tailscale-data/`;
+- the `tailscaled` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
+
+On the test Plus 5, a connected Tailscale that nobody is using takes about 34 MB of memory and under 0.5% of one CPU core. Watching the camera over Tailscale took about 27% of one core, since Tailscale encrypts everything it carries. Devices on the same home network as the printer connect to it directly, and Tailscale relays through its servers only when no direct path exists.
+
+Its log is in the system journal. Read it with `journalctl -u tailscaled` over SSH. To use Tailscale's command line, name its socket:
+
+```bash
+~/tltg-addons/tailscale/app/tailscale --socket=$HOME/tltg-addons/tailscale-data/tailscaled.sock status
+```
+
+Removing Tailscale logs the printer out of your tailnet and deletes its identity, so installing it again later means logging in again, and it joins as a new machine. If you installed Tailscale some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.

@@ -343,9 +343,12 @@ class AddonSpec:
     id: str
     version: str
     source: SystemWheelSpec
+    # Empty for an add-on that is a program, not a Python package; it gets no Python environment.
     wheels: tuple[SystemWheelSpec, ...]
     # Pure-Python packages PyPI publishes only as source; installed after the wheels, built with their setuptools.
     sdists: tuple[SystemWheelSpec, ...] = ()
+    # The source isn't in the bundle; the printer downloads it from source.url when the add-on is installed or updated.
+    download: bool = False
 
 
 @dataclass(frozen=True)

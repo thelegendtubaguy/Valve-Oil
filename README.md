@@ -68,7 +68,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 [Installing and undoing it →](docs/fluidd.md)
 
 ### Add-ons
-- Install optional programs from Fluidd's Settings with one click, such as OctoEverywhere or Obico for remote access, without the system changes their own installers make.
+- Install optional programs from Fluidd's Settings with one click, such as OctoEverywhere or Obico for remote access, or Tailscale to reach the printer over your own private network, without the system changes their own installers make.
 
 [Add-ons →](docs/addons.md)
 
