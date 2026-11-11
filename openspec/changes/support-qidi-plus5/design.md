@@ -65,6 +65,8 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 
 **D5. The screen card rotates in the service.** The service knows the framebuffer's geometry and the touchscreen's axis ranges. A portrait framebuffer on a printer whose UI is landscape is rotated before encoding. Taps are mapped back through the same rotation, and the touchscreen's own axis ranges decide whether the touch coordinates are portrait or landscape. Any portrait framebuffer is turned by one constant, `PORTRAIT_UI_ROTATION`. Its 90° clockwise value is a guess until 2.3 observes the direction, and the tap mapping assumes the touchscreen reports framebuffer coordinates.
 
+**D6. Plus 5 rear moves stay in the chute window.** Behind Y 320 the Plus 5's toolhead can only be between X 75 and X 231; the Max 4's rear is open in X, so Max 4 rear moves such as its rear-bed scrape's X 380 swing don't carry over. The Plus 5 chute, wiper, and rear-bed scrape moves keep QIDI's Plus 5 positions (X 77–169), and a contract test walks every Plus 5 motion macro and slicer pack move to hold them inside the window.
+
 ## Data to collect on a running Plus 5
 
 All read-only unless noted. Results go into the Plus 5 observations.

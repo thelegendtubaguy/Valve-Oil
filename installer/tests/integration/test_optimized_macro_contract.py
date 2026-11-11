@@ -294,6 +294,111 @@ class OptimizedMacroContractTests(unittest.TestCase):
             low, high = limits[axis.upper()]
             self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
 
+    def test_plus5_rear_moves_stay_inside_the_chute_x_window(self):
+        # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
+        rear_y, x_low, x_high = 320, 75, 231
+        globals_cfg = (NEWEST_STOCK["plus5"] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
+        km = types.SimpleNamespace(**{
+            name: float(re.search(rf"^variable_{name}: *([\d.]+)", globals_cfg, re.M).group(1))
+            for name in ("park_x", "park_y")
+        })
+        km.print_max = tuple(map(float, re.search(r"^variable_print_max: *\((\d+), *(\d+)\)", globals_cfg, re.M | re.I).groups()))
+        bodies = {
+            match.group(1): match.group(2)
+            for match in re.finditer(
+                r"^\[gcode_macro (\S+)\]\n(.*?)(?=^\[|\Z)",
+                (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8"),
+                re.M | re.S,
+            )
+        }
+        # Pure-motion entry points the common macros and slicer packs call.
+        calls = {
+            "OPTIMIZED_WIPE_NOZZLE_DROP": ["_OPTIMIZED_WIPE_NOZZLE", "_OPTIMIZED_CHUTE_DROP"],
+            "_OPTIMIZED_FINISH_START_SCRAPE": ["OPTIMIZED_MOVE_TO_TRASH", "OPTIMIZED_WIPE_NOZZLE_DROP"],
+        }
+
+        def check(name, start, end):
+            (x0, y0), (x1, y1) = start, end
+            points = [(x, y) for x, y in (start, end) if y > rear_y]
+            if (y0 > rear_y) != (y1 > rear_y):
+                points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
+            for x, y in points:
+                self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
+
+        def move_to_trash(name, position):
+            # QIDI's chute approach: straight in only from X76-110 behind the print area, else via Y park_y-30.
+            x, y = position
+            path = [] if y > rear_y and 76 <= x <= 110 else [(x, km.park_y - 30), (km.park_x, km.park_y - 30)]
+            for point in path + [(km.park_x, km.park_y)]:
+                check(name, position, point)
+                position = point
+            return position
+
+        def branch(condition, position):
+            # Conditions on the toolhead position are evaluated; any other condition runs its block.
+            if position is None or "gcode_move.position" not in condition:
+                return True
+            where = types.SimpleNamespace(x=position[0], y=position[1])
+            printer = types.SimpleNamespace(gcode_move=types.SimpleNamespace(position=where))
+            return bool(eval(condition, {"printer": printer, "km": km}))
+
+        def run(name, text, position):
+            relative = False
+            active = []
+            for line in text.splitlines():
+                command = line.split("#")[0].split(";")[0].strip()
+                block = re.fullmatch(r"\{%-? *(if|elif|else|endif|for|endfor)\b(.*?)-?%\}", command)
+                if block:
+                    keyword, condition = block.group(1), block.group(2).strip()
+                    if keyword == "if":
+                        taken = branch(condition, position)
+                        active.append([taken, taken])
+                    elif keyword in ("elif", "else") and active:
+                        run_it = not active[-1][1] and (keyword == "else" or branch(condition, position))
+                        active[-1] = [run_it, active[-1][1] or run_it]
+                    elif keyword == "endif" and active:
+                        active.pop()
+                    continue
+                if not all(state[0] for state in active):
+                    continue
+                word = command.split(" ")[0]
+                if word in ("OPTIMIZED_MOVE_TO_TRASH", "_OPTIMIZED_MOVE_TO_TRASH_MOTION", "MOVE_TO_TRASH"):
+                    position = move_to_trash(name, position) if position else (km.park_x, km.park_y)
+                elif word in calls:
+                    for called in calls[word]:
+                        position = run(called, bodies.get(called, called), position)
+                elif word in bodies:
+                    position = run(word, bodies[word], position)
+                elif command in ("G90", "G91"):
+                    relative = command == "G91"
+                elif word in ("G0", "G1"):
+                    target = list(position) if position else [None, None]
+                    for axis, value in re.findall(r"\b([XY])(\{[^}]*\}|-?[\d.]+)", command):
+                        index = "XY".index(axis)
+                        try:
+                            number = float(eval(value.strip("{}"), {"km": km}) if value.startswith("{") else value)
+                        except Exception:
+                            target[index] = None
+                            continue
+                        if relative:
+                            target[index] = None if target[index] is None else target[index] + number
+                        else:
+                            target[index] = number
+                    target = tuple(target) if None not in target else None
+                    if position and target:
+                        check(name, position, target)
+                    position = target
+            return position
+
+        for name in bodies:
+            with self.subTest(macro=name):
+                run(name, bodies[name], None)
+                run(name, bodies[name], (km.park_x, km.park_y))
+        for pack in ("orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
+            for path in sorted((REPO_ROOT / pack).glob("*.gcode")):
+                with self.subTest(file=f"{pack}/{path.name}"):
+                    run(path.name, path.read_text(encoding="utf-8"), None)
+
     def test_slicer_filament_change_serves_both_box_command_surfaces(self):
         for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
             with self.subTest(pack=pack):

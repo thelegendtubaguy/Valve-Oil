@@ -13,6 +13,10 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **WHEN** the optimized cut, wipe, chute, park, or print-start moves run on a Plus 5
 - **THEN** they use the Plus 5's coordinates, all inside its configured X −7–326 and Y −5–340 travel
 
+#### Scenario: Plus 5 rear moves stay inside the chute window
+- **WHEN** an optimized macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
+- **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
+
 #### Scenario: Plus 5 speed limits stay at QIDI's values
 - **WHEN** install or update runs on a Plus 5
 - **THEN** `max_velocity`, Z tilt `speed`, and bed mesh `speed` keep the Plus 5's own values rather than the Max 4's 565 mm/s cap
