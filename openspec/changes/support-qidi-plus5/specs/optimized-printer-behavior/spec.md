@@ -17,6 +17,14 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **WHEN** an optimized macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
 - **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
 
+#### Scenario: Plus 5 cut strikes the cutter once
+- **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by the optimized macros
+- **THEN** the extruder motor is released and the toolhead strikes the Plus 5 cutter once from a run-up, with no dwell at the cutter
+
+#### Scenario: Plus 5 chute approach is fast up to the chute entrance
+- **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
+- **THEN** the toolhead lines up with the chute in front of it, moves fast to the chute entrance at Y 320, and only the push from Y 320 into the chute is slow
+
 #### Scenario: Plus 5 speed limits stay at QIDI's values
 - **WHEN** install or update runs on a Plus 5
 - **THEN** `max_velocity`, Z tilt `speed`, and bed mesh `speed` keep the Plus 5's own values rather than the Max 4's 565 mm/s cap

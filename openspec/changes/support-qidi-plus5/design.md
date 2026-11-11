@@ -54,7 +54,9 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 - `G28 X`, `G28 Y`, and `G28 Z` home that one axis with the same per-axis steps. QIDI's override ignores them, and the common macros expect them to work.
 - Homing clears the bed mesh, as on the Max 4. It doesn't call QIDI's undefined `BEEP`.
 - The cut drops QIDI's 2 s exit dwell, as on the Max 4.
-- Every other coordinate, speed, current, and dwell is QIDI's Plus 5 value. The waste-chute final approach uses the shared `trash_final_approach_speed_xy`.
+- The cut follows the Max 4's: the extruder motor is released and settles 400 ms, then the toolhead strikes the cutter at X −2 once from a 27 mm run-up. QIDI's Plus 5 cut pressed the cutter twice with a 1 s hold after each press.
+- The move to the waste chute follows the Max 4's: line up with the chute at Y 308, move fast to the entrance at Y 320, then push slowly into Y 338. QIDI's Plus 5 move was slow for the whole 30 mm from Y 308. QIDI's own `MOVE_TO_TRASH`, which its tool change, unload, pause, and cancel call, is replaced by this move on the Plus 5 and by an unchanged copy of QIDI's on the Max 4, so both printers keep one macro under the same name.
+- Every other coordinate, speed, current, and dwell is QIDI's Plus 5 value. The optimized waste-chute final approach uses the shared `trash_final_approach_speed_xy`; QIDI's `MOVE_TO_TRASH` keeps QIDI's 2000 mm/min.
 - Of the printer.cfg patches, the Plus 5 gets Z homing retract 5 mm, the error cancel macro, the hotend-fan tachometer interval, and quiet timelapse frames. Its Z homing is the same load-cell probe as the Max 4's.
 
 **D4b. Slicer packs live in `plus5/` subfolders.** The Max 4 packs stay where operators' links point. The Plus 5 packs follow QIDI's Plus 5 profiles:

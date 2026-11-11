@@ -217,18 +217,28 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "M118 Please load filament",
         )
 
-    def test_vendor_cut_macro_matches_newest_stock_without_exit_dwell(self):
-        for printer, stock_root in NEWEST_STOCK.items():
-            with self.subTest(printer=printer):
-                stock = self._section_gcode(
-                    stock_root / "config/klipper-macros-qd/filament.cfg", "gcode_macro CUT_FILAMENT_1"
-                )
-                optimized = self._section_gcode(
-                    PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg", "gcode_macro CUT_FILAMENT_1"
-                )
-                stock_lines = [line.rstrip() for line in stock.splitlines() if line.strip()]
-                self.assertEqual(stock_lines[-1].strip(), "G4 P2000")
-                self.assertEqual([line.rstrip() for line in optimized.splitlines() if line.strip()], stock_lines[:-1])
+    def test_max4_vendor_cut_and_chute_moves_match_newest_stock(self):
+        def commands(text):
+            return [line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()]
+
+        stock_root = NEWEST_STOCK["max4"] / "config/klipper-macros-qd"
+        stock_cut = commands(self._section_gcode(stock_root / "filament.cfg", "gcode_macro CUT_FILAMENT_1"))
+        self.assertEqual(stock_cut[-1], "G4 P2000")
+        for stock, section in (
+            (stock_cut[:-1], "gcode_macro CUT_FILAMENT_1"),
+            (commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH")), "gcode_macro MOVE_TO_TRASH"),
+        ):
+            with self.subTest(section=section):
+                self.assertEqual(commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", section)), stock)
+
+    def test_plus5_cut_strikes_the_cutter_once(self):
+        for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
+            with self.subTest(section=section):
+                gcode = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg", section)
+                xs = [float(x) for x in re.findall(r"^\s*G1 X(-?[\d.]+)", gcode, re.M)]
+                strikes = sum(1 for before, after in zip([15.0] + xs, xs) if after <= 0 < before)
+                self.assertEqual(strikes, 1, gcode)
+                self.assertNotIn("G4 P1000", gcode)
 
     def test_printer_folders_define_the_same_sections(self):
         sections = {
@@ -315,6 +325,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         calls = {
             "OPTIMIZED_WIPE_NOZZLE_DROP": ["_OPTIMIZED_WIPE_NOZZLE", "_OPTIMIZED_CHUTE_DROP"],
             "_OPTIMIZED_FINISH_START_SCRAPE": ["OPTIMIZED_MOVE_TO_TRASH", "OPTIMIZED_WIPE_NOZZLE_DROP"],
+            "OPTIMIZED_MOVE_TO_TRASH": ["_OPTIMIZED_MOVE_TO_TRASH_MOTION"],
         }
 
         def check(name, start, end):
@@ -324,15 +335,6 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
             for x, y in points:
                 self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
-
-        def move_to_trash(name, position):
-            # QIDI's chute approach: straight in only from X76-110 behind the print area, else via Y park_y-30.
-            x, y = position
-            path = [] if y > rear_y and 76 <= x <= 110 else [(x, km.park_y - 30), (km.park_x, km.park_y - 30)]
-            for point in path + [(km.park_x, km.park_y)]:
-                check(name, position, point)
-                position = point
-            return position
 
         def branch(condition, position):
             # Conditions on the toolhead position are evaluated; any other condition runs its block.
@@ -362,9 +364,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 if not all(state[0] for state in active):
                     continue
                 word = command.split(" ")[0]
-                if word in ("OPTIMIZED_MOVE_TO_TRASH", "_OPTIMIZED_MOVE_TO_TRASH_MOTION", "MOVE_TO_TRASH"):
-                    position = move_to_trash(name, position) if position else (km.park_x, km.park_y)
-                elif word in calls:
+                if word in calls:
                     for called in calls[word]:
                         position = run(called, bodies.get(called, called), position)
                 elif word in bodies:
@@ -390,10 +390,12 @@ class OptimizedMacroContractTests(unittest.TestCase):
                     position = target
             return position
 
+        # Unknown, mid-bed, parked in the chute, and behind the wipers at the wipe's exit.
+        starts = (None, (160.0, 160.0), (km.park_x, km.park_y), (140.0, km.park_y))
         for name in bodies:
-            with self.subTest(macro=name):
-                run(name, bodies[name], None)
-                run(name, bodies[name], (km.park_x, km.park_y))
+            for start in starts:
+                with self.subTest(macro=name, start=start):
+                    run(name, bodies[name], start)
         for pack in ("orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
             for path in sorted((REPO_ROOT / pack).glob("*.gcode")):
                 with self.subTest(file=f"{pack}/{path.name}"):

@@ -540,6 +540,15 @@ patches:
         - firmwares: ["01.01.02.01"]
           expected_normalized_sha256: "ffae6fa66d2b77ef6be5f5ac8ba70537448e1e527edc9278acc5b2b497e74f1e"
 
+    - id: qd_macro_move_to_trash
+      file: "config/klipper-macros-qd/qd_macro.cfg"
+      section: "gcode_macro MOVE_TO_TRASH"
+      variants:
+        - firmwares: ["01.01.06.03", "01.01.06.04", "01.01.06.05", "01.01.07.01"]
+          expected_normalized_sha256: "3510755c71af7170afe61359d960844076027190f85d92e11b8c34b5c7c80f48"
+        - firmwares: ["01.01.02.01"]
+          expected_normalized_sha256: "92dd2dffbd15797ddd742a1638ba43ed56e17dd0f7531d384924ea325cb8dd18"
+
     - id: heaters_m109_0
       file: "config/klipper-macros-qd/heaters.cfg"
       section: "gcode_macro m109.0"
