@@ -16,8 +16,8 @@
 - [x] 3.1 Build the environment offline and run the launcher unlinked: link code reported, `printer.cfg` and the config folder unchanged.
 - [x] 3.2 Install, relink to another server, remove, and reinstall through `addons.sh` and Fluidd; installing with OctoEverywhere present is refused.
 - [x] 3.3 Link an account and stream the camera through Janus, only while viewed.
-- [ ] 3.4 Measure Obico's memory and CPU during a print.
+- [x] 3.4 Unlink from Fluidd; measure a linked Obico with and without a viewer.
 
 ## 4. Docs
 
-- [ ] 4.1 `docs/addons.md`, README, settings, under-the-hood, changelog, and third-party notices.
+- [x] 4.1 `docs/addons.md`, README, settings, under-the-hood, changelog, and third-party notices.
