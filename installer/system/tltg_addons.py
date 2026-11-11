@@ -320,6 +320,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 - BaseHTTPRequestHandler's signature
         pass
 
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # The page closed or reloaded before the response was written.
+
     def do_GET(self) -> None:
         if self._route() != ("addons",):
             self._send(HTTPStatus.NOT_FOUND, {"error": "Not found."})

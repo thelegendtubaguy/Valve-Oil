@@ -15,8 +15,8 @@
 
 - [x] 3.1 Install, reinstall, remove, and install again through `addons.sh` and the service; a failed job reports its error.
 - [x] 3.2 The route answers trusted clients, refuses untrusted ones with 401 and cross-origin POSTs with 403, and reaches Moonraker's `/access/user` as GET.
-- [ ] 3.3 Install the release bundle end to end and use the Add-ons section from Fluidd.
-- [ ] 3.4 Measure OctoEverywhere's memory during a print.
+- [x] 3.3 Install the release bundle end to end and use the Add-ons section from Fluidd.
+- [x] 3.4 Measure OctoEverywhere's memory during a print.
 
 ## 4. Docs
 

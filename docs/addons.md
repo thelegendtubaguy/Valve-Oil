@@ -47,6 +47,6 @@ OctoEverywhere's own installer is written for many kinds of printer. On a QIDI p
 - its settings and identity in `~/tltg-addons/octoeverywhere-data/`;
 - the `octoeverywhere` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
-Its log is `octoeverywhere.log` in Fluidd's **Logs**. Fluidd's power menu lists the `octoeverywhere` service with **Restart**, **Stop**, and **Start**. Valve Oil sets OctoEverywhere's remote access to open the Fluidd on port 80. OctoEverywhere uses about 50 MB of the printer's memory.
+Its log is `octoeverywhere.log` in Fluidd's **Logs**. Fluidd's power menu lists the `octoeverywhere` service with **Restart**, **Stop**, and **Start**. Valve Oil sets OctoEverywhere's remote access to open the Fluidd on port 80. OctoEverywhere uses about 55 MB of the printer's memory. During a print it also uses about 14% of one CPU core, mostly for the camera snapshots it takes every few seconds while printing.
 
 Removing OctoEverywhere deletes its identity, so installing it again later gives a new printer to link. If you installed OctoEverywhere with its own installer, Fluidd shows it as installed outside Valve Oil and leaves it alone.
