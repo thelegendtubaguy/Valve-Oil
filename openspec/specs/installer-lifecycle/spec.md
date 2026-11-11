@@ -487,6 +487,7 @@ The optional operation SHALL require supported firmware, idle ready state, zero 
 - **WHEN** safe preconditions hold and readback matches an admitted image
 - **THEN** stock firmware receives only the pinned THR patch with retained recovery files
 - **AND** an already-patched board is verified without another erase or transfer
+- **AND** a board with an earlier build of the fix listed in the manifest receives the pinned patch of QIDI's stock THR image from the THR firmware backups or the printer's update folder, with that stock image as the transfer's recovery backup, and without one no erase or transfer occurs
 - **AND** only previously active services are restored and printer readiness is checked
 
 #### Scenario: Klipper is still restarting

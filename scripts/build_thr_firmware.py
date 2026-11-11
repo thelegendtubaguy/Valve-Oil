@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the hash-locked Max 4 THR FIFO fix without flashing hardware."""
+"""Generate the hash-locked Valve Oil Max 4 THR firmware (FIFO fix) without flashing hardware."""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +13,12 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-lis2dw-fifo-v1.json"
+if __package__:
+    from .build_box_firmware import apply_patches
+else:
+    from build_box_firmware import apply_patches
+
+PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-valve-oil-v1.json"
 
 
 def sha256(data: bytes) -> str:
@@ -21,19 +26,7 @@ def sha256(data: bytes) -> str:
 
 
 def patch_thr(stock: bytes, manifest: dict) -> bytes:
-    thr = manifest["thr"]
-    if len(stock) != thr["size"] or sha256(stock) != thr["stock_sha256"]:
-        raise ValueError("Unrecognized stock THR image; no patch applied")
-    patched = bytearray(stock)
-    for patch in thr["patches"]:
-        offset = int(patch["offset"], 0)
-        before, after = bytes.fromhex(patch["before"]), bytes.fromhex(patch["after"])
-        if len(before) != len(after) or stock[offset:offset + len(before)] != before:
-            raise ValueError(f"THR instruction preimage mismatch at {patch['offset']}")
-        patched[offset:offset + len(before)] = after
-    if sha256(patched) != thr["patched_sha256"]:
-        raise ValueError("Patched THR checksum mismatch; no package generated")
-    return bytes(patched)
+    return apply_patches(stock, manifest["thr"], "THR")
 
 
 def build(stock_archive: Path, output_dir: Path) -> None:
@@ -107,7 +100,7 @@ def build(stock_archive: Path, output_dir: Path) -> None:
 
     print(f"Generated {output_dir / manifest['outputs']['archive']}")
     print(f"THR SHA-256: {manifest['thr']['patched_sha256']}")
-    print("Only the THR FIFO fix is applied. Vendor versions are unchanged. Nothing was flashed.")
+    print(f"Only the THR FIFO fix and the version {manifest['thr']['patched_version']} are applied. Nothing was flashed.")
 
 
 def main() -> int:

@@ -17,14 +17,15 @@ The generator SHALL accept only the supported vendor archive and THR image, pres
 - **WHEN** the input is unrecognized, modified, already patched, or the destination already exists
 - **THEN** generation fails without overwriting existing data or emitting a firmware package
 
-### Requirement: THR changes are limited to the FIFO correction
-The generated THR SHALL immediately request another task when the LIS2DW FIFO contains samples and rearm polling when it is empty, preserving scheduler wake semantics. The package MUST preserve every other component payload, the firmware manifest, internal filenames, and vendor version identities. Generation MUST NOT flash hardware or invoke the macro installer.
+### Requirement: THR changes are limited to the FIFO correction and its version
+The generated THR SHALL request another task when the LIS2DW FIFO holds samples and rearm polling when it is empty, preserving scheduler wake semantics. Its dictionary SHALL differ from stock only in the version `02.02.01.08-valve-oil.1`, with matching `identify` lengths. The package MUST keep every other payload, the firmware manifest, and internal filenames. Generation MUST NOT flash hardware or invoke the installer.
 
 #### Scenario: FIFO handling changes without replacing vendor components
 - **WHEN** a recognized package is patched and verified
-- **THEN** the THR differs only at the approved instruction edits and handles empty and nonempty FIFO states correctly
+- **THEN** the THR differs only at the approved instruction edits and its data dictionary, and handles empty and nonempty FIFO states correctly
 - **AND** sample reporting and overflow accounting remain intact
-- **AND** all other archive members and the THR protocol dictionary are byte-identical to the input
+- **AND** the dictionary the THR serves through `identify` is identical to stock apart from the version
+- **AND** all other archive members are byte-identical to the input
 
 ### Requirement: Box changes are limited to the shutdown fix and RFID commands
 The Box image SHALL be generated only from the pinned stock `02.03.01.21` application. It SHALL differ from it only in skipping QIDI's faulty Box feeder shutdown block, in the RFID commands' handlers, command-table entries, and response encoders, and in its data dictionary. The bundle MUST NOT contain a QIDI Box image; the installer generates the patched image on the printer.
@@ -51,7 +52,7 @@ The `fm17550_select` and `fm17550_transceive` handlers built from `firmware/box-
 - **THEN** the Box behaves exactly as stock
 
 ### Requirement: Mainboard changes are limited to the closed-loop reply fix
-The Max 4 mainboard image SHALL be generated only from the pinned stock `02.01.01.12` application and SHALL differ from it only in its closed-loop reply-length lookup, the dictionary version `02.01.01.12-tltg-clreplies1` with matching `identify` lengths, and the lookup placed in the space the recompressed dictionary frees. The lookup MUST list only function codes whose driver replies have one fixed length. The bundle MUST NOT contain a QIDI mainboard image.
+The Max 4 mainboard image SHALL be generated only from the pinned stock `02.01.01.12` application and SHALL differ from it only in its closed-loop reply-length lookup, the dictionary version `02.01.01.12-valve-oil.1` with matching `identify` lengths, and the lookup placed in the space the recompressed dictionary frees. The lookup MUST list only function codes whose driver replies have one fixed length. The bundle MUST NOT contain a QIDI mainboard image.
 
 #### Scenario: Listed replies reach the host on their last byte
 - **WHEN** a closed-loop driver reply with a listed function code arrives at a mainboard running the patched image

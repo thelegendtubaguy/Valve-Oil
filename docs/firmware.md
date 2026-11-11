@@ -21,7 +21,7 @@ Add `--dry-run` for a preview without touching the board. `--yes` alone and auto
 > [!IMPORTANT]
 > **After flashing, run input shaper calibration before bed leveling or printing.** Your saved calibration stays in use, but it was measured with the buggy firmware. Run input shaper calibration on its own first: the screen's calibration page runs bed leveling before input shaping when both are checked. The installer does not run calibration for you.
 
-**What it checks:** the installer checks the board's firmware and bootloader before flashing. A board that already has the fix is left alone and keeps its calibration. It saves the stock firmware under `~/printer_data/.tltg_thr_firmware_backups/`, flashes only the toolhead board, and verifies the result before restarting services.
+**What it checks:** the installer checks the board's firmware and bootloader before flashing. A board that already has the fix is left alone and keeps its calibration. A board with the fix reports its version as `02.02.01.08-valve-oil.1` in Fluidd and `klippy.log`. A board with the earlier build of the fix, which reported QIDI's `02.02.01.08`, is updated when you say yes again, with the new firmware built from QIDI's stock THR firmware in the THR firmware backups or `~/update`. It saves the stock firmware under `~/printer_data/.tltg_thr_firmware_backups/`, flashes only the toolhead board, and verifies the result before restarting services.
 
 **If your board isn't supported:** the firmware is left unchanged, your services are restored, and the configuration install is kept. The installer saves a capture and points to a shareable `report.json`; attach that to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml), but not its flash binaries.
 
@@ -67,6 +67,6 @@ cd ~/tltg-optimized-macros
 
 The script asks you to type `FLASH`, and stops Klipper and the touchscreen for about three minutes; the printer can't move or heat until they start again. It only flashes the mainboard bootloader and firmware build it recognizes, reads the result back to verify it, and keeps the stock firmware under `~/printer_data/.tltg_mainboard_firmware_backups/`.
 
-A fixed mainboard reports its version as `02.01.01.12-tltg-clreplies1` in Fluidd and `klippy.log`.
+A fixed mainboard reports its version as `02.01.01.12-valve-oil.1` in Fluidd and `klippy.log`. The number after `valve-oil` goes up with each new mainboard firmware. A mainboard with the earlier build of the fix (`02.01.01.12-tltg-clreplies1`) is updated by `./mainboard-firmware.sh install`, which builds the new firmware from QIDI's stock mainboard firmware in its backups or `~/update`.
 
 **If a flash fails:** see [Max 4 mainboard closed-loop reply fix](../firmware/MAINBOARD_FIRMWARE.md).

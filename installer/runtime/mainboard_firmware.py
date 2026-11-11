@@ -26,7 +26,7 @@ from .sudo import authenticate_sudo, run_sudo
 from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 
 SUBJECT = "Mainboard firmware"
-MANIFEST = "firmware/max4-mcu-closed-loop-replies-v1.json"
+MANIFEST = "firmware/max4-mcu-valve-oil-v1.json"
 BACKUP_DIRECTORY = ".tltg_mainboard_firmware_backups"
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
@@ -67,10 +67,16 @@ def _version(paths, urlopen) -> str | None:
         return None
 
 
+def _superseded_versions(manifest: dict) -> set[str]:
+    return {entry["version"] for entry in manifest["mcu"].get("superseded", ())}
+
+
 def _describe(version: str | None, manifest: dict) -> str:
     mcu = manifest["mcu"]
     if version == mcu["patched_version"]:
         return "closed-loop reply fix installed (" + version + ")"
+    if version in _superseded_versions(manifest):
+        return "earlier closed-loop reply fix (" + version + "); install updates it"
     if version == mcu["stock_version"]:
         return "QIDI stock firmware (" + version + ")"
     if version is None:
@@ -174,8 +180,15 @@ def run_mainboard_firmware(
             return 0
         if usb is None or version is None:
             raise MainboardFirmwareError("The mainboard is not connected, or Klipper is not ready.")
-        if version not in (manifest["mcu"]["stock_version"], manifest["mcu"]["patched_version"]):
+        if version not in {manifest["mcu"]["stock_version"], manifest["mcu"]["patched_version"], *_superseded_versions(manifest)}:
             raise MainboardFirmwareError("The mainboard runs firmware this fix does not support: " + version)
+        if target == "patched" and version in _superseded_versions(manifest):
+            # The fix is built from QIDI's stock image, which the mainboard no longer holds.
+            stock_image = _stock_image(paths, manifest)
+            if stock_image is None:
+                raise MainboardFirmwareError("Updating the earlier closed-loop reply fix needs QIDI's mainboard firmware "
+                                             + manifest["mcu"]["stock_version"] + " from the mainboard firmware backups "
+                                             "or ~/update; none was found. No mainboard firmware was changed.")
 
     verb = {"install": "Install the closed-loop reply fix on", "restore": "Restore QIDI's stock firmware on",
             "rescue": "Rescue and restore QIDI's stock firmware on"}[action]
@@ -254,10 +267,15 @@ def run_mainboard_firmware(
                 outcome = "not changed: " + unsupported_board_note(before / "report.json")
             else:
                 boot, app = protocol.load_backup(before, manifest)
-                if protocol.image_identity(app, manifest) == target:
+                current = protocol.image_identity(app, manifest)
+                if current == target:
                     outcome = "already " + ("installed" if target == "patched" else "stock") + " (verified by readback)"
+                elif target == "patched" and current != "stock" and stock_image is None:
+                    raise MainboardFirmwareError("The mainboard holds an earlier build of the fix, and no copy of QIDI's "
+                                                 "mainboard firmware was found to build the update from.")
                 else:
-                    image = build_mcu_firmware.patch_mcu(app, manifest) if target == "patched" else stock_image
+                    image = (build_mcu_firmware.patch_mcu(app if current == "stock" else stock_image, manifest)
+                             if target == "patched" else stock_image)
                     record.update(phase="programming")
                     atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
                     pending = True

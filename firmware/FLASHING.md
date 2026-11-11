@@ -8,7 +8,7 @@
 
 On supported firmware (Max 4 `01.01.07.01`, Plus 5 `01.01.02.01`), interactive installation asks whether to flash the FIFO fix, defaulting to No. An explicit y/yes authorizes only that invocation. After flashing THR, rerun input shaper calibration before bed leveling or printing; the installer keeps the saved calibration and does not run calibration. `install.sh --flash-thr-fifo` provides the same opt-in without answering the question; `--yes` alone and automatic updates never authorize firmware access. `--flash-thr-fifo --dry-run` previews without UART access or service changes.
 
-The installer reads the actual application and bootloader before deciding whether to program. An already-patched application is verified without resetting or reflashing it. For stock firmware, the installer preserves recovery files, generates the hash-locked patch from the readback, transfers only THR, and verifies complete readback. On the `31f8344d…` build the transfer runs in recovery mode: if it falls back to the stock application, the installer verifies the stock readback, restores previous services without a firmware blocker, keeps input shaper calibration, and reports that the fix was not applied. Private evidence stays under `~/printer_data/.tltg_thr_firmware_backups/`; configuration restore and uninstall do not revert MCU firmware. An unrecognized bootloader is captured without reset or programming, then previously active services are restored and readiness is checked. It does not leave a firmware blocker or invalidate the configuration install. Attach only the capture's `report.json` to a GitHub issue; keep the flash binaries private.
+The installer reads the actual application and bootloader before deciding whether to program. An already-patched application is verified without resetting or reflashing it. For stock firmware, the installer preserves recovery files, generates the hash-locked patch from the readback, transfers only THR, and verifies complete readback. For the earlier build of the fix (`9d2360ba…`), it generates the patch from QIDI's stock THR image in the THR firmware backups or `~/update`, and keeps that image with the readback bootloader in the run's `stock/` folder as the transfer's stock backup. On the `31f8344d…` build the transfer runs in recovery mode: if it falls back to the stock application, the installer verifies the stock readback, restores previous services without a firmware blocker, keeps input shaper calibration, and reports that the fix was not applied. Private evidence stays under `~/printer_data/.tltg_thr_firmware_backups/`; configuration restore and uninstall do not revert MCU firmware. An unrecognized bootloader is captured without reset or programming, then previously active services are restored and readiness is checked. It does not leave a firmware blocker or invalidate the configuration install. Attach only the capture's `report.json` to a GitHub issue; keep the flash binaries private.
 
 An interrupted or unverified firmware operation retains `~/printer_data/.tltg_thr_firmware_pending.json` and blocks further installer operations. Its record identifies the recovery directory and previous service states. If programming may have begun, serial-owning services remain stopped. Use the stock application and bootloader in that directory's `before/` snapshot for the manual recovery procedure below. Remove the pending marker only after complete application/bootloader verification, restoration of the recorded service states, and confirmed printer readiness with zero heater targets. Do not use the configuration recovery-sentinel command to bypass a firmware blocker.
 
@@ -62,12 +62,12 @@ Only after verifying non-erasing entry, application return, and independent reco
 
 ```bash
 /home/qidi/klippy-env/bin/python scripts/flash_thr_firmware.py transfer \
-  --image dist/max4-thr-fifo-v1/QD_MAX4_THR_02.02.01.08_20260303_TLTG_FIFO_v1.bin \
+  --image dist/max4-thr-valve-oil-v1/QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin \
   --backup-dir dist/thr-before --reset \
   --printer-idle-confirmed --confirm-write
 ```
 
-The start command erases the entire application region `0x08008000`–`0x0801ffff`, including bytes beyond the supplied image. The bootloader region is not an update target. The tool admits only the pinned stock and patched images and validates acknowledgements against each packet's index and byte count. It stops rather than blindly retrying an ambiguous packet-zero acknowledgement, because that retry is not idempotent in either validated bootloader.
+The start command erases the entire application region `0x08008000`–`0x0801ffff`, including bytes beyond the supplied image. The bootloader region is not an update target. The tool transfers only the pinned stock and patched images and validates acknowledgements against each packet's index and byte count. It stops rather than blindly retrying an ambiguous packet-zero acknowledgement, because that retry is not idempotent in either validated bootloader.
 
 A successful transfer reports `transfer_acknowledged: true` and `verified: false`. After allowing the application to return, take and verify a complete readback:
 
@@ -75,11 +75,11 @@ A successful transfer reports `transfer_acknowledged: true` and `verified: false
 /home/qidi/klippy-env/bin/python scripts/flash_thr_firmware.py snapshot \
   --output-dir dist/thr-after --printer-idle-confirmed
 /home/qidi/klippy-env/bin/python scripts/flash_thr_firmware.py verify \
-  --image dist/max4-thr-fifo-v1/QD_MAX4_THR_02.02.01.08_20260303_TLTG_FIFO_v1.bin \
+  --image dist/max4-thr-valve-oil-v1/QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin \
   --backup-dir dist/thr-after --original-backup-dir dist/thr-before
 ```
 
-Verification is offline and requires the selected application bytes and an admitted bootloader. `--original-backup-dir` additionally compares the bootloader byte-for-byte with its pre-transfer backup; the installer always makes this comparison. Bytes beyond the application image are not installation evidence: different bootloaders can leave different final-packet padding. The vendor version string remains unchanged and is not installation evidence.
+Verification is offline and requires the selected application bytes and an admitted bootloader. `--original-backup-dir` additionally compares the bootloader byte-for-byte with its pre-transfer backup; the installer always makes this comparison. Bytes beyond the application image are not installation evidence: different bootloaders can leave different final-packet padding. The version string the THR reports is not installation evidence.
 
 For the `31f8344d…` build, add `--recover-to-stock` to `transfer`. On a failed exchange the tool then resumes the requested image when the failed packet is idempotent; otherwise it lets the bootloader's session expire and programs the backup's stock application only after a new session is confirmed. It stops with status `1` rather than send start into a session that may still hold data. Exit status `0` means the requested image was acknowledged, `4` that the stock fallback was programmed instead, `5` that every data packet was acknowledged but end was not, and `1` that recovery failed and the board state is unknown. Every status still needs the twelve-second wait, a snapshot, and `verify` against the image it names. The installer uses this mode for that build and treats status `4` as an unchanged board. It is refused for the `46358f30…` build, whose timing has not been validated. Its recovery paths have run only in emulation (`scripts/check_thr_recovery.py`), and no recovery mode covers power loss or the tool being killed mid-transfer.
 
@@ -104,7 +104,7 @@ On a development computer, install `firmware/check-requirements.txt`, then run:
 ```bash
 python3 scripts/check_thr_flashing.py \
   --stock-image stock-thr.bin \
-  --patched-image dist/max4-thr-fifo-v1/QD_MAX4_THR_02.02.01.08_20260303_TLTG_FIFO_v1.bin
+  --patched-image dist/max4-thr-valve-oil-v1/QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin
 ```
 
 Add `--bootloader-backup bootloader.bin` to execute a captured bootloader's actual parser, erase loop, programming bounds, and reply construction. Repeat that option to check both exact profiles in `scripts/thr_bootloaders.py`. Both profiles are checked for full transfers, interruption recovery, duplicate packets, lost acknowledgements, non-erasing identity sessions, and admission boundaries. The first leaves short-packet padding erased; the second programs zeros. UART output, flash-controller register operations, application jumps, and system resets are emulated; these checks do not validate electrical behavior or physical recovery access. No bootloader binary is shipped in the repository.

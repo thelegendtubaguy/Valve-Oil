@@ -23,11 +23,16 @@ from scripts import flash_thr_firmware as protocol
 from scripts.build_thr_firmware import patch_thr
 
 
+def superseded_image(stock):
+    return b'\x01' + stock[1:]
+
+
 class Printer:
-    def __init__(self, root, manifest, stock, boot, *, patched=False, failure=None, timer=True):
+    def __init__(self, root, manifest, stock, boot, *, patched=False, superseded=False, failure=None, timer=True):
         self.root, self.manifest = root, manifest
         self.stock, self.boot = stock, boot
-        self.image = patch_thr(stock, manifest) if patched else stock
+        self.image = patch_thr(stock, manifest) if patched else superseded_image(stock) if superseded else stock
+        self.transfer_backups = []
         self.failure = failure
         self.states = {s: 'active' for s in protocol.SERVICES}
         self.states['qidi-client.service'] = 'inactive'
@@ -89,6 +94,8 @@ class Printer:
             if operation == 'transfer':
                 self.transfers += 1
                 self.recovery_requested = '--recover-to-stock' in command
+                backup = Path(command[command.index('--backup-dir') + 1])
+                self.transfer_backups.append(protocol.digest((backup / 'application.bin').read_bytes()))
                 if self.failure == 'interrupt':
                     raise KeyboardInterrupt()
                 if self.failure == 'transfer':
@@ -108,15 +115,21 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         bundle = root / 'bundle'
         (bundle / 'scripts').mkdir(parents=True)
         (bundle / 'firmware').mkdir()
-        for name in ('flash_thr_firmware.py', 'thr_bootloaders.py', 'build_thr_firmware.py'):
+        for name in ('flash_thr_firmware.py', 'thr_bootloaders.py', 'build_thr_firmware.py', 'build_box_firmware.py'):
             shutil.copy2(REPO_ROOT / 'scripts' / name, bundle / 'scripts' / name)
-        manifest = json.loads((REPO_ROOT / 'firmware/max4-thr-lis2dw-fifo-v1.json').read_text())
+        manifest = json.loads((REPO_ROOT / 'firmware/max4-thr-valve-oil-v1.json').read_text())
         stock = bytearray(manifest['thr']['size'])
         for entry in manifest['thr']['patches']:
-            start = int(entry['offset'], 0)
-            value = bytes.fromhex(entry['before'])
-            stock[start:start + len(value)] = value
+            if 'before' in entry:
+                start = int(entry['offset'], 0)
+                value = bytes.fromhex(entry['before'])
+                stock[start:start + len(value)] = value
         stock = bytes(stock)
+        for entry in manifest['thr']['patches']:
+            if 'before_sha256' in entry:
+                start = int(entry['offset'], 0)
+                entry['before_sha256'] = hashlib.sha256(stock[start:start + len(bytes.fromhex(entry['after']))]).hexdigest()
+        manifest['thr']['superseded'][0]['sha256'] = hashlib.sha256(superseded_image(stock)).hexdigest()
         image = bytearray(stock)
         for entry in manifest['thr']['patches']:
             start = int(entry['offset'], 0)
@@ -124,7 +137,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             image[start:start + len(value)] = value
         manifest['thr']['stock_sha256'] = hashlib.sha256(stock).hexdigest()
         manifest['thr']['patched_sha256'] = hashlib.sha256(image).hexdigest()
-        (bundle / 'firmware/max4-thr-lis2dw-fifo-v1.json').write_text(json.dumps(manifest))
+        (bundle / 'firmware/max4-thr-valve-oil-v1.json').write_text(json.dumps(manifest))
         data = root / 'printer_data'
         (data / 'config').mkdir(parents=True)
         shutil.copy2(REPO_ROOT / 'config/printer.cfg', data / 'config/printer.cfg')
@@ -193,6 +206,22 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                         self.execute(paths, printer, reporter)
                         self.assertEqual(printer.transfers, 1)
                         self.assertEqual(printer.states, printer.original)
+
+    def test_earlier_fix_is_updated_from_qidi_stock_image(self):
+        paths, printer, reporter = self.fixture(superseded=True)
+        with self.assertRaises(thr_firmware.ThrFirmwareError):
+            self.execute(paths, printer, reporter)
+        self.assertEqual((printer.transfers, printer.states), (0, printer.original))
+        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+        update = paths.printer_data_root.parent / 'update'
+        update.mkdir()
+        (update / 'QD_MAX4_THR_02.02.01.08_20260303.bin').write_bytes(printer.stock)
+        self.execute(paths, printer, reporter)
+        self.assertEqual(printer.transfers, 1)
+        self.assertEqual(printer.transfer_backups, [printer.manifest['thr']['stock_sha256']])
+        self.assertEqual(protocol.digest(printer.image), printer.manifest['thr']['patched_sha256'])
+        self.assertEqual(printer.states, printer.original)
+        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
 
     def test_unsafe_preconditions_and_unknown_images_never_program(self):
         for case in ('printing', 'paused', 'unknown-state', 'chamber-hot', 'extra-heater-hot', 'malformed-target', 'unknown-app', 'never-ready'):

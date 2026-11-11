@@ -12,7 +12,7 @@ if __package__:
 else:
     from build_box_firmware import apply_patches
 
-PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-mcu-closed-loop-replies-v1.json"
+PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-mcu-valve-oil-v1.json"
 
 
 def load_manifest(path: Path = PATCH_MANIFEST) -> dict:

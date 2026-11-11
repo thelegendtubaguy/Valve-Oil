@@ -1,10 +1,10 @@
 # Max 4 THR FIFO fix
 
-`max4-thr-lis2dw-fifo-v1` patches the LIS2DW FIFO-empty decision in the Max 4 THR `02.02.01.08` image shipped with QIDI firmware `01.01.07.01`. It applies the behavior of [upstream Klipper fix `6269dda56b`](https://github.com/Klipper3d/klipper/commit/6269dda56bb7c08263153b18715d08e2d964bcab), without the separate FIFO batching change.
+`max4-thr-valve-oil-v1` patches the LIS2DW FIFO-empty decision in the Max 4 THR `02.02.01.08` image shipped with QIDI firmware `01.01.07.01`. It applies the behavior of [upstream Klipper fix `6269dda56b`](https://github.com/Klipper3d/klipper/commit/6269dda56bb7c08263153b18715d08e2d964bcab), without the separate FIFO batching change.
 
 To undo the fix on a printer, see [Restore the stock THR firmware from backup](#restore-the-stock-thr-firmware-from-backup).
 
-The generator changes five THR image bytes at two instruction sites. Every other component payload, the firmware manifest, internal filenames, and vendor version strings stay unchanged. The ZIP container is repacked. Supported input and output image hashes are recorded in [`max4-thr-lis2dw-fifo-v1.json`](max4-thr-lis2dw-fifo-v1.json).
+The generator changes five THR image bytes at two instruction sites and the THR's version, which becomes `02.02.01.08-valve-oil.1`. That is QIDI's version, the project name, and a revision that goes up with each new THR firmware, as for the Box and mainboard firmware. The version change recompresses the THR's data dictionary into its own space and updates the three `identify` length constants. Every other component payload, the firmware manifest, and internal filenames stay unchanged. The ZIP container is repacked. Supported input and output image hashes are recorded in [`max4-thr-valve-oil-v1.json`](max4-thr-valve-oil-v1.json).
 
 ## Generate the package
 
@@ -13,17 +13,17 @@ Use Python 3.11 or newer on a development computer. Download the exact [Max 4 re
 ```bash
 python3 scripts/build_thr_firmware.py \
   --stock-archive QD_MAX4_01.01.07.01_20261016_Release.zip \
-  --output-dir dist/max4-thr-fifo-v1
+  --output-dir dist/max4-thr-valve-oil-v1
 ```
 
 The output directory must not exist. The generator rejects unknown, modified, and already-patched archives. It leaves the original archive untouched and creates:
 
-- `QD_MAX4_01.01.07.01_20261016_TLTG_THR_FIFO_v1.zip`: the complete vendor package with the patched THR payload.
-- `QD_MAX4_THR_02.02.01.08_20260303_TLTG_FIFO_v1.bin`: the same patched THR image on its own.
-- `max4-thr-lis2dw-fifo-v1.report.json`: input provenance, instruction replacements, and output hashes.
+- `QD_MAX4_01.01.07.01_20261016_VALVE_OIL_THR_v1.zip`: the complete vendor package with the patched THR payload.
+- `QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin`: the same patched THR image on its own.
+- `max4-thr-valve-oil-v1.report.json`: input provenance, patches, and output hashes.
 - A `.sha256` sidecar for each artifact.
 
-The patched THR SHA-256 is `9d2360ba47ebd720dbef07a0a4ebaf26004360bca090997d7b4a118c41460ac9`.
+The patched THR SHA-256 is `b6e39b1def0bad6c2379cad600c1284cece0c26caab77dbb659adf64d4f4172a`. The earlier build, `max4-thr-lis2dw-fifo-v1` (`9d2360ba47ebd720dbef07a0a4ebaf26004360bca090997d7b4a118c41460ac9`), had the same FIFO fix and kept QIDI's version `02.02.01.08`.
 
 ## Verify the package
 
@@ -34,16 +34,16 @@ python3 -m venv .venv-thr
 .venv-thr/bin/python -m pip install -r firmware/check-requirements.txt
 .venv-thr/bin/python scripts/check_thr_firmware.py \
   --stock-archive QD_MAX4_01.01.07.01_20261016_Release.zip \
-  --patched-dir dist/max4-thr-fifo-v1
+  --patched-dir dist/max4-thr-valve-oil-v1
 ```
 
-The checker compares every archive payload and the THR protocol dictionary, verifies artifact checksums and provenance, tests rejection boundaries, and emulates the stock and patched FIFO-query instructions across every FIFO status byte and two reporting-buffer states. SPI transfers, host reporting, and timer registration are stubbed; this does not measure live sampling rate or validate the printer's other firmware paths.
+The checker compares every archive payload, runs the THR's `identify` handler in emulation to check that the dictionary it serves differs from stock only in its version, verifies artifact checksums and provenance, tests rejection boundaries, and emulates the stock and patched FIFO-query instructions across every FIFO status byte and two reporting-buffer states. SPI transfers, host reporting, and timer registration are stubbed; this does not measure live sampling rate or validate the printer's other firmware paths.
 
 ## Before flashing
 
-Generation and checking do not contact or flash a printer. The optimized-macro installer offers a default-No interactive THR firmware question and an explicit `--flash-thr-fifo` option. It checks actual application bytes and skips programming when the fix is already installed. Bootloaders are admitted by exact validated build identity; an unrecognized build is captured without reset or programming, with a shareable `report.json` for a GitHub issue. Its firmware remains unchanged, previous services are restored, and configuration installation is retained. `--yes` alone and automatic updates do not authorize firmware programming.
+Generation and checking do not contact or flash a printer. The optimized-macro installer offers a default-No interactive THR firmware question and an explicit `--flash-thr-fifo` option. It checks actual application bytes and skips programming when the fix is already installed. A THR with the earlier build, `max4-thr-lis2dw-fifo-v1`, is updated from QIDI's stock THR image, taken from the THR firmware backups or `~/update`; without one, nothing is programmed. Bootloaders are admitted by exact validated build identity; an unrecognized build is captured without reset or programming, with a shareable `report.json` for a GitHub issue. Its firmware remains unchanged, previous services are restored, and configuration installation is retained. `--yes` alone and automatic updates do not authorize firmware programming.
 
-The package retains QIDI's version strings and does not force a same-version THR reflash. A completed touchscreen update is not proof that the patched THR was flashed. These build checks do not establish installation or physical recovery. See [THR-only operations](FLASHING.md) for the restricted tool, readback verification, and required recovery-entry validation.
+The package's `firmware_manifest.json` still lists QIDI's THR version. A completed touchscreen update is not proof that the patched THR was flashed. These build checks do not establish installation or physical recovery. See [THR-only operations](FLASHING.md) for the restricted tool, readback verification, and required recovery-entry validation.
 
 The ZIP is a **full QIDI update**, including the unchanged SOC and other MCU components. Installing it can replace printer configuration and remove optimized macros, as a stock update does. Keep the original archive for recovery and back up printer configuration before any firmware installation. Use the standalone image only with a verified Max 4 THR flashing and recovery procedure.
 
@@ -68,7 +68,7 @@ Set `RECOVERY` to the `thr-…` folder of a listed file, for example:
 RECOVERY=~/printer_data/.tltg_thr_firmware_backups/thr-abcd1234
 ```
 
-An installer run that found the fix already installed saves only the patched application, so it is not listed. If nothing is listed, build the stock backup from QIDI's [`QD_MAX4_01.01.07.01_20261016_Release.zip`](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults/releases/download/qidi-max4-firmware-01.01.07.01-0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2/QD_MAX4_01.01.07.01_20261016_Release.zip). Copy the archive to the printer, then take the bootloader from any `thr-…` backup folder:
+An installer run that found the fix already installed, or that updated the earlier build of the fix, has no stock application in `before/`, so it is not listed. If nothing is listed, build the stock backup from QIDI's [`QD_MAX4_01.01.07.01_20261016_Release.zip`](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults/releases/download/qidi-max4-firmware-01.01.07.01-0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2/QD_MAX4_01.01.07.01_20261016_Release.zip). Copy the archive to the printer, then take the bootloader from any `thr-…` backup folder:
 
 ```bash
 RECOVERY=~/thr-stock-recovery

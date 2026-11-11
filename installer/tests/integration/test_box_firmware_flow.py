@@ -324,7 +324,7 @@ class BoxFirmwareFlowTests(unittest.TestCase):
 class MainboardFirmwareFlowTests(unittest.TestCase):
     def fixture(self, kind, *, soc_file="QD_MAX4_SOC_01.01.07.01_20261016_Release_NA", **kwargs):
         root = temp_path("mainboard-firmware-flow-")
-        manifest, stock, boot = synthetic_manifest("max4-mcu-closed-loop-replies-v1.json")
+        manifest, stock, boot = synthetic_manifest("max4-mcu-valve-oil-v1.json")
         bundle = root / "bundle"
         (bundle / "scripts").mkdir(parents=True)
         (bundle / "firmware").mkdir()
@@ -338,6 +338,7 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         (root / "klippy-env/bin/python").write_text("")
         paths = resolve_runtime_paths(bundle_root=bundle, environ=build_env(data, moonraker_url="http://printer.invalid/printer/objects/query"))
         printer = Printer(manifest, stock, boot, {"mcu": kind}, **kwargs)
+        printer.stock = stock
         reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
         return paths, printer, reporter
 
@@ -363,6 +364,18 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(len(printer.transfers), 1)
         self.assertEqual(self.execute(paths, printer, reporter, "restore"), 0)
         self.assertEqual((printer.transfers[-1], self.identity(printer)), (("mcu", False), "stock"))
+        self.assertEqual(printer.states, printer.original)
+
+    def test_install_updates_the_earlier_fix_from_qidi_stock_image(self):
+        paths, printer, reporter = self.fixture("superseded")
+        with self.assertRaises(InstallerError):
+            self.execute(paths, printer, reporter, "install")
+        self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+        update = paths.printer_data_root.parent / "update"
+        update.mkdir()
+        (update / "QD_MAX4_MCU_02.01.01.12_20260609.bin").write_bytes(printer.stock)
+        self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+        self.assertEqual((printer.transfers, self.identity(printer)), ([("mcu", False)], "patched"))
         self.assertEqual(printer.states, printer.original)
 
     def test_unsupported_bootloader_is_captured_without_programming(self):
