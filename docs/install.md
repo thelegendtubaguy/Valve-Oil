@@ -58,7 +58,7 @@ The Max 4 has 486 MB of memory and no swap. QIDI's AI detection alone can hold a
 
 Zram gives Linux a compressed swap area in memory instead: 256 MB of swap that holds about 2.3 MB of idle data per MB of memory it uses. On a Max 4, with memory filled the way it was on a printer that hit this shutdown, Klipper's longest delay went from 405 ms to 4 ms, and the program that filled memory was no longer killed.
 
-QIDI's kernel has no zram, so the package carries its own modules, built for the Max 4's kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. They load only on that exact kernel; on any other, including after a QIDI update that changes it, the printer runs without zram until a package release supports that kernel. To check that zram is on, run `cat /proc/swaps` over SSH and look for `/dev/zram0`.
+QIDI's kernel has no zram, so the package carries its own modules, built for the Max 4's kernel `5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025`. The Plus 5's kernel, `5.10.160 #3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025`, is the same build with a different build date, so the modules load on it too. They load only on those two exact kernels; on any other, including after a QIDI update that changes it, the printer runs without zram until a package release supports that kernel. To check that zram is on, run `cat /proc/swaps` over SSH and look for `/dev/zram0`.
 
 ### ADB
 
@@ -69,12 +69,14 @@ The installer stops and disables `usbdevice.service`. To check that ADB is off, 
 ## Slicer start G-code
 
 > [!TIP]
-> In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
+> On the Max 4, in OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
 
-Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer. These are for the Max 4:
+Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer and printer:
 
-- OrcaSlicer: [`orcaslicer_gcode/`](../orcaslicer_gcode/)
-- QIDI Studio: [`qidistudio_gcode/`](../qidistudio_gcode/)
+| Slicer | QIDI Max 4 | QIDI Plus 5 |
+|---|---|---|
+| OrcaSlicer | [`orcaslicer_gcode/`](../orcaslicer_gcode/) | [`orcaslicer_gcode/plus5/`](../orcaslicer_gcode/plus5/) |
+| QIDI Studio | [`qidistudio_gcode/`](../qidistudio_gcode/) | [`qidistudio_gcode/plus5/`](../qidistudio_gcode/plus5/) |
 
 The two do the same thing; only their placeholder syntax differs. Files sliced with QIDI's stock G-code still print normally after installing, without the faster start.
 

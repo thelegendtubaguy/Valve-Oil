@@ -335,15 +335,19 @@ function SettingsCard({ box }: { box: BoxState }) {
 
 // ---- load and unload motion (Qidi-Max-4-Optimized's TLTG_BOX_MOTION) ----
 const MOTION_FIELDS: { key: string; label: string }[] = [
+  { key: 'hub_speed', label: 'Hub push speed' },
   { key: 'fast_length', label: 'Fast push' },
+  { key: 'fast_speed', label: 'Fast speed' },
   { key: 'fast_speed_1', label: 'Fast speed 1' },
   { key: 'fast_speed_2', label: 'Fast speed 2' },
   { key: 'approach_speed', label: 'Approach speed' },
   { key: 'load_accel', label: 'Load acceleration' },
+  { key: 'unload_speed', label: 'Unload speed' },
   { key: 'unload_speed_1', label: 'Unload speed 1' },
   { key: 'unload_speed_2', label: 'Unload speed 2' },
   { key: 'unload_accel', label: 'Unload acceleration' },
   { key: 'unload_extruder_length', label: 'Extruder pull-back' },
+  { key: 'park_speed', label: 'Park speed' },
 ]
 
 function MotionCard() {
@@ -356,7 +360,10 @@ function MotionCard() {
   const limits = (m.limits ?? {}) as Record<string, { min: number; max: number; unit?: string }>
   const vendor = (m.vendor ?? {}) as Record<string, number>
   const settings = (m.settings ?? {}) as Record<string, unknown>
-  const fields = MOTION_FIELDS.filter((f) => limits[f.key])
+  // The printer's own order and set of settings when it publishes them; the Plus 5 has no per-slot settings.
+  const order = Array.isArray(m.fields) ? (m.fields as string[]) : MOTION_FIELDS.map((f) => f.key)
+  const fields = order.map((key) => MOTION_FIELDS.find((f) => f.key === key)).filter((f): f is { key: string; label: string } => !!f && !!limits[f.key])
+  const perSlot = !Array.isArray(m.global_only) || fields.some((f) => !(m.global_only as string[]).includes(f.key))
   const changed = Object.entries(draft).filter(([k, v]) => v.trim() !== '' && String(settings[k] ?? '') !== v.trim())
 
   const save = async () => {
@@ -413,9 +420,11 @@ function MotionCard() {
         <HoldButton className="btn-sm" disabled={locked || busy} onHold={() => attempt(() => runGcode('TLTG_BOX_MOTION RESET=1'))}>
           Hold to reset to QIDI
         </HoldButton>
-        <a className="btn btn-sm btn-ghost ml-auto" href={fluiddUrl()}>
-          Per-slot settings in Fluidd
-        </a>
+        {perSlot && (
+          <a className="btn btn-sm btn-ghost ml-auto" href={fluiddUrl()}>
+            Per-slot settings in Fluidd
+          </a>
+        )}
       </div>
       {locked && <div className="mt-2 text-[12.5px] text-ink-3">Motion settings can be changed while the printer isn’t printing.</div>}
     </Card>

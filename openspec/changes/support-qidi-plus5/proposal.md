@@ -14,8 +14,8 @@ This change lists what is still unknown, what must be read from a running Plus 5
 - Keep features tied to Max 4 hardware off on the Plus 5:
   - the closed-loop step-loss monitor and the mainboard closed-loop reply fix;
   - the 565 mm/s X/Y cap;
-  - zram, until the Plus 5 kernel is verified for the modules;
-  - THR and Box firmware fixes, until the Plus 5 bootloader builds are recognized.
+  - the Box firmware fix, until a Plus 5 Box bootloader build is recognized.
+- Declare the Plus 5 kernel for the zram modules and offer the THR FIFO fix on Plus 5 `01.01.02.01`, after the hardware pass found the Max 4's kernel build and THR bootloader.
 - Show the Plus 5's rotated touchscreen upright in Fluidd's Printer screen card, with taps landing where they are shown.
 - Update the README's supported printers, the operator docs, and the changelog.
 

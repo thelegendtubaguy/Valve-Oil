@@ -13,7 +13,9 @@ from typing import Callable, Mapping
 from . import klipper_cfg, messages, safety
 from .errors import ActivePrintError, InstallerError, PrinterStateError
 from .fs_atomic import atomic_delete, atomic_write_text
+from .firmware import detect_firmware, supported_printer
 from .interaction import confirm_yes
+from .manifest import load_manifest
 from .models import RuntimePaths
 from .process_restart import ProcessRestartError, read_printer_info
 from .reporter import DetailGroup
@@ -139,27 +141,55 @@ def maybe_initialize_filament_retention(
 
 # Release defaults for tltg_box_feed_motion, saved as a set only when no motion
 # setting exists. A setting saved as None (QIDI's value) counts as present.
+# The Max 4 approaches the toolhead sensor at the Plus 5's 25 mm/s.
 BOX_MOTION_DEFAULTS = {
     "tltg_box_load_fast_length": "950",
     "tltg_box_load_fast_speed_1": "85",
     "tltg_box_load_fast_speed_2": "65",
-    "tltg_box_load_approach_speed": "15",
+    "tltg_box_load_approach_speed": "25",
     "tltg_box_unload_speed_1": "65",
     "tltg_box_unload_speed_2": "85",
     "tltg_box_unload_extruder_length": "55",
 }
+# The Plus 5's Box code loads with one fast move. QIDI's 720 mm stopped about
+# 125 mm short of the toolhead sensor, leaving the rest to its 25 mm/s fallback.
+PLUS5_BOX_MOTION_DEFAULTS = {
+    "tltg_box_load_fast_length": "850",
+}
+BOX_MOTION_DEFAULTS_BY_PRINTER = {
+    "max4": BOX_MOTION_DEFAULTS,
+    "plus5": PLUS5_BOX_MOTION_DEFAULTS,
+}
 # Settings earlier releases saved as defaults, in groups. Update moves a group
 # the operator left at those values to the current defaults; a group with any
 # setting changed is the operator's.
-PREVIOUS_BOX_MOTION_DEFAULTS = (
-    {"tltg_box_load_fast_speed_1": "120", "tltg_box_load_fast_speed_2": "100"},
-    {"tltg_box_unload_speed_1": "115", "tltg_box_unload_speed_2": "120"},
-    {"tltg_box_unload_extruder_length": "50"},
-)
+PREVIOUS_BOX_MOTION_DEFAULTS = {
+    "max4": (
+        {"tltg_box_load_fast_speed_1": "120", "tltg_box_load_fast_speed_2": "100"},
+        {"tltg_box_unload_speed_1": "115", "tltg_box_unload_speed_2": "120"},
+        {"tltg_box_unload_extruder_length": "50"},
+        {"tltg_box_load_approach_speed": "15"},
+    ),
+    "plus5": (),
+}
 BOX_MOTION_SETTINGS = frozenset(BOX_MOTION_DEFAULTS) | {
     "tltg_box_load_accel",
     "tltg_box_unload_accel",
+    "tltg_box_load_fast_speed",
+    "tltg_box_unload_speed",
+    "tltg_box_hub_speed",
+    "tltg_box_park_speed",
 }
+
+
+def _box_motion_printer(paths: RuntimePaths) -> str:
+    """The detected printer's id; the Max 4 when it can't be read."""
+    try:
+        manifest = load_manifest(paths.installer_root / "package.yaml")
+        printer = supported_printer(manifest, detect_firmware(paths.firmware_manifest_path))
+    except Exception:
+        return "max4"
+    return printer.id if printer is not None and printer.id in BOX_MOTION_DEFAULTS_BY_PRINTER else "max4"
 
 
 def maybe_initialize_box_motion(
@@ -170,14 +200,16 @@ def maybe_initialize_box_motion(
     written: dict[str, str] | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
+    printer = _box_motion_printer(paths)
     if read_live_saved_variable_names(paths, urlopen=urlopen) & BOX_MOTION_SETTINGS:
         return _update_previous_box_motion_defaults(
-            paths=paths, reporter=reporter, written=written, urlopen=urlopen
+            paths=paths, printer=printer, reporter=reporter, written=written, urlopen=urlopen
         )
+    defaults = BOX_MOTION_DEFAULTS_BY_PRINTER[printer]
     saved = save_live_variables(
         paths,
-        BOX_MOTION_DEFAULTS,
-        missing_only=frozenset(BOX_MOTION_DEFAULTS),
+        defaults,
+        missing_only=frozenset(defaults),
         urlopen=urlopen,
     )
     if written is not None:
@@ -189,11 +221,12 @@ def maybe_initialize_box_motion(
     return True
 
 
-def _update_previous_box_motion_defaults(*, paths, reporter, written, urlopen) -> bool:
+def _update_previous_box_motion_defaults(*, paths, printer, reporter, written, urlopen) -> bool:
     variables = read_live_saved_variables(paths, urlopen=urlopen)
+    defaults = BOX_MOTION_DEFAULTS_BY_PRINTER[printer]
     updated = {
-        name: BOX_MOTION_DEFAULTS[name]
-        for group in PREVIOUS_BOX_MOTION_DEFAULTS
+        name: defaults[name]
+        for group in PREVIOUS_BOX_MOTION_DEFAULTS[printer]
         if all(variables.get(name) == value for name, value in group.items())
         for name in group
     }

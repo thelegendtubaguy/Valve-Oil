@@ -593,9 +593,14 @@ def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:
     # Every value lands in the root-run boot script, so each is restricted to characters it can carry unquoted or
     # inside single quotes.
     kernel_release = _require_str(raw, "kernel_release")
-    kernel_version = _require_str(raw, "kernel_version")
-    if not re.fullmatch(r"[A-Za-z0-9._+-]+", kernel_release) or not re.fullmatch(r"[A-Za-z0-9#:._+ -]+", kernel_version):
-        raise ManifestValidationError("zram_swap kernel identity contains unsupported characters.")
+    kernel_versions = tuple(_require_list_of_str(raw, "kernel_versions"))
+    if (
+        not kernel_versions
+        or len(set(kernel_versions)) != len(kernel_versions)
+        or not re.fullmatch(r"[A-Za-z0-9._+-]+", kernel_release)
+        or not all(re.fullmatch(r"[A-Za-z0-9#:._+ -]+", version) for version in kernel_versions)
+    ):
+        raise ManifestValidationError("zram_swap kernel identity is empty, repeated, or contains unsupported characters.")
     modules = tuple(
         SystemKernelModuleSpec(
             name=_require_str(item, "name"),
@@ -617,7 +622,7 @@ def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:
         raise ManifestValidationError("zram_swap size, swappiness, or page_cluster is out of range.")
     return SystemZramSwapSpec(
         kernel_release=kernel_release,
-        kernel_version=kernel_version,
+        kernel_versions=kernel_versions,
         modules=modules,
         size_mb=size_mb,
         algorithm=algorithm,

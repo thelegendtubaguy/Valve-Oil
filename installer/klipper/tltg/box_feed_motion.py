@@ -1,18 +1,26 @@
 # QIDI Box feed motion for Valve Oil.
 #
-# Wraps the vendor's three-stage load home and two-stage unload home on each
-# `box_stepper slotN` so operators can set the fast push, approach speed, and
-# acceleration through saved variables, globally or per slot. The vendor
-# passes its profile as call arguments; settings that are absent keep those
-# arguments unchanged. Plain do_home/do_move are not wrapped: they also run
-# the load pre-stage, slot auto-load, and recovery.
+# QIDI's Box code moves filament in one of two layouts, chosen by the
+# box_stepper.so build:
 #
-# The unload's second extruder retract (`G1 E-120`) reads its length through
-# box_extras.get_value_by_key("exl_2"); that lookup is wrapped to answer with
-# the configured length. It is a global setting only.
+# - staged (Max 4): a three-stage load home and a two-stage unload home on
+#   each `box_stepper slotN`, with the profile passed as call arguments. Those
+#   calls are wrapped so the fast push, approach speed, and acceleration can be
+#   set through saved variables, globally or per slot. Plain do_home/do_move
+#   are not wrapped: they also run the load pre-stage, slot auto-load, and
+#   recovery.
+# - single (Plus 5): the load and unload are single do_home moves whose
+#   lengths, speeds, and accelerations QIDI reads at the time of the move.
 #
-# The effective per-slot motion is published as printer object status for
-# Moonraker and Fluidd.
+# Both read some values through box_extras.get_value_by_key(name, default):
+# the push from the spool to the hub, the move from the hub back to the park
+# position, the unload's second extruder retract (`exl_2`), and on the single
+# layout every load and unload move. That lookup is wrapped to answer with
+# the configured value; those settings are global only.
+#
+# Settings that are absent keep QIDI's values; the installer saves each
+# printer's package defaults. The effective motion is published as printer
+# object status for Moonraker and Fluidd.
 
 import hashlib
 import logging
@@ -20,16 +28,19 @@ import math
 import os
 import re
 
-# Named box_stepper.so builds, for reporting only: any QIDI Box code with the
-# multi-step home methods is wrapped, and each call must still match the
-# traced argument shape and look plausible before it is changed.
+# box_stepper.so builds this module knows, with their layout. On staged builds
+# each wrapped call must still match the traced argument shape and look
+# plausible before it is changed. Other builds are left alone. The Plus 5's
+# build keeps the multi-step methods but never calls them.
 KNOWN_BUILDS = {
     "58ee8c61bffc3d4e18edc9e56a326495b6a218348bbfb13f7a012a946039b0a5":
-        "01.01.07.01",
+        ("01.01.07.01", "staged"),
     "1d726c7b341f7acca85d0770c8966da236d02ca4a635e8a0b72bd40c3ea7df01":
-        "01.01.06.05",
+        ("01.01.06.05", "staged"),
     "dcb6feb05a7254a2d96140ebb545d824b4633de92c0acf02793b96a882c2dfe1":
-        "01.01.06.01-01.01.06.04",
+        ("01.01.06.01-01.01.06.04", "staged"),
+    "fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589":
+        ("Plus 5 01.01.02.01", "single"),
 }
 # Vendor arguments traced live on 01.01.07.01. They stand in for the vendor
 # baseline in status and validation until a load or unload supplies the real
@@ -37,14 +48,26 @@ KNOWN_BUILDS = {
 VENDOR_BASELINE = {
     "load": (550, 380, 240, 85, 65, 10, 100),
     "unload": (-350, -1150, 65, 85, 100),
-    "extruder_retract": 120,
+}
+# QIDI's defaults for the values read through get_value_by_key, by layout, as
+# traced on the Max 4 01.01.07.01 and the Plus 5 01.01.02.01. Lookups replace
+# them with the default QIDI actually passes.
+LOOKUP_BASELINE = {
+    "staged": {"hub_speed": 85, "park_speed": 80,
+               "unload_extruder_length": 120},
+    "single": {"hub_speed": 85, "fast_length": 720, "fast_speed": 100,
+               "load_accel": 100, "approach_speed": 25,
+               "unload_extruder_length": 100, "unload_speed": 100,
+               "unload_accel": 50, "park_speed": 80},
 }
 
 # (key, saved variable, direction, minimum, maximum, unit). The command
 # parameter is the upper-case key; a slot override appends "_slotN" to the
 # saved variable.
 SETTINGS = (
+    ("hub_speed", "tltg_box_hub_speed", "lookup", 10, 150, "mm/s"),
     ("fast_length", "tltg_box_load_fast_length", "load", 100, 2000, "mm"),
+    ("fast_speed", "tltg_box_load_fast_speed", "lookup", 10, 150, "mm/s"),
     ("fast_speed_1", "tltg_box_load_fast_speed_1", "load", 10, 150, "mm/s"),
     ("fast_speed_2", "tltg_box_load_fast_speed_2", "load", 10, 150, "mm/s"),
     ("approach_speed", "tltg_box_load_approach_speed", "load", 2, 40,
@@ -54,13 +77,44 @@ SETTINGS = (
     ("unload_speed_2", "tltg_box_unload_speed_2", "unload", 10, 150, "mm/s"),
     ("unload_accel", "tltg_box_unload_accel", "unload", 20, 400,
      "mm/s\u00b2"),
+    ("unload_speed", "tltg_box_unload_speed", "lookup", 10, 150, "mm/s"),
+    ("park_speed", "tltg_box_park_speed", "lookup", 10, 150, "mm/s"),
     ("unload_extruder_length", "tltg_box_unload_extruder_length", "retract",
      20, 300, "mm"),
 )
+# The settings each layout offers, in display order.
+FIELDS = {
+    "staged": ("hub_speed", "fast_length", "fast_speed_1", "fast_speed_2",
+               "approach_speed", "load_accel", "unload_extruder_length",
+               "unload_speed_1", "unload_speed_2", "unload_accel",
+               "park_speed"),
+    "single": ("hub_speed", "fast_length", "fast_speed", "approach_speed",
+               "load_accel", "unload_extruder_length", "unload_speed",
+               "unload_accel", "park_speed"),
+}
 # Settings that apply to every slot and take no SLOT= override.
-GLOBAL_ONLY = ("unload_extruder_length",)
+GLOBAL_ONLY = {
+    "staged": ("unload_extruder_length", "hub_speed", "park_speed"),
+    "single": FIELDS["single"],
+}
+# get_value_by_key names answered with a setting, by layout.
+LOOKUPS = {
+    "staged": {"extruder_load_length_1_speed": "hub_speed",
+               "extruder_unload_length_2_speed": "park_speed",
+               "exl_2": "unload_extruder_length"},
+    "single": {"extruder_load_length_1_speed": "hub_speed",
+               "extruder_load_length_2": "fast_length",
+               "extruder_load_length_2_speed": "fast_speed",
+               "extruder_load_length_2_accel": "load_accel",
+               "extruder_load_length_3_speed": "approach_speed",
+               "extruder_unload_length_1_speed": "unload_speed",
+               "extruder_unload_length_1_accel": "unload_accel",
+               "extruder_unload_length_2_speed": "park_speed",
+               "exl_2": "unload_extruder_length"},
+}
 EXTRUDER_RETRACT_KEY = "exl_2"
 VENDOR_KEY_PREFIXES = ("multi_extruder_load_", "multi_extruder_unload_",
+                       "extruder_load_length_", "extruder_unload_length_",
                        EXTRUDER_RETRACT_KEY)
 CLEAR_GLOBAL = ("vendor", "default", "none")
 CLEAR_OVERRIDE = ("global",)
@@ -129,11 +183,43 @@ def override_name(name, slot):
 
 
 def slot_overrides(variables, slot):
-    """Return {key: saved value} for the slot's overrides."""
+    """Return {key: saved value} for the slot's overrides (staged only)."""
     return {key: _published(variables.get(override_name(name, slot)))
             for key, name, _kind, _low, _high, _unit in SETTINGS
-            if key not in GLOBAL_ONLY
+            if key in FIELDS["staged"] and key not in GLOBAL_ONLY["staged"]
             and variables.get(override_name(name, slot)) is not None}
+
+
+def parse_fields(variables, keys):
+    """Return {key: int} for the global settings among keys that are set.
+
+    Raises ProfileError naming the invalid variable.
+    """
+    values = {}
+    for key, name, _kind, low, high, _unit in SETTINGS:
+        if key not in keys:
+            continue
+        raw = variables.get(name)
+        if raw is None:
+            continue
+        value = _whole(raw)
+        if value is None or not low <= value <= high:
+            raise ProfileError("%s must be a whole number from %d to %d"
+                               % (name, low, high))
+        values[key] = value
+    return values
+
+
+def lookup_value(variables, key, vendor):
+    """Return (value, error) for a setting answered through a lookup.
+
+    An unset or invalid setting uses QIDI's value.
+    """
+    try:
+        values = parse_fields(variables, (key,))
+    except ProfileError as e:
+        return vendor, str(e)
+    return values.get(key, vendor), None
 
 
 def parse_settings(variables, direction, slot=None):
@@ -147,7 +233,7 @@ def parse_settings(variables, direction, slot=None):
     for key, name, kind, low, high, _unit in SETTINGS:
         if kind != direction:
             continue
-        if slot is not None and key not in GLOBAL_ONLY \
+        if slot is not None and key not in GLOBAL_ONLY["staged"] \
                 and variables.get(override_name(name, slot)) is not None:
             name = override_name(name, slot)
         raw = variables.get(name)
@@ -221,8 +307,8 @@ def plan_load(variables, slot, vendor):
     """
     vendor = tuple(vendor)
     try:
-        profile = load_profile(vendor,
-                               parse_settings(variables, "load", slot))
+        settings = parse_settings(variables, "load", slot)
+        profile = load_profile(vendor, settings)
     except ProfileError as e:
         return vendor, "error", str(e)
     return profile, "vendor" if profile == vendor else "custom", None
@@ -239,24 +325,17 @@ def plan_unload(variables, slot, vendor):
     return profile, "vendor" if profile == vendor else "custom", None
 
 
-def extruder_retract(variables, default):
-    """Return (length, error) for the unload's second extruder retract."""
-    try:
-        settings = parse_settings(variables, "retract")
-    except ProfileError as e:
-        return default, str(e)
-    return settings.get("unload_extruder_length", default), None
-
-
-def check_settings(variables, slot, vendor):
+def check_settings(variables, slot, vendor, layout="staged"):
     """Raise ProfileError unless the settings a slot uses can run.
 
     Without an active integration (vendor None) only the values themselves
     are checked.
     """
+    parse_fields(variables, FIELDS[layout])
+    if layout != "staged":
+        return
     load = parse_settings(variables, "load", slot)
     unload = parse_settings(variables, "unload", slot)
-    parse_settings(variables, "retract")
     if not vendor:
         return
     load_profile(vendor["load"], load)
@@ -265,21 +344,25 @@ def check_settings(variables, slot, vendor):
 
 def _runs(variables, slot, vendor):
     try:
-        check_settings(variables, slot, vendor)
+        check_settings(variables, slot, vendor, "staged")
     except ProfileError:
         return False
     return True
 
 
-def vendor_values(vendor):
+def vendor_values(vendor, layout):
+    values = dict(vendor["lookup"])
+    if layout != "staged":
+        return values
     l1, l2, l3, v1, v2, v3, accel = vendor["load"]
     u1, u2, uv1, uv2, uaccel = vendor["unload"]
-    return {"fast_length": l1 + l2, "fast_speed_1": v1, "fast_speed_2": v2,
-            "approach_speed": v3, "approach_length": l3, "load_accel": accel,
-            "unload_speed_1": uv1, "unload_speed_2": uv2,
-            "unload_accel": uaccel, "unload_length_1": abs(u1),
-            "unload_length_2": abs(u2),
-            "unload_extruder_length": vendor["extruder_retract"]}
+    values.update({"fast_length": l1 + l2, "fast_speed_1": v1,
+                   "fast_speed_2": v2, "approach_speed": v3,
+                   "approach_length": l3, "load_accel": accel,
+                   "unload_speed_1": uv1, "unload_speed_2": uv2,
+                   "unload_accel": uaccel, "unload_length_1": abs(u1),
+                   "unload_length_2": abs(u2)})
+    return values
 
 
 class BoxFeedMotion:
@@ -287,6 +370,7 @@ class BoxFeedMotion:
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object("gcode")
         self.build = None
+        self.layout = None
         self.vendor = None
         self.status = None
         self.slots = {}
@@ -326,6 +410,15 @@ class BoxFeedMotion:
     def _slot_names(self):
         return sorted(self.slots, key=_slot_key)
 
+    def _fields(self):
+        """Settings this printer's Box code offers; all of them until known."""
+        if self.layout is None:
+            return tuple(key for key, *_rest in SETTINGS)
+        return FIELDS[self.layout]
+
+    def _global_only(self):
+        return GLOBAL_ONLY[self.layout or "staged"]
+
     # ----------------------------------------------------------------- setup
     def _set_status(self, status):
         self.status = status
@@ -337,31 +430,45 @@ class BoxFeedMotion:
                             "box_stepper.so")
         try:
             digest = _hash_file(path)
-            build = KNOWN_BUILDS.get(digest, "box_stepper.so %s" % (digest[:12],))
         except OSError:
-            build = "box_stepper"
+            self._set_status("inactive: QIDI's box_stepper.so not found")
+            return
+        known = KNOWN_BUILDS.get(digest)
+        if known is None:
+            self._set_status("inactive: box_stepper.so %s is not a QIDI Box "
+                             "build this module knows" % (digest[:12],))
+            return
+        build, layout = known
+        staged = layout == "staged"
         slots = {}
         for name, obj in self.printer.lookup_objects("box_stepper"):
             methods = [getattr(obj, attr, None) for attr in
                        ("do_home_three_steps", "do_home_double_steps")]
-            if not all(callable(m) for m in methods):
+            if staged and not all(callable(m) for m in methods):
                 continue
             slots[name.split()[-1]] = (obj, methods)
         if not slots:
             self._set_status("inactive: no QIDI Box slots found")
             return
-        for slot, (obj, (load, unload)) in slots.items():
-            obj.do_home_three_steps = self._wrap_load(slot, load)
-            obj.do_home_double_steps = self._wrap_unload(slot, unload)
         extras = self.printer.lookup_object("box_extras", None)
         lookup = getattr(extras, "get_value_by_key", None)
+        if not staged and not callable(lookup):
+            self._set_status("inactive: QIDI's box_extras lookup not found")
+            return
+        if staged:
+            for slot, (obj, (load, unload)) in slots.items():
+                obj.do_home_three_steps = self._wrap_load(slot, load)
+                obj.do_home_double_steps = self._wrap_unload(slot, unload)
+        self.build = build
+        self.layout = layout
+        self.vendor = {"lookup": dict(LOOKUP_BASELINE[layout])}
+        if staged:
+            self.vendor.update(VENDOR_BASELINE)
         if callable(lookup):
             extras.get_value_by_key = self._wrap_lookup(lookup)
         else:
             logging.info("tltg_box_feed_motion: box_extras lookup not found; "
-                         "extruder retract length is vendor")
-        self.build = build
-        self.vendor = dict(VENDOR_BASELINE)
+                         "hub, park, and extruder retract use QIDI's values")
         self.slots = slots
         self._set_status("active on %s, %d slots" % (build, len(slots)))
         vendor_keys = _vendor_keys(self._variables())
@@ -390,25 +497,28 @@ class BoxFeedMotion:
         return do_home_three_steps
 
     def _wrap_lookup(self, original):
+        lookups = LOOKUPS[self.layout]
+
         def get_value_by_key(*args, **kwargs):
             value = original(*args, **kwargs)
             try:
-                if not kwargs and len(args) == 2 \
-                        and args[0] == EXTRUDER_RETRACT_KEY \
-                        and _number(value) and 0 < value <= 1000:
-                    self._observe("extruder_retract", value)
-                    length, error = extruder_retract(self._variables(),
-                                                     value)
+                key = lookups.get(args[0]) if not kwargs and len(args) == 2 \
+                    and isinstance(args[0], str) \
+                    else None
+                if key is not None and _number(value) and 0 < value <= 5000:
+                    self._observe_lookup(key, value)
+                    answer, error = lookup_value(self._variables(), key,
+                                                 value)
                     if error is not None:
-                        self._report("extruder retract uses the vendor "
-                                     "length: %s" % (error,))
-                    elif length != value:
-                        logging.info("tltg_box_feed_motion: extruder retract "
-                                     "%s mm (vendor %s)", length, value)
-                        return length
+                        self._report("%s uses QIDI's value: %s"
+                                     % (key, error))
+                    if answer != value:
+                        logging.info("tltg_box_feed_motion: %s %s (vendor %s)",
+                                     args[0], answer, value)
+                        return answer
             except Exception:
-                logging.exception("tltg_box_feed_motion: extruder retract "
-                                  "lookup failed")
+                logging.exception("tltg_box_feed_motion: %s lookup failed",
+                                  args[0] if args else "?")
             return value
         return get_value_by_key
 
@@ -444,6 +554,12 @@ class BoxFeedMotion:
             self.vendor[kind] = value
             self._status_cache = None
 
+    def _observe_lookup(self, key, value):
+        value = _whole(value) if _whole(value) is not None else value
+        if self.vendor["lookup"].get(key) != value:
+            self.vendor["lookup"][key] = value
+            self._status_cache = None
+
     def _load_for(self, slot, vendor):
         vendor = tuple(vendor)
         profile, _state, error = plan_load(self._variables(), slot, vendor)
@@ -455,11 +571,20 @@ class BoxFeedMotion:
         return profile
 
     # ---------------------------------------------------------------- motion
+    def _lookups(self, variables):
+        """Return {key: (value, error)} for the settings answered by lookup."""
+        layout = self.layout or "staged"
+        vendor = self.vendor["lookup"] if self.vendor else \
+            LOOKUP_BASELINE[layout]
+        keys = set(LOOKUPS[layout].values())
+        return {key: lookup_value(variables, key, vendor.get(key))
+                for key in FIELDS[layout] if key in keys}
+
     def _motion(self, variables, slot):
-        """Return the published load and unload for a slot.
+        """Return the published staged load and unload for a slot.
 
         With slot None this is the global profile, which slots without
-        overrides use. Requires an active integration.
+        overrides use. Requires an active staged integration.
         """
         profile, state, error = plan_load(variables, slot,
                                           self.vendor["load"])
@@ -478,21 +603,43 @@ class BoxFeedMotion:
                        "length_1": abs(u1), "length_2": abs(u2)},
         }
 
+    def _effective(self, variables):
+        """Return {key: value} each setting runs with on this printer."""
+        values = {key: value for key, (value, _error)
+                  in self._lookups(variables).items()}
+        if self.layout == "staged" and self.vendor:
+            motion = self._motion(variables, None)
+            load, unload = motion["load"], motion["unload"]
+            values.update({
+                "fast_length": load["fast_length"],
+                "fast_speed_1": load["fast_speed_1"],
+                "fast_speed_2": load["fast_speed_2"],
+                "approach_speed": load["approach_speed"],
+                "load_accel": load["accel"],
+                "unload_speed_1": unload["speed_1"],
+                "unload_speed_2": unload["speed_2"],
+                "unload_accel": unload["accel"]})
+        return values
+
     def _problems(self, variables):
         problems = []
-        if self.vendor:
+        if self.layout == "staged" and self.vendor:
             motion = self._motion(variables, None)
             for direction in ("load", "unload"):
                 if motion[direction]["error"] is not None:
                     problems.append("%s uses vendor motion: %s" % (
                         direction, motion[direction]["error"]))
-            return problems + _retract_problems(variables)
-        for direction in ("load", "unload"):
-            try:
-                parse_settings(variables, direction)
-            except ProfileError as e:
-                problems.append("%s uses vendor motion: %s" % (direction, e))
-        return problems + _retract_problems(variables)
+        elif self.layout is None:
+            for direction in ("load", "unload"):
+                try:
+                    parse_settings(variables, direction)
+                except ProfileError as e:
+                    problems.append("%s uses vendor motion: %s"
+                                    % (direction, e))
+        for key, (_value, error) in sorted(self._lookups(variables).items()):
+            if error is not None:
+                problems.append("%s uses QIDI's value: %s" % (key, error))
+        return problems
 
     # ---------------------------------------------------------------- status
     def get_status(self, eventtime=None):
@@ -511,21 +658,29 @@ class BoxFeedMotion:
 
     def _build_status(self, variables, problem=None):
         vendor = self.vendor
+        fields = self._fields()
         status = {
             "active": vendor is not None,
             "status": self.status,
             "firmware": self.build,
+            "layout": self.layout,
+            "fields": list(fields),
+            "global_only": [key for key in fields
+                            if key in self._global_only()],
             "limits": {key: {"min": low, "max": high, "unit": unit,
                              "direction": kind}
-                       for key, _name, kind, low, high, unit in SETTINGS},
-            "vendor": vendor_values(vendor) if vendor else None,
+                       for key, _name, kind, low, high, unit in SETTINGS
+                       if key in fields},
+            "vendor": vendor_values(vendor, self.layout) if vendor else None,
+            "effective": self._effective(variables) if vendor else None,
             "settings": {key: _published(variables.get(name))
-                         for key, name, _kind, _low, _high, _unit in SETTINGS},
+                         for key, name, _kind, _low, _high, _unit in SETTINGS
+                         if key in fields},
             "problems": [problem] if problem else self._problems(variables),
             "vendor_keys": _vendor_keys(variables),
             "slots": {},
         }
-        if vendor:
+        if vendor and self.layout == "staged":
             status["slots"] = {slot: self._motion(variables, slot)
                                for slot in self._slot_names()}
         return status
@@ -536,13 +691,21 @@ class BoxFeedMotion:
 
     def cmd_TLTG_BOX_MOTION(self, gcmd):
         params = gcmd.get_command_parameters()
+        fields = self._fields()
+        global_only = self._global_only()
         slot = self._slot_param(gcmd) if "SLOT" in params else None
         variables = self._variables()
         changes = {}
+        for key, *_rest in SETTINGS:
+            if key.upper() in params and key not in fields:
+                raise gcmd.error("%s isn't used by this printer's QIDI Box "
+                                 "code" % (key.upper(),))
         if gcmd.get_int("RESET", 0, minval=0, maxval=1):
             for key, name, _kind, _low, _high, _unit in SETTINGS:
+                if key not in fields:
+                    continue
                 if slot is not None:
-                    if key not in GLOBAL_ONLY:
+                    if key not in global_only:
                         changes[override_name(name, slot)] = None
                     continue
                 changes[name] = None
@@ -555,7 +718,7 @@ class BoxFeedMotion:
             param = key.upper()
             if param not in params:
                 continue
-            if slot is not None and key in GLOBAL_ONLY:
+            if slot is not None and key in global_only:
                 raise gcmd.error("%s applies to every slot; set it without "
                                  "SLOT" % (param,))
             target = name if slot is None else override_name(name, slot)
@@ -577,6 +740,9 @@ class BoxFeedMotion:
 
     def _slot_param(self, gcmd):
         raw = gcmd.get("SLOT").strip().lower()
+        if self.layout == "single":
+            raise gcmd.error("This printer's QIDI Box code has no per-slot "
+                             "motion settings; set them without SLOT")
         slot = raw if raw.startswith("slot") else "slot" + raw
         if slot not in self.slots:
             raise gcmd.error("Unknown Box slot '%s'" % (raw,))
@@ -586,21 +752,24 @@ class BoxFeedMotion:
         current = self._variables()
         variables = dict(current)
         variables.update(changes)
+        layout = self.layout or "staged"
         # A global change must keep the global profile and every overridden
         # slot that runs today runnable; a slot that already falls back
         # doesn't block it. Clearing a slot's overrides only returns it to the
         # global profile, which is checked when the globals change.
         if slot is None:
-            targets = [None] + [s for s in self._slot_names()
-                                if slot_overrides(variables, s)
-                                and _runs(current, s, self.vendor)]
+            targets = [None]
+            if layout == "staged":
+                targets += [s for s in self._slot_names()
+                            if slot_overrides(variables, s)
+                            and _runs(current, s, self.vendor)]
         elif any(value is not None for value in changes.values()):
             targets = [slot]
         else:
             targets = []
         for target in targets:
             try:
-                check_settings(variables, target, self.vendor)
+                check_settings(variables, target, self.vendor, layout)
             except ProfileError as e:
                 if target is None:
                     raise gcmd.error("Box feed motion not changed: %s" % (e,))
@@ -613,20 +782,34 @@ class BoxFeedMotion:
 
     def _describe(self):
         variables = self._variables()
+        fields = self._fields()
+        split = fields.index("unload_extruder_length")
         lines = ["Box feed motion: %s" % (self.status,)]
-        for title, kinds in (("Load", ("load",)),
-                             ("Unload", ("retract", "unload"))):
+        names = {key: name for key, name, *_rest in SETTINGS}
+        for title, keys in (("Load", fields[:split]),
+                            ("Unload", fields[split:])):
             lines.append("%s: %s" % (title, _describe_values(
-                {key: _published(variables.get(name))
-                 for key, name, kind, _low, _high, _unit in SETTINGS
-                 if kind in kinds}, "vendor")))
-        if not self.vendor:
-            lines.extend(self._problems(variables))
-        else:
+                {key: _published(variables.get(names[key])) for key in keys},
+                "vendor")))
+        lines.extend(self._problems(variables))
+        if self.layout == "single":
+            values = self._effective(variables)
+            lines.append(
+                "Load: hub push at %(hub_speed)s mm/s, fast push up to "
+                "%(fast_length)s mm at %(fast_speed)s mm/s (accel "
+                "%(load_accel)s), then %(approach_speed)s mm/s to the toolhead "
+                "sensor" % values)
+            lines.append(
+                "Unload: extruder pull-back %(unload_extruder_length)s mm, "
+                "Box pull to the hub at %(unload_speed)s mm/s (accel "
+                "%(unload_accel)s), park at %(park_speed)s mm/s" % values)
+        elif self.vendor:
+            values = self._effective(variables)
             motion = self._motion(variables, None)
-            lines.append("Global load: %s" % (_describe_load(motion["load"]),))
-            lines.append("Global unload: %s"
-                         % (_describe_unload(motion["unload"]),))
+            lines.append("Global load: hub push at %s mm/s, %s" % (
+                values["hub_speed"], _describe_load(motion["load"])))
+            lines.append("Global unload: %s, park at %s mm/s" % (
+                _describe_unload(motion["unload"]), values["park_speed"]))
             rest = []
             for slot in self._slot_names():
                 motion = self._motion(variables, slot)
@@ -647,12 +830,6 @@ class BoxFeedMotion:
             lines.append("Vendor motion keys are saved and change the vendor "
                          "baseline: %s" % ", ".join(vendor_keys))
         return "\n".join(lines)
-
-
-def _retract_problems(variables):
-    error = extruder_retract(variables, None)[1]
-    return [] if error is None else [
-        "extruder retract uses the vendor length: %s" % (error,)]
 
 
 def _vendor_keys(variables):

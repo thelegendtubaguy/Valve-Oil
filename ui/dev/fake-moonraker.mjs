@@ -163,7 +163,12 @@ function baseStatus() {
       active: true,
       status: '',
       firmware: '01.01.07.01',
+      layout: 'staged',
+      fields: ['hub_speed', 'fast_length', 'fast_speed_1', 'fast_speed_2', 'approach_speed', 'load_accel', 'unload_extruder_length', 'unload_speed_1', 'unload_speed_2', 'unload_accel', 'park_speed'],
+      global_only: ['hub_speed', 'unload_extruder_length', 'park_speed'],
       limits: {
+        hub_speed: { min: 10, max: 150, unit: 'mm/s' },
+        park_speed: { min: 10, max: 150, unit: 'mm/s' },
         fast_length: { min: 100, max: 2000, unit: 'mm' },
         fast_speed_1: { min: 10, max: 150, unit: 'mm/s' },
         fast_speed_2: { min: 10, max: 150, unit: 'mm/s' },
@@ -174,8 +179,8 @@ function baseStatus() {
         unload_accel: { min: 20, max: 400, unit: 'mm/s²' },
         unload_extruder_length: { min: 20, max: 300, unit: 'mm' },
       },
-      vendor: { fast_length: 930, fast_speed_1: 85, fast_speed_2: 65, approach_speed: 10, load_accel: 100, unload_speed_1: 65, unload_speed_2: 85, unload_accel: 100, unload_extruder_length: 120 },
-      settings: { fast_length: 950, fast_speed_1: 85, fast_speed_2: 65, approach_speed: 15, load_accel: null, unload_speed_1: 65, unload_speed_2: 85, unload_accel: null, unload_extruder_length: 55 },
+      vendor: { hub_speed: 85, fast_length: 930, fast_speed_1: 85, fast_speed_2: 65, approach_speed: 10, load_accel: 100, unload_speed_1: 65, unload_speed_2: 85, unload_accel: 100, unload_extruder_length: 120, park_speed: 80 },
+      settings: { hub_speed: null, fast_length: 950, fast_speed_1: 85, fast_speed_2: 65, approach_speed: 15, load_accel: null, unload_speed_1: 65, unload_speed_2: 85, unload_accel: null, unload_extruder_length: 55, park_speed: null },
       problems: [],
       slots: {},
     },
@@ -392,7 +397,7 @@ async function gcode(script) {
       if (p.RESET) set('tltg_box_feed_motion', { settings: Object.fromEntries(Object.keys(m.settings).map((k) => [k, null])) })
       else {
         const s = { ...m.settings }
-        for (const [k, v] of Object.entries(p)) s[k.toLowerCase()] = v === 'vendor' ? null : Number(v)
+        for (const [k, v] of Object.entries(p)) s[k.toLowerCase()] = v === 'vendor' || v === 'default' ? null : Number(v)
         set('tltg_box_feed_motion', { settings: s })
       }
       pushConsole('// Box motion settings saved.')
