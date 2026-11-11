@@ -67,7 +67,7 @@ case $action in
       exit 1
     fi ;;
   fetch)
-    dest=${3:-$here/../../tltg-local/box-trace/dev_box_trace-$(date +%Y%m%d-%H%M%S).log}
+    dest=${3:-$(cd "$here/../.." && pwd)/tltg-local/box-trace/dev_box_trace-$(date +%Y%m%d-%H%M%S).log}
     mkdir -p "$(dirname "$dest")"
     scp -q -o BatchMode=yes "$host:$log" "$dest"
     echo "$dest" ;;
