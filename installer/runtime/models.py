@@ -172,6 +172,13 @@ class TargetFirmwareSpec:
     update_from: tuple[tuple[str, PackageBoards], ...]
     # The package's closed-loop motor driver image, which a firmware update sends; None without closed-loop drivers.
     closed_loop_image: ImagePin | None = None
+    # `version` is a firmware key (PrinterSpec.firmware_key); this is QIDI's version, as the package's
+    # firmware_manifest.json gives it. Empty where the key is QIDI's version.
+    qidi_version: str = ""
+
+    @property
+    def soc_version(self) -> str:
+        return self.qidi_version or self.version
 
     @property
     def url(self) -> str:
@@ -217,6 +224,25 @@ class PrinterSpec:
     stock_snapshots: str
     macros: str
     target_firmware: TargetFirmwareSpec
+    # QIDI numbers each printer's firmware on its own, so two printers can ship the same SOC version. A printer
+    # whose versions repeat another's names its firmware with this prefix wherever the installer matches or
+    # records a firmware version.
+    firmware_key_prefix: str = ""
+
+    def firmware_key(self, soc_version: str) -> str:
+        return self.firmware_key_prefix + soc_version
+
+    def soc_version(self, firmware_key: str) -> str:
+        return firmware_key[len(self.firmware_key_prefix) :]
+
+    def stock_snapshot(self, firmware_key: str) -> str:
+        return f"{self.stock_snapshots}/{self.soc_version(firmware_key)}"
+
+    @property
+    def soc_package(self) -> str:
+        """QIDI's Debian package of the SOC software, named after the SOC file prefix (QD_MAX4_SOC_ -> qd-max4-system,
+        S5_SOC_ -> s5-system)."""
+        return self.soc_file_prefix.removesuffix("SOC_").rstrip("_").lower().replace("_", "-") + "-system"
 
 
 @dataclass(frozen=True)
@@ -465,6 +491,9 @@ class Manifest:
             if firmware_version in printer.firmware:
                 return printer
         return None
+
+    def printer_for_soc_file(self, soc_file: str) -> PrinterSpec | None:
+        return next((printer for printer in self.printers if soc_file.startswith(printer.soc_file_prefix)), None)
 
     # The managed tree installs the common macros plus the printer's own macro folder.
     def managed_tree_sources(self, firmware_version: str) -> tuple[str, ...]:

@@ -294,7 +294,8 @@ def firmware_update_plan(paths, *, manifest=None, admission=None, urlopen=urllib
     if printer is None:
         return FirmwareUpdatePlan(None, detected.version, None, False, pending=pending)
     target = printer.target_firmware
-    needed = target.can_update_from(detected.version)
+    installed_key = printer.firmware_key(detected.version)
+    needed = target.can_update_from(installed_key)
     admission = load_board_admission(paths) if admission is None else admission
     blockers: list[Blocker] = []
     if pending is not None:
@@ -318,8 +319,8 @@ def firmware_update_plan(paths, *, manifest=None, admission=None, urlopen=urllib
         blockers.extend(printer_blockers(paths, urlopen=urlopen))
     boards = tuple(status.label for status in (admission.boards if admission else ()) if status.state == NEEDS_IMAGE)
     return FirmwareUpdatePlan(
-        printer=printer, installed=detected.version, target=target.version, needed=needed, blockers=tuple(blockers),
-        boards=boards, closed_loop=needed and target.changes_board("closed_loop", detected.version),
+        printer=printer, installed=installed_key, target=target.version, needed=needed, blockers=tuple(blockers),
+        boards=boards, closed_loop=needed and target.changes_board("closed_loop", installed_key),
         download_bytes=target.size - downloaded, free_bytes_needed=needed_bytes, pending=pending)
 
 
@@ -1125,6 +1126,7 @@ def _check(ctx: _Run) -> None:
     if ctx.changed():
         return
     installed = detect_firmware_version_best_effort(ctx.paths.firmware_manifest_path)
+    installed = ctx.printer.firmware_key(installed) if installed is not None else None
     if installed != ctx.record["from_firmware"] or not ctx.target.can_update_from(installed or ""):
         raise _NotStarted(f"the printer's firmware is now {installed}, not {ctx.record['from_firmware']}",
                           "run_failed")
@@ -1173,7 +1175,7 @@ def _stage(ctx: _Run):
         if ctx.changed():
             raise InstallerError(message) from exc
         raise _NotStarted(message, getattr(exc, "code", qidi_package.UNVERIFIED)) from exc
-    expected = {"Package": f"qd-{ctx.printer.id}-system", "Version": ctx.target.version, "Architecture": "arm64"}
+    expected = {"Package": ctx.printer.soc_package, "Version": ctx.target.soc_version, "Architecture": "arm64"}
     if any(fields.get(key) != value for key, value in expected.items()):
         message = f"QIDI's SOC package is {fields}, not {expected}"
         if ctx.changed():
@@ -1420,7 +1422,7 @@ def _soc(ctx: _Run) -> None:
     query = ctx.run(["dpkg-query", "-W", "-f=${Status}\t${Version}", ctx.record["package"]], capture_output=True,
                     text=True, timeout=60)
     installed = (query.stdout or "").strip()
-    if result.returncode or installed != f"install ok installed\t{ctx.target.version}":
+    if result.returncode or installed != f"install ok installed\t{ctx.target.soc_version}":
         raise InstallerError(f"dpkg exited with {result.returncode} and the package is '{installed}'")
     # A Klipper restart the installer was waiting for applied to Klipper files QIDI's package has just replaced, so
     # it can no longer be verified; the installer run below patches the new files and asks for its own restart.

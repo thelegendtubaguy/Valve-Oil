@@ -80,9 +80,14 @@ def runs_target_firmware(paths, board: str, target_firmware: str | None = None) 
     """Whether the printer runs the target QIDI firmware (`target_firmware`, or its printer's when not given), as a
     board leaving a predecessor needs; False when the installed firmware can't be read or isn't supported."""
     from .errors import InstallerError
-    from .firmware import detect_firmware_version_best_effort
+    from .firmware import detect_firmware_key_best_effort
+    from .manifest import load_manifest
 
-    installed = detect_firmware_version_best_effort(paths.firmware_manifest_path)
+    try:
+        installed = detect_firmware_key_best_effort(paths.firmware_manifest_path,
+                                                    load_manifest(paths.installer_root / "package.yaml"))
+    except (InstallerError, ValueError):
+        return False
     if target_firmware is None:
         try:
             target_firmware = pinned_for_installed_printer(paths, board).firmware

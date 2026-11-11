@@ -403,9 +403,9 @@ def _checked_manifest(package: zipfile.ZipFile, members, target, printer) -> dic
             raise PackageError(f"The firmware package's manifest entry {name!r} names no file in the package.",
                                code=UNVERIFIED)
     soc = manifest.get("SOC")
-    if (not isinstance(soc, dict) or soc["version"] != target.version
+    if (not isinstance(soc, dict) or soc["version"] != target.soc_version
             or not soc["file"].startswith(printer.soc_file_prefix)):
-        raise PackageError(f"The firmware package is not {printer.display_name} firmware {target.version}.",
+        raise PackageError(f"The firmware package is not {printer.display_name} firmware {target.soc_version}.",
                            code=UNVERIFIED)
     return manifest
 
@@ -481,8 +481,8 @@ def install_update_folder(paths, target, *, remove_tree) -> None:
         version = json.loads((update / MANIFEST_NAME).read_text(encoding="utf-8"))["SOC"]["version"]
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise PathSafetyError(f"QIDI's update folder has no readable firmware manifest: {exc}") from exc
-    if version != target.version:
-        raise PathSafetyError(f"QIDI's update folder holds firmware {version}, not {target.version}.")
+    if version != target.soc_version:
+        raise PathSafetyError(f"QIDI's update folder holds firmware {version}, not {target.soc_version}.")
 
 
 def exchange_paths(first: Path, second: Path) -> bool:

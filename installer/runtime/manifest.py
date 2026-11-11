@@ -295,8 +295,9 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
-# Firmware versions identify the printer, so no version may belong to two printers. The firmware manifest's
-# SOC file name (QD_MAX4_SOC_..., QD_PLUS5_SOC_...) cross-checks that identity at runtime.
+# Firmware keys identify the printer, so no key may belong to two printers. A printer whose SOC versions repeat
+# another printer's gives its keys a firmware_key_prefix. The firmware manifest's SOC file name (QD_MAX4_SOC_...,
+# QD_PLUS5_SOC_..., S5_SOC_...) picks between printers that share a version at runtime.
 def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
     printers: list[PrinterSpec] = []
     ids: set[str] = set()
@@ -306,8 +307,11 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
         printer_id = _require_str(item, "id")
         soc_file_prefix = _require_str(item, "soc_file_prefix")
         firmware = _require_unique_str_list(item, "firmware", non_empty=True)
+        key_prefix = _require_str(item, "firmware_key_prefix") if "firmware_key_prefix" in item else ""
         if printer_id in ids:
             raise ManifestValidationError(f"Duplicate printer id: {printer_id}")
+        if any(not key.startswith(key_prefix) for key in firmware):
+            raise ManifestValidationError(f"Printer {printer_id} firmware must start with its firmware_key_prefix.")
         if any(
             soc_file_prefix.startswith(prefix) or prefix.startswith(soc_file_prefix)
             for prefix in prefixes
@@ -329,7 +333,8 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
                 _require_str(item, "stock_snapshots"), allowed_roots=("stock",)
             ),
             macros=_validate_relative_path(_require_str(item, "macros"), allowed_roots=("klipper",)),
-            target_firmware=_parse_target_firmware(item, printer_id, soc_file_prefix, firmware),
+            target_firmware=_parse_target_firmware(item, printer_id, soc_file_prefix, firmware, key_prefix),
+            firmware_key_prefix=key_prefix,
         )
         ids.add(printer.id)
         prefixes.add(printer.soc_file_prefix)
@@ -344,8 +349,11 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
 QIDI_PACKAGE_MIRRORS = frozenset({
     "thelegendtubaguy/Qidi-Max4-Defaults",
     "thelegendtubaguy/Qidi-Plus5-Defaults",
+    "thelegendtubaguy/Qidi-Smart5-Defaults",
 })
 _QIDI_VERSION = re.compile(r"^\d{2}\.\d{2}\.\d{2}\.\d{2}$")
+# Board firmware versions; the Smart 5 mainboard's last part has three digits (02.01.01.110).
+_BOARD_VERSION = re.compile(r"^\d{2}\.\d{2}\.\d{2}\.\d{2,3}$")
 # Boards every QIDI package carries; the closed-loop drivers are the Max 4's only.
 _REQUIRED_PACKAGE_BOARDS = ("mcu", "thr", "box")
 
@@ -360,11 +368,13 @@ def _firmware_order(version: str) -> tuple[int, ...]:
 # to it. The mirror's release tag records the archive's SHA-256, and QIDI names the archive after the printer and
 # firmware, so the pinned identity must agree with both.
 def _parse_target_firmware(
-    item: dict[str, Any], printer_id: str, soc_file_prefix: str, firmware: tuple[str, ...]
+    item: dict[str, Any], printer_id: str, soc_file_prefix: str, firmware: tuple[str, ...], key_prefix: str = ""
 ) -> TargetFirmwareSpec:
     raw = _require_mapping(item, "target_firmware")
+    # A firmware key, as in the printer's firmware list; QIDI's own version names the mirror release and archive.
     version = _require_str(raw, "version")
-    if version not in firmware or max(firmware, key=_firmware_order) != version:
+    qidi_version = version[len(key_prefix):]
+    if version not in firmware or max(firmware, key=lambda key: _firmware_order(key[len(key_prefix):])) != version:
         raise ManifestValidationError(
             f"Printer {printer_id} target firmware must be its newest listed firmware."
         )
@@ -373,15 +383,15 @@ def _parse_target_firmware(
         raise ManifestValidationError(f"Printer {printer_id} target firmware must come from a project mirror.")
     sha256 = _require_sha256(raw, "sha256")
     release = _require_str(raw, "release")
-    if release != f"qidi-{printer_id}-firmware-{version}-{sha256}":
+    if release != f"qidi-{printer_id}-firmware-{qidi_version}-{sha256}":
         raise ManifestValidationError(
             f"Printer {printer_id} target firmware release must be the mirror's release of {version} with its SHA-256."
         )
     archive = _require_str(raw, "archive")
     package_prefix = soc_file_prefix[: -len("SOC_")] if soc_file_prefix.endswith("SOC_") else soc_file_prefix
-    if not (archive.startswith(f"{package_prefix}{version}_") and archive.endswith(".zip")) or "/" in archive:
+    if not (archive.startswith(f"{package_prefix}{qidi_version}_") and archive.endswith(".zip")) or "/" in archive:
         raise ManifestValidationError(
-            f"Printer {printer_id} target firmware archive is not QIDI's {package_prefix}{version} package."
+            f"Printer {printer_id} target firmware archive is not QIDI's {package_prefix}{qidi_version} package."
         )
     size = raw.get("size")
     if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
@@ -425,6 +435,7 @@ def _parse_target_firmware(
         boards=boards,
         update_from=update_from,
         closed_loop_image=image,
+        qidi_version=qidi_version if key_prefix else "",
     )
 
 
@@ -441,7 +452,7 @@ def _parse_package_boards(raw: Any, key: str, *, single: bool) -> PackageBoards:
             not entries
             or (single and len(entries) != 1)
             or len(set(entries)) != len(entries)
-            or not all(isinstance(entry, str) and _QIDI_VERSION.match(entry) for entry in entries)
+            or not all(isinstance(entry, str) and _BOARD_VERSION.match(entry) for entry in entries)
         ):
             raise ManifestValidationError(
                 f"Expected {'one QIDI version' if single else 'QIDI versions'} at {key}.{board}."

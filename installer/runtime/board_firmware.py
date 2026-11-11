@@ -811,12 +811,12 @@ def deliver_board_firmware(
     before any write leaves the board as it was and is reported in its result; a write that can't be verified raises
     with that board's rescue record kept, so every installer operation stays blocked until rescue.
     """
-    from .firmware import detect_firmware_version_best_effort
+    from .firmware import detect_firmware_key_best_effort
 
     env = {} if environ is None else environ
     seams = {"run": run, "urlopen": urlopen, "sleep": sleep, "clock": clock}
     # A firmware update calls this after installing QIDI's package, so the installed firmware is read again.
-    firmware = detect_firmware_version_best_effort(paths.firmware_manifest_path) or admission.firmware
+    firmware = detect_firmware_key_best_effort(paths.firmware_manifest_path, manifest) or admission.firmware
     results: list[BoardResult] = []
     statuses = {status.board: status for status in admission.boards}
     if dry_run:

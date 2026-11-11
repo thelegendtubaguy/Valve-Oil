@@ -126,7 +126,7 @@ class Printer:
             get_status=lambda e: {"last_z_result": printer.probe.last_z})
         self.objects = {
             "gcode": self.gcode, "webhooks": self.webhooks, "heaters": self.pheaters,
-            "bed_mesh": self.bed_mesh, "probe": self.probe,
+            "bed_mesh": self.bed_mesh, "probe": self.probe, "z_tilt": types.SimpleNamespace(),
             "print_stats": types.SimpleNamespace(get_status=lambda e: {"state": printer.state}),
             "virtual_sdcard": types.SimpleNamespace(is_active=lambda: False),
             "gcode_macro _km_globals": types.SimpleNamespace(

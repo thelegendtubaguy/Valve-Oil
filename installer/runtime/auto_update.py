@@ -38,7 +38,7 @@ from .errors import (
     PreflightTargetsError,
     PrinterStateError,
 )
-from .firmware import detect_firmware, supported_printer
+from .firmware import detect_firmware, firmware_key, supported_printer
 from .fs_atomic import atomic_write_text
 from .models import RuntimePaths
 from .path_safety import ensure_external_path_has_no_symlink_components
@@ -710,7 +710,7 @@ def _installation_requires_reconciliation(paths: RuntimePaths) -> bool:
     except (ManifestValidationError, FirmwareDetectionError) as exc:
         raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED) from exc
 
-    detected_firmware = detected.version
+    detected_firmware = firmware_key(manifest, detected)
     installed_state_path = paths.printer_data_root / manifest.state_file
     if not installed_state_path.is_file() or installed_state_path.is_symlink():
         return True

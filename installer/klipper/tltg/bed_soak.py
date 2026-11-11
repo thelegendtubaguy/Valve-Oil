@@ -554,8 +554,10 @@ class BedSoak:
         zy = self._profile_var("z_tilt_staging_y", None)
         staging = "G1 X%g Y%g F33900" % (zx, zy) if zx is not None \
             and zy is not None else ""
-        self._script("z_tilt", "\n".join(
-            filter(None, ("G90", staging, "Z_TILT_ADJUST", "M400"))))
+        # The Smart 5 has a single Z motor and no Z tilt.
+        if self.printer.lookup_object("z_tilt", None) is not None:
+            self._script("z_tilt", "\n".join(
+                filter(None, ("G90", staging, "Z_TILT_ADJUST", "M400"))))
         self._script("home_z", "BED_MESH_CLEAR\n"
                      "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT")
         self.checks.append(self._probe_check("cold_mesh"))
