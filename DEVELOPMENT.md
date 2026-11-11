@@ -28,5 +28,6 @@ Run both again to pick up newer dev changes.
 
 - **Try a local build on your printer:** `scripts/build_copy_dry_run.sh --host <printer-ip>` builds a dev bundle from your checkout, copies it over, and runs a dry run. Options: `--user <name>` (default `qidi`), `--password '<password>'` (needs `sshpass`), `--debug`.
 - **Before opening a PR,** run the checks for what you touched, listed under **Validation** in [AGENTS.md](AGENTS.md#validation).
+- **Trace QIDI's Box code:** `scripts/box_trace/box_trace.sh install qidi@<printer-ip>` adds a log-only tracer that records each QIDI Box call, the settings it reads, its G-code, and the Box motor positions during loads and unloads. `fetch` copies the log back and `remove` takes the tracer off. See [`scripts/box_trace/README.md`](scripts/box_trace/README.md).
 - **THR firmware:** building and checking the FIFO fix is in [`firmware/README.md`](firmware/README.md). It never flashes a printer.
 - **Fake printer:** `TLTG_OPTIMIZED_PRINTER_DATA_ROOT`, `TLTG_OPTIMIZED_FIRMWARE_MANIFEST`, and `TLTG_OPTIMIZED_MOONRAKER_URL` point the installer at a fixture directory instead of a live printer, as `installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` do.
