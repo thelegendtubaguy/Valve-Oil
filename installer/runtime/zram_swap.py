@@ -65,11 +65,11 @@ def patch_unit(current: str) -> str:
 
 
 def kernel_supported(spec: SystemZramSwapSpec, *, osrelease: Path, version: Path) -> bool:
-    """Whether the running kernel is the exact build the modules were made for."""
+    """Whether the running kernel is one of the exact builds the modules load on."""
     try:
         return (
             osrelease.read_text(encoding="utf-8").strip() == spec.kernel_release
-            and version.read_text(encoding="utf-8").strip() == spec.kernel_version
+            and version.read_text(encoding="utf-8").strip() in spec.kernel_versions
         )
     except OSError:
         return False
@@ -82,7 +82,6 @@ def render_script(spec: SystemZramSwapSpec) -> str:
 set -u
 DIR={DESTINATION}
 RELEASE='{spec.kernel_release}'
-VERSION='{spec.kernel_version}'
 ZRAM=/sys/block/zram0
 
 loaded() {{
@@ -90,9 +89,13 @@ loaded() {{
 }}
 
 start() {{
-    # The modules match one kernel build. Any other kernel, such as one from a QIDI update, runs without swap.
-    if [ "$(cat {OSRELEASE})" != "$RELEASE" ] || [ "$(cat {VERSION})" != "$VERSION" ]; then
-        echo "Kernel $(cat {OSRELEASE}) $(cat {VERSION}) is not the build these modules are for; zram swap stays off."
+    # The modules match listed kernel builds only. Any other kernel, such as one from a QIDI update, runs without swap.
+    case "$(cat {VERSION})" in
+        {" | ".join(f"'{v}'" for v in spec.kernel_versions)}) supported=1 ;;
+        *) supported=0 ;;
+    esac
+    if [ "$(cat {OSRELEASE})" != "$RELEASE" ] || [ "$supported" != 1 ]; then
+        echo "Kernel $(cat {OSRELEASE}) $(cat {VERSION}) is not a build these modules are for; zram swap stays off."
         return 0
     fi
     for module in {" ".join(names)}; do

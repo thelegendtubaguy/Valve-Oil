@@ -3,14 +3,35 @@
 ### Requirement: Plus 5 motion follows its own hardware
 On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, positions, cutter, wiper, and waste-chute coordinates under the same macro names as on the Max 4, and SHALL issue no QIDI closed-loop driver command.
 
-#### Scenario: Plus 5 homing keeps QIDI's sensorless sequence
+#### Scenario: Plus 5 homing uses QIDI's sensorless currents without staging moves
 - **WHEN** X or Y homes on a Plus 5
-- **THEN** both X/Y drivers use QIDI's homing current during the home, `run_current` is restored afterwards, and each axis backs off as QIDI's Plus 5 macros do
+- **THEN** X and Y don't move before they home, and a full or X/Y home homes Y once, then X
+- **AND** both X/Y drivers use QIDI's homing current during the home, `run_current` is restored afterwards, and each axis backs off as QIDI's Plus 5 macros do
 - **AND** no closed-loop homing mode or enforce-mode command is sent
 
 #### Scenario: Plus 5 nozzle moves stay within its travel
 - **WHEN** the optimized cut, wipe, chute, park, or print-start moves run on a Plus 5
 - **THEN** they use the Plus 5's coordinates, all inside its configured X −7–326 and Y −5–340 travel
+
+#### Scenario: Plus 5 rear moves stay inside the chute window
+- **WHEN** an optimized macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
+- **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
+
+#### Scenario: Plus 5 cut presses the cutter once
+- **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by the optimized macros
+- **THEN** the extruder motor is released and the toolhead presses the Plus 5 cutter once at QIDI's Plus 5 cutter speed, with no dwell at the cutter
+
+#### Scenario: Plus 5 chute approach is fast up to the chute entrance
+- **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
+- **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
+
+#### Scenario: Plus 5 mainboard fan runs with the X/Y motors
+- **WHEN** any X, Y, or Z motor is on on a Plus 5
+- **THEN** the mainboard fan runs, where QIDI ran it only with the Z motors
+
+#### Scenario: Plus 5 X/Y drivers switch at 400 V/µs
+- **WHEN** Klipper starts on a Plus 5 with Valve Oil installed
+- **THEN** both TMC2240 X/Y drivers run with `slope_control` 2, and QIDI's `printer.cfg` driver sections are unchanged
 
 #### Scenario: Plus 5 speed limits stay at QIDI's values
 - **WHEN** install or update runs on a Plus 5
@@ -19,3 +40,63 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 #### Scenario: Plus 5 slicer start uses its own prime line
 - **WHEN** a print sliced with the project's Plus 5 OrcaSlicer or QIDI Studio pack starts
 - **THEN** its start path follows the Plus 5 start-print contract, including the Plus 5 prime line and `M1006 Z` temperature compensation
+
+## MODIFIED Requirements
+
+### Requirement: Operator-configurable QIDI Box feed motion
+Optimized configuration SHALL let operators set the QIDI Box hub push speed, load fast distance, fast speeds, approach speed, and acceleration, the unload speeds and acceleration, and the park speed, through Klipper saved variables. On QIDI Box code that loads and unloads in stages, such as the Max 4's, the fast, approach, and unload settings SHALL also be settable per slot. It SHALL keep vendor motion whenever settings are absent, invalid, or unsupported. Hot phases and vendor flow control SHALL remain vendor-owned.
+
+#### Scenario: Absent settings keep vendor motion
+- **WHEN** no feed-motion settings are saved
+- **THEN** Box loads and unloads move exactly as the vendor firmware does
+
+#### Scenario: A load pushes fast, then approaches the toolhead switch
+- **WHEN** a valid feed-motion profile is saved
+- **AND** a Box load runs, including a tool change during a print
+- **THEN** the Box pushes the filament at the configured fast stage speeds for the effective fast distance, then at the configured approach speed until the toolhead filament switch trips
+- **AND** the load can reach at least as far as the vendor load before giving up
+- **AND** cutting, synced extruder motion, purge, wipe, retries, error reporting, RFID, feed assist, and status are unchanged
+
+#### Scenario: An unload uses the configured speeds
+- **WHEN** a valid feed-motion profile is saved
+- **AND** a Box unload runs
+- **THEN** the Box-only retract to the hub sensor uses the configured unload speeds and acceleration and the vendor distances
+
+#### Scenario: The extruder retract before the Box unload is configurable
+- **WHEN** an extruder retract length is saved
+- **THEN** every slot's unload retracts the extruder by that length in its second extruder retract, at the vendor speed
+- **AND** the first extruder retract is unchanged
+- **AND** the length cannot be overridden per slot
+
+#### Scenario: Slot overrides take precedence
+- **WHEN** a setting is saved for one slot
+- **THEN** that slot's loads or unloads use it in place of the global setting or vendor value
+- **AND** other slots are unaffected
+- **AND** clearing the override returns the slot to the global setting
+
+#### Scenario: An invalid profile falls back as a whole
+- **WHEN** a slot's saved settings and overrides, combined with vendor values for anything unset, include an out-of-range value or form a profile the vendor planner cannot run
+- **THEN** that slot's whole load or unload profile uses vendor motion
+- **AND** the operator is told which check failed
+
+#### Scenario: The fast distance applies as set
+- **WHEN** a fast distance within its bounds is saved
+- **THEN** the next load's fast push covers that distance, including when it is longer than the vendor's
+
+#### Scenario: Hub push and park speeds are configurable
+- **WHEN** a hub push speed or park speed is saved
+- **THEN** every slot's load pushes filament from the spool to the Box hub at that hub push speed, and every slot's unload moves it from the hub back to its parked position at that park speed
+- **AND** neither can be overridden per slot
+
+#### Scenario: Plus 5 single-move loads and unloads use the configured values
+- **WHEN** QIDI's Plus 5 Box code (`01.01.02.01`) loads or unloads
+- **THEN** its fast push to the toolhead sensor uses the configured fast distance, speed, and acceleration, its approach after that uses the configured approach speed, and its pull back to the hub uses the configured unload speed and acceleration, with QIDI's values for anything unset
+- **AND** no setting can be overridden per slot, and a setting the Plus 5's Box code does not use is refused
+
+#### Scenario: Unexpected vendor calls keep vendor motion
+- **WHEN** QIDI's staged Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
+- **THEN** feed-motion settings are not applied and vendor motion is unchanged
+
+#### Scenario: Unrecognized Box code keeps vendor motion
+- **WHEN** QIDI's `box_stepper.so` is not a build the integration lists
+- **THEN** the integration wraps nothing, including the extruder retract length, and reports itself inactive with the build's hash

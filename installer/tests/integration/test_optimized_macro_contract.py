@@ -17,6 +17,10 @@ from installer.tests.integration.test_macro_call_graph import (
 
 OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
 MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
+NEWEST_STOCK = {
+    "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
+    "plus5": REPO_ROOT / "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+}
 
 
 class OptimizedMacroContractTests(unittest.TestCase):
@@ -156,11 +160,16 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
     def test_filament_sensor_policy_preserves_events_and_box_recovery(self):
+        for printer, pin in (("max4", "!THR:PA0"), ("plus5", "!THR:PA1")):
+            with self.subTest(printer=printer):
+                sensor = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
+                self.assertIn("[filament_switch_sensor filament_switch_sensor]", sensor)
+                self.assertIn("pause_on_runout: False", sensor)
+                self.assertIn("runout_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_RUNOUT", sensor)
+                self.assertIn("insert_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_INSERTED", sensor)
+                self.assertIn(f"switch_pin: {pin}", sensor)
+
         text = (OPTIMIZED_MACRO_ROOT / "filament.cfg").read_text(encoding="utf-8")
-        self.assertIn("[filament_switch_sensor filament_switch_sensor]", text)
-        self.assertIn("pause_on_runout: False", text)
-        self.assertIn("runout_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_RUNOUT", text)
-        self.assertIn("insert_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_INSERTED", text)
 
         control = self._macro_gcode("TLTG_FILAMENT_SENSOR")
         self.assertIn("variable_pause_enabled: 1", text)
@@ -208,19 +217,215 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "M118 Please load filament",
         )
 
-    def test_vendor_cut_macro_matches_newest_stock_without_exit_dwell(self):
-        stock = self._section_gcode(
-            REPO_ROOT
-            / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01/config/klipper-macros-qd/filament.cfg",
-            "gcode_macro CUT_FILAMENT_1",
+    def test_max4_vendor_cut_and_chute_moves_follow_newest_stock(self):
+        def commands(text):
+            return [line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()]
+
+        def chute_path(lines):
+            # The run to the chute entrance is faster than QIDI's; the path and the push into the chute are QIDI's.
+            return [
+                line.replace("F{opt.trash_travel_speed_xy}", "F{km.travel_speed_xy}")
+                for line in lines
+                if not line.startswith("M204") and "_tltg_optimized_globals" not in line
+            ]
+
+        stock_root = NEWEST_STOCK["max4"] / "config/klipper-macros-qd"
+        stock_cut = commands(self._section_gcode(stock_root / "filament.cfg", "gcode_macro CUT_FILAMENT_1"))
+        self.assertEqual(stock_cut[-1], "G4 P2000")
+        self.assertEqual(
+            commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro CUT_FILAMENT_1")), stock_cut[:-1]
         )
-        optimized = self._macro_gcode("CUT_FILAMENT_1")
-        stock_lines = [line.rstrip() for line in stock.strip().splitlines()]
-        self.assertEqual(stock_lines[-1].strip(), "G4 P2000")
-        self.assertEqual([line.rstrip() for line in optimized.strip().splitlines()], stock_lines[:-1])
+
+        stock_chute = commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH"))
+        chute = commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro MOVE_TO_TRASH"))
+        self.assertEqual(chute_path(chute), chute_path(stock_chute))
+        accel = None
+        for line in chute:
+            if line.startswith("M204"):
+                accel = line
+            elif "F2000" in line:
+                self.assertEqual(accel, "M204 S10000", line)
+
+    def test_plus5_cut_presses_the_cutter_once(self):
+        for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
+            with self.subTest(section=section):
+                gcode = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg", section)
+                xs = [float(x) for x in re.findall(r"^\s*G1 X(-?[\d.]+)", gcode, re.M)]
+                strikes = sum(1 for before, after in zip([15.0] + xs, xs) if after <= 0 < before)
+                self.assertEqual(strikes, 1, gcode)
+                self.assertNotIn("G4 P1000", gcode)
+
+    def test_printer_folders_define_the_same_sections(self):
+        # Driver sections only add options to the printer's own stock driver sections, which differ by printer.
+        sections = {}
+        for printer, stock_root in NEWEST_STOCK.items():
+            stock = {
+                name.lower()
+                for name, _, _ in iter_sections((stock_root / "config/printer.cfg").read_text(encoding="utf-8").splitlines())
+            }
+            names = [
+                name.lower()
+                for path in (PRINTER_MACRO_ROOT / printer).glob("*.cfg")
+                for name, _, _ in iter_sections(path.read_text(encoding="utf-8").splitlines())
+            ]
+            drivers = {name for name in names if name.startswith("tmc")}
+            with self.subTest(printer=printer):
+                self.assertLessEqual(drivers, stock)
+            sections[printer] = sorted(name for name in names if name not in drivers)
+        self.assertEqual(sections["plus5"], sections["max4"])
+
+    def test_plus5_homes_sensorless_without_closed_loop_commands(self):
+        text = "\n".join(path.read_text(encoding="utf-8") for path in (PRINTER_MACRO_ROOT / "plus5").glob("*.cfg"))
+        for command in ("ENFORCE_MODE", "SET_HOMING_MODE", "SET_HOMING_STATE", "cl_interface", "closed_loop"):
+            self.assertNotIn(command, text)
+
+        macros, duplicates = parse_macro_definitions(installed_macro_files("plus5"))
+        self.assertFalse(duplicates)
+        for axis in ("X", "Y"):
+            home = "\n".join(line for _, line in macros[f"_OPTIMIZED_HOME_{axis}_AND_BACKOFF"].gcode_lines)
+            self.assert_ordered(
+                home,
+                "SET_TMC_CURRENT STEPPER=stepper_x CURRENT={homing_current}",
+                "SET_TMC_CURRENT STEPPER=stepper_y CURRENT={homing_current}",
+                f"G28.6245197 {axis}",
+                'CURRENT={drivers["tmc2240 stepper_x"].run_current}',
+                'CURRENT={drivers["tmc2240 stepper_y"].run_current}',
+            )
+        homing_override = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/homing.cfg", "homing_override")
+        full_home = homing_override[:homing_override.index("{% if xy_home %}")]
+        self.assert_ordered(
+            full_home,
+            "_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
+            "_OPTIMIZED_HOME_Y_AND_BACKOFF",
+            "_OPTIMIZED_HOME_X_AND_BACKOFF",
+            "_OPTIMIZED_RESTORE_XY_HOMING_STATE",
+            "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW",
+        )
+        # As on the Max 4, X and Y don't move before they home, and Y homes once.
+        self.assertEqual(full_home.count("_OPTIMIZED_HOME_Y_AND_BACKOFF"), 1)
+        prep = "\n".join(line for _, line in macros["_OPTIMIZED_PREP_XY_HOME"].gcode_lines)
+        self.assertNotRegex(prep, r"G[01] [^\n]*[XY]")
+        self.assertGreater(
+            homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
+        )
+
+    def test_plus5_nozzle_moves_stay_inside_its_travel(self):
+        limits = {"X": (-7, 326), "Y": (-5, 340)}
+        text = (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8")
+        profile = (PRINTER_MACRO_ROOT / "plus5/printer_profile.cfg").read_text(encoding="utf-8")
+        relative = False
+        for line in text.splitlines():
+            command = line.split("#")[0].strip()
+            if command in ("G90", "G91"):
+                relative = command == "G91"
+            if relative or not command.startswith(("G0 ", "G1 ")):
+                continue
+            for axis, value in re.findall(r"\b([XY])(-?\d+(?:\.\d+)?)\b", command):
+                low, high = limits[axis]
+                self.assertTrue(low <= float(value) <= high, line)
+        for axis, value in re.findall(r"^variable_\w+_([xy]): (-?[\d.]+)$", profile, re.M):
+            low, high = limits[axis.upper()]
+            self.assertTrue(low <= float(value) <= high, f"{axis} {value}")
+
+    def test_plus5_rear_moves_stay_inside_the_chute_x_window(self):
+        # Behind Y320 the Plus 5's toolhead can only be between X75 and X231 (the Max 4's rear is open in X).
+        rear_y, x_low, x_high = 320, 75, 231
+        globals_cfg = (NEWEST_STOCK["plus5"] / "config/klipper-macros-qd/globals.cfg").read_text(encoding="utf-8")
+        km = types.SimpleNamespace(**{
+            name: float(re.search(rf"^variable_{name}: *([\d.]+)", globals_cfg, re.M).group(1))
+            for name in ("park_x", "park_y")
+        })
+        km.print_max = tuple(map(float, re.search(r"^variable_print_max: *\((\d+), *(\d+)\)", globals_cfg, re.M | re.I).groups()))
+        bodies = {
+            match.group(1): match.group(2)
+            for match in re.finditer(
+                r"^\[gcode_macro (\S+)\]\n(.*?)(?=^\[|\Z)",
+                (PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg").read_text(encoding="utf-8"),
+                re.M | re.S,
+            )
+        }
+        # Pure-motion entry points the common macros and slicer packs call.
+        calls = {
+            "OPTIMIZED_WIPE_NOZZLE_DROP": ["_OPTIMIZED_WIPE_NOZZLE", "_OPTIMIZED_CHUTE_DROP"],
+            "_OPTIMIZED_FINISH_START_SCRAPE": ["OPTIMIZED_MOVE_TO_TRASH", "OPTIMIZED_WIPE_NOZZLE_DROP"],
+            "OPTIMIZED_MOVE_TO_TRASH": ["_OPTIMIZED_MOVE_TO_TRASH_MOTION"],
+        }
+
+        def check(name, start, end):
+            (x0, y0), (x1, y1) = start, end
+            points = [(x, y) for x, y in (start, end) if y > rear_y]
+            if (y0 > rear_y) != (y1 > rear_y):
+                points.append((x0 + (x1 - x0) * (rear_y - y0) / (y1 - y0), rear_y))
+            for x, y in points:
+                self.assertTrue(x_low <= x <= x_high, f"{name}: X{x:g} Y{y:g} on {start} -> {end}")
+
+        def branch(condition, position):
+            # Conditions on the toolhead position are evaluated; any other condition runs its block.
+            if position is None or "gcode_move.position" not in condition:
+                return True
+            where = types.SimpleNamespace(x=position[0], y=position[1])
+            printer = types.SimpleNamespace(gcode_move=types.SimpleNamespace(position=where))
+            return bool(eval(condition, {"printer": printer, "km": km}))
+
+        def run(name, text, position):
+            relative = False
+            active = []
+            for line in text.splitlines():
+                command = line.split("#")[0].split(";")[0].strip()
+                block = re.fullmatch(r"\{%-? *(if|elif|else|endif|for|endfor)\b(.*?)-?%\}", command)
+                if block:
+                    keyword, condition = block.group(1), block.group(2).strip()
+                    if keyword == "if":
+                        taken = branch(condition, position)
+                        active.append([taken, taken])
+                    elif keyword in ("elif", "else") and active:
+                        run_it = not active[-1][1] and (keyword == "else" or branch(condition, position))
+                        active[-1] = [run_it, active[-1][1] or run_it]
+                    elif keyword == "endif" and active:
+                        active.pop()
+                    continue
+                if not all(state[0] for state in active):
+                    continue
+                word = command.split(" ")[0]
+                if word in calls:
+                    for called in calls[word]:
+                        position = run(called, bodies.get(called, called), position)
+                elif word in bodies:
+                    position = run(word, bodies[word], position)
+                elif command in ("G90", "G91"):
+                    relative = command == "G91"
+                elif word in ("G0", "G1"):
+                    target = list(position) if position else [None, None]
+                    for axis, value in re.findall(r"\b([XY])(\{[^}]*\}|-?[\d.]+)", command):
+                        index = "XY".index(axis)
+                        try:
+                            number = float(eval(value.strip("{}"), {"km": km}) if value.startswith("{") else value)
+                        except Exception:
+                            target[index] = None
+                            continue
+                        if relative:
+                            target[index] = None if target[index] is None else target[index] + number
+                        else:
+                            target[index] = number
+                    target = tuple(target) if None not in target else None
+                    if position and target:
+                        check(name, position, target)
+                    position = target
+            return position
+
+        # Unknown, mid-bed, parked in the chute, and behind the wipers at the wipe's exit.
+        starts = (None, (160.0, 160.0), (km.park_x, km.park_y), (140.0, km.park_y))
+        for name in bodies:
+            for start in starts:
+                with self.subTest(macro=name, start=start):
+                    run(name, bodies[name], start)
+        for pack in ("orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
+            for path in sorted((REPO_ROOT / pack).glob("*.gcode")):
+                with self.subTest(file=f"{pack}/{path.name}"):
+                    run(path.name, path.read_text(encoding="utf-8"), None)
 
     def test_slicer_filament_change_serves_both_box_command_surfaces(self):
-        for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
+        for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5"):
             with self.subTest(pack=pack):
                 text = (REPO_ROOT / pack / "change_filament.gcode").read_text(encoding="utf-8")
                 self.assert_ordered(

@@ -132,15 +132,19 @@ def delete_section(text: str, section_name: str) -> str:
 
 def append_section(text: str, section_text: str) -> str:
     """Add a section at the end of the file's regular config, ahead of any SAVE_CONFIG block."""
+    # QIDI ships some printers' configs with CRLF line endings; a restored section keeps the file's.
+    crlf = "\r\n" in text
+    if crlf:
+        section_text = section_text.replace("\r\n", "\n").replace("\n", "\r\n")
+    newline = "\r\n" if crlf else "\n"
     lines = text.splitlines(keepends=True)
     header_index = _autosave_header_index(lines)
     if header_index is None:
-        separator = "" if not text or text.endswith(("\n", "\r\n")) else "\n"
+        separator = "" if not text or text.endswith("\n") else newline
         return text + separator + section_text
-    if not section_text.endswith(("\n", "\r\n")):
-        section_text += "\n"
+    if not section_text.endswith("\n"):
+        section_text += newline
     return "".join(lines[:header_index]) + section_text + "".join(lines[header_index:])
-
 
 
 def normalized_section_sha256(section_text: str) -> str:

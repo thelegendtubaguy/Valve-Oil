@@ -253,6 +253,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # Fluidd's Box slot dialog gets the filaments a file uses, for the plate a 3MF prints.
         self.assertIn("plate_index = _3mf_selected_plate_index(", metadata.read_text(encoding="utf-8"))
         self.assertIn("each plate's own filaments", metadata.read_text(encoding="utf-8"))
+        # QIDI's CRLF line endings survive both metadata.py patches.
+        self.assertEqual(metadata.read_bytes().count(b"\n"), metadata.read_bytes().count(b"\r\n"))
         self.assertIn(b"        self._highest_epos = self._last_epos\r\n", spoolman.read_bytes())
         self.assertIn(FLUIDD_BOX_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(PATCH_MARKER.encode(), fluidd.read_bytes())
