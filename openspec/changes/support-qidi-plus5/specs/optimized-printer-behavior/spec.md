@@ -44,7 +44,7 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 ## MODIFIED Requirements
 
 ### Requirement: Operator-configurable QIDI Box feed motion
-Optimized configuration SHALL let operators set the QIDI Box load fast distance, fast stage speeds, approach speed, and acceleration, and the unload stage speeds and acceleration, through Klipper saved variables, globally and per slot. It SHALL keep vendor motion whenever settings are absent, invalid, or unsupported. The load pre-stage, hot phases, and vendor flow control SHALL remain vendor-owned.
+Optimized configuration SHALL let operators set the QIDI Box hub push speed, load fast distance, fast speeds, approach speed, and acceleration, the unload speeds and acceleration, and the park speed, through Klipper saved variables. On QIDI Box code that loads and unloads in stages, such as the Max 4's, the fast, approach, and unload settings SHALL also be settable per slot. It SHALL keep vendor motion whenever settings are absent, invalid, or unsupported. Hot phases and vendor flow control SHALL remain vendor-owned.
 
 #### Scenario: Absent settings keep vendor motion
 - **WHEN** no feed-motion settings are saved
@@ -83,10 +83,20 @@ Optimized configuration SHALL let operators set the QIDI Box load fast distance,
 - **WHEN** a fast distance within its bounds is saved
 - **THEN** the next load's fast push covers that distance, including when it is longer than the vendor's
 
+#### Scenario: Hub push and park speeds are configurable
+- **WHEN** a hub push speed or park speed is saved
+- **THEN** every slot's load pushes filament from the spool to the Box hub at that hub push speed, and every slot's unload moves it from the hub back to its parked position at that park speed
+- **AND** neither can be overridden per slot
+
+#### Scenario: Plus 5 single-move loads and unloads use the configured values
+- **WHEN** QIDI's Plus 5 Box code (`01.01.02.01`) loads or unloads
+- **THEN** its fast push to the toolhead sensor uses the configured fast distance, speed, and acceleration, its approach after that uses the configured approach speed, and its pull back to the hub uses the configured unload speed and acceleration, with QIDI's values for anything unset
+- **AND** no setting can be overridden per slot, and a setting the Plus 5's Box code does not use is refused
+
 #### Scenario: Unexpected vendor calls keep vendor motion
-- **WHEN** QIDI's Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
+- **WHEN** QIDI's staged Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
 - **THEN** feed-motion settings are not applied and vendor motion is unchanged
 
 #### Scenario: Unrecognized Box code keeps vendor motion
-- **WHEN** QIDI's `box_stepper.so` is not a build the integration lists, such as the Plus 5's, which loads and unloads without the multi-step methods
+- **WHEN** QIDI's `box_stepper.so` is not a build the integration lists
 - **THEN** the integration wraps nothing, including the extruder retract length, and reports itself inactive with the build's hash

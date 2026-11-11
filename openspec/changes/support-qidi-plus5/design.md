@@ -66,6 +66,8 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 - Filament changes use QIDI's Plus 5 wipe.
 - They leave out the Max 4 OrcaSlicer pack's `M106 P4` polar-cooler line until the Plus 5 is known to have one.
 
+**D4c. Box motion on the Plus 5 goes through QIDI's value lookups.** QIDI's Plus 5 `box_stepper.so` keeps the Max 4's three-stage load and two-stage unload methods but never calls them. Traced on a Plus 5 with a USB Box, a load is a `do_home` to the hub sensor at `extruder_load_length_1_speed` (85 mm/s), one `do_home` to the toolhead sensor of `extruder_load_length_2` (720 mm at 100 mm/s, acceleration 100), and, when that stops short, a `do_home` of up to 250 mm at `extruder_load_length_3_speed` (25 mm/s). An unload pulls the extruder back (`exl_2`, 100 mm), does one `do_home` back to the hub at `extruder_unload_length_1_speed` (100 mm/s, acceleration 50), and moves `extruder_unload_length_2` (−260 mm) at 80 mm/s to park. QIDI reads each value through `box_extras.get_value_by_key(name, default)` at the time of the move, so the Plus 5's settings answer those lookups and have no per-slot overrides. The Max 4 reads its hub push and park speeds through the same lookups, so `HUB_SPEED` and `PARK_SPEED` work the same way on both. On two loads the 720 mm push ran its full length and the 25 mm/s approach covered about 125 mm more, so the Plus 5 release default is an 850 mm push. The Max 4's release approach speed is the Plus 5's 25 mm/s, which reaches the same toolhead sensor.
+
 **D5. The screen card rotates in the service.** The service knows the framebuffer's geometry and the touchscreen's axis ranges. A portrait framebuffer on a printer whose UI is landscape is rotated before encoding. Taps are mapped back through the same rotation, and the touchscreen's own axis ranges decide whether the touch coordinates are portrait or landscape. Any portrait framebuffer is turned by one constant, `PORTRAIT_UI_ROTATION`. Its value is 90° clockwise, the direction observed on the project Plus 5, whose touchscreen reports framebuffer coordinates.
 
 **D6. Plus 5 rear moves stay in the chute window.** Behind Y 320 the Plus 5's toolhead can only be between X 75 and X 231; the Max 4's rear is open in X, so Max 4 rear moves such as its rear-bed scrape's X 380 swing don't carry over. The Plus 5 chute, wiper, and rear-bed scrape moves keep QIDI's Plus 5 positions (X 77–169), and a contract test walks every Plus 5 motion macro and slicer pack move to hold them inside the window.
@@ -100,7 +102,6 @@ All read-only unless noted. Results go into the Plus 5 observations.
 ## Open Questions
 
 - Do other shipping Plus 5s carry THR bootloader builds other than `46358f30…`? Unrecognized builds are refused before reset, as on the Max 4.
-- Does Plus 5 `box_stepper.so`'s `extruder_load_length_2`/`_3` change load lengths that the package's Box feed-motion settings assume?
 - Is the Plus 5's toolhead geometry, which the cold cut and the cutter position depend on, the same as the Max 4's?
 - Is there a Plus 5 rear-bed cable-collision risk like the Max 4's, which the optimized rear-bed scrape avoids?
 - How much memory does a printing Plus 5 use? zram ships on it either way, as on a Max 4 with AI detection off.

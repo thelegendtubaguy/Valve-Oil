@@ -22,3 +22,28 @@ The installer SHALL admit QIDI Plus 5 firmware `01.01.02.01` as the Plus 5, with
 - **WHEN** the Printer screen card shows a Plus 5, whose landscape UI is drawn into a 480×800 framebuffer
 - **THEN** the card shows the UI upright
 - **AND** a tap on the card presses the touchscreen at the control shown under it
+
+## MODIFIED Requirements
+
+### Requirement: QIDI Box motion release defaults
+The installer SHALL save the detected printer's release Box motion profile only when no Box motion setting exists in Klipper saved variables, and SHALL move a setting group that is still at an earlier release's defaults to the current release defaults.
+
+#### Scenario: Printers without motion settings receive the release profile
+- **WHEN** install, update, or idle automatic-update repair finds none of the Box motion settings
+- **THEN** it saves the detected printer's release profile through Moonraker after Klipper is ready and verifies the live values
+- **AND** a Max 4 gets a 950 mm fast push, QIDI's fast and unload speeds, a 25 mm/s approach, and a 55 mm extruder pull-back, and a Plus 5 gets an 850 mm fast push with QIDI's values for the rest
+
+#### Scenario: Operator motion settings are preserved
+- **WHEN** any Box motion setting exists, including one saved as `None` to use the vendor value
+- **THEN** no motion setting is written, except an earlier default moved as below
+- **AND** uninstall does not remove or reset the settings
+
+#### Scenario: Earlier faster speed defaults are lowered
+- **WHEN** install, update, or idle automatic-update repair on a Max 4 finds both fast load speeds at 120 and 100 mm/s, or both unload speeds at 115 and 120 mm/s
+- **THEN** it saves that pair as the release defaults, 85 and 65 mm/s or 65 and 85 mm/s, and verifies the live values
+- **AND** a pair with either speed changed is left unchanged
+
+#### Scenario: Earlier Max 4 pull-back and approach defaults are raised
+- **WHEN** install, update, or idle automatic-update repair on a Max 4 finds the extruder pull-back at 50 mm or the approach speed at 15 mm/s
+- **THEN** it saves that setting as the release default, 55 mm or 25 mm/s, and verifies the live value
+- **AND** every other motion setting is left unchanged

@@ -228,6 +228,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertNotIn("ENFORCE_MODE", homing)
         self.assertNotIn("SET_HOMING_MODE", homing)
         self.assertIn("switch_pin: !THR:PA1", (installed / "printer_profile.cfg").read_text(encoding="utf-8"))
+        # The Plus 5 gets its own Box motion defaults: a fast push long enough to reach the toolhead sensor.
+        saved_variables = (printer_root / "config/saved_variables.cfg").read_text(encoding="utf-8")
+        self.assertEqual(
+            klipper_cfg.resolve_unique_option(saved_variables, "Variables", "tltg_box_load_fast_length").value, "850"
+        )
+        self.assertNotIn("tltg_box_load_approach_speed =", saved_variables)
         self.assertEqual(
             hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
             SYNC_RESET_DESIRED_HOMING_SHA256,
@@ -304,8 +310,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                         self.assertNotIn(f"{name} =", saved_variables)
 
     def test_install_updates_box_motion_left_at_earlier_defaults(self):
-        # The load pair and the extruder pull-back are still at earlier defaults; the operator changed one
-        # unload speed.
+        # The load pair, the extruder pull-back, and the approach speed are still at earlier defaults; the
+        # operator changed one unload speed.
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
@@ -314,7 +320,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             + "tltg_box_load_fast_speed_2 = 100\n"
             + "tltg_box_unload_speed_1 = 115\n"
             + "tltg_box_unload_speed_2 = 90\n"
-            + "tltg_box_unload_extruder_length = 50\n",
+            + "tltg_box_unload_extruder_length = 50\n"
+            + "tltg_box_load_approach_speed = 15\n",
             encoding="utf-8",
         )
 
@@ -327,6 +334,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             ("tltg_box_unload_speed_1", "115"),
             ("tltg_box_unload_speed_2", "90"),
             ("tltg_box_unload_extruder_length", "55"),
+            ("tltg_box_load_approach_speed", "25"),
         ):
             self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
         self.assertNotIn("tltg_box_load_fast_length =", saved_variables)
