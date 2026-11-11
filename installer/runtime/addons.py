@@ -5,6 +5,7 @@ import configparser
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import tarfile
@@ -37,6 +38,8 @@ START_SETTLE_SECONDS = 20.0
 START_TIMEOUT_SECONDS = 45.0
 MAX_SOURCE_ENTRIES = 8192
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
+# Files the package adds to an add-on's source come from here.
+PAYLOAD_DIR = Path(__file__).resolve().parents[1] / "system"
 
 NOT_INSTALLED = "not_installed"
 INSTALLED = "installed"
@@ -64,6 +67,14 @@ class AddonDefinition:
     settings: dict[str, dict[str, dict[str, str]]]
     # Directories in the data directory the add-on needs before it starts.
     data_dirs: tuple[str, ...] = ()
+    # Settings written only when missing, so the operator's own values stay: same shape as settings.
+    defaults: dict[str, dict[str, dict[str, str]]] | None = None
+    # Package files added to the add-on's source: path under app -> file in PAYLOAD_DIR.
+    files: dict[str, str] | None = None
+    # Add-ons in the same group can't be installed together.
+    exclusive_group: str | None = None
+    # Where the add-on keeps its server and account link, for relinking: (config file, section, server key, token key).
+    link_settings: tuple[str, str, str, str] | None = None
 
     @property
     def unit(self) -> str:
@@ -102,6 +113,8 @@ def addon_paths(addon_id: str) -> AddonPaths:
 # firmware updates keep it, and is told not to write moonraker.conf. Its parent directory has no Fluidd or Mainsail
 # folder, so it doesn't inject its script into either Fluidd.
 OCTOEVERYWHERE_STATUS_PORT = 7132
+# OctoEverywhere and Obico both relay Fluidd and the camera and watch prints; running both doubles the load for nothing.
+REMOTE_ACCESS = "remote-access"
 OCTOEVERYWHERE_LOG_DIR = "/home/qidi/printer_data/logs"
 OCTOEVERYWHERE_MOONRAKER_CONF = "/home/qidi/printer_data/config/moonraker.conf"
 
@@ -153,6 +166,7 @@ OCTOEVERYWHERE = AddonDefinition(
     service="octoeverywhere",
     foreign_paths=("/home/qidi/octoeverywhere", "/home/qidi/octoeverywhere-env"),
     render_unit=_octoeverywhere_unit,
+    exclusive_group=REMOTE_ACCESS,
     # The plugin refuses to start without its config and storage directories.
     data_dirs=("config", "store"),
     settings={
@@ -168,7 +182,76 @@ OCTOEVERYWHERE = AddonDefinition(
     },
 )
 
-DEFINITIONS: dict[str, AddonDefinition] = {OCTOEVERYWHERE.id: OCTOEVERYWHERE}
+
+# Obico's own installer also installs system packages, adds a Moonraker update-manager section, and keeps its
+# configuration in printer_data/config; the plugin itself adds an include to printer.cfg. Here it runs from its own
+# environment through Valve Oil's launcher (installer/system/tltg_obico.py), which stops the printer.cfg change, picks
+# the plugin's Janus build for QIDI's Debian, and reports the link code for Fluidd.
+OBICO_CLOUD = "https://app.obico.io"
+OBICO_CONFIG = "moonraker-obico.cfg"
+OBICO_STATUS = "tltg-status.json"
+OBICO_LOG = "/home/qidi/printer_data/logs/moonraker-obico.log"
+OBICO_LAUNCHER = "tltg_obico.py"
+
+
+def _obico_unit(paths: AddonPaths) -> str:
+    return OBICO.unit_marker + f"""\
+# Obico, installed by Valve Oil. Remove it from Fluidd's Settings or with addons.sh remove obico.
+[Unit]
+Description=Obico (Valve Oil add-on)
+After=network-online.target moonraker.service
+Wants=network-online.target
+ConditionPathExists={paths.code}/{MARKER}
+
+[Service]
+Type=simple
+User=qidi
+WorkingDirectory={paths.app}
+Environment="TLTG_OBICO_STATUS={paths.data}/{OBICO_STATUS}"
+Environment="MALLOC_TRIM_THRESHOLD_=65536"
+Environment="MALLOC_ARENA_MAX=2"
+ExecStart={paths.python} -m {OBICO_LAUNCHER.removesuffix(".py")} -c {paths.data}/{OBICO_CONFIG}
+Restart=always
+RestartSec=10
+# Off Klipper's CPUs and behind it for CPU time.
+Nice=10
+CPUAffinity=0 3
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+OBICO = AddonDefinition(
+    id="obico",
+    name="Obico",
+    description="Remote access to Fluidd and the camera, print notifications, and AI failure detection, through Obico's cloud or your own Obico server.",
+    homepage="https://www.obico.io",
+    # Moonraker lists moonraker-obico among the services Fluidd's power menu may control.
+    service="moonraker-obico",
+    foreign_paths=("/home/qidi/moonraker-obico", "/home/qidi/moonraker-obico-env"),
+    render_unit=_obico_unit,
+    settings={
+        OBICO_CONFIG: {
+            "moonraker": {"host": "127.0.0.1", "port": "7125"},
+            "logging": {"path": OBICO_LOG},
+            # Remote access opens the Fluidd nginx serves on port 80.
+            "tunnel": {"dest_host": "127.0.0.1", "dest_port": "80"},
+        },
+    },
+    defaults={
+        OBICO_CONFIG: {
+            "server": {"url": OBICO_CLOUD},
+            "webcam": {"disable_video_streaming": "False"},
+            "logging": {"level": "INFO"},
+        },
+    },
+    files={OBICO_LAUNCHER: OBICO_LAUNCHER},
+    exclusive_group=REMOTE_ACCESS,
+    link_settings=(OBICO_CONFIG, "server", "url", "auth_token"),
+)
+
+DEFINITIONS: dict[str, AddonDefinition] = {OCTOEVERYWHERE.id: OCTOEVERYWHERE, OBICO.id: OBICO}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -185,6 +268,7 @@ def list_addons(spec: AddonsSpec | None, *, root: Path = Path("/"), run: RunFn =
         marker = read_marker(addon.id, root=root)
         state = addon_state(definition, addon, marker, root=root)
         installed = state in {INSTALLED, UPDATE_AVAILABLE}
+        blockers = [] if installed else [other.name for other in _blockers(definition, root=root)]
         result.append(
             {
                 "id": addon.id,
@@ -195,6 +279,8 @@ def list_addons(spec: AddonsSpec | None, *, root: Path = Path("/"), run: RunFn =
                 "installed_version": marker.get("version") if marker else None,
                 "state": state,
                 "service": {"name": definition.service, "active": service_active(definition.unit, run=run)} if installed else None,
+                # Other add-ons that must be removed before this one can be installed.
+                "blocked_by": blockers,
             }
         )
     return result
@@ -202,16 +288,27 @@ def list_addons(spec: AddonsSpec | None, *, root: Path = Path("/"), run: RunFn =
 
 def addon_state(definition: AddonDefinition, addon: AddonSpec, marker: dict[str, Any] | None, *, root: Path) -> str:
     if marker is not None:
-        return INSTALLED if marker.get("build") == build_id(addon) else UPDATE_AVAILABLE
+        return INSTALLED if marker.get("build") == build_id(addon, definition) else UPDATE_AVAILABLE
     if _foreign_install(definition, root=root):
         return FOREIGN
     return NOT_INSTALLED
 
 
-def build_id(addon: AddonSpec) -> str:
-    """Identify the add-on's pinned files independently of their order."""
-    digests = sorted([addon.source.sha256, *(wheel.sha256 for wheel in addon.wheels)])
+def build_id(addon: AddonSpec, definition: AddonDefinition) -> str:
+    """Identify the add-on's pinned files and the package's files for it, independently of their order."""
+    digests = sorted([addon.source.sha256, *(item.sha256 for item in (*addon.wheels, *addon.sdists))])
+    digests += sorted(hashlib.sha256(f"{name}\n".encode("utf-8") + data).hexdigest() for name, data in _package_files(definition).items())
     return hashlib.sha256(f"{addon.id}\n{addon.version}\n".encode("utf-8") + "\n".join(digests).encode("ascii")).hexdigest()
+
+
+def _package_files(definition: AddonDefinition) -> dict[str, bytes]:
+    files = {}
+    for relative, payload in (definition.files or {}).items():
+        try:
+            files[relative] = (PAYLOAD_DIR / payload).read_bytes()
+        except OSError as exc:
+            raise AddonError(f"{payload} is missing from the package.") from exc
+    return files
 
 
 def read_marker(addon_id: str, *, root: Path) -> dict[str, Any] | None:
@@ -232,6 +329,19 @@ def service_active(unit: str, *, run: RunFn) -> str:
         return "unknown"
     state = (result.stdout or "").strip().splitlines()
     return state[0] if state else "unknown"
+
+
+def _blockers(definition: AddonDefinition, *, root: Path) -> list[AddonDefinition]:
+    """Add-ons in the same exclusive group that are installed, by the package or otherwise."""
+    if definition.exclusive_group is None:
+        return []
+    return [
+        other
+        for other in DEFINITIONS.values()
+        if other.id != definition.id
+        and other.exclusive_group == definition.exclusive_group
+        and (read_marker(other.id, root=root) is not None or unit_owned(other, root=root) or _foreign_install(other, root=root))
+    ]
 
 
 def _foreign_install(definition: AddonDefinition, *, root: Path) -> bool:
@@ -267,6 +377,10 @@ def install_addon(
     state = addon_state(definition, addon, marker, root=root)
     if state == FOREIGN:
         raise AddonError(f"{definition.name} was installed outside Valve Oil; remove that install first.")
+    blockers = _blockers(definition, root=root) if marker is None else []
+    if blockers:
+        names = " and ".join(other.name for other in blockers)
+        raise AddonError(f"Remove {names} first; {definition.name} and {names} can't be installed together.")
     if state == INSTALLED and _unit_current(definition, root=root):
         status(f"{definition.name} {addon.version} is already installed.")
         _ensure_data(definition, root=root)
@@ -291,6 +405,10 @@ def install_addon(
     _remove_tree(previous, root=root)
     staging.mkdir(parents=True)
     _extract_source(installer_root / addon.source.archive, staging / "app")
+    for relative, data in _package_files(definition).items():
+        target = staging / "app" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     status("Creating its Python environment")
     _checked(run, [SYSTEM_PYTHON, "-m", "venv", "--without-pip", str(staging / "env")], "Could not create the add-on's Python environment.")
     status(f"Installing {len(addon.wheels)} Python packages")
@@ -304,7 +422,19 @@ def install_addon(
         ],
         "Could not install the add-on's Python packages.",
     )
-    _write_json(staging / MARKER, {"id": addon_id, "version": addon.version, "build": build_id(addon)})
+    if addon.sdists:
+        status(f"Building {len(addon.sdists)} Python packages")
+        # Pure-Python sources, built offline with the setuptools from the wheels above.
+        _checked(
+            run,
+            [
+                str(staging / "env/bin/python3"), f"{pip}/pip", "install", "--quiet", "--no-index", "--no-deps",
+                "--no-build-isolation", "--no-cache-dir", "--disable-pip-version-check", "--no-warn-script-location",
+                *(str(installer_root / sdist.archive) for sdist in addon.sdists),
+            ],
+            "Could not build the add-on's Python packages.",
+        )
+    _write_json(staging / MARKER, {"id": addon_id, "version": addon.version, "build": build_id(addon, definition)})
     _ensure_data(definition, root=root)
 
     status(f"Starting {definition.name}")
@@ -365,6 +495,63 @@ def remove_addon(
     return True
 
 
+# A server address: http or https, a host name, IPv4 or bracketed IPv6 address, an optional port, and an optional
+# path. Nothing that could end the configuration line or add another setting.
+_SERVER_URL = re.compile(r"^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?(?:/[A-Za-z0-9._~%/-]*)?$")
+
+
+def normalize_server_url(url: str) -> str:
+    """The server address as the add-on stores it, or AddonError when it isn't an http or https server address."""
+    url = url.strip()
+    if len(url) > 200 or not _SERVER_URL.fullmatch(url):
+        raise AddonError("Enter the server's address, such as http://192.168.1.10:3334 or https://obico.example.com.")
+    return url.rstrip("/")
+
+
+def relink_addon(
+    addon_id: str,
+    *,
+    server: str | None = None,
+    root: Path = Path("/"),
+    sudo_password: str | None,
+    run: RunFn = subprocess.run,
+    status: Callable[[str], None] = lambda message: None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Forget the add-on's account link, optionally move it to another server, and restart it so it can be linked."""
+    definition = DEFINITIONS.get(addon_id)
+    if definition is None:
+        raise AddonError(f"Unknown add-on: {addon_id}")
+    if definition.link_settings is None:
+        raise AddonError(f"{definition.name} is linked from its own site, not from Valve Oil.")
+    if read_marker(addon_id, root=root) is None:
+        raise AddonError(f"{definition.name} is not installed.")
+    url = normalize_server_url(server) if server is not None else None
+    relative, section, server_key, token_key = definition.link_settings
+    status(f"Stopping {definition.name}")
+    _systemctl(["stop", definition.unit], root=root, sudo_password=sudo_password, run=run, check=False)
+    _ensure_data(definition, root=root)
+    path = _map(root, addon_paths(addon_id).data) / relative
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    try:
+        parser.read_string(path.read_text(encoding="utf-8") if path.is_file() else "")
+    except configparser.Error as exc:
+        raise AddonError(f"{definition.name}'s settings can't be read: {exc}") from exc
+    if not parser.has_section(section):
+        parser.add_section(section)
+    parser.remove_option(section, token_key)
+    if url is not None:
+        parser.set(section, server_key, url)
+        status(f"Using the server {url}")
+    buffer = io.StringIO()
+    parser.write(buffer)
+    path.write_text(buffer.getvalue(), encoding="utf-8")
+    status(f"Starting {definition.name}")
+    _start(definition, root=root, sudo_password=sudo_password, run=run, wait=True, sleep=sleep)
+    status(f"{definition.name} is ready to link.")
+
+
 def update_installed_addons(
     *,
     spec: AddonsSpec | None,
@@ -421,7 +608,7 @@ def _resolve(addon_id: str, spec: AddonsSpec | None) -> tuple[AddonDefinition, A
 
 
 def _verify_artifacts(spec: AddonsSpec, addon: AddonSpec, installer_root: Path) -> None:
-    for artifact in (spec.pip_wheel, addon.source, *addon.wheels):
+    for artifact in (spec.pip_wheel, addon.source, *addon.wheels, *addon.sdists):
         _verify_artifact(artifact, installer_root)
 
 
@@ -441,6 +628,7 @@ def _verify_artifact(artifact: SystemWheelSpec, installer_root: Path) -> None:
 def _extract_source(archive: Path, destination: Path) -> None:
     """Extract a release archive's single top-level directory into destination, refusing anything but plain files."""
     destination.mkdir(parents=True)
+    links: list[tuple[Path, Path]] = []
     try:
         with tarfile.open(archive, mode="r:gz") as tar:
             members = tar.getmembers()
@@ -455,8 +643,14 @@ def _extract_source(archive: Path, destination: Path) -> None:
                 relative = PurePosixPath(*parts[1:])
                 if not relative.parts:
                     continue
+                if member.issym() and "/" not in member.linkname and member.linkname not in {"", ".", ".."}:
+                    # Shared-library names, such as Obico's Janus plugins, link to a file beside them; they become
+                    # copies of it.
+                    target = destination.joinpath(*relative.parts)
+                    links.append((target, target.with_name(member.linkname)))
+                    continue
                 if not member.isfile():
-                    # Release archives can carry symlinks; nothing the plugin runs needs them.
+                    # Other links and special files aren't needed.
                     continue
                 target = destination.joinpath(*relative.parts)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -466,6 +660,9 @@ def _extract_source(archive: Path, destination: Path) -> None:
                 with source, target.open("wb") as handle:
                     shutil.copyfileobj(source, handle)
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
+        for target, source in links:
+            if source.is_file() and not source.is_symlink() and not target.exists():
+                shutil.copy2(source, target)
     except (tarfile.TarError, OSError) as exc:
         raise AddonError(f"Could not extract the add-on source: {exc}") from exc
 
@@ -478,7 +675,9 @@ def _ensure_data(definition: AddonDefinition, *, root: Path) -> None:
     (data / DATA_MARKER).write_text(f"{definition.id}\n", encoding="utf-8")
     for directory in definition.data_dirs:
         (data / directory).mkdir(parents=True, exist_ok=True)
-    for relative, sections in definition.settings.items():
+    for relative in {*definition.settings, *(definition.defaults or {})}:
+        sections = definition.settings.get(relative, {})
+        defaults = (definition.defaults or {}).get(relative, {})
         path = data / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         parser = configparser.ConfigParser(interpolation=None)
@@ -492,6 +691,13 @@ def _ensure_data(definition: AddonDefinition, *, root: Path) -> None:
             parser.optionxform = str
             current = ""
         changed = current == ""
+        for section, values in defaults.items():
+            if not parser.has_section(section):
+                parser.add_section(section)
+            for key, value in values.items():
+                if not parser.has_option(section, key):
+                    parser.set(section, key, value)
+                    changed = True
         for section, values in sections.items():
             if not parser.has_section(section):
                 parser.add_section(section)
