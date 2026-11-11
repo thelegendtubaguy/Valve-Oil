@@ -26,7 +26,7 @@
 ## 3. On the Plus 5, with services stopped
 
 - [x] 3.1 Snapshot the THR bootloader and classify it against the admitted builds.
-- [ ] 3.2 If a Box is attached, snapshot its bootloader, then load, unload, and change tools with stock firmware.
+- [ ] 3.2 If a Box is attached, snapshot its bootloader, then load, unload, and change tools with stock firmware. The Box's bootloader is the admitted `1e00811d…`; the installer flashed and verified `02.03.01.21-valve-oil.1` on it. Loads, unloads, and tool changes are still to run.
 
 ## 4. Admission and validation
 
