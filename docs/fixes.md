@@ -95,6 +95,12 @@ The top speed is now 565 mm/s, which keeps every motor at or below 800 mm/s of b
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
 
+## Klipper shutting down at startup on `INIT_RFID_READ`
+
+QIDI's startup macro `INIT_GLOBALS` runs 5 seconds into Klipper's startup and ends with `INIT_RFID_READ`, which has the QIDI Box read its spool tags. QIDI's Box code only finishes starting near the end of Klipper's startup, and `INIT_RFID_READ` doesn't check for that. On a start where something earlier took more than those 5 seconds, the command failed with `Internal error on command:"INIT_RFID_READ"` (`'NoneType' object has no attribute 'allVariables'` in `klippy.log`) and Klipper shut down until a firmware restart. This happens with or without a Box, since the macro runs the command either way.
+
+`INIT_RFID_READ` now waits until QIDI's Box code has started, then runs as before. If that takes more than a minute, the startup tag read is left out and `klippy.log` says so. A start where QIDI's Box code is ready in time is unchanged.
+
 ## Box loads stuck at `无法识别到已进料耗材`
 
 A Box load no longer stalls on every try when a slot's filament is at the Box hub but no slot is recorded as loaded. See [QIDI Box](qidi-box.md#stuck-box-loads).

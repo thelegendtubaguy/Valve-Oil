@@ -1047,6 +1047,18 @@ On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL a
 - **WHEN** a Box runs QIDI's firmware or the earlier shutdown-fix build
 - **THEN** RFID reads behave exactly as stock
 
+### Requirement: Startup tag read waits for the vendor Box controller
+Optimized configuration SHALL keep `INIT_RFID_READ` from raising an internal error when it runs before the vendor Box controller's ready callback, by running the vendor command once the controller has its saved variables and Box adapter. If the controller has neither within 60 seconds, or Klipper shuts down first, the startup read SHALL be left out and logged.
+
+#### Scenario: Startup read runs before the controller is ready
+- **WHEN** the vendor startup macro runs `INIT_RFID_READ` before the vendor Box controller's ready callback has run
+- **THEN** Klipper does not shut down
+- **AND** the vendor `INIT_RFID_READ` runs once after the controller is ready
+
+#### Scenario: Controller is ready
+- **WHEN** `INIT_RFID_READ` runs after the vendor Box controller's ready callback
+- **THEN** the vendor command runs at once, unchanged
+
 ### Requirement: Anycubic, Elegoo, and Bambu Lab filaments in QIDI's database
 At each Klipper start, optimized configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, and Bambu Lab 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, and `QFZ` and SHALL never be reassigned.
 

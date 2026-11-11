@@ -21,6 +21,13 @@
 # QIDI's parser, two-read confirmation, slot saving, touchscreen, and Fluidd
 # behavior stay QIDI's. Boxes on any other firmware keep QIDI's read. The tag
 # layouts are in openspec/observations/qidi-box/material-metadata.md.
+#
+# QIDI's INIT_GLOBALS runs INIT_RFID_READ 5 s into Klipper's ready callbacks.
+# QIDI's controller takes its saved variables and Box adapter in its own
+# ready callback, one of the last, and INIT_RFID_READ uses both unchecked.
+# When an earlier callback waits past those 5 s the command raised an
+# internal error that shut Klipper down. Here it runs once the controller
+# has both, and is left out, with a log line, if that takes over a minute.
 
 import hashlib
 import hmac
@@ -45,6 +52,8 @@ NTAG_PAGES = {0x0F: 45, 0x11: 135, 0x13: 231}  # GET_VERSION storage size byte: 
 PUBLIC_KEYS = (("default", DEFAULT_KEY), ("mad", bytes.fromhex("a0a1a2a3a4a5")),
                ("ndef", bytes.fromhex("d3f7d3f7d3f7")))
 MAX_AUTOMATIC_REPORTS = 20
+INIT_READ = "INIT_RFID_READ"
+INIT_READ_POLL, INIT_READ_WAIT = 0.25, 60.
 ANYCUBIC_HEADER = b"\x7b\x00\x65\x00"
 ELEGOO_HEADER = b"\x36\xee\xee\xee"
 # Bambu Lab tags: MIFARE Classic 1K whose sector keys come from the UID.
@@ -447,10 +456,43 @@ class BoxRfid:
         self.readers = {}
         self.captured = set()
         self.last_report = None
+        self.printer.register_event_handler("klippy:connect", self._guard_init_read)
         self.printer.register_event_handler("klippy:ready", self._ready)
         self.printer.lookup_object("gcode").register_command(
             "TLTG_BOX_RFID_REPORT", self.cmd_TLTG_BOX_RFID_REPORT,
             desc="Read the spool tag in a QIDI Box slot into a shareable report")
+
+    def _guard_init_read(self):
+        gcode = self.printer.lookup_object("gcode")
+        controller = self.printer.lookup_object("multi_color_controller", None)
+        if not all(hasattr(controller, attr) for attr in ("save_vars", "box_adapter")):
+            return
+        original = gcode.register_command(INIT_READ, None)
+        if original is None:
+            return
+
+        def started():
+            return controller.save_vars is not None and controller.box_adapter is not None
+
+        def cmd_INIT_RFID_READ(gcmd):
+            if started():
+                return original(gcmd)
+            logging.info("tltg_box_rfid: %s ran before QIDI's Box controller was ready; waiting for it", INIT_READ)
+            deadline = self.reactor.monotonic() + INIT_READ_WAIT
+
+            def retry(eventtime):
+                if self.printer.is_shutdown():
+                    return self.reactor.NEVER
+                if started():
+                    gcode.run_script(INIT_READ)
+                    logging.info("tltg_box_rfid: %s ran once QIDI's Box controller was ready", INIT_READ)
+                elif eventtime < deadline:
+                    return eventtime + INIT_READ_POLL
+                else:
+                    logging.info("tltg_box_rfid: QIDI's Box controller still wasn't ready; %s left out", INIT_READ)
+                return self.reactor.NEVER
+            self.reactor.register_timer(retry, self.reactor.monotonic() + INIT_READ_POLL)
+        gcode.register_command(INIT_READ, cmd_INIT_RFID_READ, desc=getattr(gcode, "gcode_help", {}).get(INIT_READ))
 
     def _ready(self):
         for name, rfid in self.printer.lookup_objects("box_rfid"):
