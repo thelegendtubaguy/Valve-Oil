@@ -196,6 +196,18 @@ def with_fluidd_build(manifest):
     return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, fluidd_build=pinned))
 
 
+def with_valve_oil_ui(manifest):
+    """Pin the manifest's Valve Oil UI to a small archive, as the bundle builder pins the one it builds."""
+    archive = temp_path("valve-oil-ui-") / "valve-oil-ui.zip"
+    with zipfile.ZipFile(archive, "w") as build:
+        build.writestr("index.html", "<!doctype html><title>Valve Oil</title>\n")
+        build.writestr("version.json", '{"version":"test"}\n')
+        build.writestr("assets/index.js", "console.log('valve oil')\n")
+    spec = manifest.system_optimizations
+    pinned = dataclasses.replace(spec.valve_oil_ui, archive=str(archive), sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, valve_oil_ui=pinned))
+
+
 def with_moonraker_speedups(manifest):
     """Pin the manifest's Moonraker speedups to small wheels; repository checkouts carry no release wheels."""
     directory = temp_path("moonraker-speedups-")

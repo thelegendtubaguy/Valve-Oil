@@ -4,7 +4,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from . import fluidd_build
+from .static_build import FLUIDD, VALVE_OIL_UI
 from .errors import InstallerError
 
 
@@ -15,10 +15,12 @@ NGINX_OPERATION = "remote_screen_nginx"
 UNIT = "tltg-remote-screen.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 SERVER_FILE = "/usr/local/lib/tltg_remote_screen.py"
-# The site operation also serves the package Fluidd build in place of QIDI's bundle; the operation keeps its original ID.
+# The site operation also serves the package Fluidd build in place of QIDI's bundle, and Valve Oil UI beside it; the
+# operation keeps its original ID.
 NGINX_SITE = "/etc/nginx/sites-available/fluidd"
-NGINX_QIDI_ROOT = f"\n    root {fluidd_build.QIDI_ROOT};\n"
-NGINX_BUILD_ROOT = f"\n    root {fluidd_build.DESTINATION};\n"
+QIDI_FLUIDD_ROOT = "/home/qidi/fluidd"
+NGINX_QIDI_ROOT = f"\n    root {QIDI_FLUIDD_ROOT};\n"
+NGINX_BUILD_ROOT = f"\n    root {FLUIDD.destination};\n"
 # The package Fluidd ships a gzip copy of each text asset, so nginx sends it instead of compressing every request.
 NGINX_GZIP_STATIC = "    gzip_static on;\n"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_remote_screen.py"
@@ -109,6 +111,38 @@ NGINX_BLOCK = NGINX_START + """\
 NGINX_ANCHOR = "\n    location /webcam/ {\n"
 NGINX_PREVIOUS = re.compile(re.escape(NGINX_START.rstrip("\n")) + r"\r?\n.*?" + re.escape(NGINX_END.rstrip("\n")) + r"\r?\n", re.DOTALL)
 
+NGINX_UI_START = "    # tltg-optimized:valve-oil-ui\n"
+NGINX_UI_END = "    # /tltg-optimized:valve-oil-ui\n"
+# Valve Oil UI uses hash routing, so it needs no fallback. Its page and version file are never cached, so open tabs
+# pick up an update.
+NGINX_UI_BLOCK = NGINX_UI_START + f"""\
+    location = /valve-oil {{
+        # A relative redirect keeps the port and any proxy in front of the printer.
+        absolute_redirect off;
+        return 301 /valve-oil/;
+    }}
+
+    location = /valve-oil/index.html {{
+        alias {VALVE_OIL_UI.destination}/index.html;
+        add_header Cache-Control "no-store";
+    }}
+
+    location = /valve-oil/version.json {{
+        alias {VALVE_OIL_UI.destination}/version.json;
+        add_header Cache-Control "no-store";
+    }}
+
+    # /valve-oil/ itself is answered through index by the index.html location above.
+    location ^~ /valve-oil/ {{
+        alias {VALVE_OIL_UI.destination}/;
+        index index.html;
+    }}
+""" + NGINX_UI_END
+# The block and the blank line after it.
+NGINX_UI_PREVIOUS = re.compile(
+    re.escape(NGINX_UI_START.rstrip("\n")) + r"\r?\n.*?" + re.escape(NGINX_UI_END.rstrip("\n")) + r"\r?\n(?:\r?\n)?", re.DOTALL
+)
+
 
 @lru_cache(maxsize=1)
 def server_source() -> str:
@@ -140,10 +174,31 @@ def serves_fluidd_build(text: str) -> bool:
     return any(NGINX_BUILD_ROOT.replace("\n", newline) in text for newline in ("\n", "\r\n"))
 
 
-def patch_nginx_site(text: str) -> str:
-    # The route goes before QIDI's first webcam location and reuses its Moonraker upstream and upgrade map.
+def serves_valve_oil_ui(text: str) -> bool:
+    return NGINX_UI_START.rstrip("\n") in text
+
+
+def patch_nginx_site(text: str, *, valve_oil_ui: bool = False) -> str:
+    """Serve the package Fluidd and the Printer screen route, and Valve Oil UI only when valve_oil_ui is set."""
     # QIDI ships the site with CRLF line endings; changes use the file's own.
     newline = "\r\n" if "\r\n" in text else "\n"
+    previous = NGINX_UI_PREVIOUS.findall(text)
+    if len(previous) > 1:
+        raise InstallerError("Fluidd nginx site does not match the reviewed QIDI source; preserving it.")
+    if previous:
+        text = text.replace(previous[0], "", 1)
+    if "/valve-oil" in text:
+        raise InstallerError("Fluidd nginx site does not match the reviewed QIDI source; preserving it.")
+    text = _patch_fluidd_and_screen(text, newline)
+    if valve_oil_ui:
+        # Valve Oil UI goes just before the Printer screen route.
+        start = NGINX_START.replace("\n", newline)
+        text = text.replace(start, NGINX_UI_BLOCK.replace("\n", newline) + newline + start, 1)
+    return text
+
+
+def _patch_fluidd_and_screen(text: str, newline: str) -> str:
+    # The route goes before QIDI's first webcam location and reuses its Moonraker upstream and upgrade map.
     qidi_root = NGINX_QIDI_ROOT.replace("\n", newline)
     build_root = NGINX_BUILD_ROOT.replace("\n", newline)
     if text.count(qidi_root) + text.count(build_root) != 1:

@@ -22,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from installer.runtime import static_build
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import (
     BUNDLE_ROOT_NAME,
@@ -108,6 +109,13 @@ def main(argv: list[str] | None = None) -> int:
                     "bundle source payload hash does not match package manifest: "
                     f"{variant.source}"
                 )
+    ui = package_manifest.system_optimizations.valve_oil_ui
+    if ui.sha256 is None:
+        raise SystemExit("bundled package.yaml does not pin the Valve Oil UI archive")
+    try:
+        static_build.VALVE_OIL_UI.archive_files(bundle_root / "installer" / ui.archive, ui.sha256)
+    except static_build.StaticBuildError as exc:
+        raise SystemExit(f"bundle Valve Oil UI archive is invalid: {exc.message}") from exc
     package_version = read_package_version(bundle_root / "installer/package.yaml")
     help_output = run_command([str(bundle_root / "install.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if help_output.returncode != 0:

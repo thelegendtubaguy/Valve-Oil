@@ -16,5 +16,10 @@ jobs:
         run: python3 scripts/run_installer_core_tests.py
       - name: Validate installer compatibility metadata
         run: python3 scripts/check_installer_known_versions.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Build and smoke-test installer bundle
         run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
