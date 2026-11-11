@@ -208,9 +208,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self._run_install(paths)
 
         printer_cfg = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
-        # Sensorless X/Y homing and the Plus 5's own speed limits keep QIDI's values.
+        # Sensorless X/Y homing stays single-touch at 55 mm/s, and the Plus 5 keeps its own speed limits.
         for stepper in ("stepper_x", "stepper_y"):
-            self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_speed").value, "50")
+            self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_speed").value, "55")
             self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_retract_dist").value, "0")
         self._assert_speeds(printer_root, max_velocity="600", bed_mesh="150", z_tilt="150")
         self.assertEqual(
