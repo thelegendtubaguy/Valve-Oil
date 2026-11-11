@@ -3,7 +3,7 @@
 - [x] 1.1 Time 5×5 and 9×9 full-bed meshes on a cold Max 4 with the nozzle at 140 °C, and measure how much back-to-back meshes differ, to set the default mesh size and the stopped-moving limit.
 - [x] 1.2 Time `Z_TILT_ADJUST` and the following Z home on the Max 4, for the test's setup time.
 - [x] 1.3 Measure a full soak at one bed and chamber temperature by hand, to check that height, shape, and speed settle as expected and that the probe doesn't drift with time alone.
-- [ ] 1.4 Find what caused the 50 µm probe jump on the test printer, starting with the plate at X195 Y105.
+- [x] 1.4 Find what caused the 50 µm probe jump on the test printer, starting with the plate at X195 Y105.
 
 ## 2. Klipper module
 
@@ -23,7 +23,7 @@
 ## 4. Tests and hardware
 
 - [x] 4.1 Cover the milestone and stopped-moving rules, the refusals, and leaving no profile or pending save, in the existing installer and module test suites.
-- [ ] 4.2 On the test Max 4, run the test at two bed and chamber combinations, stop one run partway, and check that heaters, the loaded mesh, profiles, and pending saves end as the spec says. (Done: bed 100 °C and chamber 50 °C to the end, and a stop partway at bed 60 °C with `kamp` loaded. Left: a second full combination from a cold printer.)
+- [x] 4.2 On the test Max 4, run the test at two bed and chamber combinations, stop one run partway, and check that heaters, the loaded mesh, profiles, and pending saves end as the spec says.
 
 ## 5. Release
 
