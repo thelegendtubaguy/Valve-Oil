@@ -120,6 +120,13 @@ Vendored dependency versions and artifact hashes are recorded in `installer/runt
 
 `installer/runtime/vendor/rich/_spinners.py` includes cli-spinners material under the MIT license.
 
+## Add-on files in release bundles
+
+Release bundles carry unmodified copies of the add-on files pinned under `addons:` in [`installer/package.yaml`](installer/package.yaml). The bundle builder downloads them; they are not part of this repository.
+
+- OctoEverywhere: the release source archive from <https://github.com/QuinnDamerell/OctoPrint-OctoEverywhere>, licensed under the GNU Affero General Public License version 3. The archive includes its `LICENSE`.
+- Python wheels from PyPI, including pip: each wheel carries its own license in its `.dist-info` directory.
+
 ## OpenSpec-generated workflow files
 
 - Source: <https://github.com/Fission-AI/OpenSpec>

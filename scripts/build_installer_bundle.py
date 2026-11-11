@@ -32,6 +32,7 @@ ALLOWED_FILES = [
     "installer/release/auto-update.sh",
     "installer/release/box-firmware.sh",
     "installer/release/mainboard-firmware.sh",
+    "installer/release/addons.sh",
     "scripts/flash_thr_firmware.py",
     "scripts/thr_bootloaders.py",
     "scripts/build_thr_firmware.py",
@@ -80,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     validate_printer_macro_trees(manifest)
     fluidd_archive = fetch_fluidd_build(manifest)
     speedup_wheels = fetch_moonraker_speedups(manifest)
+    addon_files = fetch_addon_files(manifest)
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -99,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(REPO_ROOT / "installer/release/auto-update.sh", bundle_root / "auto-update.sh")
     shutil.copy2(REPO_ROOT / "installer/release/box-firmware.sh", bundle_root / "box-firmware.sh")
     shutil.copy2(REPO_ROOT / "installer/release/mainboard-firmware.sh", bundle_root / "mainboard-firmware.sh")
+    shutil.copy2(REPO_ROOT / "installer/release/addons.sh", bundle_root / "addons.sh")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
     for directory in ALLOWED_DIRECTORIES:
         source = REPO_ROOT / directory
@@ -107,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(fluidd_archive, bundle_root / "installer" / manifest.system_optimizations.fluidd_build.archive)
     for wheel, cached in speedup_wheels:
         destination = bundle_root / "installer" / wheel.archive
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cached, destination)
+    for artifact, cached in addon_files:
+        destination = bundle_root / "installer" / artifact.archive
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cached, destination)
 
@@ -227,6 +234,27 @@ def fetch_moonraker_speedups(manifest) -> list[tuple[object, Path]]:
             partial.replace(cached)
         fetched.append((wheel, cached))
     moonraker_speedups.wheel_files((cached, wheel.sha256) for wheel, cached in fetched)
+    return fetched
+
+
+def fetch_addon_files(manifest) -> list[tuple[object, Path]]:
+    """Return every pinned add-on file, downloading each once and verifying it against the manifest."""
+    if manifest.addons is None:
+        return []
+    artifacts = [manifest.addons.pip_wheel]
+    for addon in manifest.addons.catalog:
+        artifacts += [addon.source, *addon.wheels]
+    fetched = []
+    for artifact in artifacts:
+        cached = DOWNLOAD_CACHE / f"{artifact.sha256}-{Path(artifact.archive).name}"
+        if not cached.is_file() or hashlib.sha256(cached.read_bytes()).hexdigest() != artifact.sha256:
+            with urllib.request.urlopen(artifact.url, timeout=120) as response:
+                data = response.read()
+            if hashlib.sha256(data).hexdigest() != artifact.sha256:
+                raise ValueError(f"{artifact.url} does not match the pinned sha256.")
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(data)
+        fetched.append((artifact, cached))
     return fetched
 
 

@@ -328,6 +328,23 @@ class SystemOptimizationsSpec:
 
 
 @dataclass(frozen=True)
+class AddonSpec:
+    id: str
+    version: str
+    source: SystemWheelSpec
+    wheels: tuple[SystemWheelSpec, ...]
+
+
+@dataclass(frozen=True)
+class AddonsSpec:
+    pip_wheel: SystemWheelSpec
+    catalog: tuple[AddonSpec, ...]
+
+    def find(self, addon_id: str) -> AddonSpec | None:
+        return next((addon for addon in self.catalog if addon.id == addon_id), None)
+
+
+@dataclass(frozen=True)
 class Manifest:
     schema_version: int
     package: PackageMeta
@@ -340,6 +357,7 @@ class Manifest:
     patches: PatchSetSpec
     postflight: PostflightSpec
     system_optimizations: Optional[SystemOptimizationsSpec] = None
+    addons: Optional[AddonsSpec] = None
 
     @property
     def state_file(self) -> str:

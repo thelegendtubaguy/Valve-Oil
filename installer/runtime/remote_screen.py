@@ -56,7 +56,8 @@ WantedBy=multi-user.target
 
 NGINX_START = "    # tltg-optimized:remote-screen\n"
 NGINX_END = "    # /tltg-optimized:remote-screen\n"
-# Moonraker authorizes each connection: trusted client addresses, or the card's one-shot token.
+# The package's routes in the Fluidd site: the Printer screen card and the Add-ons settings. Moonraker authorizes each
+# connection: trusted client addresses, or the card's one-shot token.
 NGINX_BLOCK = NGINX_START + """\
     location /tltg-screen/ {
         set $tltg_screen_token $arg_token;
@@ -77,6 +78,29 @@ NGINX_BLOCK = NGINX_START + """\
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
         proxy_set_header Upgrade "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Fluidd's Add-ons settings. Moonraker authorizes each request: trusted client addresses or Fluidd's login.
+    location /tltg-addons/ {
+        auth_request /tltg-addons-auth;
+        proxy_pass http://127.0.0.1:7131/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 150s;
+        client_max_body_size 4k;
+        access_log off;
+    }
+
+    location = /tltg-addons-auth {
+        internal;
+        # The subrequest would otherwise keep the client's method, and POST /access/user creates a Moonraker user.
+        proxy_method GET;
+        proxy_pass http://apiserver/access/user?token=$arg_token;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

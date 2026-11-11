@@ -36,6 +36,7 @@ from . import moonraker_allowed_services
 from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import moonraker_used_extruders
+from . import addons_service
 from . import remote_screen
 from . import restart_on_exit
 from . import cpu_tuning
@@ -127,6 +128,7 @@ SERVICE_NAMES = {
     MOONRAKER_SERVICE: "Moonraker",
     KLIPPER_SERVICE: "Klipper",
     remote_screen.UNIT: "the Printer screen service",
+    addons_service.UNIT: "the add-ons service",
     QIDICLIENT_SERVICE: "the touchscreen",
     cpu_governor.SERVICE: "the CPU governor",
     "crowsnest.service": "the camera",
@@ -147,7 +149,7 @@ STEP_LABELS = {
 SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
 # Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker.
-RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, QIDICLIENT_SERVICE)
+RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, QIDICLIENT_SERVICE)
 MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
@@ -359,6 +361,25 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: remote_screen.SERVER_FILE,
         patch=remote_screen.patch_server,
         restart_service=remote_screen.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    addons_service.UNIT_OPERATION: _GuardedFilePatch(
+        label="Add-ons service unit",
+        file=lambda spec: addons_service.UNIT_FILE,
+        patch=addons_service.patch_unit,
+        restart_service=addons_service.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=addons_service.UNIT,
+    ),
+    addons_service.SERVER_OPERATION: _GuardedFilePatch(
+        label="Add-ons service",
+        file=lambda spec: addons_service.SERVER_FILE,
+        patch=addons_service.patch_server,
+        restart_service=addons_service.UNIT,
         missing_message=None,
         skip_unrecognized=True,
         create_if_missing=True,
@@ -644,6 +665,7 @@ def maybe_emit_system_dry_run(
                         "klipper.service": " and restart Klipper",
                         "nginx.service": " and restart nginx",
                         remote_screen.UNIT: " and restart the printer screen service",
+                        addons_service.UNIT: " and restart the add-ons service",
                         QIDICLIENT_SERVICE: " and restart the touchscreen app",
                         zram_swap.UNIT: " and start zram swap",
                         cpu_governor.SERVICE: " and apply the CPU governor",
@@ -3133,6 +3155,8 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         FLUIDD_BUILD_OPERATION,
         remote_screen.UNIT_OPERATION,
         remote_screen.SERVER_OPERATION,
+        addons_service.UNIT_OPERATION,
+        addons_service.SERVER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
     if enabled:
@@ -3205,6 +3229,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_speedups.KLIPPER_PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
+        addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
@@ -3664,6 +3689,8 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_BUILD_OPERATION,
             remote_screen.UNIT_OPERATION,
             remote_screen.SERVER_OPERATION,
+            addons_service.UNIT_OPERATION,
+            addons_service.SERVER_OPERATION,
             remote_screen.NGINX_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),

@@ -9,6 +9,8 @@ import yaml
 
 from .backup import CONFIG_BACKUP_IGNORED_SYMLINKS
 from .models import (
+    AddonSpec,
+    AddonsSpec,
     BackupSpec,
     EnsureLineSpec,
     ExtraModuleSpec,
@@ -275,6 +277,7 @@ def parse_manifest(raw: Any) -> Manifest:
         patches=patches,
         postflight=postflight,
         system_optimizations=_parse_system_optimizations(raw),
+        addons=_parse_addons(raw),
     )
 
 
@@ -423,6 +426,47 @@ def source_patch_variants_for_firmware(
             f"Source patch {patch.id} does not support firmware {firmware_version}."
         )
     return matches
+
+
+# Add-on ids name directories, systemd units, and URL paths.
+_ADDON_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+
+
+def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
+    if "addons" not in raw:
+        return None
+    addons_raw = _require_mapping(raw, "addons")
+    catalog: list[AddonSpec] = []
+    for item in _require_list_of_mapping(addons_raw, "catalog"):
+        addon_id = _require_str(item, "id")
+        if not _ADDON_ID.match(addon_id):
+            raise ManifestValidationError(f"Invalid add-on id: {addon_id}")
+        if any(addon.id == addon_id for addon in catalog):
+            raise ManifestValidationError(f"Duplicate add-on id: {addon_id}")
+        wheels = tuple(_addon_artifact(wheel, f"addons.catalog.{addon_id}.wheels") for wheel in _require_list_of_mapping(item, "wheels"))
+        if not wheels:
+            raise ManifestValidationError(f"Expected non-empty list at addons.catalog.{addon_id}.wheels.")
+        catalog.append(
+            AddonSpec(
+                id=addon_id,
+                version=_require_str(item, "version"),
+                source=_addon_artifact(_require_mapping(item, "source"), f"addons.catalog.{addon_id}.source"),
+                wheels=wheels,
+            )
+        )
+    return AddonsSpec(
+        pip_wheel=_addon_artifact(_require_mapping(addons_raw, "pip_wheel"), "addons.pip_wheel"),
+        catalog=tuple(catalog),
+    )
+
+
+def _addon_artifact(item: Any, key: str) -> SystemWheelSpec:
+    _ensure_mapping_entry(item, key)
+    return SystemWheelSpec(
+        url=_validate_https_url(_require_str(item, "url")),
+        archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("addons",)),
+        sha256=_require_sha256(item, "sha256"),
+    )
 
 
 def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec | None:
