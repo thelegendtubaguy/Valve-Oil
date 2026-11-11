@@ -265,10 +265,13 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
             "_OPTIMIZED_HOME_Y_AND_BACKOFF",
             "_OPTIMIZED_HOME_X_AND_BACKOFF",
-            "_OPTIMIZED_HOME_Y_AND_BACKOFF",
             "_OPTIMIZED_RESTORE_XY_HOMING_STATE",
             "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW",
         )
+        # As on the Max 4, X and Y don't move before they home, and Y homes once.
+        self.assertEqual(full_home.count("_OPTIMIZED_HOME_Y_AND_BACKOFF"), 1)
+        prep = "\n".join(line for _, line in macros["_OPTIMIZED_PREP_XY_HOME"].gcode_lines)
+        self.assertNotRegex(prep, r"G[01] [^\n]*[XY]")
         self.assertGreater(
             homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
         )

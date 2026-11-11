@@ -48,7 +48,7 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Plus 5. In
 - The 565 mm/s cap comes from the closed-loop motors' belt-speed limit, so its patch variants are Max 4-only. The Plus 5 keeps QIDI's 600 unless measurement says otherwise.
 - The mainboard closed-loop fix is offered only on printers with closed-loop X/Y.
 
-**D4. Plus 5 homing ports QIDI's sequence first.** That sequence is: both drivers at 0.9 A, `G28.6245197` per axis, Y-X-Y, 10 mm backoff, and a 2 s settle. The first port keeps every current and dwell. Trimming dwells, as the Max 4 work did (`G4` before speed), waits for timed stock and optimized homing on the printer. Sensorless homing depends on current and speed, so no speed or current change ships without repeated homing checks.
+**D4. Plus 5 homing follows the Max 4's shape with QIDI's currents.** QIDI's sequence is: both drivers at 0.9 A, `G28.6245197` per axis, staging moves of X −5 and Y +5 mm after a 5 mm bed drop, a 2 s settle, Y-X-Y, and 10 mm backoffs. As on the Max 4, whose X/Y also home by motor stall, the optimized full home only drops the bed, then homes Y and X once each with QIDI's currents and backoffs; the staging moves, their settle, and the second Y home are dropped. Sensorless homing depends on current and speed, so no speed or current change ships without repeated homing checks.
 
 **D4a. What the Plus 5 port changes from QIDI's macros.**
 - `G28 X`, `G28 Y`, and `G28 Z` home that one axis with the same per-axis steps. QIDI's override ignores them, and the common macros expect them to work.

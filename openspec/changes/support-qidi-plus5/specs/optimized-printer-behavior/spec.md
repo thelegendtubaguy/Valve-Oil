@@ -3,9 +3,10 @@
 ### Requirement: Plus 5 motion follows its own hardware
 On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, positions, cutter, wiper, and waste-chute coordinates under the same macro names as on the Max 4, and SHALL issue no QIDI closed-loop driver command.
 
-#### Scenario: Plus 5 homing keeps QIDI's sensorless sequence
+#### Scenario: Plus 5 homing uses QIDI's sensorless currents without staging moves
 - **WHEN** X or Y homes on a Plus 5
-- **THEN** both X/Y drivers use QIDI's homing current during the home, `run_current` is restored afterwards, and each axis backs off as QIDI's Plus 5 macros do
+- **THEN** X and Y don't move before they home, and a full or X/Y home homes Y once, then X
+- **AND** both X/Y drivers use QIDI's homing current during the home, `run_current` is restored afterwards, and each axis backs off as QIDI's Plus 5 macros do
 - **AND** no closed-loop homing mode or enforce-mode command is sent
 
 #### Scenario: Plus 5 nozzle moves stay within its travel
