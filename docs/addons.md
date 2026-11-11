@@ -60,13 +60,13 @@ Removing OctoEverywhere deletes its identity, so installing it again later gives
 
 ### Linking your account
 
-Obico starts out using Obico Cloud. To use your own server, change the server first, as below. Once installed, Obico waits up to 4 hours to be linked, and its panel under **Add-ons** shows **Not linked**. To link it, do one of these:
+Obico starts out using Obico Cloud. To use your own server, change the server first, as below. Once installed, Obico waits up to 4 hours to be linked, and its panel under **Add-ons** shows **Not linked** and a link code. To link it, add a printer in the Obico app or at [app.obico.io](https://app.obico.io), or on your own Obico server, then:
 
-- Click **Link account** and sign in to Obico.
-- Open the Obico app on a phone or computer on the same network as the printer. The printer shows up there, ready to link.
-- Click **Show link code**, then in the Obico app choose to link a printer manually and enter the code.
+1. For the device, select **Generic Klipper - Self Installed**.
+2. Select **Switch to Manual Linking**.
+3. Enter the code from the panel.
 
-Within a few seconds of linking, the panel says **Linked**, with a link to the Obico server. If 4 hours pass without linking, the panel says Obico stopped waiting. Click **Restart linking** to start it waiting again.
+Within a few seconds of linking, the panel says **Linked**, with a link to the Obico server. If 4 hours pass without linking, the panel says Obico stopped waiting. Click **Restart linking** to start it waiting again, with a new code.
 
 ### Changing the server or unlinking
 
@@ -84,6 +84,6 @@ Its log is `moonraker-obico.log` in Fluidd's **Logs**. Fluidd's power menu lists
 
 Obico streams the camera with the WebRTC server it ships for Raspberry Pi's Debian 11, which runs on QIDI's Debian 11. Out of the box it looks for one made for the printer's board and, finding none, streams no video. Obico's first-layer scan needs a nozzle camera and its macros in `printer.cfg`, so it is not used.
 
-While it waits to be linked, Obico answers the Obico app on port 46793 so the app can find it on your network, and checks in with the server every 2 seconds. On the test Max 4 that took about 11% of one CPU core and 38 MB of memory.
+While it waits to be linked, Obico checks in with the server every 2 seconds for its link code, and answers on port 46793, which the Obico app uses to find printers on its network. On the test Max 4 that took about 11% of one CPU core and 38 MB of memory.
 
 Removing Obico deletes its settings and account link. If you installed Obico with its own installer, Fluidd shows it as installed outside Valve Oil and leaves it alone.

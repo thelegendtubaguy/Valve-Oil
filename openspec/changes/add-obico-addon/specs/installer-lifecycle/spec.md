@@ -63,6 +63,6 @@ Normal install and update SHALL provide a package-owned add-ons service and a Fl
 #### Scenario: Obico is linked from Fluidd
 - **WHEN** Obico is installed
 - **THEN** its panel shows whether its service runs, which server it uses, and whether an account is linked
-- **AND** an unlinked printer can be linked through Obico's link URL or a link code fetched on request, while Obico is waiting to be linked
+- **AND** while Obico waits to be linked, the panel shows its current link code and how to enter it in Obico's manual linking
 - **AND** the operator can unlink the printer, or move it to Obico's cloud or another Obico server, which unlinks it
 - **AND** a blocked install names the add-on to remove first

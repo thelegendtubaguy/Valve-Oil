@@ -27,7 +27,7 @@ STATUS_PATH = os.environ.get("TLTG_OBICO_STATUS", "")
 JANUS_BOARD = "rpi"
 
 _status_lock = threading.Lock()
-_status: dict = {"discovering": False, "one_time_passcode": "", "one_time_passlink": ""}
+_status: dict = {"discovering": False, "one_time_passcode": ""}
 
 
 def _write_status(**changes) -> None:
@@ -73,14 +73,14 @@ def install_patches() -> None:
 
     # The plugin's version only sets the link macro's variables, and without the macro it logs that every 2 seconds.
     def set_obico_link_status(self, is_linked, one_time_passcode, one_time_passlink):
-        _write_status(one_time_passcode=str(one_time_passcode or ""), one_time_passlink=str(one_time_passlink or ""))
+        _write_status(one_time_passcode=str(one_time_passcode or ""))
 
     def start_and_block_reporting(self, *args, **kwargs):
         _write_status(discovering=True)
         try:
             return start_and_block(self, *args, **kwargs)
         finally:
-            _write_status(discovering=False, one_time_passcode="", one_time_passlink="")
+            _write_status(discovering=False, one_time_passcode="")
 
     discovery.set_obico_link_status = set_obico_link_status
     discovery.start_and_block = start_and_block_reporting

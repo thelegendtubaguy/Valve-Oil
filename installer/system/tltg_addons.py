@@ -329,25 +329,16 @@ def obico_status() -> dict:
     server, linked, status = _obico_state()
     result = {"server": server, "cloud": server == OBICO_CLOUD, "linked": linked, "discovering": False}
     if not linked:
+        # The code Obico's server gave the plugin while it waits to be linked; it changes while it waits.
         result["discovering"] = status.get("discovering") is True
-        link = status.get("one_time_passlink")
-        if isinstance(link, str) and re.match(r"^https?://", link):
-            result["link_url"] = link
+        code = status.get("one_time_passcode")
+        if result["discovering"] and isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9]{1,32}", code):
+            result["link_code"] = code
     return result
 
 
-def obico_link_code() -> dict:
-    _, linked, status = _obico_state()
-    code = status.get("one_time_passcode")
-    if linked:
-        raise RequestError(HTTPStatus.CONFLICT, "Obico is already linked.")
-    if not isinstance(code, str) or not code:
-        raise RequestError(HTTPStatus.BAD_GATEWAY, "Obico hasn't been given a link code yet. Try again in a few seconds.")
-    return {"code": code, "url": "", "expires_in": 0}
-
-
 STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status}
-EXTRA_ACTIONS = {("octoeverywhere", "link-code"): octoeverywhere_link_code, ("obico", "link-code"): obico_link_code}
+EXTRA_ACTIONS = {("octoeverywhere", "link-code"): octoeverywhere_link_code}
 
 
 def printer_busy() -> bool:
