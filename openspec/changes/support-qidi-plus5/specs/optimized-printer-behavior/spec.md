@@ -25,6 +25,10 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
 - **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320, then pushes from Y 320 into the chute
 
+#### Scenario: Plus 5 mainboard fan runs with the X/Y motors
+- **WHEN** any X, Y, or Z motor is on on a Plus 5
+- **THEN** the mainboard fan runs, where QIDI ran it only with the Z motors
+
 #### Scenario: Plus 5 speed limits stay at QIDI's values
 - **WHEN** install or update runs on a Plus 5
 - **THEN** `max_velocity`, Z tilt `speed`, and bed mesh `speed` keep the Plus 5's own values rather than the Max 4's 565 mm/s cap

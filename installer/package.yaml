@@ -393,6 +393,16 @@ patches:
           expected: "0.0005"
           desired: "0.00075"
 
+    # The Plus 5's X/Y drivers are on the mainboard this fan cools.
+    - id: board_fan_steppers
+      file: "config/printer.cfg"
+      section: "controller_fan board_fan"
+      option: "stepper"
+      variants:
+        - firmwares: ["01.01.02.01"]
+          expected: "stepper_z,stepper_z1"
+          desired: "stepper_x,stepper_y,stepper_z,stepper_z1"
+
     - id: timelapse_take_frame_verbose
       file: "config/timelapse.cfg"
       section: "gcode_macro TIMELAPSE_TAKE_FRAME"

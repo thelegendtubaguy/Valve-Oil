@@ -93,6 +93,9 @@ allowed_patch_targets:
 - file: config/klipper-macros-qd/filament.cfg
   section: gcode_macro CUT_FILAMENT_1
   option: __section__
+- file: config/printer.cfg
+  section: controller_fan board_fan
+  option: stepper
 - file: config/klipper-macros-qd/qd_macro.cfg
   section: gcode_macro MOVE_TO_TRASH
   option: __section__
