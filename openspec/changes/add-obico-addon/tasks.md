@@ -9,7 +9,7 @@
 ## 2. Fluidd
 
 - [x] 2.1 Add the Obico panel, server change, unlink, and the blocked-install hint to the fork.
-- [ ] 2.2 Release the fork and pin the build in `installer/package.yaml`.
+- [x] 2.2 Release the fork and pin the build in `installer/package.yaml`.
 
 ## 3. Validation on the test Max 4
 

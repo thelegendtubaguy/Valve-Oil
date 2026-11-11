@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.10.4"
+  version: "26.11.10.3"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -607,10 +607,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-a112250
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-a112250/fluidd.zip
+    version: v1.37.7-tltg-e9d5793
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-e9d5793/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 4f7dded56f1a839b893e4ace0f74c8c921d3ff23d268552ffba3bd056b1cbf96
+    sha256: 827f4292f3f50b6724d625501f7256fa08074fb1fba57f22d5a9bd4d0159f226
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui

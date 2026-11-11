@@ -24,5 +24,5 @@ None.
 
 - `installer/package.yaml` (`addons:`), `installer/runtime/addons.py`, `addons_cli.py`, `models.py`, `manifest.py`, `installer/system/tltg_obico.py`, `installer/system/tltg_addons.py`, `scripts/lock_addon.py`, `scripts/build_installer_bundle.py`.
 - The Fluidd fork's Settings page.
-- Release bundles grow by about 23 MB.
+- Release bundles grow by about 26 MB.
 - `docs/addons.md`, `docs/settings.md`, `docs/under-the-hood.md`, `README.md`, `CHANGELOG.md`, `THIRD_PARTY_NOTICES.md`.
