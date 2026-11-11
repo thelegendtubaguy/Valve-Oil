@@ -14,7 +14,7 @@ import tempfile
 import time
 from pathlib import Path
 
-MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-lis2dw-fifo-v1.json"
+MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-valve-oil-v1.json"
 if __package__:
     from . import thr_bootloaders
 else:
@@ -36,7 +36,8 @@ def digest(data: bytes) -> str:
 def admitted_image(data: bytes, manifest: dict) -> str:
     thr = manifest["thr"]
     value = digest(data)
-    if len(data) != thr["size"] or value not in (thr["stock_sha256"], thr["patched_sha256"]):
+    known = {thr["stock_sha256"], thr["patched_sha256"], *(entry["sha256"] for entry in thr.get("superseded", ()))}
+    if len(data) != thr["size"] or value not in known:
         raise ValueError("Unrecognized THR image")
     return value
 
@@ -489,6 +490,8 @@ def main(argv=None) -> int:
                 raise ValueError("--image is required")
             image = args.image.read_bytes()
             admitted_image(image, manifest)
+            if args.operation == "transfer" and digest(image) not in (manifest["thr"]["stock_sha256"], manifest["thr"]["patched_sha256"]):
+                raise ValueError("Transfer only the stock application or the current patched image")
         if args.operation == "verify":
             if args.backup_dir is None:
                 raise ValueError("--backup-dir must identify the readback snapshot")
