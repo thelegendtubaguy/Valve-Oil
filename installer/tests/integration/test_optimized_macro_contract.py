@@ -217,19 +217,34 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "M118 Please load filament",
         )
 
-    def test_max4_vendor_cut_and_chute_moves_match_newest_stock(self):
+    def test_max4_vendor_cut_and_chute_moves_follow_newest_stock(self):
         def commands(text):
             return [line.split("#")[0].strip() for line in text.splitlines() if line.split("#")[0].strip()]
+
+        def chute_path(lines):
+            # The run to the chute entrance is faster than QIDI's; the path and the push into the chute are QIDI's.
+            return [
+                line.replace("F{opt.trash_travel_speed_xy}", "F{km.travel_speed_xy}")
+                for line in lines
+                if not line.startswith("M204") and "_tltg_optimized_globals" not in line
+            ]
 
         stock_root = NEWEST_STOCK["max4"] / "config/klipper-macros-qd"
         stock_cut = commands(self._section_gcode(stock_root / "filament.cfg", "gcode_macro CUT_FILAMENT_1"))
         self.assertEqual(stock_cut[-1], "G4 P2000")
-        for stock, section in (
-            (stock_cut[:-1], "gcode_macro CUT_FILAMENT_1"),
-            (commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH")), "gcode_macro MOVE_TO_TRASH"),
-        ):
-            with self.subTest(section=section):
-                self.assertEqual(commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", section)), stock)
+        self.assertEqual(
+            commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro CUT_FILAMENT_1")), stock_cut[:-1]
+        )
+
+        stock_chute = commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH"))
+        chute = commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro MOVE_TO_TRASH"))
+        self.assertEqual(chute_path(chute), chute_path(stock_chute))
+        accel = None
+        for line in chute:
+            if line.startswith("M204"):
+                accel = line
+            elif "F2000" in line:
+                self.assertEqual(accel, "M204 S10000", line)
 
     def test_plus5_cut_presses_the_cutter_once(self):
         for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):

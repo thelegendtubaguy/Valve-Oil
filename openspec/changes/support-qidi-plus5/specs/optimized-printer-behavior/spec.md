@@ -23,7 +23,7 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 
 #### Scenario: Plus 5 chute approach is fast up to the chute entrance
 - **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
-- **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320, then pushes from Y 320 into the chute
+- **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
 
 #### Scenario: Plus 5 mainboard fan runs with the X/Y motors
 - **WHEN** any X, Y, or Z motor is on on a Plus 5
