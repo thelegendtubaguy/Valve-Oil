@@ -51,6 +51,16 @@ QIDI's `qidi-tuning` service keeps Klipper on CPUs 1 and 2, keeps the web server
 
 Moonraker also gets CPU 3, which has little else to do when AI detection is off. On the test Max 4 with the camera streaming and Fluidd connected, other programs interrupted Moonraker about 18 times a second instead of 45, and status updates reached Fluidd and the touchscreen in a median 8.7 ms instead of 12.5 ms. With AI detection running, the difference is small.
 
+## Moonraker freezing while it connects to QIDI's cloud
+
+On a printer linked to a QIDI account, QIDI's Moonraker keeps a connection open to QIDI's cloud server. Each time it connects, it waits for the server to answer the start of the encrypted connection, and QIDI's code does that waiting in the one loop that runs everything else in Moonraker, with a 60 second limit. If the server accepts the connection and then doesn't answer, Moonraker stops for those 60 seconds. Fluidd and the touchscreen get no answers, Klipper's state isn't read, and `moonraker.log` says `EVENT LOOP BLOCKED: 62 seconds` after `The handshake operation timed out`. QIDI's code retries 2 seconds later, so a server that keeps doing it freezes Moonraker again and again.
+
+At power-on this can show on the touchscreen as **Printer service failed to start** (`QDC_400_005_015_001`) while Klipper is running normally.
+
+Moonraker now waits for the server's answer in the background, for at most 10 seconds, and keeps answering Fluidd, the touchscreen, and Klipper while it waits. When the answer doesn't come, QIDI's code gets the same error and retries as before. On the Max 4 test printer, with a test server that accepts connections and never answers, each Moonraker request took about 59 seconds before the change and about 15 ms after it.
+
+This doesn't change whether QIDI's cloud accepts your printer. `MQTT Connection Failed: Not authorized` in Fluidd means QIDI's server refused the printer's saved account.
+
 ## Touchscreen offering firmware you already have
 
 With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or [mainboard](firmware.md#mainboard-closed-loop-reply-fix) firmware, QIDI's touchscreen app showed **New MCU or THR firmware has been detected. Please go to the firmware page to update.** The firmware page then had nothing to update. The pop-up treats any board version that isn't exactly QIDI's as out of date, and this project's firmware reports QIDI's version followed by `-valve-oil.` and a revision number. The firmware page compares versions another way and sees them as current.
