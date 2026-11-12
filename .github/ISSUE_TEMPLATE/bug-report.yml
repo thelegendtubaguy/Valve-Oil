@@ -145,7 +145,7 @@ body:
     id: slicer_version
     attributes:
       label: Slicer version and printer profile
-      placeholder: "OrcaSlicer 2.4.0, Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode"
+      placeholder: "OrcaSlicer 2.4.0, Qidi X-Max 4 0.4 nozzle - Valve Oil"
     validations:
       required: false
 
