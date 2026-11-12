@@ -299,6 +299,23 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
 - **AND** the used-filament extraction is deployed the same way to Moonraker's metadata extractor after its plate selection, and is left unchanged when the extractor is unrecognized
 
+### Requirement: Moonraker fixes module
+The installer SHALL install the package's Moonraker fixes module into QIDI's Moonraker virtualenv, with a path file that imports it when Moonraker's Python starts, without changing any file QIDI installed, and SHALL keep the change reversible.
+
+#### Scenario: Module is added to QIDI's virtualenv
+- **WHEN** QIDI's Python 3.9 Moonraker virtualenv exists
+- **THEN** the installer writes the module, and only once the module is in place writes the path file that imports it
+- **AND** Moonraker restarts once, and again when a later package version changes the module
+
+#### Scenario: Missing or foreign state is left alone
+- **WHEN** the virtualenv is missing, or a file exists at either path without the package's marker line
+- **THEN** the installer leaves it unchanged and never writes a path file that imports a module that is not in place
+
+#### Scenario: Module deployment remains reversible
+- **WHEN** uninstall finds the package's path file and module
+- **THEN** it removes the path file, then the module, and restarts Moonraker, leaving QIDI's virtualenv as it was
+- **AND** a file changed after install is preserved and reported
+
 ### Requirement: Moonraker speedup packages
 The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for the optimized status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
 

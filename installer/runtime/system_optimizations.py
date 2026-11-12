@@ -33,6 +33,7 @@ from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from . import moonraker_klippy_apis
 from . import moonraker_allowed_services
+from . import moonraker_fixes
 from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import moonraker_used_extruders
@@ -284,6 +285,24 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: moonraker_speedups.KLIPPER_PATH_FILE,
         patch=moonraker_speedups.patch_klipper_path_file,
         restart_service=moonraker_speedups.KLIPPER_RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.MODULE_OPERATION: _GuardedFilePatch(
+        label="Moonraker fixes module",
+        file=lambda spec: moonraker_fixes.MODULE_FILE,
+        patch=moonraker_fixes.patch_module,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.PATH_OPERATION: _GuardedFilePatch(
+        label="Moonraker fixes path file",
+        file=lambda spec: moonraker_fixes.PATH_FILE,
+        patch=moonraker_fixes.patch_path_file,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
         missing_message=None,
         skip_unrecognized=True,
         create_if_missing=True,
@@ -883,6 +902,14 @@ def _moonraker_env_present(root: Path) -> bool:
     return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
 
 
+def _moonraker_fixes_module_current(root: Path) -> bool:
+    module = _map_path(root, moonraker_fixes.MODULE_FILE)
+    try:
+        return not module.is_symlink() and module.read_text(encoding="utf-8") == moonraker_fixes.module_source()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def _klippy_env_present(root: Path) -> bool:
     site_packages = _map_path(root, moonraker_speedups.KLIPPER_SITE_PACKAGES)
     return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
@@ -1326,12 +1353,15 @@ def apply_system_optimizations(
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
-            env_present = {
-                moonraker_speedups.PATH_OPERATION: _moonraker_env_present,
-                moonraker_speedups.KLIPPER_PATH_OPERATION: _klippy_env_present,
+            # What a file in a virtualenv needs before it is written: the virtualenv, and what the file imports.
+            env_ready = {
+                moonraker_speedups.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_speedups.KLIPPER_PATH_OPERATION: lambda: _klippy_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_fixes.MODULE_OPERATION: lambda: _moonraker_env_present(root),
+                moonraker_fixes.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_fixes_module_current(root),
             }.get(operation_id)
-            if env_present is not None and not (env_present(root) and _moonraker_speedups_current(spec, root)):
-                # Never point Moonraker or Klipper at packages that aren't in place.
+            if env_ready is not None and not env_ready():
+                # Never point Moonraker or Klipper at packages or a module that aren't in place.
                 actions.append(
                     _action_record(
                         operation_id=operation_id,
@@ -3261,6 +3291,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION,
+        # The path file imports the module, so it goes after it and restoration removes it first.
+        moonraker_fixes.MODULE_OPERATION,
+        moonraker_fixes.PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
         FLUIDD_BUILD_OPERATION,
         VALVE_OIL_UI_OPERATION,
@@ -3339,7 +3372,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, moonraker_speedups.PATH_OPERATION,
-        moonraker_speedups.KLIPPER_PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
+        restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
         addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
@@ -3794,6 +3828,8 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,
+            moonraker_fixes.MODULE_OPERATION,
+            moonraker_fixes.PATH_OPERATION,
             *service_priority.SERVICES,
             *cpu_tuning.FILES,
             ZRAM_SWAP_OPERATION,

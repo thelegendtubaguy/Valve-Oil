@@ -20,6 +20,7 @@ from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
 from installer.runtime import qidiclient_firmware_popup
+from installer.runtime import moonraker_fixes
 from installer.runtime import restart_on_exit
 from installer.runtime import webcam_id
 from installer.runtime import service_priority
@@ -105,6 +106,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
         addons_unit = system_root / addons_service.UNIT_FILE.lstrip("/")
         addons_server = system_root / addons_service.SERVER_FILE.lstrip("/")
+        fixes_module = system_root / moonraker_fixes.MODULE_FILE.lstrip("/")
+        fixes_path = system_root / moonraker_fixes.PATH_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
         asvc_before = asvc.read_bytes()
@@ -295,6 +298,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
         self.assertEqual(addons_server.read_bytes(), addons_service.SERVER_PAYLOAD.read_bytes())
+        # Moonraker's Python imports the fixes module through the path file.
+        self.assertEqual(fixes_module.read_bytes(), moonraker_fixes.MODULE_PAYLOAD.read_bytes())
+        self.assertEqual(fixes_path.read_text(encoding="utf-8"), moonraker_fixes.PATH_CONTENT)
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
@@ -500,6 +506,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(screen_server.exists())
         self.assertFalse(addons_unit.exists())
         self.assertFalse(addons_server.exists())
+        self.assertFalse(fixes_module.exists())
+        self.assertFalse(fixes_path.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
