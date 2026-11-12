@@ -71,6 +71,7 @@ from .models import (
 from .path_safety import ensure_install_paths_safe
 from .source_patches import (
     SourcePatchError,
+    changed_extra_module_sha256,
     classify_install_source_patch,
     deploy_source_patch,
     install_extra_module,
@@ -79,6 +80,7 @@ from .source_patches import (
 from .process_restart import (
     ProcessRestartError,
     read_printer_info,
+    restart_entries,
     restart_klipper_service,
     restart_pending,
     write_restart_marker,
@@ -463,17 +465,24 @@ def _execute_install(
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
         source_changes = tuple(result for result in source_results if result.classification != "noop_desired")
-        if source_changes:
+        # Klipper keeps imported Python for the life of its process, so changed sources and
+        # modules run only after the Klipper service restarts.
+        restart_targets = tuple(
+            (entry.id, entry.destination, entry.desired_sha256)
+            for result in source_changes
+            if (entry := result.original) is not None
+        ) + tuple(
+            (module.id, module.destination, sha256)
+            for module in manifest.install.extra_modules
+            if (sha256 := changed_extra_module_sha256(paths=paths, module=module)) is not None
+        )
+        if restart_targets:
             process_id, _ = read_printer_info(paths.moonraker_url, urlopen=urlopen)
             journal.track_file(paths.restart_marker_path)
             journal.note_write()
             write_restart_marker(
                 paths,
-                tuple(
-                    (entry.id, entry.destination, entry.desired_sha256)
-                    for result in source_changes
-                    if (entry := result.original) is not None
-                ),
+                restart_targets,
                 operation="install",
                 process_id=process_id,
             )
@@ -628,9 +637,7 @@ def _execute_install(
             write_saved_variable_verify_marker(paths, saved_variables_written)
         restarted = maybe_restart_pending_service_if_idle(
             paths=paths,
-            allowed_entries={
-                patch.id: patch.destination for patch in manifest.install.source_patches
-            },
+            allowed_entries=restart_entries(manifest),
             reporter=reporter,
             input_stream=input_stream,
             urlopen=urlopen,
@@ -639,9 +646,9 @@ def _execute_install(
             verify_pending_saved_variable_expectations(paths, urlopen=urlopen)
     else:
         maybe_restart_klipper(
+            paths=paths,
             reporter=reporter,
             input_stream=input_stream,
-            moonraker_query_url=paths.moonraker_url,
             urlopen=urlopen,
         )
     reporter.debug(
@@ -694,9 +701,7 @@ def _restart_halted_klipper_and_update_saved_variables(
         if paths.restart_marker_path.exists():
             restart_pending(
                 paths,
-                allowed_entries={
-                    patch.id: patch.destination for patch in manifest.install.source_patches
-                },
+                allowed_entries=restart_entries(manifest),
                 urlopen=urlopen,
             )
         else:

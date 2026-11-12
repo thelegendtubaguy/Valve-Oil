@@ -126,16 +126,51 @@ def maybe_restart_pending_service_if_idle(
     )
 
 
-def maybe_restart_klipper(
+def restart_klipper_unattended(
     *,
+    paths,
     reporter,
-    input_stream: TextIO | None,
-    moonraker_query_url: str,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
-    if input_stream is None:
-        reporter.line(messages.RESTART_KLIPPER_TO_APPLY)
+    """End a `--yes` run or an automatic update with Klipper running what was installed.
+
+    Nobody is there to restart Klipper afterwards, so the service restarts once the printer
+    is idle, and the run waits for Klipper to be ready under a new process.
+    """
+    from .process_restart import ProcessRestartError, restart_klipper_service
+
+    try:
+        # The run may have just restarted Moonraker; give it time to report printer state again.
+        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, wait_seconds=90.0)
+    except ActivePrintError:
+        reporter.debug(event="klipper.restart.skipped", reason="active_print")
+        reporter.line(messages.RESTART_KLIPPER_SKIPPED_BUSY)
         return False
+    except PrinterStateError:
+        reporter.debug(event="klipper.restart.skipped", reason="unknown_state")
+        reporter.line(messages.COULD_NOT_RESTART_KLIPPER)
+        return False
+    reporter.line(messages.KLIPPER_SERVICE_RESTARTING)
+    try:
+        restart_klipper_service(paths, urlopen=urlopen)
+    except ProcessRestartError as exc:
+        reporter.debug(event="klipper.restart.failed", message=exc.message)
+        reporter.line(messages.COULD_NOT_RESTART_KLIPPER)
+        return False
+    reporter.line(messages.KLIPPER_SERVICE_RESTARTED)
+    return True
+
+
+def maybe_restart_klipper(
+    *,
+    paths,
+    reporter,
+    input_stream: TextIO | None,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
+) -> bool:
+    moonraker_query_url = paths.moonraker_url
+    if input_stream is None:
+        return restart_klipper_unattended(paths=paths, reporter=reporter, urlopen=urlopen)
     if not confirm_yes(
         reporter=reporter,
         input_stream=input_stream,

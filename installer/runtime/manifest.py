@@ -157,6 +157,13 @@ def parse_manifest(raw: Any) -> Manifest:
         )
     source_patches = _parse_source_patches(install_raw, firmware)
     extra_modules = _parse_extra_modules(install_raw)
+    # A Klipper restart marker names both kinds by id and destination.
+    if {patch.id for patch in source_patches} & {module.id for module in extra_modules} or (
+        {patch.destination for patch in source_patches} & {module.destination for module in extra_modules}
+    ):
+        raise ManifestValidationError(
+            "install.source_patches and install.extra_modules must not share an id or destination."
+        )
     install = InstallSpec(
         ensure_directories=tuple(
             _validate_relative_path(item, allowed_roots=("config",))

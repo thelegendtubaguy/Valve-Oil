@@ -112,9 +112,10 @@ On a Max 4 in good shape, two runs of each test per axis recommended `mzv` at 41
 
 **What's different:**
 
-- The toolhead wanders up to about 20 mm either side of the test point (`X195 Y195` on the Max 4) along the axis being tested. The test takes as long as before, about two minutes per axis.
+- The toolhead wanders up to about 20 mm either side of the test point (`X195 Y195` on the Max 4, `X162 Y162` on the Plus 5) along the axis being tested. The test takes as long as before, about two minutes per axis.
 - Calibration fades out motion below 10 Hz instead of cutting it off at 5 Hz, so the slow back-and-forth isn't taken for a resonance.
 - The console says which test ran, for example `Resonance test with sweeping: ACCEL_PER_HZ=150 SWEEPING_PERIOD=1.2 SWEEPING_ACCEL=400`.
+- On the Plus 5 the newer test shakes at 147 mm/s² per Hz instead of QIDI's 150, and the console says `ACCEL_PER_HZ lowered from 150 to 147`. At 150, its highest frequency with the slow back-and-forth on top needs 20400 mm/s², and the Plus 5's `max_accel` is 20000. The Max 4's is 30000, so its test runs at 150.
 
 To run QIDI's test instead, for example to compare the two:
 
@@ -130,9 +131,9 @@ For a single run, add these to `SHAPER_CALIBRATE` or `TEST_RESONANCES`:
 |---|---|---|
 | `SWEEPING_PERIOD=` | `1.2`, or `0` while `tltg_resonance_sweep` is `0` | Seconds for each slow back-and-forth. `0` runs QIDI's test. |
 | `SWEEPING_ACCEL=` | `400` | Acceleration of the slow back-and-forth, in mm/s². |
-| `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
+| `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 and the Plus 5, lowered to `147` for the newer test on the Plus 5 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
 
-A test that would need more acceleration than `max_accel` in `printer.cfg` stops before moving and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `tltg_resonance_sweep: skipped`.
+QIDI's Klipper holds acceleration to `max_accel` in `printer.cfg`. When the newer test would need more and the command sets none of `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, and `FREQ_END`, it runs at the largest whole `ACCEL_PER_HZ` that fits. When the command sets any of the three, the test stops before the toolhead moves or the accelerometer starts, and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `tltg_resonance_sweep: skipped`.
 
 ## Bed soak test
 

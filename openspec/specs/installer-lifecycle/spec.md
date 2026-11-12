@@ -138,6 +138,18 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** a post-activation saved-variable mismatch retains its exact authorized expectations and blocks later install or automatic-update work until an exact live Moonraker verification succeeds; dry-run verification preserves the marker, and terminal uninstall removes it only after successful postflight while rollback preserves it
 - **AND** while Klipper is halted on an error, install retains the expectations and verifies them after it restarts Klipper
 
+### Requirement: Runs end with Klipper running what they committed
+After install, update, or uninstall commits without a managed source change, the installer SHALL leave Klipper running the committed configuration when someone is there to agree or the run is unattended and the printer is idle.
+
+#### Scenario: Attended run
+- **WHEN** an interactive install or uninstall commits and no source activation is pending
+- **THEN** it asks whether to restart Klipper and, on yes, requests the restart through Moonraker
+
+#### Scenario: Unattended run
+- **WHEN** a `--yes` install or uninstall, or the install an automatic update runs, commits and no source activation is pending
+- **THEN** after a fresh idle-state check it restarts the Klipper service without asking and waits for Klipper to be ready under a different process
+- **AND** when a print is active or paused, a heater is on, the printer state cannot be verified, or Klipper does not become ready, the run still succeeds and says Klipper must be restarted to apply the changes
+
 ### Requirement: Install repairs a halted Klipper
 Install and update SHALL be able to repair a printer whose Klipper is halted on an error, such as a configuration error, by writing files before anything that requires a running Klipper.
 
@@ -537,6 +549,11 @@ Install and update SHALL place each bundled package-owned Klipper extra module, 
 - **WHEN** install or update runs, including an automatic update and an install that skips optional OS optimizations
 - **THEN** each bundled extra module, including the probe diagnostic helper, is written atomically to its `klippy/extras/tltg_*.py` destination and verified against the bundled payload before the configuration that loads it is written
 - **AND** an identical installed module is left unchanged
+
+#### Scenario: Changed module code needs a replacement process
+- **WHEN** install or update, including a `--yes` install and an automatic update, adds an extra module or changes an installed module's code
+- **THEN** the change is a managed source change under Managed Klipper source activation, because Klipper keeps an imported module until its process ends
+- **AND** the install restarts the Klipper service after a fresh idle-state check without asking, and the change is active once Klipper is ready under a different process
 
 #### Scenario: Earlier host ownership of the probe helper is retired
 - **WHEN** installed state from an earlier build records the probe diagnostic helper as an OS optimization

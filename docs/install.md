@@ -20,6 +20,10 @@ The installer checks which printer it's on and its firmware (see [Supported prin
 - **QIDI Box setup**, when Box support is off or tool numbers don't match slot numbers.
 - **Restarting Klipper** to apply the changes.
 
+When an install or update changes Klipper's Python code, which is QIDI's `homing.py` and this project's own `klippy/extras/tltg_*.py` modules, it restarts the Klipper service itself once the printer is idle, without asking, and waits for Klipper to be ready again. Klipper keeps Python code it has loaded until its process ends, so the Restart button and `RESTART` reload the configuration but not that code.
+
+An install run with `--yes` and an automatic update have nobody to ask, so they always end by restarting the Klipper service once the printer is idle. If a print or a heater has started by then, they leave Klipper alone and say it was not restarted.
+
 At the end, without asking, it flashes the [QIDI Box firmware](firmware.md#qidi-box-firmware) to each USB Box that needs it. Klipper and the touchscreen stop for about four minutes per Box. Keep the printer and every Box powered on until the installer finishes.
 
 It applies the [OS optimizations](#os-optimizations) without asking. The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes. When they need a reboot, the installer reboots the printer about 10 seconds after it finishes.
