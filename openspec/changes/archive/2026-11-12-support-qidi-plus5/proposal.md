@@ -13,9 +13,8 @@ This change lists what is still unknown, what must be read from a running Plus 5
 - Split the start-print contract and the slicer packs per printer. The Plus 5 packs follow QIDI's Plus 5 profiles.
 - Keep features tied to Max 4 hardware off on the Plus 5:
   - the closed-loop step-loss monitor and the mainboard closed-loop reply fix;
-  - the 565 mm/s X/Y cap;
-  - the Box firmware fix, until a Plus 5 Box bootloader build is recognized.
-- Declare the Plus 5 kernel for the zram modules and offer the THR FIFO fix on Plus 5 `01.01.02.01`, after the hardware pass found the Max 4's kernel build and THR bootloader.
+  - the 565 mm/s `max_velocity` cap. Z tilt and bed mesh travel still go from QIDI's 150 mm/s to 565, as on the Max 4.
+- Declare the Plus 5 kernel for the zram modules and offer the THR FIFO fix and the Box firmware fix on Plus 5 `01.01.02.01`, after the hardware pass found the Max 4's kernel build and admitted THR and Box bootloaders.
 - Show the Plus 5's rotated touchscreen upright in Fluidd's Printer screen card, with taps landing where they are shown.
 - Update the README's supported printers, the operator docs, and the changelog.
 

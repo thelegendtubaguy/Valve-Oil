@@ -208,11 +208,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self._run_install(paths)
 
         printer_cfg = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
-        # Sensorless X/Y homing stays single-touch at 55 mm/s, and the Plus 5 keeps its own speed limits.
+        # Sensorless X/Y homing stays single-touch at 55 mm/s. Probing travel matches the Max 4's, and the Plus 5
+        # keeps its own top speed.
         for stepper in ("stepper_x", "stepper_y"):
             self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_speed").value, "55")
             self.assertEqual(klipper_cfg.resolve_unique_option(printer_cfg, stepper, "homing_retract_dist").value, "0")
-        self._assert_speeds(printer_root, max_velocity="600", bed_mesh="150", z_tilt="150")
+        self._assert_speeds(printer_root, max_velocity="600", bed_mesh="565", z_tilt="565")
         self.assertEqual(
             klipper_cfg.resolve_unique_option(printer_cfg, "virtual_sdcard", "on_error_gcode").value,
             "OPTIMIZED_CANCEL_PRINT_ON_ERROR",

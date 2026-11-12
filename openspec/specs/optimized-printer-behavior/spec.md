@@ -421,7 +421,7 @@ Optimized configuration SHALL provide a default-disabled print-start mode that o
 - **AND** the remaining requested stages retain bed-before-chamber-before-nozzle order
 
 ### Requirement: Operator-configurable QIDI Box feed motion
-Optimized configuration SHALL let operators set the QIDI Box load fast distance, fast stage speeds, approach speed, and acceleration, and the unload stage speeds and acceleration, through Klipper saved variables, globally and per slot. It SHALL keep vendor motion whenever settings are absent, invalid, or unsupported. The load pre-stage, hot phases, and vendor flow control SHALL remain vendor-owned.
+Optimized configuration SHALL let operators set the QIDI Box hub push and park speeds, the load fast distance, fast and approach speeds, and acceleration, and the unload speeds and acceleration, in Klipper saved variables. Where QIDI's Box code loads and unloads in stages, as on the Max 4, the fast, approach, and unload settings SHALL also be settable per slot. It SHALL keep vendor motion when settings are absent, invalid, or unsupported. Hot phases and flow control SHALL remain vendor-owned.
 
 #### Scenario: Absent settings keep vendor motion
 - **WHEN** no feed-motion settings are saved
@@ -460,9 +460,23 @@ Optimized configuration SHALL let operators set the QIDI Box load fast distance,
 - **WHEN** a fast distance within its bounds is saved
 - **THEN** the next load's fast push covers that distance, including when it is longer than the vendor's
 
+#### Scenario: Hub push and park speeds are configurable
+- **WHEN** a hub push speed or park speed is saved
+- **THEN** every slot's load pushes filament from the spool to the Box hub at that hub push speed, and every slot's unload moves it from the hub back to its parked position at that park speed
+- **AND** neither can be overridden per slot
+
+#### Scenario: Plus 5 single-move loads and unloads use the configured values
+- **WHEN** QIDI's Plus 5 Box code (`01.01.02.01`) loads or unloads
+- **THEN** its fast push to the toolhead sensor uses the configured fast distance, speed, and acceleration, its approach after that uses the configured approach speed, and its pull back to the hub uses the configured unload speed and acceleration, with QIDI's values for anything unset
+- **AND** no setting can be overridden per slot, and a setting the Plus 5's Box code does not use is refused
+
 #### Scenario: Unexpected vendor calls keep vendor motion
-- **WHEN** QIDI's Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
+- **WHEN** QIDI's staged Box code lacks the load and unload methods, or a call's arguments don't match the traced shape or plausible values
 - **THEN** feed-motion settings are not applied and vendor motion is unchanged
+
+#### Scenario: Unrecognized Box code keeps vendor motion
+- **WHEN** QIDI's `box_stepper.so` is not a build the integration lists
+- **THEN** the integration wraps nothing, including the extruder retract length, and reports itself inactive with the build's hash
 
 ### Requirement: Published QIDI Box feed motion
 The feed-motion integration SHALL publish its effective per-slot motion as Klipper printer-object status.
@@ -1205,3 +1219,46 @@ The package's Fluidd build SHALL show a Bed soak card under Bed mesh on its Tune
 #### Scenario: Operator uses the card
 - **WHEN** an operator opens the Tune page
 - **THEN** the card starts and stops the test, follows it live, shows the results and problem points, and lists, opens, compares, and deletes saved runs
+
+### Requirement: Plus 5 motion follows its own hardware
+On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, positions, cutter, wiper, and waste-chute coordinates under the same macro names as on the Max 4, and SHALL issue no QIDI closed-loop driver command.
+
+#### Scenario: Plus 5 homing uses QIDI's sensorless currents without staging moves
+- **WHEN** X or Y homes on a Plus 5
+- **THEN** X and Y don't move before they home, and a full or X/Y home homes Y once, then X
+- **AND** both X/Y drivers use QIDI's homing current during the home, `run_current` is restored afterwards, and each axis backs off as QIDI's Plus 5 macros do
+- **AND** no closed-loop homing mode or enforce-mode command is sent
+
+#### Scenario: Plus 5 nozzle moves stay within its travel
+- **WHEN** the optimized cut, wipe, chute, park, or print-start moves run on a Plus 5
+- **THEN** they use the Plus 5's coordinates, all inside its configured X −7–326 and Y −5–340 travel
+
+#### Scenario: Plus 5 rear moves stay inside the chute window
+- **WHEN** an optimized macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
+- **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
+
+#### Scenario: Plus 5 cut presses the cutter once
+- **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by the optimized macros
+- **THEN** the extruder motor is released and the toolhead presses the Plus 5 cutter once at QIDI's Plus 5 cutter speed, with no dwell at the cutter
+
+#### Scenario: Plus 5 chute approach is fast up to the chute entrance
+- **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
+- **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
+
+#### Scenario: Plus 5 mainboard fan runs with the X/Y motors
+- **WHEN** any X, Y, or Z motor is on on a Plus 5
+- **THEN** the mainboard fan runs, where QIDI ran it only with the Z motors
+
+#### Scenario: Plus 5 X/Y drivers switch at 400 V/µs
+- **WHEN** Klipper starts on a Plus 5 with Valve Oil installed
+- **THEN** both TMC2240 X/Y drivers run with `slope_control` 2, and QIDI's `printer.cfg` driver sections are unchanged
+
+#### Scenario: Plus 5 probing travel matches the Max 4's and its top speed stays QIDI's
+- **WHEN** install or update runs on a Plus 5
+- **THEN** Z tilt `speed` and bed mesh `speed` at QIDI's 150, or above 565, become 565, and a different value at or below 565 is left unchanged
+- **AND** `max_velocity` keeps the Plus 5's own value rather than the Max 4's 565 mm/s cap
+- **AND** uninstall restores the value each had before install
+
+#### Scenario: Plus 5 slicer start uses its own prime line
+- **WHEN** a print sliced with the project's Plus 5 OrcaSlicer or QIDI Studio pack starts
+- **THEN** its start path follows the Plus 5 start-print contract, including the Plus 5 prime line and `M1006 Z` temperature compensation

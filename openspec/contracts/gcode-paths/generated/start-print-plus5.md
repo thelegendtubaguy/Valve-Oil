@@ -45,7 +45,6 @@ Forbidden patterns:
 M141 S[chamber_temperature]
 G29.0`
 - `G92_`
-- `M106 P4`
 
 ### QIDI Studio start (Plus 5)
 
