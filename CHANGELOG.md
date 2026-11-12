@@ -1,5 +1,9 @@
 # Changelog
 
+## 26.11.11.4
+- On the Plus 5, the moves between Z-tilt and bed mesh probe points now run at 565 mm/s instead of QIDI's 150, as on the Max 4. Install and update change the Z-tilt and bed mesh `speed` in `printer.cfg` when they are still QIDI's 150, keep a different value you set yourself unless it is above 565, and uninstall puts back what you had. The Plus 5's top speed stays QIDI's 600 mm/s. Nothing changes on the Max 4.
+- The Plus 5's OrcaSlicer start G-code now turns the polar cooler on at print start with `M106 P4 S255`, as the Max 4's does. Comment the line out if you don't want it. The QIDI Studio start G-code is unchanged.
+
 ## 26.11.11.3
 - Fixed the touchscreen showing **New MCU or THR firmware has been detected** on printers with this project's mainboard or toolhead board firmware, while its firmware page had nothing to update. QIDI's pop-up treats any board version that isn't exactly QIDI's as out of date, and this project's firmware reports QIDI's version followed by `-valve-oil.` and a revision number. The pop-up now accepts a board version that starts with QIDI's, and still appears when QIDI ships a newer one. The installer changes QIDI's touchscreen app for this on Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`, restarts it once, and keeps the original, which uninstall puts back. See [Fixes](docs/fixes.md#touchscreen-offering-firmware-you-already-have).
 - Fixed Klipper shutting down at startup with `Internal error on command:"INIT_RFID_READ"`. QIDI's startup macro runs `INIT_RFID_READ`, the Box's read of its spool tags, 5 seconds into Klipper's startup, and QIDI's Box code fails if it hasn't finished starting by then. The command now waits for QIDI's Box code, and is left out, with a line in `klippy.log`, if that takes more than a minute. See [Fixes](docs/fixes.md#klipper-shutting-down-at-startup-on-init_rfid_read).

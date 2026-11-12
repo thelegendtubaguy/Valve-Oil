@@ -37,8 +37,7 @@
         "tltg_start_bed_mesh_profile",
         "tltg_keep_loaded_between_prints",
         "M140 S[bed_temperature_initial_layer_single]\nM141 S[chamber_temperature]\nG29.0",
-        "G92_",
-        "M106 P4"
+        "G92_"
       ]
     },
     {

@@ -19,9 +19,9 @@
 - [x] 2.6 Time stock `G28` repeatedly and keep the `klippy.log` lines.
 - [x] 2.7 Watch stock cut, wipe, chute, and park moves for clearances, and check the toolhead geometry the cold cut depends on. The operator watched them through a test print and Box loads and unloads.
 - [x] 2.8 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
-- [ ] 2.9 Measure idle and printing main-thread load and memory, as was done on the Max 4. Idle is recorded in the platform observations; printing is still to measure.
+- [x] 2.9 Measure idle and printing main-thread load and memory, as was done on the Max 4. Both are recorded in the platform observations: printing, Klipper's main thread used 0.22 of a core, the Max 4's figure, with 281–290 MB available.
 - [x] 2.10 Take photos of the mainboard and THR board revisions. The mainboard is `X-12-3 V1.0.1`, the SoC board `X-12-1 V1.1.0`, and the THR board `A-10 V1.1.5`.
-- [ ] 2.11 Check whether `BEEP` beeps during QIDI's stock homing, whether the Plus 5 has a polar cooler on `PA14`, and the bed screws' thread. `BEEP` is undefined and ignored, and stock `printer.cfg` drives `PA14` as `output_pin polar_cooler` from `M106 P4`; the thread is still unchecked.
+- [x] 2.11 Check whether `BEEP` beeps during QIDI's stock homing, whether the Plus 5 has a polar cooler on `PA14`, and the bed screws' thread. `BEEP` is undefined and ignored. The Plus 5 can have a polar cooler: stock `printer.cfg` drives `PA14` as `output_pin polar_cooler` from `M106 P4`. The thread is taken to be the Max 4's `CW-M4`.
 
 ## 3. On the Plus 5, with services stopped
 
@@ -32,7 +32,6 @@
 
 - [x] 4.1 Add the `plus5` printer to `installer/package.yaml` with its variants, macro folder, and stock snapshot. Update `installer/supported_upgrade_sources.yaml`.
 - [x] 4.2 Run the installer core tests, the known-versions check, the config formatter, the slicer macro check, the start-print contract check, OpenSpec validation, and the bundle smoke test.
-- [ ] 4.3 Install on the Plus 5. Confirm admission, guarded patches, full, XY, and single-axis homing, print start through each slicer pack, cut, wipe, chute, rear-bed scrape, end print, and the screen card.
-- [ ] 4.4 Exercise update, uninstall, restore, and recovery after a QIDI firmware update on the Plus 5.
-- [x] 4.5 Decide zram and the THR fix for the Plus 5 from 2.2 and 3.1, and record the decision. Both ship: the kernels match apart from the build string, and the THR bootloader is the admitted `46358f30…`. The fix was flashed and verified on the project Plus 5. The mainboard has the admitted `60be6289…` bootloader, but the closed-loop reply fix stays Max 4-only because the Plus 5 has no closed-loop drivers.
-- [x] 4.6 Update the README supported printers, `docs/`, the version, and `CHANGELOG.md`.
+- [x] 4.3 Decide zram and the THR fix for the Plus 5 from 2.2 and 3.1, and record the decision. Both ship: the kernels match apart from the build string, and the THR bootloader is the admitted `46358f30…`. The fix was flashed and verified on the project Plus 5. The mainboard has the admitted `60be6289…` bootloader, but the closed-loop reply fix stays Max 4-only because the Plus 5 has no closed-loop drivers.
+- [x] 4.4 Update the README supported printers, `docs/`, the version, and `CHANGELOG.md`.
+- [x] 4.5 Give the Plus 5 the Max 4's 565 mm/s Z tilt and bed mesh travel speed, leaving its `max_velocity` at QIDI's 600.

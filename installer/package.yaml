@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.11.3"
+  version: "26.11.11.4"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 printers:
   - id: max4
@@ -351,6 +351,7 @@ patches:
           expected: "800"
           desired: "565"
 
+    # Probing travel is 565 mm/s on every printer. The Plus 5 keeps QIDI's max_velocity of 600.
     - id: z_tilt_speed
       file: "config/printer.cfg"
       section: "z_tilt"
@@ -360,7 +361,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "150"
           desired: "565"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "150"
           desired: "565"
 
@@ -373,7 +374,7 @@ patches:
         - firmwares: ["01.01.06.03"]
           expected: "150"
           desired: "565"
-        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01"]
+        - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01"]
           expected: "150"
           desired: "565"
 
