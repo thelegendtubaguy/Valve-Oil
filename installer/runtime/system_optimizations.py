@@ -33,9 +33,11 @@ from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
 from . import moonraker_klippy_apis
 from . import moonraker_allowed_services
+from . import moonraker_fixes
 from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import moonraker_used_extruders
+from . import qidiclient_firmware_popup
 from . import addons_service
 from . import remote_screen
 from . import restart_on_exit
@@ -158,7 +160,8 @@ MOONRAKER_READY_TIMEOUT_SECONDS = 120
 class _GuardedFilePatch:
     label: str
     file: Callable[[SystemOptimizationsSpec], str]
-    patch: Callable[[str], str]
+    # None for a binary patch.
+    patch: Callable[[str], str] | None
     restart_service: str | None
     missing_message: str | None
     # Unreviewed sources fail the transaction unless the patch is optional for that vendor file.
@@ -176,6 +179,9 @@ class _GuardedFilePatch:
     # of patch_variants, since that state may have changed since the patch was made.
     patch_options: Callable[[SystemOptimizationsSpec, Path], dict[str, Any]] | None = None
     patch_variants: tuple[dict[str, Any], ...] = ({},)
+    # A file too large to hold in memory, patched in pieces instead of as text: a module with needs_patch(path),
+    # write_patched(source, destination) and patched_sha256(stock_sha256).
+    binary: Any = None
 
     def patched(self, text: str, *, spec: SystemOptimizationsSpec, root: Path) -> str:
         return self.patch(text, **(self.patch_options(spec, root) if self.patch_options is not None else {}))
@@ -256,6 +262,15 @@ GUARDED_FILE_PATCHES = {
         missing_message=None,
         skip_unrecognized=True,
     ),
+    qidiclient_firmware_popup.OPERATION: _GuardedFilePatch(
+        label="touchscreen app firmware notice",
+        file=lambda spec: qidiclient_firmware_popup.FILE,
+        patch=None,
+        restart_service=qidiclient_firmware_popup.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        binary=qidiclient_firmware_popup,
+    ),
     moonraker_speedups.PATH_OPERATION: _GuardedFilePatch(
         label="Moonraker speedups path file",
         file=lambda spec: moonraker_speedups.PATH_FILE,
@@ -270,6 +285,24 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: moonraker_speedups.KLIPPER_PATH_FILE,
         patch=moonraker_speedups.patch_klipper_path_file,
         restart_service=moonraker_speedups.KLIPPER_RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.MODULE_OPERATION: _GuardedFilePatch(
+        label="Moonraker fixes module",
+        file=lambda spec: moonraker_fixes.MODULE_FILE,
+        patch=moonraker_fixes.patch_module,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.PATH_OPERATION: _GuardedFilePatch(
+        label="Moonraker fixes path file",
+        file=lambda spec: moonraker_fixes.PATH_FILE,
+        patch=moonraker_fixes.patch_path_file,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
         missing_message=None,
         skip_unrecognized=True,
         create_if_missing=True,
@@ -869,6 +902,14 @@ def _moonraker_env_present(root: Path) -> bool:
     return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
 
 
+def _moonraker_fixes_module_current(root: Path) -> bool:
+    module = _map_path(root, moonraker_fixes.MODULE_FILE)
+    try:
+        return not module.is_symlink() and module.read_text(encoding="utf-8") == moonraker_fixes.module_source()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def _klippy_env_present(root: Path) -> bool:
     site_packages = _map_path(root, moonraker_speedups.KLIPPER_SITE_PACKAGES)
     return not _path_has_symlink_component(site_packages, root=root) and site_packages.is_dir()
@@ -1033,7 +1074,7 @@ def _guarded_file_has_drift(operation_id: str, spec: SystemOptimizationsSpec, ro
     if GUARDED_FILE_PATCHES[operation_id].create_if_missing and not target.exists() and not _path_has_symlink_component(target, root=root):
         return False
     return _path_has_symlink_component(target, root=root) or not target.is_file() or (
-        hashlib.sha256(target.read_bytes()).hexdigest() != expected
+        _sha256_file(target) != expected
         and not _file_matches_preimage(preimages[operation_id], root=root)
     )
 
@@ -1103,7 +1144,7 @@ def restore_system_optimizations(
             if guarded is not None:
                 target = _map_path(root, guarded.file(manifest.system_optimizations))
                 expected = _outcome_file_sha256(outcome)
-                if _path_has_symlink_component(target, root=root) or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+                if _path_has_symlink_component(target, root=root) or not target.is_file() or _sha256_file(target) != expected:
                     reporter.line(f"{guarded.label} was modified after install and was preserved.")
                     continue
             if operation_id == FILAMENT_CONFIG_OPERATION:
@@ -1312,12 +1353,15 @@ def apply_system_optimizations(
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
                 reporter.line(f"{guarded.label} was modified after install and was preserved.")
                 continue
-            env_present = {
-                moonraker_speedups.PATH_OPERATION: _moonraker_env_present,
-                moonraker_speedups.KLIPPER_PATH_OPERATION: _klippy_env_present,
+            # What a file in a virtualenv needs before it is written: the virtualenv, and what the file imports.
+            env_ready = {
+                moonraker_speedups.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_speedups.KLIPPER_PATH_OPERATION: lambda: _klippy_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_fixes.MODULE_OPERATION: lambda: _moonraker_env_present(root),
+                moonraker_fixes.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_fixes_module_current(root),
             }.get(operation_id)
-            if env_present is not None and not (env_present(root) and _moonraker_speedups_current(spec, root)):
-                # Never point Moonraker or Klipper at packages that aren't in place.
+            if env_ready is not None and not env_ready():
+                # Never point Moonraker or Klipper at packages or a module that aren't in place.
                 actions.append(
                     _action_record(
                         operation_id=operation_id,
@@ -1858,8 +1902,11 @@ def apply_system_optimizations(
                 run=run,
             )
             if guarded is not None:
-                original = Path(preimage["backup_path"]).read_bytes().decode("utf-8") if preimage.get("exists") else ""
-                expected = hashlib.sha256(guarded.patched(original, spec=spec, root=root).encode("utf-8")).hexdigest()
+                if guarded.binary is not None:
+                    expected = guarded.binary.patched_sha256(preimage["sha256"])
+                else:
+                    original = Path(preimage["backup_path"]).read_bytes().decode("utf-8") if preimage.get("exists") else ""
+                    expected = hashlib.sha256(guarded.patched(original, spec=spec, root=root).encode("utf-8")).hexdigest()
                 if postflight.get("sha256") != expected:
                     raise SystemOptimizationError(f"{guarded.label} changed before postflight completed.")
             action = _action_record(
@@ -2042,11 +2089,9 @@ def _postflight_operation(
         target = _map_path(root, path)
         if not target.exists():
             return {"path": path, "exists": False}
-        content = target.read_bytes()
-        text = content.decode("utf-8")
-        if guarded.patched(text, spec=spec, root=root) != text:
+        if _guarded_file_needs_patch(guarded, target, spec=spec, root=root):
             raise SystemOptimizationError(f"{guarded.label} patch failed postflight.")
-        return {"path": path, "sha256": hashlib.sha256(content).hexdigest()}
+        return {"path": path, "sha256": _sha256_file(target)}
     if operation_id == MOONRAKER_METADATA_OPERATION:
         target = _map_path(root, spec.moonraker_metadata_3mf.file)
         return {"path": spec.moonraker_metadata_3mf.file, "patched": target.exists() and MOONRAKER_METADATA_PATCH_MARKER in target.read_text(encoding="utf-8")}
@@ -2161,18 +2206,32 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
     path = guarded.file(spec)
     target = _map_path(root, path)
     _reject_symlink_path(target, root=root)
-    original = target.read_bytes() if target.exists() else None
+
+    def current() -> bytes | str | None:
+        if not target.exists():
+            return None
+        return _sha256_file(target) if guarded.binary is not None else target.read_bytes()
+
+    original = current()
+    original_sha256 = hashlib.sha256(original).hexdigest() if isinstance(original, bytes) else original
     if ((original is None) != (not preimage.get("exists"))
-            or (original is not None and hashlib.sha256(original).hexdigest() != preimage.get("sha256"))
+            or (original is not None and original_sha256 != preimage.get("sha256"))
             or (original is None and not guarded.create_if_missing)):
         raise SystemOptimizationError(f"{guarded.label} changed after backup; refusing replacement.")
-    patched = guarded.patched((original or b"").decode("utf-8"), spec=spec, root=root)
     staged_path = f"{path}.tltg-{uuid.uuid4().hex}.tmp"
     staged = _map_path(root, staged_path)
     try:
-        _write_file_preserving_preimage(staged_path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
+        if guarded.binary is not None:
+            # The backup just taken is the reviewed original; its directory is on the printer's storage.
+            backup = Path(preimage["backup_path"])
+            with tempfile.TemporaryDirectory(dir=backup.parent) as work:
+                guarded.binary.write_patched(backup, Path(work) / "patched")
+                _install_file_preserving_preimage(staged_path, Path(work) / "patched", preimage=preimage, root=root, sudo_password=sudo_password, run=run)
+        else:
+            patched = guarded.patched((original or b"").decode("utf-8"), spec=spec, root=root)
+            _write_file_preserving_preimage(staged_path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
         _reject_symlink_path(target, root=root)
-        if (target.read_bytes() if target.exists() else None) != original:
+        if current() != original:
             raise SystemOptimizationError(f"{guarded.label} changed before replacement.")
         if original is None:
             if _is_fake_root(root):
@@ -2377,6 +2436,11 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     guarded = GUARDED_FILE_PATCHES[operation_id]
     target = _map_path(root, preimage["path"])
     _reject_symlink_path(target, root=root)
+    if guarded.binary is not None:
+        if not target.is_file() or _sha256_file(target) not in (preimage["sha256"], guarded.binary.patched_sha256(preimage["sha256"])):
+            raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
+        _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
+        return
     original = Path(preimage["backup_path"]).read_bytes() if preimage.get("exists") else None
     if original is None and not target.exists():
         return
@@ -2408,7 +2472,8 @@ def _file_matches_preimage(preimage: dict[str, Any], *, root: Path) -> bool:
     if not mapped.is_file() or mapped.is_symlink():
         return False
     try:
-        return mapped.read_bytes() == Path(str(preimage["backup_path"])).read_bytes()
+        backup = Path(str(preimage["backup_path"]))
+        return mapped.stat().st_size == backup.stat().st_size and _sha256_file(mapped) == _sha256_file(backup)
     except (KeyError, OSError):
         return False
 
@@ -2578,7 +2643,7 @@ def _capture_file(path: str, *, paths: RuntimePaths, root: Path) -> dict[str, An
     preimage.update({
         "type": "file",
         "backup_path": str(backup_path),
-        "sha256": hashlib.sha256(backup_path.read_bytes()).hexdigest(),
+        "sha256": _sha256_file(backup_path),
         "mode": f"{stat.st_mode & 0o777:04o}",
         "uid": stat.st_uid,
         "gid": stat.st_gid,
@@ -2595,26 +2660,50 @@ def _write_file_preserving_preimage(
     sudo_password: str | None,
     run,
 ) -> None:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write(content)
+        tmp = handle.name
+    try:
+        _install_file_preserving_preimage(path, Path(tmp), preimage=preimage, root=root, sudo_password=sudo_password, run=run)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
+def _install_file_preserving_preimage(
+    path: str,
+    source: Path,
+    *,
+    preimage: dict[str, Any],
+    root: Path,
+    sudo_password: str | None,
+    run,
+) -> None:
     mapped = _map_path(root, path)
     mode = str(preimage.get("mode", "0644"))
     if _is_fake_root(root):
         mapped.parent.mkdir(parents=True, exist_ok=True)
         _reject_symlink_path(mapped, root=root)
-        mapped.write_text(content, encoding="utf-8")
+        shutil.copyfile(source, mapped)
         mapped.chmod(int(mode, 8))
         return
     _reject_parent_symlink_path(mapped, root=root)
     if mapped.is_symlink():
         raise SystemOptimizationError(f"Refusing to write through symlink: {path}")
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
-        handle.write(content)
-        tmp = handle.name
-    try:
-        run_sudo_or_raise(["install", "-D", "-m", mode, tmp, path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
-        if "uid" in preimage and "gid" in preimage:
-            run_sudo_or_raise(["chown", f"{preimage['uid']}:{preimage['gid']}", path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
-    finally:
-        Path(tmp).unlink(missing_ok=True)
+    run_sudo_or_raise(["install", "-D", "-m", mode, str(source), path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+    if "uid" in preimage and "gid" in preimage:
+        run_sudo_or_raise(["chown", f"{preimage['uid']}:{preimage['gid']}", path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+
+
+def _sha256_file(path: Path) -> str:
+    # Hashed in pieces: the touchscreen app is about a fifth of the printer's memory.
+    return qidiclient_firmware_popup.sha256_file(path)
+
+
+def _guarded_file_needs_patch(guarded: _GuardedFilePatch, path: Path, *, spec: SystemOptimizationsSpec, root: Path) -> bool:
+    if guarded.binary is not None:
+        return guarded.binary.needs_patch(path)
+    text = path.read_bytes().decode("utf-8")
+    return guarded.patched(text, spec=spec, root=root) != text
 
 
 def _write_file(path: str, content: str, *, root: Path, sudo_password: str | None, run) -> None:
@@ -2807,8 +2896,7 @@ def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, 
         path = _map_path(root, guarded.file(spec))
         if not path.exists():
             return guarded.create_if_missing
-        text = path.read_bytes().decode("utf-8")
-        return guarded.patched(text, spec=spec, root=root) != text
+        return _guarded_file_needs_patch(guarded, path, spec=spec, root=root)
     if operation_id == MOONRAKER_METADATA_OPERATION:
         path = _map_path(root, spec.moonraker_metadata_3mf.file)
         return path.exists() and MOONRAKER_METADATA_PATCH_MARKER not in path.read_text(encoding="utf-8")
@@ -3193,6 +3281,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         moonraker_allowed_services.OPERATION,
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
+        qidiclient_firmware_popup.OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION,
@@ -3202,6 +3291,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION,
+        # The path file imports the module, so it goes after it and restoration removes it first.
+        moonraker_fixes.MODULE_OPERATION,
+        moonraker_fixes.PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
         FLUIDD_BUILD_OPERATION,
         VALVE_OIL_UI_OPERATION,
@@ -3279,8 +3371,9 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": zram_swap.DESTINATION, "modules_sha256": [module.sha256 for module in spec.zram_swap.modules]}
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
-        moonraker_used_extruders.OPERATION, moonraker_speedups.PATH_OPERATION,
-        moonraker_speedups.KLIPPER_PATH_OPERATION, restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
+        moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, moonraker_speedups.PATH_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
+        restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
         addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
@@ -3728,12 +3821,15 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
             KLIPPER_PRINT_STATS_OPERATION,
+            qidiclient_firmware_popup.OPERATION,
             restart_on_exit.MOONRAKER_OPERATION,
             restart_on_exit.KLIPPER_OPERATION,
             webcam_id.OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,
+            moonraker_fixes.MODULE_OPERATION,
+            moonraker_fixes.PATH_OPERATION,
             *service_priority.SERVICES,
             *cpu_tuning.FILES,
             ZRAM_SWAP_OPERATION,
@@ -3842,7 +3938,7 @@ def _validate_managed_backup(backup: Path, expected_sha256: str, paths: RuntimeP
         raise StateValidationError("Host restoration backup escapes the managed backup root.") from exc
     if backup.is_symlink() or not backup.is_file() or not _is_sha256(expected_sha256):
         raise StateValidationError("Host restoration backup is invalid.")
-    if hashlib.sha256(backup.read_bytes()).hexdigest() != expected_sha256:
+    if _sha256_file(backup) != expected_sha256:
         raise StateValidationError("Host restoration backup hash does not match.")
 
 

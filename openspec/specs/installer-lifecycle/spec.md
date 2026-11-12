@@ -299,6 +299,23 @@ Normal install and update SHALL apply recognized Moonraker metadata optimization
 - **AND** the print-start plate selection is deployed the same way to Moonraker's Klippy API source, which is left unchanged when unrecognized
 - **AND** the used-filament extraction is deployed the same way to Moonraker's metadata extractor after its plate selection, and is left unchanged when the extractor is unrecognized
 
+### Requirement: Moonraker fixes module
+The installer SHALL install the package's Moonraker fixes module into QIDI's Moonraker virtualenv, with a path file that imports it when Moonraker's Python starts, without changing any file QIDI installed, and SHALL keep the change reversible.
+
+#### Scenario: Module is added to QIDI's virtualenv
+- **WHEN** QIDI's Python 3.9 Moonraker virtualenv exists
+- **THEN** the installer writes the module, and only once the module is in place writes the path file that imports it
+- **AND** Moonraker restarts once, and again when a later package version changes the module
+
+#### Scenario: Missing or foreign state is left alone
+- **WHEN** the virtualenv is missing, or a file exists at either path without the package's marker line
+- **THEN** the installer leaves it unchanged and never writes a path file that imports a module that is not in place
+
+#### Scenario: Module deployment remains reversible
+- **WHEN** uninstall finds the package's path file and module
+- **THEN** it removes the path file, then the module, and restarts Moonraker, leaving QIDI's virtualenv as it was
+- **AND** a file changed after install is preserved and reported
+
 ### Requirement: Moonraker speedup packages
 The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for the optimized status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
 
@@ -702,6 +719,20 @@ Normal install and update SHALL let Fluidd's service controls restart, stop, and
 - **WHEN** the allowed-services list is missing, is not a plain list of service names, or was modified after installation
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged list to its original content and restarts Moonraker
+
+### Requirement: Touchscreen firmware notice accepts package board firmware
+Normal install and update SHALL patch reviewed builds of QIDI's touchscreen executable so its firmware-version notices treat a board version that starts with QIDI's manifest version as current, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
+
+#### Scenario: A reviewed touchscreen executable is patched
+- **WHEN** install or update finds a touchscreen executable whose SHA-256 is a reviewed QIDI build
+- **THEN** it backs up the original, replaces the executable atomically with the reviewed patched build, keeps its mode and owner, and restarts the touchscreen app once
+- **AND** an executable that is already the reviewed patched build is left unchanged
+- **AND** the executable is hashed and copied in pieces, never held in memory whole
+
+#### Scenario: Other touchscreen executables are preserved
+- **WHEN** the touchscreen executable is missing, is not a reviewed build, or was modified after installation
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged patched executable to QIDI's original and restarts the touchscreen app
 
 ### Requirement: Klipper and Moonraker come back after exiting outside systemd
 Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.

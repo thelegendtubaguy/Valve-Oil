@@ -51,6 +51,24 @@ QIDI's `qidi-tuning` service keeps Klipper on CPUs 1 and 2, keeps the web server
 
 Moonraker also gets CPU 3, which has little else to do when AI detection is off. On the test Max 4 with the camera streaming and Fluidd connected, other programs interrupted Moonraker about 18 times a second instead of 45, and status updates reached Fluidd and the touchscreen in a median 8.7 ms instead of 12.5 ms. With AI detection running, the difference is small.
 
+## Moonraker freezing while it connects to QIDI's cloud
+
+On a printer linked to a QIDI account, QIDI's Moonraker keeps a connection open to QIDI's cloud server. Each time it connects, it waits for the server to answer the start of the encrypted connection, and QIDI's code does that waiting in the one loop that runs everything else in Moonraker, with a 60 second limit. If the server accepts the connection and then doesn't answer, Moonraker stops for those 60 seconds. Fluidd and the touchscreen get no answers, Klipper's state isn't read, and `moonraker.log` says `EVENT LOOP BLOCKED: 62 seconds` after `The handshake operation timed out`. QIDI's code retries 2 seconds later, so a server that keeps doing it freezes Moonraker again and again.
+
+At power-on this can show on the touchscreen as **Printer service failed to start** (`QDC_400_005_015_001`) while Klipper is running normally.
+
+Moonraker now waits for the server's answer in the background, for at most 10 seconds, and keeps answering Fluidd, the touchscreen, and Klipper while it waits. When the answer doesn't come, QIDI's code gets the same error and retries as before. On the Max 4 test printer, with a test server that accepts connections and never answers, each Moonraker request took about 59 seconds before the change and about 15 ms after it.
+
+This doesn't change whether QIDI's cloud accepts your printer. `MQTT Connection Failed: Not authorized` in Fluidd means QIDI's server refused the printer's saved account.
+
+## Touchscreen offering firmware you already have
+
+With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or [mainboard](firmware.md#mainboard-closed-loop-reply-fix) firmware, QIDI's touchscreen app showed **New MCU or THR firmware has been detected. Please go to the firmware page to update.** The firmware page then had nothing to update. The pop-up treats any board version that isn't exactly QIDI's as out of date, and this project's firmware reports QIDI's version followed by `-valve-oil.` and a revision number. The firmware page compares versions another way and sees them as current.
+
+The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
+
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+
 ## Fixes from newer Klipper
 
 QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:
@@ -86,6 +104,12 @@ The top speed is now 565 mm/s, which keeps every motor at or below 800 mm/s of b
 ## Unknown Box filaments shutting Klipper down
 
 Loading a slot whose saved filament isn't in QIDI's list no longer shuts Klipper down. See [QIDI Box](qidi-box.md#filaments-missing-from-qidis-list).
+
+## Klipper shutting down at startup on `INIT_RFID_READ`
+
+QIDI's startup macro `INIT_GLOBALS` runs 5 seconds into Klipper's startup and ends with `INIT_RFID_READ`, which has the QIDI Box read its spool tags. QIDI's Box code only finishes starting near the end of Klipper's startup, and `INIT_RFID_READ` doesn't check for that. On a start where something earlier took more than those 5 seconds, the command failed with `Internal error on command:"INIT_RFID_READ"` (`'NoneType' object has no attribute 'allVariables'` in `klippy.log`) and Klipper shut down until a firmware restart. This happens with or without a Box, since the macro runs the command either way.
+
+`INIT_RFID_READ` now waits until QIDI's Box code has started, then runs as before. If that takes more than a minute, the startup tag read is left out and `klippy.log` says so. A start where QIDI's Box code is ready in time is unchanged.
 
 ## Box loads stuck at `无法识别到已进料耗材`
 

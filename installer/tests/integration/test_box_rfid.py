@@ -5,6 +5,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -139,8 +140,24 @@ class BoxRfid:
 
 
 class Reactor:
+    NEVER = 9e99
+
     def __init__(self):
-        self.now = 0.
+        self.now, self.timers = 0., []
+
+    def register_timer(self, callback, waketime):
+        self.timers.append([callback, waketime])
+
+    def advance(self, seconds):
+        """Run due timers, as Klipper's reactor does, up to `seconds` from now."""
+        end = self.now + seconds
+        while True:
+            due = min(self.timers, key=lambda timer: timer[1], default=None)
+            if due is None or due[1] > end:
+                break
+            self.now = due[1]
+            due[1] = due[0](self.now)
+        self.now = end
 
     def mutex(self):
         return contextlib.nullcontext()
@@ -172,9 +189,33 @@ class Gcmd:
         self.messages.append(message)
 
 
+class Controller:
+    """QIDI's multi_color_controller before its klippy:ready callback has run."""
+
+    def __init__(self, printer):
+        self.save_vars = self.box_adapter = None
+        self.init_reads = 0
+        printer.commands["INIT_RFID_READ"] = self.cmd_READ_RFID_INIT
+
+    def ready(self):
+        self.save_vars = self.box_adapter = types.SimpleNamespace(allVariables={}, box_count=1)
+
+    def cmd_READ_RFID_INIT(self, gcmd):
+        self.save_vars.allVariables, self.box_adapter.box_count  # raises until ready, as QIDI's does
+        self.init_reads += 1
+
+
 class Printer:
     def __init__(self, rfid, log_dir):
         self.rfid, self.log_dir, self.reactor, self.handlers, self.commands = rfid, log_dir, Reactor(), {}, {}
+        self.shutdown = False
+        self.controller = Controller(self)
+
+    def is_shutdown(self):
+        return self.shutdown
+
+    def run_script(self, script):
+        self.commands[script](Gcmd())
 
     def get_reactor(self):
         return self.reactor
@@ -185,12 +226,14 @@ class Printer:
     def register_event_handler(self, event, handler):
         self.handlers[event] = handler
 
-    def lookup_object(self, name):
-        assert name == "gcode"
-        return self
+    def lookup_object(self, name, default=None):
+        return {"gcode": self, "multi_color_controller": self.controller}[name]
 
     def register_command(self, name, handler, desc=None):
-        self.commands[name] = handler
+        previous = self.commands.pop(name, None)
+        if handler is not None:
+            self.commands[name] = handler
+        return previous
 
     def lookup_objects(self, module):
         return [("box_rfid card_reader_4", self.rfid)]
@@ -226,6 +269,7 @@ class BoxRfidTests(unittest.TestCase):
         self.rfid = BoxRfid(Mcu(self.reader, firmware))
         self.printer = Printer(self.rfid, self.root)
         module = box_rfid.load_config(Config(self.printer, self.database))
+        self.printer.handlers["klippy:connect"]()
         self.printer.handlers["klippy:ready"]()
         return module
 
@@ -305,6 +349,25 @@ class BoxRfidTests(unittest.TestCase):
         self.assertEqual(self.qidi_read()["data"], b"stale QIDI buffer")
         with self.assertRaises(CommandError):
             self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+
+    def test_startup_tag_read_waits_for_qidis_controller(self):
+        self.module()
+        printer, controller = self.printer, self.printer.controller
+        printer.commands["INIT_RFID_READ"](Gcmd())  # QIDI's own would raise here and shut Klipper down
+        printer.reactor.advance(10)
+        self.assertEqual(controller.init_reads, 0)
+        controller.ready()
+        printer.reactor.advance(10)
+        self.assertEqual(controller.init_reads, 1)
+        printer.commands["INIT_RFID_READ"](Gcmd())
+        self.assertEqual(controller.init_reads, 2)
+        # A controller that never becomes ready: the read is left out.
+        self.module()
+        self.printer.commands["INIT_RFID_READ"](Gcmd())
+        self.printer.reactor.advance(300)
+        self.printer.controller.ready()
+        self.printer.reactor.advance(300)
+        self.assertEqual(self.printer.controller.init_reads, 0)
 
     def test_report_command_saves_the_whole_tag_without_its_uid(self):
         self.module(Tag("ntag", ANYCUBIC))

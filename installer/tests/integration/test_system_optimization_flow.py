@@ -19,6 +19,8 @@ from installer.runtime import addons_service
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
+from installer.runtime import qidiclient_firmware_popup
+from installer.runtime import moonraker_fixes
 from installer.runtime import restart_on_exit
 from installer.runtime import webcam_id
 from installer.runtime import service_priority
@@ -53,6 +55,7 @@ from installer.tests.helpers import (
     build_env,
     copy_base_runtime,
     fake_host_run,
+    fake_qidiclient,
     fake_system_root,
     moonraker_urlopen,
     snapshot_tree,
@@ -74,8 +77,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_nginx_site=True,
             include_moonraker_asvc=True,
             include_moonraker_metadata=True,
+            include_qidiclient=True,
         )
         host_run = fake_host_run(system_root)
+        qidiclient = system_root / qidiclient_firmware_popup.FILE.lstrip("/")
+        qidiclient_before, qidiclient_patched = fake_qidiclient()
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
         moonraker.write_bytes(moonraker.read_bytes().replace(b"\n", b"\r\n"))
         moonraker_before = moonraker.read_bytes()
@@ -100,6 +106,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
         addons_unit = system_root / addons_service.UNIT_FILE.lstrip("/")
         addons_server = system_root / addons_service.SERVER_FILE.lstrip("/")
+        fixes_module = system_root / moonraker_fixes.MODULE_FILE.lstrip("/")
+        fixes_path = system_root / moonraker_fixes.PATH_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
         asvc_before = asvc.read_bytes()
@@ -273,6 +281,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
         self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
+        # The touchscreen app accepts a board version that starts with QIDI's, and stays executable.
+        self.assertIn(qidiclient_firmware_popup.OPERATION, state.system_ledger["restore_preimages"])
+        self.assertEqual(qidiclient.read_bytes(), qidiclient_patched)
+        self.assertEqual(qidiclient.stat().st_mode & 0o777, 0o755)
         filament_config = manifest.system_optimizations.fluidd_filament_config
         filament_link = printer_root / filament_config.link
         self.assertEqual(os.readlink(filament_link), filament_config.target)
@@ -286,6 +298,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
         self.assertEqual(addons_server.read_bytes(), addons_service.SERVER_PAYLOAD.read_bytes())
+        # Moonraker's Python imports the fixes module through the path file.
+        self.assertEqual(fixes_module.read_bytes(), moonraker_fixes.MODULE_PAYLOAD.read_bytes())
+        self.assertEqual(fixes_path.read_text(encoding="utf-8"), moonraker_fixes.PATH_CONTENT)
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
         # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
         self.assertEqual(nginx_site.read_bytes(), nginx_site_before)
@@ -471,6 +486,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
+        self.assertEqual(qidiclient.read_bytes(), qidiclient_before)
+        self.assertEqual(qidiclient.stat().st_mode & 0o777, 0o755)
         self.assertEqual(klippy_apis.read_bytes(), klippy_apis_before)
         self.assertEqual(metadata.read_bytes(), metadata_before)
         self.assertEqual(spoolman.read_bytes(), spoolman_before)
@@ -489,6 +506,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(screen_server.exists())
         self.assertFalse(addons_unit.exists())
         self.assertFalse(addons_server.exists())
+        self.assertFalse(fixes_module.exists())
+        self.assertFalse(fixes_path.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
         for dropin in restart_on_exit.FILES.values():
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
@@ -541,7 +560,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
 
     def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
         printer_root = copy_base_runtime()
-        root = fake_system_root(include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True)
+        root = fake_system_root(
+            include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True, include_qidiclient=True,
+        )
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
         boot_id = printer_root / "boot-id"
@@ -549,6 +570,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        # A touchscreen app build nobody reviewed, the same size as a reviewed one.
+        qidiclient = root / qidiclient_firmware_popup.FILE.lstrip("/")
+        unreviewed = fake_qidiclient()[0][:-1] + b"\x01"
+        qidiclient.write_bytes(unreviewed)
         fluidd = root / manifest.system_optimizations.fluidd_box_filament_ids.file.lstrip("/")
         fluidd.write_text(fluidd.read_text().replace('"officiallFilasList",e)', '"officiallFilasList",e||{})'))
         original = fluidd.read_bytes()
@@ -568,6 +593,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
 
         self.assertEqual(fluidd.read_bytes(), original)
         self.assertEqual(ledger["outcomes"][FLUIDD_BOX_OPERATION]["status"], "unsupported")
+        self.assertEqual(qidiclient.read_bytes(), unreviewed)
+        self.assertEqual(ledger["outcomes"][qidiclient_firmware_popup.OPERATION]["status"], "unsupported")
+        self.assertNotIn(qidiclient_firmware_popup.OPERATION, ledger["restore_preimages"])
         self.assertNotIn(FLUIDD_BOX_OPERATION, ledger["restore_preimages"])
         self.assertEqual(asvc.read_text(encoding="utf-8"), "[allowed]\nklipper_mcu\n")
         self.assertEqual(ledger["outcomes"][moonraker_allowed_services.OPERATION]["status"], "unsupported")

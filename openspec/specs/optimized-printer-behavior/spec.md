@@ -896,6 +896,22 @@ Optimized configuration SHALL copy `multi_color_controller`'s status, and each p
 - **WHEN** a stock or optimized macro reads an object such as `printer.configfile` or `printer.toolhead`
 - **THEN** it receives the same values and types as with Klipper's deep copy, and changing them does not change the object
 
+### Requirement: Moonraker keeps running while its cloud MQTT connection is made
+The package's Moonraker fixes module SHALL run the TLS handshake of the vendor Moonraker's MQTT connection off Moonraker's event loop, bounded to 10 seconds, and hand the vendor reconnect code the socket after its handshake. The vendor's credentials, broker choice, retry loop, and error handling SHALL stay unchanged, and plain MQTT connections and vendor code the module does not recognize SHALL be left as they are.
+
+#### Scenario: Broker does not answer the handshake
+- **WHEN** the broker accepts the TCP connection and does not answer the TLS handshake
+- **THEN** Moonraker keeps serving API requests, websockets, and Klipper while the handshake waits
+- **AND** the vendor retry loop receives the handshake timeout as its connection error and retries as before
+
+#### Scenario: Broker answers
+- **WHEN** the broker completes the TLS handshake
+- **THEN** the vendor reconnect code sends its MQTT connect over that connection and the client's TLS context is as the vendor set it
+
+#### Scenario: Unrecognized vendor code
+- **WHEN** the vendor MQTT component lacks the attributes the module was written for
+- **THEN** the module changes nothing and Moonraker's log says the fix was not applied
+
 ### Requirement: Upstream Klipper fixes
 Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
 
@@ -1046,6 +1062,18 @@ On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL a
 #### Scenario: Stock Box firmware
 - **WHEN** a Box runs QIDI's firmware or the earlier shutdown-fix build
 - **THEN** RFID reads behave exactly as stock
+
+### Requirement: Startup tag read waits for the vendor Box controller
+Optimized configuration SHALL keep `INIT_RFID_READ` from raising an internal error when it runs before the vendor Box controller's ready callback, by running the vendor command once the controller has its saved variables and Box adapter. If the controller has neither within 60 seconds, or Klipper shuts down first, the startup read SHALL be left out and logged.
+
+#### Scenario: Startup read runs before the controller is ready
+- **WHEN** the vendor startup macro runs `INIT_RFID_READ` before the vendor Box controller's ready callback has run
+- **THEN** Klipper does not shut down
+- **AND** the vendor `INIT_RFID_READ` runs once after the controller is ready
+
+#### Scenario: Controller is ready
+- **WHEN** `INIT_RFID_READ` runs after the vendor Box controller's ready callback
+- **THEN** the vendor command runs at once, unchanged
 
 ### Requirement: Anycubic, Elegoo, and Bambu Lab filaments in QIDI's database
 At each Klipper start, optimized configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, and Bambu Lab 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, and `QFZ` and SHALL never be reassigned.
