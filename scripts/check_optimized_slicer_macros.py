@@ -99,7 +99,7 @@ def build_dynamic_prefixes(macros: set[str]) -> set[str]:
 
 
 # Each printer's slicer packs: the Max 4's at the top of each pack folder, other printers' in a subfolder.
-PRINTER_PACK_FOLDERS = {"max4": "", "plus5": "plus5"}
+PRINTER_PACK_FOLDERS = {"max4": "", "plus5": "plus5", "smart5": "smart5"}
 
 
 def iter_slicer_files(repo_root: Path = REPO_ROOT, printer: str | None = None) -> list[Path]:

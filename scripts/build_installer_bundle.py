@@ -188,7 +188,8 @@ def validate_source_payloads(manifest) -> None:
 def validate_printer_macro_trees(manifest) -> None:
     """Each printer's macro folder must complete the common macros without replacing any of them, and every
     printer's folder must define the same config sections so each printer has the same macros. Driver
-    sections are left out: they add options to the printer's own stock driver sections, which differ by printer."""
+    sections are left out: they add options to the printer's own stock driver sections, which differ by printer.
+    So are bed screw positions, which only printers with measured screws have."""
     sections_by_printer: dict[str, set[str]] = {}
     for printer in manifest.printers:
         common, printer_source = manifest.managed_tree_sources(printer.firmware[0])
@@ -200,7 +201,7 @@ def validate_printer_macro_trees(manifest) -> None:
             line.strip().lower()
             for path in sorted((REPO_ROOT / "installer" / printer_source).rglob("*.cfg"))
             for line in path.read_text(encoding="utf-8").splitlines()
-            if line.startswith("[") and not line.lower().startswith("[tmc")
+            if line.startswith("[") and not line.lower().startswith(("[tmc", "[screws_tilt_adjust]"))
         }
     expected_id, expected = next(iter(sections_by_printer.items()))
     for printer_id, sections in sections_by_printer.items():

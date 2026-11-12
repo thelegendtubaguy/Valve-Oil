@@ -40,6 +40,14 @@ def homing_fixture_bytes(firmware: str) -> bytes:
     return value
 
 
+def homing_smart5_fixture_bytes() -> bytes:
+    """QIDI's Smart 5 homing.py, rebuilt from the patched copy."""
+    return (REPO_ROOT / "installer/klipper/qidi/homing-smart5.py").read_bytes().replace(
+        b'self.toolhead.dwell(\r\n            .25 if rails[0].get_name() in ("stepper_x", "stepper_y")\r\n            else 1)',
+        b"self.toolhead.dwell(1)",
+    )
+
+
 def homing_sync_reset_fixture_bytes() -> bytes:
     return (
         FIXTURES_ROOT

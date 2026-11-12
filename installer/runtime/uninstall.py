@@ -29,7 +29,7 @@ from .compatibility import (
 from .config_transaction import FileChangePlan, apply_file_change_plan
 from .ensure_lines import has_active_line, remove_active_line
 from .errors import InstalledPackageValidationError, OperationCancelled
-from .firmware import detect_firmware_version_best_effort
+from .firmware import detect_firmware_key_best_effort
 from .interaction import (
     confirm_yes,
     maybe_restart_klipper,
@@ -98,7 +98,7 @@ def run_uninstall(
     )
 
     reporter.status(messages.CHECKING_FIRMWARE_VERSION)
-    current_firmware = detect_firmware_version_best_effort(paths.firmware_manifest_path)
+    current_firmware = detect_firmware_key_best_effort(paths.firmware_manifest_path, manifest)
     reporter.debug(
         event="uninstall.firmware.detected",
         firmware_version=current_firmware or "unknown-firmware",
@@ -589,7 +589,7 @@ def _uninstall_patch_ledger(
     printer = manifest.printer_for_firmware(firmware) if firmware else None
     if printer is None:
         return state.patch_ledger
-    stock_root = paths.installer_root / printer.stock_snapshots / firmware
+    stock_root = paths.installer_root / printer.stock_snapshot(firmware)
     ledger = []
     for entry in state.patch_ledger:
         if (

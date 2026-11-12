@@ -2,7 +2,7 @@
 
 ## Firmware and service behavior
 
-- Supported QIDI Max 4 stock comparisons use `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`; QIDI Plus 5 comparisons use `https://github.com/thelegendtubaguy/Qidi-Plus5-Defaults`.
+- Supported QIDI Max 4 stock comparisons use `https://github.com/thelegendtubaguy/Qidi-Max4-Defaults`; QIDI Plus 5 comparisons use `https://github.com/thelegendtubaguy/Qidi-Plus5-Defaults`; QIDI Smart 5 comparisons use `https://github.com/thelegendtubaguy/Qidi-Smart5-Defaults`.
 - Firmware identity is exposed in `/home/qidi/update/firmware_manifest.json` at `SOC.version`.
 - **Runtime-confirmed:** [GitHub issue #71](https://github.com/thelegendtubaguy/valve-oil/issues/71) reported firmware `01.01.06.04` with `/home/qidi/klipper/klippy/extras/homing.py` SHA-256 `0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761`. The attached file differs from the previously captured `01.01.06.04` SHA-256 `ff0439f8b9e702537f66c16508f7b0a137b27cff51eb653aa951172d3e5184a0` only by a conditional `endstop_sync_reset()` block before endstop `home_start()` setup.
 - Unresolved: `Qidi-Max4-Defaults` firmware snapshots currently contain `config/` and do not establish which `01.01.06.04` distribution or update path supplies each `homing.py` variant.
@@ -104,7 +104,7 @@ Comparisons in this section are against Max 4 firmware `01.01.07.01`, released t
   - THR is on `/dev/ttyS4` at `500000` with the same `lis2dw` and `probe_air` pins as Max 4. Filament switch `THR:PA1`, hotend fan `THR:PA11`, and hotend-fan tachometer `THR:PA12` replace Max 4's `PA0`, `PA15`, and `PB5`.
   - There is no `[fan_generic auxiliary_cooling_fan2]`. The bed mesh is `15,15`–`305,305` at 7×7. `z_tilt` probes `15,160` and `305,160`, the resonance probe point is `162,162`, the screws are at `32.5`/`287.5`, and `probe_air` `z_offset` is `-0.075`.
   - `[box485]` and `[box2base]` match Max 4.
-- **Config-confirmed:** every file in the `01.01.02.01` `printer_data/config` payload uses CRLF line endings; the Max 4 `01.01.07.01` config files use LF.
+- **Config-confirmed:** the `.cfg` files in the `01.01.02.01` `printer_data/config` payload use CRLF line endings, and `crowsnest.conf`, `moonraker.conf`, `drying.conf`, and `officiall_filas_list.cfg` use LF; the Max 4 `01.01.07.01` config files use LF.
 - **Config-confirmed:** the stock `klipper-macros-qd/` differs from Max 4 in `kinematics.cfg`, `filament.cfg`, `qd_macro.cfg`, `pause_resume_cancel.cfg`, `park.cfg`, `globals.cfg`, `fans.cfg`, and `start_end.cfg`; the other macro files match after line-ending normalization.
   - Homing: `_HOME_X` and `_HOME_Y` set both XY drivers to `0.9 A`, run `G28.6245197` on the axis, restore `run_current`, beep, and back off 10 mm. `_HOME_XY` homes Y, X, then Y again. A full `G28` sets the kinematic position to X/Y `100` and Z to half of `axis_maximum.z`, moves Z+5, X-5, and Y+5, waits 2 s, homes XY, moves to the bed center, homes Z, raises Z 20 mm, and sets `_HOME_STATE` `is_homed=1`. No `EXIT_ENFORCE_MODE`, `SET_HOMING_STATE`, or `SET_HOMING_MODE` command is issued.
   - The stock `[homing_override]` acts only on requests naming both X and Y: `G28 X`, `G28 Y`, and `G28 Z` alone set acceleration and speed factor, disable the extruder, and home nothing. `_HOME_X` and `_HOME_Y` call `BEEP I=1 DUR=100`, which no stock config file or Python extra defines; the compiled extras were not checked.
@@ -152,6 +152,70 @@ Comparisons in this section are against Max 4 firmware `01.01.07.01`, released t
   - Camera: the stream served snapshots while `crowsnest.conf` named the Max 4's MGM1 camera, because the update's `preinst` had restored stock `crowsnest.conf` after `makerbase-webcam.service` had already pointed crowsnest at the icSpring camera that boot. The script splits the `device:` line on `': '`, which QIDI's line lacks, so it rewrites the line at every boot.
 - **Runtime-confirmed (operator photos, 2026-11-11):** the Plus 5 mainboard is `X-12-3 V1.0.1`, the SoC board `X-12-1 V1.1.0` (the Max 4's board, labelled `PLUS5 0409`), and the THR board `A-10 V1.1.5`.
 - **Unresolved:** for the Plus 5, Box tool-change timing; host load while printing; and whether Klipper reaches ready with an RS-485 device attached.
+
+## QIDI Smart 5
+
+Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released the same day with the same SOC version. Nothing here comes from a running Smart 5. Unless a bullet says otherwise, the observations elsewhere in this file come from Max 4 or Plus 5 printers and are not established for the Smart 5.
+
+### Firmware packages
+
+- **Config-confirmed:** `Qidi-Smart5-Defaults` commit `c8e9da1609d29fb3b4ed567ea4b0c216873b7c33` records archive `S5_01.01.02.01_20261016_Release.zip` SHA-256 `5677f126716aaa0c084c02a787145bc911cd346badd87cca350cecaeebbc041e`, firmware-manifest SHA-256 `854c31f880ef7d783ea70364456a38912673c7ef90b07d9c0b1ca24fde90d21b`, and SOC payload `S5_SOC_01.01.02.01_20261016_Release_NA` SHA-256 `6630997ca6bf99bdb8519fdddab3f8b522d91eeb58cf5344b5fcde47a066add7`. File names start with `S5_`, not `QD_`. QIDI's update API names the printer `S5`.
+- **Config-confirmed:** the manifest lists SOC `01.01.02.01`, MCU `02.01.01.110`, THR `02.02.01.09`, BOX `02.03.01.21`, BOX485 `02.04.01.01`, and BUFFER `02.05.01.01`, with no `CLOSED_LOOP_MOTOR` entry. The BOX, BOX485, and BUFFER images are byte-identical to the Plus 5's. The others are new:
+
+  | Image | SHA-256 |
+  |---|---|
+  | `S5_MCU_02.01.01.110_20260918.bin` | `2f1ac6ba1d1bb39791b38e6bf7572d11622a11a09917839660796a0115369b0b` |
+  | `S5_THR_02.02.01.09_20260520.bin` | `4bcc5dea3fec9d114dc444c0b9b24933eca901adf0051932a9c5b6afca144b54` |
+
+- **Config-confirmed:** the SOC payload is Debian package `s5-system` `01.01.02.01`. `preinst` and `prerm` are byte-identical to the Plus 5's, and `postinst` differs only in `VERSION`, so an update removes the same config files.
+- **Config-confirmed:** `/home/qidi/fluidd`, both virtualenvs, `system_stats`, and the shipped `/etc` files are byte-identical to the Plus 5's. Moonraker differs only in `extensions.so`, `frp_manager.so`, and `mqtt.so`. The payload ships no kernel, boot image, or modules, and no `algo_app.service`.
+- **Static-recovered:** `qidiclient` (SHA-256 `6beea0a13cc7448c7f6ab8c345915f22e6d5c04c917a66478d6e43b1ceecd6bf`) is built from its own source tree, `/builds/qidi/3dprinter_s5/qidiclient`. It names the printer `SMART5`, reads offline updates from `USB/QD_Update/S5_`, draws its UI from `draw_ui/S5/3.97_inch` (the Plus 5's size class) with 800×480 landscape art, and adds `/dev/ttyS1` to its mainboard search paths.
+- **Config-confirmed:** `resource/model_config/S5.json` declares `printer_series` `series_s5`, a `0`–`315 °C` nozzle range and a `0`–`85 °C` bed range, no chamber, chamber fan, or auxiliary fan, AI monitoring, and `p2p` camera access at 720p.
+
+### Boards
+
+- **Static-recovered:** the mainboard image is not an STM32 image. It starts with an NXP i.MX RT FlexSPI configuration block and image vector table, its strings name `src/rt1050/drivers/`, and its Klipper dictionary has `CLOCK_FREQ` 600 MHz, pins `GPIO1.0`–`GPIO4.31`, no `MCU` constant, and the `config_cuc*`, `cuc_setup_home`, and `query_cuc*` commands. Stock `printer.cfg` reaches it on `/dev/ttyS1` at 500000 baud.
+- **Static-recovered:** THR `02.02.01.09` is built for the Plus 5's `stm32f103xe` at 72 MHz with the same command set as `02.02.01.08`, but its code moved. The LIS2DW FIFO poll is now its own function with the same logic, and the byte sequences the THR FIFO fix replaces in `02.02.01.08` occur nowhere in it.
+
+### Klipper and stock configuration
+
+- **Config-confirmed:** the `klippy` tree adds `extras/cuc.so` to the Plus 5's 234 files, and 23 files differ:
+  - `homing.py` (CRLF SHA-256 `9c2d0a479f0fc43e1ec2234e1357e6a19b9d9dadff7fcbd3f85a0d2bf3f9b00f`) drops the `endstop_sync_reset` block and the closed-loop homing-mode scripts. Its checked second homing runs each stepper's `before_homing_gcode` and `after_homing_gcode` around each touch instead, and the new `SET_SECOND_HOMING ENABLE=0|1` turns that second homing off and on. The 1 s dwell before each rail homes is unchanged.
+  - `stepper.py` adds those two per-stepper templates.
+  - `stepper_enable.py` is the Max 4's, with `ENABLE_DELAY_TIME = 0.300`.
+  - `mcu.py` adds `CUCTriggerDispatch` and drops `endstop_sync_reset`.
+  - `heaters.py` adds the `open_5s_limit` options, which stock `[extruder]` enables at 0.5.
+  - `neopixel.py` and `spi_temperature.py` are back to the Max 4's values.
+  - Among the compiled extras, `box_extras.so`, `box_stepper.so`, `multi_color_controller.so`, `box2base.so`, and `closed_loop.so` changed code; the rest differ only in their build paths.
+- **Static-recovered:** `cuc.so` defines `[cuc x|y|z]`, a `cuc_<axis>:virtual_endstop`, and `SET_CUC_CURRENT`, `CUC_READ`, `CUC_LOG`, `CUC_SET_THRESH`, `CUC_TEST_EN`, and `CUC_TEST_CLOSE`. It configures per-motor current, microsteps, PID gains, and a stall threshold on the mainboard, and homes through `cuc_setup_home` and trsync. Its X, Y, and Z motors have no TMC driver objects.
+- **Static-recovered:** `box_extras.so` drops `button_box_unload`, `button_extruder_load`, and `button_extruder_unload`. Its `CLEAR_OOZE` and `CLEAR_FLUSH` strings move to X66–X100, Y189–Y199.5, and its flush purge drops from E150 to E100. `box_stepper.so` keeps the Plus 5's method names and constants with its toolhead moves moved onto a 180 mm bed. `multi_color_controller.so` has no external-spool bite and retry flow.
+- **Config-confirmed:** `printer.cfg` against Plus 5 `01.01.02.01`:
+  - `[mcu]` is defined inline with no `[include MCU_ID.cfg]`.
+  - X and Y home toward their minimums by motor stall on `cuc_x` and `cuc_y`: travel X −2–185 and Y −4–200, `homing_speed 50`, `second_homing_speed 50.0`, `homing_retract_dist 50.0` at 200 mm/s, `homing_tolerance 2`, and `homing_retries 10`. The run current is 1.6 A (Z 0.8 A), and every motor shares enable pin `GPIO4.16`.
+  - Z has one motor (`rotation_distance` 4, max 182) homed on the nozzle probe. There is no `[z_tilt]`, chamber heater, auxiliary fan, or polar cooler.
+  - Limits are `max_velocity: 400` and `max_accel: 20000`; the bed's `max_temp` is 85.
+  - The extruder uses `rotation_distance 35.5` and `gear_ratio 6.3:1`, an NTC sensor on `THR:PA4`, and `max_temp 315`. THR is on `/dev/ttyS4` with the Plus 5's filament switch (`THR:PA1`), hotend fan, accelerometer, and `probe_air` pins; `probe_air` has `delta_v: 0.04` and `z_offset: -0.11`.
+  - The bed mesh is `10,10`–`165,170` at 5×5, the resonance probe point is `90, 90, 10`, and the `SAVE_CONFIG` shaper is `zv` 68.6 / `mzv` 49.4.
+  - `[box485]`, `[box2base]`, `[multi_color_controller]`, and `box.cfg` match the Plus 5.
+- **Config-confirmed:** the `.cfg` files in `printer_data/config` and `klipper-macros-qd/` use CRLF line endings; `crowsnest.conf`, `moonraker.conf`, `drying.conf`, and `officiall_filas_list.cfg` use LF, as on the Plus 5.
+- **Config-confirmed:** the stock `klipper-macros-qd/` differs from the Plus 5's in `kinematics.cfg`, `filament.cfg`, `qd_macro.cfg`, `pause_resume_cancel.cfg`, `park.cfg`, `globals.cfg`, `fans.cfg`, `heaters.cfg`, and `start_end.cfg`:
+  - Homing: `_BEFORE_HOME_X` sets both motors to 0.5 A with `SET_CUC_CURRENT`, `_BEFORE_HOME_Y` to 0.45 A, and both `_AFTER_HOME_*` back to 1.6 A. `_HOME_X` and `_HOME_Y` run `G28.6245197` on the axis, call `BEEP`, and back off 20 mm. A full `G28` sets the kinematic position, moves Z+5, X+5, and Y+5, runs `M84`, homes X then Y once with second homing off and the current macros around each, homes X then Y again with second homing on, moves to the bed center, homes Z, and raises Z 10 mm. `G28 X` and `G28 Y` alone home that axis.
+  - Positions: park and chute `100, 199`; `print_max` `(180,180)`. Behind Y180, QIDI's moves stay between X66 and X100, and its `MOVE_TO_TRASH` first leaves to Y179 from outside X80–X100.
+  - Cutter, front right: Y1, X175 at F5000, X178 and X180 at F60, a 4 mm retract, a 2 s hold, then X160.
+  - Wiper: Y180–Y199 and Y182–Y199 strokes into the chute, and a pad across X66–X100 at Y185–Y199. `CLEAR_NOZZLE` probes once at X79 Y187, scrubs 0.1 mm above that, and repeats over X85–X95, Y185–Y187.
+  - `fans.cfg` has no polar cooler; `heaters.cfg` sets the nozzle maximum to 300 and the bed to 80, and comments out `_CHECK_HEATER_PARAMS`.
+
+### Slicer profiles
+
+- **Config-confirmed:** QIDI Studio (`21d47457`, `Qidi X-Smart 5`, `model_id` `S5`) and OrcaSlicer (`478cc90a`, `Qidi X-Smart 5`) ship a 180×180 printable area, 180 mm height, 400 mm/s, 15,000 mm/s², and a `bed_exclude_area` of X168–180, Y0–32 under the cutter. Their G-code is the same in both slicers apart from the chamber placeholder. Against the Plus 5's, the start leaves out the chamber commands, `M1004`, and `Z_TILT_ADJUST`; it purges 180 mm, wipes at the chute, probes and scrubs behind the bed, presses the cutter at X175–X181, and draws the prime line from X70 to X110 at Y1. Each filament-change flush ends with five chute wipes. The timelapse-with-wipe-tower layer change moves to Y380, past the Smart 5's Y travel.
+
+### Unresolved
+
+- The Smart 5's kernel build, framebuffer orientation and touch frame, THR bootloader, and whether `qidiclient` writes `MCU_ID.cfg` on it.
+- Whether the toolhead extruder sits above the cutter, which the cold cut depends on.
+- Box load and unload lengths with the Smart 5's `box_stepper.so`, and whether its `do_home` lengths are the Plus 5's.
+- The bed screws' positions and thread.
+- Stock `G28` duration and repeatability, and whether its `M84` before homing and its first single touch per axis are needed.
 
 ## Klipper shutdown reporting
 

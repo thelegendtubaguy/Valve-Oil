@@ -136,6 +136,19 @@ class PrinterSpec:
     firmware: tuple[str, ...]
     stock_snapshots: str
     macros: str
+    # QIDI numbers each printer's firmware on its own, so two printers can ship the same SOC version. A printer
+    # whose versions repeat another's names its firmware with this prefix wherever the installer matches or
+    # records a firmware version.
+    firmware_key_prefix: str = ""
+
+    def firmware_key(self, soc_version: str) -> str:
+        return self.firmware_key_prefix + soc_version
+
+    def soc_version(self, firmware_key: str) -> str:
+        return firmware_key[len(self.firmware_key_prefix) :]
+
+    def stock_snapshot(self, firmware_key: str) -> str:
+        return f"{self.stock_snapshots}/{self.soc_version(firmware_key)}"
 
 
 @dataclass(frozen=True)
@@ -384,6 +397,9 @@ class Manifest:
             if firmware_version in printer.firmware:
                 return printer
         return None
+
+    def printer_for_soc_file(self, soc_file: str) -> PrinterSpec | None:
+        return next((printer for printer in self.printers if soc_file.startswith(printer.soc_file_prefix)), None)
 
     # The managed tree installs the common macros plus the printer's own macro folder.
     def managed_tree_sources(self, firmware_version: str) -> tuple[str, ...]:
