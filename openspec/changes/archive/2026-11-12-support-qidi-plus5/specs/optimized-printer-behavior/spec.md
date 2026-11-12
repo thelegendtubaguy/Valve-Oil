@@ -33,9 +33,11 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **WHEN** Klipper starts on a Plus 5 with Valve Oil installed
 - **THEN** both TMC2240 X/Y drivers run with `slope_control` 2, and QIDI's `printer.cfg` driver sections are unchanged
 
-#### Scenario: Plus 5 speed limits stay at QIDI's values
+#### Scenario: Plus 5 probing travel matches the Max 4's and its top speed stays QIDI's
 - **WHEN** install or update runs on a Plus 5
-- **THEN** `max_velocity`, Z tilt `speed`, and bed mesh `speed` keep the Plus 5's own values rather than the Max 4's 565 mm/s cap
+- **THEN** Z tilt `speed` and bed mesh `speed` at QIDI's 150, or above 565, become 565, and a different value at or below 565 is left unchanged
+- **AND** `max_velocity` keeps the Plus 5's own value rather than the Max 4's 565 mm/s cap
+- **AND** uninstall restores the value each had before install
 
 #### Scenario: Plus 5 slicer start uses its own prime line
 - **WHEN** a print sliced with the project's Plus 5 OrcaSlicer or QIDI Studio pack starts

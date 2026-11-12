@@ -14,6 +14,8 @@ OPTIMIZED_PRINT_START_HOME BEDTEMP=[bed_temperature_initial_layer_single] CHAMBE
 OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature] CHAMBER_MIN_TEMP={chamber_minimal_temperature[initial_tool]}
 
 ;===== PRINT_START =====
+; Turn on Polar cooler, comment out if you don't want this
+M106 P4 S255
 ; Select the initial tool before the front prime line.
 T[initial_tool]
 ; Set bed target temperature (do not wait).
