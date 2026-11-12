@@ -294,6 +294,22 @@ def _prior_entry(
     )
 
 
+def changed_extra_module_sha256(*, paths: RuntimePaths, module: ExtraModuleSpec) -> str | None:
+    """SHA-256 of a module's payload when installing it changes the code at its destination.
+
+    Klipper keeps an imported module for the life of its process, so the changed code
+    runs only after the Klipper service restarts.
+    """
+    source = paths.installer_root / module.source
+    if source.is_symlink() or not source.is_file():
+        raise SourcePatchError(f"Extra module payload is not a regular file: {source}")
+    payload = source.read_bytes()
+    target = paths.managed_klipper_root / PurePosixPath(module.destination)
+    if target.is_file() and not target.is_symlink() and target.read_bytes() == payload:
+        return None
+    return sha256_bytes(payload)
+
+
 def install_extra_module(
     *, paths: RuntimePaths, module: ExtraModuleSpec, journal, reporter=None
 ) -> str:

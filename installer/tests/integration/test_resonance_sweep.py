@@ -112,6 +112,9 @@ class GCmd:
         self.params = params
         self.messages = []
 
+    def get(self, name, default=None):
+        return self.params.get(name, default)
+
     def get_float(self, name, default, **kwargs):
         return float(self.params.get(name, default))
 
@@ -125,9 +128,9 @@ class GCmd:
 class FakeToolHead:
     """Records where the test sends the toolhead."""
 
-    def __init__(self, fail_after=None):
+    def __init__(self, fail_after=None, max_accel_cap=30000.):
         self.max_accel = 20000.
-        self.max_accel_cap = 30000.
+        self.max_accel_cap = max_accel_cap
         self.position = [195., 195., 10., 0.]
         self.positions = []
         self.fail_after = fail_after
@@ -239,11 +242,30 @@ class ResonanceSweepTest(unittest.TestCase):
             self.run_test(printer, FREQ_END=20)
         self.assertIs(Move.__dict__["calc_junction"], STOCK["Move.calc_junction"])
 
-    def test_test_beyond_max_accel_is_refused_before_moving(self) -> None:
-        printer = Printer()
-        with self.assertRaisesRegex(CommandError, "above max_accel 30000"):
-            self.run_test(printer, ACCEL_PER_HZ=300)
-        self.assertEqual(printer.toolhead.positions, [])
+    def test_default_test_is_lowered_to_fit_max_accel(self) -> None:
+        # The Plus 5: accel_per_hz 150 to 133.33 Hz plus the sweep needs 20400.
+        printer = Printer(toolhead=FakeToolHead(max_accel_cap=20000.))
+        tester, gcmd = self.run_test(printer)
+        self.assertTrue(printer.toolhead.positions)
+        accel = float(printer.scripts[0].split("ACCEL=")[1].split()[0])
+        self.assertLessEqual(accel, 20000.)
+        self.assertTrue(any("ACCEL_PER_HZ=147 " in message for message in gcmd.messages))
+        self.assertEqual(tester.test.stock.accel_per_hz, 150.)
+
+    def test_test_beyond_max_accel_is_refused_while_preparing(self) -> None:
+        # QIDI's code starts the accelerometer after preparing the test and
+        # doesn't stop it after an error.
+        cases = [
+            (30000., {"ACCEL_PER_HZ": 300}),
+            (20000., {"ACCEL_PER_HZ": 150}),
+            (20000., {"SWEEPING_ACCEL": 800}),
+            (20000., {"FREQ_END": 133.33}),
+        ]
+        for max_accel_cap, params in cases:
+            with self.subTest(max_accel_cap=max_accel_cap, params=params):
+                tester = Printer(toolhead=FakeToolHead(max_accel_cap=max_accel_cap)).connect()
+                with self.assertRaisesRegex(CommandError, "above max_accel %.0f" % max_accel_cap):
+                    tester.test.prepare_test(GCmd(**params))
 
 
 if __name__ == "__main__":

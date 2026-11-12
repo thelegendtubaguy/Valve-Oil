@@ -31,7 +31,7 @@ from .firmware import detect_firmware, supported_printer
 from .fs_atomic import atomic_write_text
 from .models import RuntimePaths
 from .postflight import verify_install_postflight
-from .process_restart import ProcessRestartError, restart_pending
+from .process_restart import ProcessRestartError, restart_entries, restart_pending
 from .manifest import ManifestValidationError, load_manifest
 from .state_file import StateValidationError, load_installed_state
 from .naming import BUNDLE_ROOT_NAME, REPOSITORY_URL
@@ -261,7 +261,7 @@ def run_auto_update_check(
             safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
             restart_pending(
                 paths,
-                allowed_entries={patch.id: patch.destination for patch in manifest.install.source_patches},
+                allowed_entries=restart_entries(manifest),
                 urlopen=urlopen,
             )
             verify_pending_saved_variable_expectations(paths, urlopen=urlopen)

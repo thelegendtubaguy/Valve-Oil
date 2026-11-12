@@ -23,6 +23,15 @@
 # - SHAPER_CALIBRATE and TEST_RESONANCES take upstream's SWEEPING_PERIOD,
 #   SWEEPING_ACCEL, and ACCEL_PER_HZ for one run. ACCEL_PER_HZ applies to
 #   QIDI's test too.
+# - QIDI's M204 and SET_VELOCITY_LIMIT clamp to printer.cfg's max_accel, and
+#   a sweeping run's fastest shake with the sweep on top can need more: at
+#   QIDI's accel_per_hz of 150 and 133.33 Hz, 20400 mm/s^2 against the Plus
+#   5's 20000. A command that sets none of ACCEL_PER_HZ, SWEEPING_ACCEL, and
+#   FREQ_END then has its acceleration per Hz lowered to the largest whole
+#   number that fits, 147 on the Plus 5, and the console says so. One that
+#   sets any of them is refused instead. Both happen while the test is
+#   prepared, before QIDI's code starts the accelerometer, which it wouldn't
+#   stop after an error.
 # - The moves of a sweeping run are planned with upstream's junction
 #   calculation, for the length of the run only. Each starts no faster than
 #   the previous one was planned to end, as upstream's
@@ -52,6 +61,8 @@ ENABLE_VARIABLE = "tltg_resonance_sweep"
 SWEEPING_ACCEL = 400.
 SWEEPING_PERIOD = 1.2
 FALSE_WORDS = ("0", "false", "no", "off", "disable", "disabled", "")
+# Parameters that set how much acceleration a sweeping run needs.
+ACCEL_PARAMS = ("ACCEL_PER_HZ", "SWEEPING_ACCEL", "FREQ_END")
 # Set on a move: the most its next move may start at, in (mm/s)^2.
 NEXT_JUNCTION_V2 = "_tltg_next_junction_v2"
 
@@ -191,15 +202,8 @@ def run_sweep(printer, test_seq, axis, gcmd):
     status = th.get_status(reactor.monotonic())
     old_max_accel = status['max_accel']
     old_minimum_cruise_ratio = status['minimum_cruise_ratio']
+    # SweepingTest.prepare_test has held this to QIDI's max_accel clamp
     max_accel = max([abs(a) for _, a, _ in test_seq])
-    # QIDI's M204 and SET_VELOCITY_LIMIT clamp to printer.cfg's max_accel,
-    # which would leave the moves short of the speeds planned below.
-    accel_cap = getattr(th, 'max_accel_cap', None)
-    if accel_cap is not None and max_accel > accel_cap:
-        raise gcmd.error(
-            "The sweeping resonance test needs %.0f mm/s^2, above max_accel"
-            " %.0f. Lower ACCEL_PER_HZ, SWEEPING_ACCEL, or FREQ_END."
-            % (max_accel, accel_cap))
     gcode.run_script_from_command(
         "SET_VELOCITY_LIMIT ACCEL=%.3f MINIMUM_CRUISE_RATIO=0"
         % (max_accel,))
@@ -337,6 +341,7 @@ class SweepingTest:
             "SWEEPING_ACCEL", SWEEPING_ACCEL, above=0.)
         _last_test_swept[0] = bool(self.sweeping_period)
         if self.sweeping_period:
+            self._fit_max_accel(gcmd)
             gcmd.respond_info(
                 "Resonance test with sweeping: ACCEL_PER_HZ=%g"
                 " SWEEPING_PERIOD=%g SWEEPING_ACCEL=%g"
@@ -346,6 +351,34 @@ class SweepingTest:
             gcmd.respond_info(
                 "Resonance test without sweeping: ACCEL_PER_HZ=%g"
                 % (self.test_accel_per_hz,))
+
+    def _fit_max_accel(self, gcmd):
+        """Keep a sweeping run within QIDI's max_accel clamp, which would
+        leave its moves short of the speeds run_sweep plans."""
+        stock = self.stock
+        accel_cap = getattr(self.printer.lookup_object('toolhead'),
+                            'max_accel_cap', None)
+        vibrations = vibration_test(stock.freq_start, stock.freq_end,
+                                    1., stock.hz_per_sec)
+        if accel_cap is None or not vibrations:
+            return
+        # The fastest shake with the sweep's acceleration on top
+        top_freq = vibrations[-1][2]
+        needed = self.test_accel_per_hz * top_freq + self.sweeping_accel
+        if needed <= accel_cap:
+            return
+        fitted = math.floor((accel_cap - self.sweeping_accel) / top_freq)
+        if fitted < 1. or any(gcmd.get(name, None) is not None
+                              for name in ACCEL_PARAMS):
+            raise gcmd.error(
+                "The sweeping resonance test needs %.0f mm/s^2, above max_accel"
+                " %.0f. Lower ACCEL_PER_HZ, SWEEPING_ACCEL, or FREQ_END."
+                % (needed, accel_cap))
+        gcmd.respond_info(
+            "ACCEL_PER_HZ lowered from %g to %g: the sweeping resonance test"
+            " would need %.0f mm/s^2, above max_accel %.0f"
+            % (self.test_accel_per_hz, fitted, needed, accel_cap))
+        self.test_accel_per_hz = float(fitted)
 
     def run_test(self, axis, gcmd):
         stock = self.stock

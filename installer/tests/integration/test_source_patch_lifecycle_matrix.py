@@ -275,6 +275,41 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         for module in modules:
             self.assertEqual(module.stat().st_mode & 0o777, 0o644, module.name)
 
+    def test_installs_end_with_klipper_running_what_they_installed(self):
+        printer_root, paths, _ = self._fixture("01.01.02.01", source_variant="sync-reset")
+        fake = self._fixture_urlopen(printer_root)
+        restarts = []
+
+        def urlopen(request, timeout=0):
+            if "/machine/services/restart" in getattr(request, "full_url", str(request)):
+                restarts.append(request)
+            return fake(request, timeout=timeout)
+
+        def install(*, attended):
+            # An attended run here answers no to every question, including the offer to restart Klipper.
+            run_install(
+                paths, self.manifest, PlainReporter(io.StringIO()), urlopen=urlopen,
+                input_stream=io.StringIO("") if attended else None,
+            )
+
+        install(attended=True)
+        self.assertEqual(len(restarts), 1)
+        install(attended=True)
+        self.assertEqual(len(restarts), 1)
+
+        # Klipper keeps an imported module until its process ends, so its own RESTART isn't enough.
+        module = self.manifest.install.extra_modules[0]
+        installed = paths.managed_klipper_root / module.destination
+        installed.write_bytes(b"# an earlier release's module\n")
+        install(attended=True)
+        self.assertEqual(len(restarts), 2)
+        self.assertEqual(installed.read_bytes(), (REPO_ROOT / "installer" / module.source).read_bytes())
+        self.assertFalse(paths.restart_marker_path.exists())
+
+        # Nobody restarts Klipper after a --yes run or an automatic update.
+        install(attended=False)
+        self.assertEqual(len(restarts), 3)
+
     def test_install_initializes_absent_release_defaults_and_preserves_operator_values(self):
         # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice.
         for existing, expected in ((None, "1"), ("0", "0")):

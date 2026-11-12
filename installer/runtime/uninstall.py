@@ -43,7 +43,7 @@ from .source_patches import (
     restore_source_patch,
     validate_source_state,
 )
-from .process_restart import read_printer_info, write_restart_marker
+from .process_restart import read_printer_info, restart_entries, write_restart_marker
 from .models import (
     DriftRecord,
     EnsureLineSpec,
@@ -513,18 +513,16 @@ def _execute_uninstall(
     if paths.restart_marker_path.exists():
         maybe_restart_pending_service_if_idle(
             paths=paths,
-            allowed_entries={
-                patch.id: patch.destination for patch in manifest.install.source_patches
-            },
+            allowed_entries=restart_entries(manifest),
             reporter=reporter,
             input_stream=input_stream,
             urlopen=urlopen,
         )
     else:
         maybe_restart_klipper(
+            paths=paths,
             reporter=reporter,
             input_stream=input_stream,
-            moonraker_query_url=paths.moonraker_url,
             urlopen=urlopen,
         )
     reporter.debug(
