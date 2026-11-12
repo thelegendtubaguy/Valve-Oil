@@ -126,6 +126,7 @@ RESTART_KLIPPER_PROMPT = "Would you like me to restart Klipper to apply changes?
 RESTART_KLIPPER_PROMPT_INSTRUCTION = "Type Y/YES to restart Klipper or N/NO to skip."
 RESTARTING_KLIPPER = "Restarting Klipper..."
 KLIPPER_RESTARTED = "Klipper restart requested."
+RESTART_KLIPPER_SKIPPED_BUSY = "Klipper was not restarted because a print is active or paused, or a heater is on. Restart Klipper to apply changes."
 COULD_NOT_RESTART_KLIPPER = "Could not restart Klipper automatically. Restart Klipper to apply changes."
 
 USER_MODIFIED_PATCH_TARGETS = "User-modified patch targets:"

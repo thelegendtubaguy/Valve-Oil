@@ -1030,9 +1030,14 @@ Optimized configuration SHALL run upstream Klipper's sweeping resonance test for
 - **WHEN** `tltg_resonance_sweep` is false, or the command passes `SWEEPING_PERIOD=0`
 - **THEN** the vendor test runs with its own moves and calibration data, at the command's `ACCEL_PER_HZ` when given
 
-#### Scenario: Test beyond the acceleration limit
-- **WHEN** a sweeping test needs more acceleration than `max_accel`
-- **THEN** the command fails before any test move
+#### Scenario: Default test beyond the acceleration limit
+- **WHEN** a sweeping test needs more acceleration than `max_accel` and its command sets none of `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, and `FREQ_END`
+- **THEN** it runs at the largest whole `ACCEL_PER_HZ` that fits within `max_accel`
+- **AND** the console says what it was lowered from and to
+
+#### Scenario: Requested test beyond the acceleration limit
+- **WHEN** a sweeping test needs more acceleration than `max_accel` and its command sets `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`
+- **THEN** the command fails before any move and before the accelerometer starts measuring
 
 #### Scenario: Failed run
 - **WHEN** a move fails during a sweeping run
