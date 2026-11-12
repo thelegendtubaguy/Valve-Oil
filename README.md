@@ -31,8 +31,8 @@ If you want to help support content like this, consider subscribing on YouTube o
    /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/install-latest.sh)"
    ```
 3. Follow the prompts.
-4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
-5. Slice using your printer's TLTG Optimized profile, `Qidi X-Max 4 0.4 nozzle - TLTG Optimized GCode` on the Max 4. Optionally, make a copy and customize it.
+4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/49f26b9c2101). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
+5. Slice using your printer's Valve Oil profile, such as `Qidi X-Max 4 0.4 nozzle - Valve Oil`. Optionally, make a copy and customize it.
 
 The installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**. At the end, it flashes the [QIDI Box firmware](docs/firmware.md#qidi-box-firmware) to each USB Box that needs it, which stops Klipper and the touchscreen for about four minutes per Box. See [Firmware fixes](docs/firmware.md).
 

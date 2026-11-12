@@ -69,7 +69,7 @@ The installer stops and disables `usbdevice.service`. To check that ADB is off, 
 ## Slicer start G-code
 
 > [!TIP]
-> On the Max 4, in OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/4c4b3b74c745). Your slicer then gets updates by itself, with nothing to copy and paste.
+> In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/49f26b9c2101), which covers the Max 4 and the Plus 5. Your slicer then gets updates by itself, with nothing to copy and paste.
 
 Otherwise, copy the machine G-code into your slicer by hand from the folder for your slicer and printer:
 
