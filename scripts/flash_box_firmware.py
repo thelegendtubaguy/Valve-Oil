@@ -235,16 +235,23 @@ class Bootloader:
 
 # ---- printer side ----------------------------------------------------------
 
+USB_DEVICES = Path("/sys/bus/usb/devices")
+
+
 def usb_state(usb_path: str) -> tuple[tuple[str, str] | None, str | None]:
-    base = Path("/sys/bus/usb/devices") / usb_path
+    base = USB_DEVICES / usb_path
     try:
         ids = tuple((base / name).read_text().strip() for name in ("idVendor", "idProduct"))
     except OSError:
         return None, None
-    for interface in sorted(base.glob(usb_path + ":*")):
-        ttys = sorted((interface / "tty").glob("*")) if (interface / "tty").is_dir() else []
-        if ttys:
-            return ids, "/dev/" + ttys[0].name
+    try:
+        for interface in sorted(base.glob(usb_path + ":*")):
+            ttys = sorted((interface / "tty").glob("*"))
+            if ttys:
+                return ids, "/dev/" + ttys[0].name
+    except OSError:
+        # The device left while its folders were listed, as a bootloader's does when it starts the application.
+        pass
     return ids, None
 
 
