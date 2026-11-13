@@ -67,7 +67,7 @@ QIDI's Moonraker reads the printer's QIDI account through the touchscreen app. A
 
 Now, on a printer linked to a QIDI account, Moonraker waits for the touchscreen app before it first connects to QIDI's cloud, and always reads the account through the touchscreen app. If the touchscreen app hasn't connected after two minutes, Moonraker connects as QIDI's code did before.
 
-The warning still appears when QIDI's server refuses the printer's account, or answers too late. QIDI's code waits 2 seconds for the server to accept the account, then starts again, and keeps trying. Moonraker drops the warning as soon as the printer connects, but a Fluidd page that was already open keeps showing it until you reload the page. When `moonraker.log` has `MQTT connection successful` after the last `Not authorized`, the printer is connected to QIDI's cloud.
+The warning still appears when QIDI's server refuses the printer's account, or answers too late. QIDI's code waits 2 seconds for the server to accept the account, then starts again, and keeps trying. Moonraker drops the warning as soon as the printer connects. Fluidd used to keep showing it until the page was reloaded; now, while Fluidd shows a Moonraker warning or failed plugin, it checks Moonraker again every 10 seconds, so the warning goes away within 10 seconds of the printer connecting. When `moonraker.log` has `MQTT connection successful` after the last `Not authorized`, the printer is connected to QIDI's cloud.
 
 ## Touchscreen offering firmware you already have
 
