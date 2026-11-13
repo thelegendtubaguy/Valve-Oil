@@ -13,7 +13,7 @@ from unittest import mock
 
 from installer.runtime import messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
-from installer.runtime import moonraker_allowed_services
+from installer.runtime import moonraker_allowed_services, moonraker_used_extruders
 from installer.runtime import moonraker_speedups
 from installer.runtime import addons_service
 from installer.runtime import auto_update, status_service
@@ -145,6 +145,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(snapshot_tree(system_root), before)
         self.assertFalse((printer_root / manifest.state_file).exists())
         self.assertIn("System optimizations dry-run:", stream.getvalue())
+        # QIDI's metadata.py takes the used-filaments patch once the plate-selection patch before it has run.
+        self.assertIn(f"would apply {moonraker_used_extruders.OPERATION} and restart Moonraker", stream.getvalue())
 
         install_responses = io.StringIO("yes\nno\nunused\n")
         base_urlopen = moonraker_urlopen(
