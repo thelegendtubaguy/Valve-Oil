@@ -603,6 +603,26 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
                     self.assertEqual(protocol.main(argv, board=board), 1)
                 self.assertEqual(ownership.called, admitted)
 
+    def test_a_board_leaving_usb_while_it_is_looked_up_reads_as_not_there_yet(self):
+        # A bootloader starting the application disconnects its USB device; the readback that follows a transfer
+        # polls for the application's device through that moment and must keep waiting.
+        root = temp_path("usb-devices-")
+        (root / "2-1.3/2-1.3:1.0/tty/ttyACM0").mkdir(parents=True)
+        for name, value in (("idVendor", "1d50\n"), ("idProduct", "614e\n")):
+            (root / "2-1.3" / name).write_text(value)
+        listing = Path.glob
+
+        def leaving(path, pattern):
+            if path.name == "tty":
+                raise FileNotFoundError(2, "No such file or directory", str(path))
+            return listing(path, pattern)
+
+        with patch.object(protocol, "USB_DEVICES", root):
+            self.assertEqual(protocol.usb_state("2-1.3"), (("1d50", "614e"), "/dev/ttyACM0"))
+            with patch.object(Path, "glob", leaving):
+                self.assertEqual(protocol.usb_state("2-1.3"), (("1d50", "614e"), None))
+            self.assertEqual(protocol.usb_state("2-1.9"), (None, None))
+
 
 BOARD_MANIFESTS = {kind: json.loads((REPO_ROOT / path).read_text()) for kind, path in BOARD_MANIFEST_PATHS.items()}
 UNKNOWN = "0" * 64
