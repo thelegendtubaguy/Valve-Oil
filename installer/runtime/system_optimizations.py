@@ -759,7 +759,7 @@ def maybe_emit_system_dry_run(
                     reporter.line(f"  - {operation_id}: QIDI's package updates stay blocked or allowed as they are now")
                 if _guarded_file_has_drift(operation_id, spec, root, prior.get("restore_preimages", {}), prior.get("outcomes", {})):
                     reporter.line(f"  - would preserve modified {guarded.label}")
-                elif _operation_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates):
+                elif _dry_run_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates):
                     restart = {
                         "moonraker.service": " and restart Moonraker",
                         "klipper.service": " and restart Klipper",
@@ -3163,6 +3163,19 @@ def _reject_operation_unsafe_for_compare(operation_id: str, *, spec: SystemOptim
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _reject_symlink_path(_map_path(root, spec.moonraker_metadata_3mf.file), root=root)
         return
+
+
+def _dry_run_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, run, block_qidi_updates: bool | None) -> bool:
+    """Whether a run would apply the operation, judged on the file as the operations before it in the run leave it."""
+    if operation_id == moonraker_used_extruders.OPERATION:
+        _reject_operation_unsafe_for_compare(operation_id, spec=spec, root=root)
+        guarded = GUARDED_FILE_PATCHES[operation_id]
+        path = _map_path(root, guarded.file(spec))
+        if path.exists():
+            # A run applies the plate-selection patch first, and this patch expects the 3MF code as that one leaves it.
+            text = _patched_moonraker_metadata_text(path.read_bytes().decode("utf-8"))
+            return guarded.patched(text, spec=spec, root=root) != text
+    return _operation_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates)
 
 
 def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, run, block_qidi_updates: bool | None = None) -> bool:
