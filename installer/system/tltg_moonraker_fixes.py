@@ -16,6 +16,17 @@
 # once. Errors reach QIDI's retry loop as they did. Plain MQTT connections
 # and anything this module doesn't recognize are left as they are.
 #
+# QIDI's code decrypts the saved account, password, and broker address
+# through the touchscreen app, which connects to Moonraker as an extension
+# agent, and it asks whichever agent registered first. At boot the first
+# connect runs before the touchscreen app has connected, so it goes to QIDI's
+# fallback broker with no account, is refused with "Not authorized", and
+# leaves that warning in Fluidd. A slicer that registers as an agent before
+# the touchscreen app gets the decrypt requests instead. Here the first
+# connect after Moonraker starts waits for the touchscreen app, for at most
+# APP_WAIT_TIMEOUT, and every decrypt goes to the touchscreen app when it is
+# connected.
+#
 # The .pth file imports this module in every Python started from Moonraker's
 # virtualenv, so importing it only registers an import hook for
 # moonraker.components.mqtt, and the modules the fix uses are imported when
@@ -25,6 +36,8 @@ import sys
 
 MQTT_MODULE = "moonraker.components.mqtt"
 HANDSHAKE_TIMEOUT = 10.
+APP_WAIT_TIMEOUT = 120.
+APP_POLL_INTERVAL = 0.5
 
 
 class _HandshakenContext:
@@ -69,15 +82,107 @@ def _handshake(sock, context, host, timeout):
     return tls
 
 
+def _is_touchscreen_app(connection):
+    # QIDI's touchscreen app identifies as an agent named after the printer
+    # model, such as QD_MAX4 or QD_PLUS5, with the URL "local".
+    data = getattr(connection, "client_data", None)
+    if not isinstance(data, dict):
+        return False
+    name = data.get("name")
+    return data.get("url") == "local" and isinstance(name, str) \
+        and name.startswith("QD_")
+
+
+def _agents(component):
+    """QIDI's registry of extension agents, or None if it can't be read."""
+    try:
+        extensions = component.server.lookup_component("extensions", None)
+    except Exception:
+        return None
+    agents = getattr(extensions, "agents", None)
+    return agents if isinstance(agents, dict) else None
+
+
+def _touchscreen_app_first(agents):
+    """Puts the touchscreen app's agent first, where QIDI's decrypt looks.
+
+    Returns whether the touchscreen app is connected.
+    """
+    for name, connection in agents.items():
+        if _is_touchscreen_app(connection):
+            break
+    else:
+        return False
+    if next(iter(agents)) != name:
+        others = [(key, value) for key, value in agents.items()
+                  if key != name]
+        agents.clear()
+        agents[name] = connection
+        agents.update(others)
+    return True
+
+
+def _decrypt_through_touchscreen_app(decrypt):
+    # Returns QIDI's coroutine without running it, so none of QIDI's log
+    # lines come from inside this module.
+    def _qidiclient_decrypt_hex(self, *args, **kwargs):
+        agents = _agents(self)
+        if agents:
+            _touchscreen_app_first(agents)
+        return decrypt(self, *args, **kwargs)
+    _qidiclient_decrypt_hex._tltg_decrypt = decrypt
+    return _qidiclient_decrypt_hex
+
+
+async def _after_touchscreen_app(loop, component, reconnect):
+    """Runs QIDI's first MQTT connect once the touchscreen app is connected."""
+    try:
+        agents = _agents(component)
+        if agents is not None and not _touchscreen_app_first(agents):
+            logging.info("tltg_moonraker_fixes: MQTT waiting for the "
+                         "touchscreen app before connecting")
+            deadline = time.monotonic() + APP_WAIT_TIMEOUT
+            while True:
+                await asyncio.sleep(APP_POLL_INTERVAL)
+                agents = _agents(component)
+                if agents is None:
+                    break
+                if _touchscreen_app_first(agents):
+                    logging.info("tltg_moonraker_fixes: touchscreen app "
+                                 "connected; MQTT connecting")
+                    break
+                if time.monotonic() >= deadline:
+                    logging.info("tltg_moonraker_fixes: touchscreen app not "
+                                 "connected after %.0f s; MQTT connecting "
+                                 "without it", APP_WAIT_TIMEOUT)
+                    break
+    except BaseException:
+        reconnect.close()
+        raise
+    # QIDI's reconnect runs in a task of its own, so its log lines keep their
+    # own origin. Cancelling this task cancels it too.
+    return await loop.create_task(reconnect)
+
+
 class _EventLoop:
-    """The MQTT component's event loop, with TLS handshakes off the loop."""
+    """The MQTT component's event loop, with TLS handshakes off the loop and
+    the first connect held for the touchscreen app."""
 
     def __init__(self, loop, component):
         self._tltg_loop = loop
         self._tltg_component = component
+        self._tltg_hold = True
 
     def __getattr__(self, name):
         return getattr(self._tltg_loop, name)
+
+    def create_task(self, coro, *args, **kwargs):
+        loop = self._tltg_loop
+        if self._tltg_hold \
+                and getattr(coro, "__name__", None) == "_do_reconnect":
+            self._tltg_hold = False
+            coro = _after_touchscreen_app(loop, self._tltg_component, coro)
+        return loop.create_task(coro, *args, **kwargs)
 
     async def create_socket_connection(self, address, timeout=None):
         loop = self._tltg_loop
@@ -119,7 +224,8 @@ class _EventLoopAttribute:
                     and callable(getattr(loop, "run_in_thread", None)):
                 loop = _EventLoop(loop, component)
                 logging.info("tltg_moonraker_fixes: MQTT TLS handshake "
-                             "moved off the event loop")
+                             "moved off the event loop; first connect waits "
+                             "for the touchscreen app")
             else:
                 logging.info("tltg_moonraker_fixes: MQTT TLS handshake left "
                              "on the event loop; Moonraker's event loop "
@@ -137,11 +243,13 @@ class _EventLoopAttribute:
 
 def apply(module):
     """Patch QIDI's moonraker.components.mqtt after it is imported."""
-    global inspect, logging, socket, ssl
+    global asyncio, inspect, logging, socket, ssl, time
+    import asyncio
     import inspect
     import logging
     import socket
     import ssl
+    import time
     component_class = getattr(module, "MQTTClient", None)
     if not isinstance(component_class, type) \
             or "eventloop" in vars(component_class) \
@@ -151,6 +259,10 @@ def apply(module):
                      "version this fix is for")
         return False
     component_class.eventloop = _EventLoopAttribute()
+    decrypt = vars(component_class).get("_qidiclient_decrypt_hex")
+    if callable(decrypt) and not hasattr(decrypt, "_tltg_decrypt"):
+        component_class._qidiclient_decrypt_hex = \
+            _decrypt_through_touchscreen_app(decrypt)
     return True
 
 
