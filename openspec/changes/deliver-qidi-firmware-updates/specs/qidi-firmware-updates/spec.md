@@ -94,6 +94,12 @@ A firmware update SHALL run independently of the session that started it, SHALL 
 - **AND** an update resumed after a power loss puts back the calibration captured before QIDI's package first ran, never QIDI's
 - **AND** a calibration that can't be restored is reported the same way and doesn't fail the update
 
+#### Scenario: Uninstall after a firmware update
+- **WHEN** a firmware update installs QIDI's package, which deletes Valve Oil's installed state with the config folder
+- **THEN** the install that follows still holds what the earlier install recorded about the host before it changed it, for every host change that is still as that install left it, and keeps the operator's earlier choices about the optional OS optimizations and AI detection
+- **AND** a later uninstall undoes those host changes as it would have before the update
+- **AND** a host file QIDI's package replaced is recorded as it is after the package, so uninstall puts back the new firmware's file
+
 #### Scenario: Valve Oil's install for the new firmware fails
 - **WHEN** QIDI's package and the boards are done but installing Valve Oil for the target firmware fails
 - **THEN** the update ends, every service is started again, and the installer's own recovery and the next install or automatic update apply

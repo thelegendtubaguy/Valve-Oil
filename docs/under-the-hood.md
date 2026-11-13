@@ -85,6 +85,7 @@ For anyone who wants to know exactly what's touched on the printer. The rules be
 | `/etc/systemd/system/tltg-firmware-update.service` | Runs a [QIDI firmware update](install.md#qidi-firmware-updates), apart from the session that started it. Installed the first time one starts. It's enabled, but does nothing unless an update is waiting to finish, so that one continues after a power loss. |
 | `~/printer_data/.tltg_firmware_update_pending.json` and `.tltg_firmware_update.lock` | There while a QIDI firmware update runs or waits to be finished. Every other installer command refuses to run while it's there, except a board's rescue. |
 | `~/printer_data/.tltg_firmware_update_result.json` | How the last QIDI firmware update ended, so the next `./install.sh` can report it. |
+| `~/printer_data/.tltg_carried_system_ledger.json` | There during a QIDI firmware update: what Valve Oil had recorded about the system before changing it, kept while QIDI's package deletes the config folder, so uninstall can still undo those changes afterwards. Removed when the update finishes. |
 | `~/.cache/tltg-firmware-update/` | QIDI's firmware package while it downloads and until the update finishes, and the update's log, `update.log`, which stays. |
 | `~/.tltg-update-staging/` and `~/.tltg-update-previous/` | QIDI's package unpacked beside `~/update` during a firmware update, which then takes `~/update`'s place. Removed when the update finishes. |
 | `~/update/` | QIDI's update folder. A QIDI firmware update replaces it with the new package's files, as QIDI's updater does. |

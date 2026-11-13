@@ -57,6 +57,7 @@ from .mainboard_firmware import mainboard_serial
 from .manifest import load_manifest
 from .naming import BUNDLE_ROOT_NAME, REPOSITORY_URL
 from .sudo import PUBLIC_DEFAULT_SUDO_PASSWORD, SudoError, authenticate_sudo, run_sudo, sudo_command
+from .system_optimizations import clear_carried_system_ledger, save_carried_system_ledger
 from .valve_oil_status import Blocker
 
 UNIT = "tltg-firmware-update.service"
@@ -187,6 +188,7 @@ def remove_files(paths) -> None:
             atomic_delete(path)
         except OSError:
             pass
+    clear_carried_system_ledger(paths)
 
 
 def _write_result(paths, record: dict, *, state: str, message: str, blockers=(), target=None) -> None:
@@ -1337,6 +1339,12 @@ def _soc(ctx: _Run) -> None:
             ctx.record["calibration"] = saved_calibration.capture(ctx.paths.config_root)
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             ctx.record["calibration"] = {"error": f"the saved calibration could not be read ({exc})"}
+        # QIDI's package deletes Valve Oil's state file with the config folder. The install after it gets that
+        # state's system ledger from here, so uninstall can still undo what the earlier install changed on the host.
+        try:
+            save_carried_system_ledger(ctx.paths, ctx.paths.printer_data_root / ctx.manifest.state_file, ctx.record["id"])
+        except OSError as exc:
+            ctx.reporter.line(f"  (The record of Valve Oil's system changes could not be kept across the update: {exc})")
     if ctx.record.get("soc_attempted"):
         # An earlier attempt stopped inside dpkg: let dpkg settle its database before installing the package again.
         _dpkg(ctx, ["--configure", "-a"])
@@ -1483,6 +1491,7 @@ def _install(ctx: _Run) -> None:
 
 def _finish(ctx: _Run) -> None:
     ctx.start_services(QIDI_SERVICES + (TIMER_NAME,))
+    clear_carried_system_ledger(ctx.paths)
     # The update is done; leftovers that won't go are only reported.
     try:
         for leftover in (qidi_package.staging_dir(ctx.paths),
