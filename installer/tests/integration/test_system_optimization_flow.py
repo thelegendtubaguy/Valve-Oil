@@ -37,6 +37,7 @@ from installer.runtime.manifest import load_manifest
 from installer.runtime.models import SystemOptimizationCliOptions
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
+from installer.runtime.safety import FIRMWARE_UPDATE_RUN_ENV
 from installer.runtime.state_file import StateValidationError, load_installed_state, write_installed_state
 from installer.runtime.system_optimizations import (
     SYSTEM_ROOT_ENV,
@@ -1272,6 +1273,51 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertFalse(_journal_path(paths).exists())
                 self.assertEqual(snapshot_tree(root), before)
         state.system_ledger["restore_preimages"]["rockchip_root_sync"]["mount_options"] = original
+
+    def test_a_firmware_update_carries_what_uninstall_needs_across_qidis_package(self):
+        # QIDI's package deletes the installed state with the config folder and replaces QIDI's own files. The
+        # update's install still knows what the earlier install changed on the host, and uninstall undoes all of it.
+        printer_root = copy_base_runtime(homing_patched=True)
+        system_root = fake_system_root(include_moonraker_cache=True)
+        host_run = fake_host_run(system_root)
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        env[SYSTEM_ROOT_ENV] = str(system_root)
+        boot = printer_root / "boot-id"
+        boot.write_text("test-boot\n")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
+        stock_config = printer_root.parent / "stock-config"
+        shutil.copytree(paths.config_root, stock_config, symlinks=True)
+        before = snapshot_tree(system_root)
+        urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\n"), urlopen=urlopen,
+                    environ=env, run=host_run)
+        state_path = printer_root / manifest.state_file
+        installed = load_installed_state(state_path).system_ledger
+        self.assertTrue(system_optimizations.save_carried_system_ledger(paths, state_path, "update-1"))
+
+        shutil.rmtree(paths.config_root)
+        shutil.copytree(stock_config, paths.config_root, symlinks=True)
+        moonraker = manifest.system_optimizations.moonraker_file_manager.file.lstrip("/")
+        newer = before[moonraker] + b"\n# QIDI's newer firmware\n"
+        (system_root / moonraker).write_bytes(newer)
+        # Only that update's own install reads what it carried.
+        self.assertIsNone(system_optimizations.load_carried_system_ledger(
+            paths, manifest=manifest, environ={**env, FIRMWARE_UPDATE_RUN_ENV: "another-update"}, run=host_run))
+        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=None, urlopen=urlopen,
+                    environ={**env, FIRMWARE_UPDATE_RUN_ENV: "update-1"}, run=host_run)
+        updated = load_installed_state(state_path).system_ledger
+        self.assertEqual(updated["policy"], installed["policy"])
+        self.assertEqual(set(updated["restore_preimages"]), set(installed["restore_preimages"]))
+
+        run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()),
+                      input_stream=io.StringIO("yes\nyes\nno\n"), urlopen=moonraker_urlopen(), environ=env, run=host_run)
+        # The fake host keeps its own notes on units and resolvconf runs under systemd/ and run/.
+        after = {name: data for name, data in snapshot_tree(system_root).items()
+                 if name in before or not name.startswith(("systemd/", "run/"))}
+        self.assertEqual(after, {**before, moonraker: newer})
 
     def _legacy_host_context(self):
         paths, manifest, env, root = self._installed_host_context()

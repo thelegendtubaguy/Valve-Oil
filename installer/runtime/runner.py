@@ -94,6 +94,7 @@ from .state_file import StateValidationError, load_installed_state, write_instal
 from .system_optimizations import (
     discard_legacy_system_ledger_migration,
     finalize_legacy_system_ledger_migration,
+    load_carried_system_ledger,
     maybe_apply_system_optimizations,
     maybe_emit_system_dry_run,
     migrate_legacy_system_ledger,
@@ -581,7 +582,10 @@ def _execute_install(
             system_ledger=(
                 prior_state.system_ledger
                 if prior_state is not None and prior_state.system_ledger and prior_state.system_ledger.get("restore_preimages")
-                else None
+                # QIDI's package deleted the state file of the install a firmware update replaced; that update
+                # kept its system ledger, so what that install changed on the host can still be undone.
+                else load_carried_system_ledger(paths, manifest=manifest, environ=environ, run=run)
+                if prior_state is None else None
             ),
         )
         journal.note_write()

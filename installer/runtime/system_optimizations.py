@@ -62,6 +62,7 @@ from .models import (
 )
 from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .process_restart import server_info_url
+from .safety import FIRMWARE_UPDATE_RUN_ENV
 from .state_file import StateValidationError, load_installed_state, write_installed_state
 from .sudo import authenticate_sudo, run_sudo, run_sudo_ignore_failure, run_sudo_or_raise
 
@@ -1148,6 +1149,135 @@ def _outcome_mount_options(outcome: dict[str, Any]) -> tuple[str, ...] | None:
     return tuple(options)
 
 
+_RESTORE, _UNCHANGED, _PRESERVE = "restore", "unchanged", "preserve"
+
+
+def _restore_decision(operation_id: str, *, preimage: dict[str, Any], outcome: dict[str, Any], manifest: Manifest,
+                      paths: RuntimePaths, root: Path, run) -> tuple[str, str]:
+    """Whether a host change is still as its install left it: _RESTORE when it is, so its preimage can be put back;
+    _UNCHANGED when the host already matches the preimage; _PRESERVE, with what to tell the operator, when something
+    else changed it since, so its preimage no longer describes what is there."""
+    spec = manifest.system_optimizations
+    guarded = GUARDED_FILE_PATCHES.get(operation_id)
+    if guarded is not None and _path_has_symlink_component(_map_path(root, guarded.file(spec)), root=root):
+        return _PRESERVE, f"{guarded.label} was modified after install and was preserved."
+    if _operation_matches_preimage(operation_id, preimage=preimage, spec=spec, paths=paths, root=root, run=run):
+        return _UNCHANGED, ""
+    if guarded is not None:
+        target = _map_path(root, guarded.file(spec))
+        expected = _outcome_file_sha256(outcome)
+        if _path_has_symlink_component(target, root=root) or not target.is_file() or (
+            not guarded.binary.same_build(_sha256_file(target), preimage["sha256"])
+            if guarded.binary is not None else _sha256_file(target) != expected
+        ):
+            return _PRESERVE, f"{guarded.label} was modified after install and was preserved."
+    if operation_id == FILAMENT_CONFIG_OPERATION:
+        if _filament_config_state(paths, spec, root) != filament_config.CURRENT:
+            return _PRESERVE, f"{spec.fluidd_filament_config.link} was modified after install and was preserved."
+    elif operation_id in STATIC_BUILDS:
+        build = STATIC_BUILDS[operation_id]
+        if build.installed_sha256(_map_path(root, build.destination)) is None:
+            return _PRESERVE, f"{build.destination} was replaced after install and was preserved."
+    elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
+        if moonraker_speedups.installed_digest(_map_path(root, moonraker_speedups.DESTINATION)) is None:
+            return _PRESERVE, f"{moonraker_speedups.DESTINATION} was replaced after install and was preserved."
+    elif operation_id == ZRAM_SWAP_OPERATION:
+        if zram_swap.installed_digest(_map_path(root, zram_swap.DESTINATION)) is None:
+            return _PRESERVE, f"{zram_swap.DESTINATION} was replaced after install and was preserved."
+    elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
+        operation_id, spec=spec, root=root, run=run
+    ):
+        return _PRESERVE, f"System optimization {operation_id} was modified after install and was preserved."
+    if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
+        if spec is None:
+            raise SystemOptimizationError("Manifest has no Rockchip restore specification.")
+        rockchip = spec.rockchip_root_sync
+        dropin = _map_path(root, rockchip.dropin)
+        if (
+            dropin.is_symlink()
+            or not dropin.is_file()
+            or dropin.read_text(encoding="utf-8") != rockchip.dropin_content
+            or tuple(_root_mount_options(spec=rockchip, root=root, run=run)) != _outcome_mount_options(outcome)
+        ):
+            return _PRESERVE, "Rockchip system state was modified after install and was preserved."
+    return _RESTORE, ""
+
+
+# The system ledger a QIDI firmware update carries across QIDI's package, which deletes the state file holding it. It
+# lives beside the update's pending record, and only that update's own install reads it.
+CARRIED_LEDGER_FILE = ".tltg_carried_system_ledger.json"
+
+
+def save_carried_system_ledger(paths: RuntimePaths, state_path: Path, update_id: str) -> bool:
+    """Before QIDI's package runs: keep the installed state's system ledger for the install that follows it."""
+    try:
+        ledger = load_installed_state(state_path).system_ledger
+        if not isinstance(ledger, dict) or not ledger.get("restore_preimages"):
+            return False
+        document = json.dumps({"update": update_id, "system_ledger": ledger}) + "\n"
+    except (OSError, StateValidationError, TypeError, ValueError):
+        return False
+    atomic_write_text(paths.printer_data_root / CARRIED_LEDGER_FILE, document, mode=0o600)
+    return True
+
+
+def load_carried_system_ledger(paths: RuntimePaths, *, manifest: Manifest, environ: dict[str, str],
+                               run=subprocess.run) -> dict[str, Any] | None:
+    """For an install that found no installed state: the ledger its firmware update carried (carried_system_ledger),
+    or None when this install isn't that update's or nothing usable was carried."""
+    update_id = environ.get(FIRMWARE_UPDATE_RUN_ENV)
+    if not update_id:
+        return None
+    try:
+        document = json.loads((paths.printer_data_root / CARRIED_LEDGER_FILE).read_text(encoding="utf-8"))
+        ledger = document["system_ledger"]
+        if document.get("update") != update_id or not isinstance(ledger, dict):
+            return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return carried_system_ledger(ledger, manifest=manifest, paths=paths, environ=environ, run=run)
+
+
+def clear_carried_system_ledger(paths: RuntimePaths) -> None:
+    try:
+        atomic_delete(paths.printer_data_root / CARRIED_LEDGER_FILE)
+    except OSError:
+        pass
+
+
+def carried_system_ledger(ledger: dict[str, Any], *, manifest: Manifest, paths: RuntimePaths, environ: dict[str, str],
+                          run=subprocess.run) -> dict[str, Any] | None:
+    """The ledger of the install a QIDI firmware update replaced, for the install that follows QIDI's package, which
+    deleted the state file that held it. A host change still as that install left it keeps its restore preimage, so
+    uninstall can still undo it, and the operator's earlier choices stay. A change QIDI's package, or anything else,
+    has altered since is dropped: the install then takes what is there now as that change's preimage. None when the
+    ledger can't be used."""
+    if manifest.system_optimizations is None or not _system_root_allowed(paths=paths, environ=environ):
+        return None
+    try:
+        if system_ledger_needs_migration(ledger):
+            return None
+        validate_system_ledger(ledger, manifest=manifest, paths=paths)
+    except StateValidationError:
+        return None
+    root = _system_root(environ)
+    preimages = dict(ledger.get("restore_preimages") or {})
+    outcomes = dict(ledger.get("outcomes") or {})
+    for operation_id, preimage in list(preimages.items()):
+        outcome = outcomes.get(operation_id)
+        if not isinstance(outcome, dict) or outcome.get("status") == "legacy_unproven":
+            continue
+        try:
+            decision, _ = _restore_decision(operation_id, preimage=preimage, outcome=outcome, manifest=manifest,
+                                            paths=paths, root=root, run=run)
+        except (InstallerError, OSError, KeyError, TypeError, ValueError):
+            decision = _PRESERVE
+        if decision == _PRESERVE:
+            del preimages[operation_id]
+            outcomes.pop(operation_id, None)
+    return {**ledger, "restore_preimages": preimages, "outcomes": outcomes}
+
+
 def restore_system_optimizations(
     *,
     paths: RuntimePaths,
@@ -1195,58 +1325,16 @@ def restore_system_optimizations(
                 reporter.line(f"System optimization {operation_id} has legacy ownership uncertainty and was preserved.")
                 continue
             guarded = GUARDED_FILE_PATCHES.get(operation_id)
-            if guarded is not None and _path_has_symlink_component(_map_path(root, guarded.file(manifest.system_optimizations)), root=root):
-                reporter.line(f"{guarded.label} was modified after install and was preserved.")
+            decision, why = _restore_decision(operation_id, preimage=preimage, outcome=outcome, manifest=manifest,
+                                              paths=paths, root=root, run=run)
+            if decision == _UNCHANGED:
                 continue
-            if _operation_matches_preimage(operation_id, preimage=preimage, spec=manifest.system_optimizations, paths=paths, root=root, run=run):
+            if operation_id in STATIC_BUILDS and _nginx_serves_static_build(operation_id, root):
+                reporter.line(f"{STATIC_BUILDS[operation_id].destination} was kept because nginx still serves it.")
                 continue
-            if guarded is not None:
-                target = _map_path(root, guarded.file(manifest.system_optimizations))
-                expected = _outcome_file_sha256(outcome)
-                if _path_has_symlink_component(target, root=root) or not target.is_file() or (
-                    not guarded.binary.same_build(_sha256_file(target), preimage["sha256"])
-                    if guarded.binary is not None else _sha256_file(target) != expected
-                ):
-                    reporter.line(f"{guarded.label} was modified after install and was preserved.")
-                    continue
-            if operation_id == FILAMENT_CONFIG_OPERATION:
-                if _filament_config_state(paths, manifest.system_optimizations, root) != filament_config.CURRENT:
-                    reporter.line(f"{manifest.system_optimizations.fluidd_filament_config.link} was modified after install and was preserved.")
-                    continue
-            elif operation_id in STATIC_BUILDS:
-                build = STATIC_BUILDS[operation_id]
-                if _nginx_serves_static_build(operation_id, root):
-                    reporter.line(f"{build.destination} was kept because nginx still serves it.")
-                    continue
-                if build.installed_sha256(_map_path(root, build.destination)) is None:
-                    reporter.line(f"{build.destination} was replaced after install and was preserved.")
-                    continue
-            elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
-                if moonraker_speedups.installed_digest(_map_path(root, moonraker_speedups.DESTINATION)) is None:
-                    reporter.line(f"{moonraker_speedups.DESTINATION} was replaced after install and was preserved.")
-                    continue
-            elif operation_id == ZRAM_SWAP_OPERATION:
-                if zram_swap.installed_digest(_map_path(root, zram_swap.DESTINATION)) is None:
-                    reporter.line(f"{zram_swap.DESTINATION} was replaced after install and was preserved.")
-                    continue
-            elif operation_id != ROCKCHIP_ROOT_SYNC_OPERATION and guarded is None and _operation_needs_apply(
-                operation_id, spec=manifest.system_optimizations, root=root, run=run
-            ):
-                reporter.line(f"System optimization {operation_id} was modified after install and was preserved.")
+            if decision == _PRESERVE:
+                reporter.line(why)
                 continue
-            if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
-                if manifest.system_optimizations is None:
-                    raise SystemOptimizationError("Manifest has no Rockchip restore specification.")
-                rockchip = manifest.system_optimizations.rockchip_root_sync
-                dropin = _map_path(root, rockchip.dropin)
-                if (
-                    dropin.is_symlink()
-                    or not dropin.is_file()
-                    or dropin.read_text(encoding="utf-8") != rockchip.dropin_content
-                    or tuple(_root_mount_options(spec=rockchip, root=root, run=run)) != _outcome_mount_options(outcome)
-                ):
-                    reporter.line("Rockchip system state was modified after install and was preserved.")
-                    continue
             _write_host_journal(
                 paths,
                 operation_id=operation_id,

@@ -22,6 +22,7 @@ Run on the test Max 4 and Plus 5 before building anything that depends on them, 
 - [x] 3.6 Draw the "do not power off" screen for each printer's panel while the touchscreen app is stopped.
 - [x] 3.7 Make a manual `install.sh` hand off to the detached run and follow its progress, and report the result of a run the session did not see.
 - [x] 3.8 Capture the operator's saved calibration (`printer.cfg`'s `SAVE_CONFIG` block, `saved_variables.cfg`) before the SOC install and put it back after it, before the board and install steps, naming what isn't carried over.
+- [x] 3.9 Carry the installed state's system ledger across QIDI's package to the update's install, dropping operations whose host state changed since (design D14).
 
 ## 4. Board firmware
 

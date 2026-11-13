@@ -23,6 +23,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from installer.runtime import board_firmware, firmware_update, qidi_package, safety, update_screen, valve_oil_status
+from installer.runtime.system_optimizations import CARRIED_LEDGER_FILE
 from installer.runtime.board_firmware import NEEDS_IMAGE, BoardAdmission, BoardStatus, admission_path
 from installer.runtime.cli import main, resolve_runtime_paths
 from installer.runtime.errors import InstallerError
@@ -415,6 +416,8 @@ class Printer:
             env = kwargs["env"]
             assert env[safety.FIRMWARE_UPDATE_RUN_ENV] == firmware_update.load_record(self.paths)["id"]
             assert env[firmware_update.LOCK_HELD_ENV] == "1" and command[-3:] == ["install", "--yes", "--plain"]
+            # The install after QIDI's package finds the system ledger this update kept for it.
+            assert (self.home / "printer_data" / CARRIED_LEDGER_FILE).read_text() == env[safety.FIRMWARE_UPDATE_RUN_ENV]
             self.event("install", self.services["klipper.service"], self.services["qidi-client.service"],
                        self.update_firmware())
             if self.install_rc == 0:
@@ -496,6 +499,12 @@ class Printer:
             for path in (self.by_id.parent / "by-id-later").iterdir():
                 path.rename(self.by_id / path.name)
 
+    def carry(self, paths, state_path, update_id):
+        # The update keeps the installed state's system ledger while that state is still there.
+        self.event("carry", state_path.exists())
+        (paths.printer_data_root / CARRIED_LEDGER_FILE).write_text(update_id)
+        return True
+
     def draw(self, lines, reporter=None):
         self.event("screen", "updating" if lines is update_screen.UPDATING else "stopped")
         # The real drawing, against a framebuffer that isn't there, fails without stopping the update.
@@ -520,7 +529,8 @@ class Printer:
     @contextmanager
     def patched(self):
         with ExitStack() as stack:
-            for target, value in ((firmware_update, {"SYSTEMD_DIR": self.systemd, "SERIAL_BY_ID": self.by_id}),
+            for target, value in ((firmware_update, {"SYSTEMD_DIR": self.systemd, "SERIAL_BY_ID": self.by_id,
+                                                     "save_carried_system_ledger": self.carry}),
                                   (update_screen, {"BACKLIGHT": str(self.backlight)}),
                                   (board_firmware, {"flash_thr_firmware": self.thr_flow,
                                                     "run_mainboard_firmware": self.mainboard_flow})):
@@ -597,6 +607,9 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertEqual((printer.thr, printer.mainboard), ("patched", PATCHED_MCU))
         self.assertIsNone(printer.record())
         self.assertEqual(printer.services, dict.fromkeys(printer.services, "active"))
+        # The system ledger was kept before QIDI's package deleted the installed state, and is gone with the update.
+        self.assertEqual({event for event in printer.events if event[0] == "carry"}, {("carry", True)})
+        self.assertFalse((printer.home / "printer_data" / CARRIED_LEDGER_FILE).exists())
         self.assertFalse(any((printer.home / name).exists() for name in (qidi_package.STAGING_DIRECTORY, qidi_package.PREVIOUS_DIRECTORY)))
         self.assertFalse(qidi_package.archive_path(printer.paths, printer.printer.target_firmware).exists())
         self.assertEqual((printer.home / "printer_data/config/tltg_optimized_state.yaml").read_text(), "reinstalled\n")
