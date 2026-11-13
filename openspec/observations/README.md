@@ -12,4 +12,11 @@ Evidence qualifiers:
 - **Static-recovered**: found in compiled symbols, strings, or disassembly; proves presence or ownership, not execution.
 - **Unresolved**: evidence is insufficient to claim behavior.
 
+## Files
+
+- `qidi-platform.md`: firmware, services, Moonraker, Fluidd, and platform behavior.
+- `qidi-client-account-bind.md`: touchscreen account binding and the login QR code.
+- `moonraker-file-manager.md`: QIDI's Moonraker file manager.
+- `qidi-box/`: QIDI Box hardware, protocols, firmware, and state.
+
 When evidence conflicts, live runtime evidence outranks fake harness behavior, and harness behavior outranks static naming. Hardware motion, heating, autofeed, RFID, retry, and failure-path assumptions require controlled live validation before repository behavior is changed.
