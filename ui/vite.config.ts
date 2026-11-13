@@ -9,6 +9,7 @@ import { gzipSync } from 'node:zlib'
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 // The installer bundle passes the package version; local builds use package.json's.
 const appVersion: string = process.env.VO_UI_VERSION || pkg.version
+const statusTarget = process.env.VO_PRINTER || 'http://localhost:7125'
 
 // Relative base so the build works from any sub-path the web server mounts it on.
 export default defineConfig({
@@ -40,6 +41,18 @@ export default defineConfig({
       },
     },
   ],
+  server: {
+    proxy: {
+      // Valve Oil's status service, which the printer's nginx serves on the same origin as Valve Oil UI. VO_PRINTER
+      // names the printer or fake Moonraker to send it to; Origin is rewritten to match, as the service refuses
+      // cross-origin changes.
+      '/tltg-status': {
+        target: statusTarget,
+        changeOrigin: true,
+        configure: (proxy) => proxy.on('proxyReq', (req) => req.getHeader('origin') && req.setHeader('origin', new URL(statusTarget).origin)),
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

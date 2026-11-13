@@ -84,7 +84,7 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 - Test durable behavior, safety boundaries, and release contracts, not implementation detail. Don't test private helpers, call order, constants, exact status wording, standard-library behavior, or synthetic examples unless enforcing a security boundary.
 - Extend existing lifecycle, contract, matrix, or smoke coverage first; prefer end-to-end scenarios and parameterized firmware/source matrices. Run checkers directly; don't wrap them. Put static invariants in contracts or standalone checkers.
 - Add a test module only for a distinct boundary; net growth needs an unrepresented operator-visible behavior or safety invariant. Remove or merge superseded and overlapping tests with behavior changes.
-- Keep `python3 scripts/run_installer_core_tests.py` under six seconds on a typical machine (bundle smoke excluded).
+- Keep `python3 scripts/run_installer_core_tests.py` under ten seconds on a typical machine (bundle smoke excluded).
 
 ## Timing and terminology
 

@@ -26,6 +26,29 @@ The fake Moonraker (`dev/fake-moonraker.mjs`) models a Max 4 on firmware 01.01.0
 | `stranded` | Filament stuck between the hub and the toolhead |
 | `no-box` | No QIDI Box |
 
+It also stands in for Valve Oil's status service at `/tltg-status/api`, which feeds the Updates screen. Pick its state with `--updates` (with only `--updates` given, the printer starts `idle`):
+
+| Updates scenario | State |
+|---|---|
+| `none` | Nothing waiting, automatic updates on, every board up to date |
+| `release-off` | A Valve Oil release waiting, automatic updates off |
+| `firmware-printing` | QIDI firmware, THR firmware, and a release waiting, held back by a print (switches the printer to `printing`) |
+| `boards` | A Box with a bootloader Valve Oil doesn't support (with **Report this board**), a Box kept on QIDI's firmware, and a mainboard not read |
+| `running` | Update now installing QIDI firmware, the THR, and a release; Moonraker and the status service go away for 15 seconds, then Klipper restarts |
+| `failed` | The last update failed with its log, and the last check failed; the next Update now fails once more |
+| `interrupted` | An automatic update stopped part way, with firmware still waiting |
+| `refused` | A release waiting; the first Update now is refused (409) because an update check holds the installer lock with a heater on, and stays unavailable for 20 seconds |
+| `firmware-failed` | A QIDI firmware update kept after it failed while installing QIDI's package; **Continue the update** carries it on |
+| `firmware-rescue` | A QIDI firmware update kept after a mainboard write couldn't be verified; Update now waits for `./mainboard-firmware.sh rescue` |
+| `closed-loop` | After a firmware update that left the Max 4's closed-loop drivers on their firmware |
+| `thr-waiting` | QIDI firmware waiting, with the THR and mainboard updated after it in the same update |
+| `reinstall` | Valve Oil's installed files are missing or changed, so the installed release waits to be installed again |
+| `absent` | No status service (404), as on a printer without it |
+
+Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update` as the service does, and the printer warnings Klipper would report for it (with **Details** and **Report this board** links).
+
+Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/tltg-status` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
+
 `npm run build` writes `dist/`, which the fake serves at `http://localhost:7125/valve-oil/`, the same layout as the printer.
 
 To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload.sh qidi@<printer-ip>`. It builds the UI and swaps it into `~/tltg-valve-oil-ui` without restarting anything or changing nginx. Open tabs pick it up on refresh. The next real install replaces it.
@@ -34,7 +57,7 @@ To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload
 
 ```sh
 npm run typecheck
-npm test          # the Box logic ported from the Fluidd fork, with its tests
+npm test          # the Box, warning, and Valve Oil status logic ported from the Fluidd fork, with its tests
 npm run build
 ```
 
@@ -42,8 +65,9 @@ npm run build
 
 - `src/moonraker/client.ts`: websocket JSON-RPC client with reconnect.
 - `src/state/`: printer status (subscribed objects, batched updates, temperature history, console), jobs, files and history, QIDI Box, warnings.
-- `src/qidi/`: QIDI Box and printer-warning logic ported from the Fluidd fork (`src/util/` there). Keep it in step with the fork.
-- `src/screens/`: Home, Files, QIDI Box.
+- `src/qidi/`: QIDI Box, printer-warning, and Valve Oil status logic ported from the Fluidd fork (`src/util/` there). Keep it in step with the fork.
+- `src/state/valve-oil.ts`: polls Valve Oil's status service for the Updates screen, and while an update runs, so the app keeps saying so while Moonraker is down for it.
+- `src/screens/`: Home, Files, QIDI Box, Updates. The Updates screen mirrors the Fluidd fork's Valve Oil settings section and uses its wording.
 - `src/components/`: shared pieces such as the filament path, spools, temperature tiles, and the print dialog.
 
 ## Release

@@ -216,6 +216,15 @@ def check_admission(stock, patched, boot, manifest, profile):
                 with patch.object(tool.subprocess, "run", side_effect=AssertionError("Admission opened service access")):
                     with contextlib.redirect_stderr(io.StringIO()):
                         assert tool.main(args) == 1
+            # A transfer for a target firmware programs only the image pinned for it or QIDI's stock image.
+            pinned = next(firmware for firmware, build in manifest["targets"].items() if build == "patched")
+            for firmware, image_path, reaches in (("09.09.09.09", patched_path, False), ("09.09.09.09", stock_path, False),
+                                                   (pinned, patched_path, True), (pinned, stock_path, True)):
+                with patch.object(tool, "require_ownership", side_effect=ValueError("stop before UART")) as ownership:
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        assert tool.main(["transfer", "--image", str(image_path), "--confirm-write", "--backup-dir",
+                                          str(backup), "--printer-idle-confirmed", "--firmware", firmware]) == 1
+                assert ownership.called == reaches, (firmware, image_path.name)
             result = tool.verify_readback(stock, backup, manifest)
             assert result["verified"]
             try:

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Box, ExternalLink, Folder, House, Moon, Power, Sun, TriangleAlert, X } from 'lucide-react'
+import { Box, ExternalLink, Folder, House, LoaderCircle, Moon, Power, RefreshCw, Sun, TriangleAlert, X } from 'lucide-react'
 import { href, useRoute, type Route } from './lib/router'
 import { client, runGcode, usePrinter } from './state/printer'
 import { useJob, jobProgress } from './state/job'
@@ -9,6 +9,8 @@ import { Toasts, attempt } from './components/toast'
 import { HomeScreen } from './screens/Home'
 import { FilesScreen } from './screens/Files'
 import { BoxScreen } from './screens/Box'
+import { DONT_POWER_OFF, UpdatesScreen } from './screens/Updates'
+import { useUpdateRunning } from './state/valve-oil'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
 
@@ -16,6 +18,7 @@ const NAV: { route: Route; label: string; icon: ReactNode }[] = [
   { route: 'home', label: 'Home', icon: <House size={16} /> },
   { route: 'files', label: 'Files', icon: <Folder size={16} /> },
   { route: 'box', label: 'QIDI Box', icon: <Box size={16} /> },
+  { route: 'updates', label: 'Updates', icon: <RefreshCw size={16} /> },
 ]
 
 export function App() {
@@ -26,7 +29,9 @@ export function App() {
   const nav = NAV.filter((n) => n.route !== 'box' || boxPresent)
 
   let body: ReactNode
-  if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? 'Connecting to the printer…' : 'Can’t reach the printer'} detail={`Trying ${client.wsUrl} again.`} />
+  // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
+  if (route === 'updates') body = <UpdatesScreen />
+  else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? 'Connecting to the printer…' : 'Can’t reach the printer'} detail={`Trying ${client.wsUrl} again.`} />
   else if (klippy !== 'ready') body = <KlippyNotReady />
   else if (route === 'files') body = <FilesScreen />
   else if (route === 'box' && boxPresent) body = <BoxScreen />
@@ -41,6 +46,7 @@ export function App() {
             {n.icon}
             {n.label}
             {n.route === 'box' && <BoxBusyBadge />}
+            {n.route === 'updates' && <UpdatingBadge />}
           </a>
         ))}
         <a href={fluiddUrl()} className="nav-item mt-auto border border-dashed border-line-strong text-[12.5px] text-ink-3">
@@ -50,6 +56,7 @@ export function App() {
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar />
+        <UpdateBanner />
         <Warnings />
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={route === 'home' && conn === 'open' && klippy === 'ready' ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : 'mx-auto grid max-w-[1500px] content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px]'}>{body}</div>
@@ -88,6 +95,31 @@ function Brand() {
 function BoxBusyBadge() {
   const busy = useBoxBusy()
   return busy ? <span className="ml-auto rounded-full bg-warn-tint px-1.5 text-[11px] text-warn">busy</span> : null
+}
+
+function UpdatingBadge() {
+  return useUpdateRunning() ? <span className="ml-auto rounded-full bg-warn-tint px-1.5 text-[11px] text-warn">updating</span> : null
+}
+
+/** While Valve Oil updates the printer, on every screen, and through Moonraker and Klipper restarting for it. */
+function UpdateBanner() {
+  const running = useUpdateRunning()
+  const route = useRoute()
+  // The Updates screen says the same in its own card.
+  if (!running || route === 'updates') return null
+  return (
+    <div className="border-b border-line bg-page px-3.5 py-2 md:px-[18px]">
+      <div className="tone-warn flex items-start gap-2.5 rounded-lg px-3 py-2">
+        <LoaderCircle size={16} className="spin mt-0.5 flex-none" />
+        <div className="min-w-0 flex-1 text-ink">
+          <b>Valve Oil is updating the printer.</b> <span className="text-ink-2">{DONT_POWER_OFF}</span>
+        </div>
+        <a href={href('updates')} className="flex-none font-medium text-accent-ink">
+          Details
+        </a>
+      </div>
+    </div>
+  )
 }
 
 function StatusPill() {
@@ -129,15 +161,33 @@ function TopBar() {
 
 function Warnings() {
   const warnings = useWarnings()
+  const route = useRoute()
   if (!warnings.length) return null
   return (
     <div className="grid gap-1.5 border-b border-line bg-page px-3.5 py-2 md:px-[18px]">
       {warnings.map((w, i) => (
         <div key={i} className={`flex items-start gap-2.5 rounded-lg px-3 py-2 ${w.level === 'error' ? 'tone-bad' : 'tone-warn'}`}>
           <TriangleAlert size={16} className="mt-0.5 flex-none" />
-          <div className="min-w-0 text-ink">
+          <div className="min-w-0 text-ink [overflow-wrap:anywhere]">
             <b>{w.title}</b>
             {w.message && <span className="text-ink-2"> {w.message}</span>}
+            {/* A board's issue link (checked by tltgPrinterWarnings), and the Updates screen for Valve Oil's update warnings. */}
+            {w.url && (
+              <>
+                {' '}
+                <a href={w.url} target="_blank" rel="noopener noreferrer" className="font-medium whitespace-nowrap text-accent-ink underline">
+                  Report this board
+                </a>
+              </>
+            )}
+            {w.id.startsWith('valve_oil_') && route !== 'updates' && (
+              <>
+                {' '}
+                <a href={href('updates')} className="font-medium whitespace-nowrap text-accent-ink underline">
+                  Details
+                </a>
+              </>
+            )}
           </div>
         </div>
       ))}
@@ -159,10 +209,12 @@ function NotReady({ title, detail, children }: { title: string; detail?: string;
 function KlippyNotReady() {
   const klippy = usePrinter((s) => s.klippy)
   const message = usePrinter((s) => s.klippyMessage)
+  // Valve Oil stops and restarts Klipper itself while it updates; a restart from here could interrupt a board flash.
+  const updating = useUpdateRunning()
   const title = klippy === 'startup' ? 'Klipper is starting…' : klippy === 'shutdown' ? 'Klipper has shut down' : klippy === 'error' ? 'Klipper reported an error' : 'Klipper isn’t running'
   return (
     <NotReady title={title} detail={message}>
-      {klippy !== 'startup' && (
+      {klippy !== 'startup' && !updating && (
         <>
           <button className="btn" onClick={() => attempt(() => client.call('printer.restart'))}>Restart Klipper</button>
           <button className="btn btn-primary" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>Firmware restart</button>

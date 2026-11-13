@@ -8,12 +8,19 @@ import urllib.request
 from .addons_cli import maybe_remove_addons
 from . import klipper_cfg, messages, patches
 from .auto_update import (
-    AutoUpdateError,
-    auto_update_enrolled,
+    SYSTEM_ROOT_ENV,
     auto_updates_configured,
-    disable_auto_updates,
+    enrollment_path,
+    remove_auto_update_units,
+    remove_state as remove_auto_update_state,
 )
+from . import update_check
 from .box_enablement import saved_variable_verify_marker_path
+from . import firmware_update
+from .board_firmware import ADMISSION_FILE
+from .box_firmware import HOLD_FILE
+from .sudo import SudoError, authenticate_sudo
+from .valve_oil_status import remove_status
 from .backup import (
     build_uninstall_backup_label,
     create_config_backup,
@@ -156,11 +163,7 @@ def run_uninstall(
         if pending_saved_variables_marker.exists() and not dry_run:
             atomic_delete(pending_saved_variables_marker)
         if not dry_run:
-            _disable_enrolled_auto_updates(
-                paths=paths,
-                reporter=reporter,
-                input_stream=input_stream,
-            )
+            _remove_update_check(paths=paths, reporter=reporter, input_stream=input_stream, environ=env, run=run)
         reporter.emit_nothing_to_uninstall()
         reporter.debug(event="uninstall.complete", action="nothing-to-uninstall")
         return UninstallResult(
@@ -460,6 +463,12 @@ def _execute_uninstall(
         uninstall_counters["postflight"][0] = 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
 
+        # Enrollment goes before the update check's units, so a check that survives their removal can't install or
+        # reconcile anything; a rollback puts it back.
+        journal.track_file(enrollment_path(paths))
+        if enrollment_path(paths).exists():
+            journal.note_write()
+            atomic_delete(enrollment_path(paths))
         restore_system_optimizations(
             paths=paths,
             manifest=manifest,
@@ -505,11 +514,8 @@ def _execute_uninstall(
         patch_results=result.patch_results,
         managed_tree_drift=result.managed_tree_drift,
     )
-    _disable_enrolled_auto_updates(
-        paths=paths,
-        reporter=reporter,
-        input_stream=input_stream,
-    )
+    _remove_update_check(paths=paths, reporter=reporter, input_stream=input_stream, environ=environ, run=run)
+    _remove_firmware_delivery_state(paths=paths, reporter=reporter, input_stream=input_stream, environ=environ, run=run)
     if paths.restart_marker_path.exists():
         maybe_restart_pending_service_if_idle(
             paths=paths,
@@ -560,20 +566,46 @@ def detect_patch_markers(*, paths: RuntimePaths, state: InstalledState) -> dict[
 
 
 
-def _disable_enrolled_auto_updates(*, paths: RuntimePaths, reporter, input_stream) -> None:
-    auto_update_units_configured = auto_updates_configured()
-    if not auto_update_units_configured and not auto_update_enrolled(paths):
+def _remove_update_check(*, paths: RuntimePaths, reporter, input_stream, environ, run) -> None:
+    """Enrollment first, then what the check found waiting and its own records, then any units of the check that the
+    host restore left: an earlier release's, or those of an install with nothing left to uninstall."""
+    try:
+        atomic_delete(enrollment_path(paths))
+    except OSError:
+        pass
+    remove_status(paths)
+    remove_auto_update_state(paths)
+    update_check.remove_files(paths)
+    if not auto_updates_configured(environ):
+        return
+    password = None
+    if not environ.get(SYSTEM_ROOT_ENV):
+        try:
+            password = authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
+        except SudoError as exc:
+            reporter.line(f"{messages.AUTO_UPDATE_DISABLE_FAILED} {exc.message}")
+            return
+    remove_auto_update_units(environ=environ, run=run, password=password)
+
+
+
+def _remove_firmware_delivery_state(*, paths: RuntimePaths, reporter, input_stream, environ, run) -> None:
+    """Board admission, Box holds, the last firmware update's result, and the firmware update's unit go too, so a
+    later install counts as a new one and reads every board again. Board firmware stays as it is."""
+    for name in (ADMISSION_FILE, HOLD_FILE):
+        try:
+            atomic_delete(paths.printer_data_root / name)
+        except OSError:
+            pass
+    firmware_update.remove_files(paths)
+    if not (firmware_update.SYSTEMD_DIR / firmware_update.UNIT).exists():
         return
     try:
-        disable_auto_updates(
-            paths=paths,
-            reporter=reporter,
-            input_stream=input_stream,
-            require_sudo=auto_update_units_configured,
-        )
-    except AutoUpdateError as exc:
-        reporter.line(f"{messages.AUTO_UPDATE_DISABLE_FAILED} {exc.message}")
-
+        password = authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
+    except SudoError as exc:
+        reporter.line(f"{firmware_update.UNIT} was not removed: {exc.message}")
+        return
+    firmware_update.remove_unit(run=run, password=password)
 
 
 def _uninstall_patch_ledger(

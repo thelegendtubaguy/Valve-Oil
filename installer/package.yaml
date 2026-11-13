@@ -6,8 +6,11 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.12.1"
+  version: "26.11.13.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
+# target_firmware is the QIDI firmware this release brings the printer to: its newest listed firmware, downloaded only
+# from this project's mirror release and checked against the archive's size and SHA-256. Every other listed firmware
+# updates to it. Board versions come from each package's firmware_manifest.json, as listed in the mirror releases.
 printers:
   - id: max4
     display_name: QIDI Max 4
@@ -19,6 +22,21 @@ printers:
       - "01.01.06.04"
       - "01.01.06.05"
       - "01.01.07.01"
+    target_firmware:
+      version: "01.01.07.01"
+      mirror: thelegendtubaguy/Qidi-Max4-Defaults
+      release: qidi-max4-firmware-01.01.07.01-0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2
+      archive: QD_MAX4_01.01.07.01_20261016_Release.zip
+      sha256: 0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2
+      size: 264568499
+      boards: {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.15"}
+      # QD_MAX4_CLOSED_LOOP_03.01.10.15_20260907.bin in the package, which the update sends to each X/Y driver.
+      closed_loop_image: {size: 116736, sha256: d670e9104f4844d38669312104355837d4a92a06b03ed8157d487e87286b1be4}
+      update_from:
+        "01.01.06.03": {mcu: "02.01.01.11", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
+        # QIDI published 01.01.06.04 twice: on 2026-06-09 with mainboard 02.01.01.11, then on 2026-06-12 with 02.01.01.12.
+        "01.01.06.04": {mcu: ["02.01.01.11", "02.01.01.12"], thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
+        "01.01.06.05": {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
   - id: plus5
     display_name: QIDI Plus 5
     soc_file_prefix: QD_PLUS5_SOC_
@@ -26,6 +44,15 @@ printers:
     macros: klipper/printers/plus5
     firmware:
       - "01.01.02.01"
+    target_firmware:
+      version: "01.01.02.01"
+      mirror: thelegendtubaguy/Qidi-Plus5-Defaults
+      release: qidi-plus5-firmware-01.01.02.01-534e5ce959b1e387fc6355f8d78736ddb94432eb9c569ff2a135e103dfeb0871
+      archive: QD_PLUS5_01.01.02.01_20261016_Release.zip
+      sha256: 534e5ce959b1e387fc6355f8d78736ddb94432eb9c569ff2a135e103dfeb0871
+      size: 177626943
+      boards: {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21"}
+      update_from: {}
 
 backup:
   source_directory: "config"
@@ -654,10 +681,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-0e6d94d
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-0e6d94d/fluidd.zip
+    version: v1.37.7-tltg-122933b
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-122933b/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 2889b1364b309d2b50113e87ad402f02fc5e4afcf2563d29d778600a83510fad
+    sha256: 6f93cd6303ecf45a0f0fb7fbe13fb6811b9b36b74150886d944051d05848c3c0
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui

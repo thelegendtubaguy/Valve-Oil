@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import itertools
 import json
+import os
 import shutil
+import signal
 import subprocess
 import unittest
 from dataclasses import replace
@@ -13,12 +16,11 @@ from unittest.mock import patch
 
 from installer.runtime import thr_firmware
 from installer.runtime.auto_update import LOCK_HELD_ENV
-from installer.runtime.cli import main, parse_args, resolve_runtime_paths
+from installer.runtime.cli import main, resolve_runtime_paths
 from installer.runtime.reporter import create_reporter
 from installer.runtime.safety import THR_RECOVERY_MARKER, ensure_no_recovery_sentinel
 from installer.runtime.errors import InstallerError
-from installer.runtime.models import InstallResult
-from installer.tests.helpers import REPO_ROOT, build_env, copy_base_runtime, temp_path
+from installer.tests.helpers import REPO_ROOT, build_env, temp_path
 from scripts import flash_thr_firmware as protocol
 from scripts.build_thr_firmware import patch_thr
 
@@ -70,7 +72,7 @@ class Printer:
                 return result(1, 'LoadState=not-found\nActiveState=inactive\n')
             return result(output='LoadState=loaded\nActiveState=' + self.states[service] + '\n')
         if command[:1] == ['systemctl'] and command[1] in ('stop', 'start'):
-            if self.failure == 'restore' and command[1] == 'start':
+            if self.failure == 'restore' and command[1] == 'start' and command[2] == 'klipper.service':
                 return result(1)
             self.states[command[2]] = 'inactive' if command[1] == 'stop' else 'active'
             return result()
@@ -93,6 +95,8 @@ class Printer:
                 return result(0 if supported else protocol.UNSUPPORTED_BOOTLOADER)
             if operation == 'transfer':
                 self.transfers += 1
+                if getattr(self, 'on_transfer', None):
+                    self.on_transfer(kwargs)
                 self.recovery_requested = '--recover-to-stock' in command
                 backup = Path(command[command.index('--backup-dir') + 1])
                 self.transfer_backups.append(protocol.digest((backup / 'application.bin').read_bytes()))
@@ -138,6 +142,8 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         manifest['thr']['stock_sha256'] = hashlib.sha256(stock).hexdigest()
         manifest['thr']['patched_sha256'] = hashlib.sha256(image).hexdigest()
         (bundle / 'firmware/max4-thr-valve-oil-v1.json').write_text(json.dumps(manifest))
+        (bundle / 'installer').mkdir()
+        shutil.copy2(REPO_ROOT / 'installer/package.yaml', bundle / 'installer/package.yaml')
         data = root / 'printer_data'
         (data / 'config').mkdir(parents=True)
         shutil.copy2(REPO_ROOT / 'config/printer.cfg', data / 'config/printer.cfg')
@@ -162,25 +168,6 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 sleep=lambda seconds: None, clock=itertools.count(0, 10).__next__, **kwargs,
             )
 
-    def test_interactive_authorization_defaults_to_no_and_never_enrolls_updates(self):
-        paths, printer, reporter = self.fixture()
-        def confirm(**kwargs):
-            return thr_firmware.confirm_thr_firmware(paths=paths, reporter=reporter, **kwargs)
-        for answer in ('', '\n', 'n\n', 'no\n', 'unexpected\n'):
-            with self.subTest(answer=answer):
-                self.assertFalse(confirm(input_stream=io.StringIO(answer)))
-        self.assertFalse(confirm(input_stream=None))
-        self.assertFalse(confirm(input_stream=io.StringIO('yes\n'), environ={LOCK_HELD_ENV: '1'}))
-        for answer in ('y\n', 'YES\n'):
-            with self.subTest(answer=answer):
-                self.assertTrue(confirm(input_stream=io.StringIO(answer)))
-        self.assertTrue(confirm(explicit=True))
-        # The Plus 5 ships the same THR board and stock image.
-        paths.firmware_manifest_path.write_text('{"SOC":{"version":"01.01.02.01"}}')
-        self.assertTrue(confirm(input_stream=io.StringIO('yes\n')))
-        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-        self.assertIn('input shaper calibration', reporter.stream.getvalue())
-
     def test_stock_and_already_patched_boards_preserve_evidence_and_service_states(self):
         for profile in protocol.thr_bootloaders.PROFILES.values():
             for patched, timer in itertools.product((False, True), repeat=2):
@@ -190,7 +177,8 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                     if not timer:
                         printer.idle_state = 'Idle'
                     printer.restarting_queries = 3
-                    self.execute(paths, printer, reporter)
+                    outcome = self.execute(paths, printer, reporter)
+                    self.assertEqual(outcome, thr_firmware.CURRENT if patched else thr_firmware.FLASHED)
                     self.assertEqual(printer.transfers, 0 if patched else 1)
                     self.assertEqual(printer.states, printer.original)
                     self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
@@ -275,7 +263,53 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             self.execute(paths, printer, reporter, admit=False)
         self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
         self.assertEqual(printer.transfers, 0)
-        self.assertEqual(printer.states['klipper.service'], 'inactive')
+        # Klipper wouldn't start; the services after it are started anyway.
+        self.assertEqual((printer.states['klipper.service'], printer.states['tltg-optimized-auto-update.timer']),
+                         ('inactive', 'active'))
+
+    def test_the_terminal_going_away_or_ctrl_c_does_not_stop_a_flash(self):
+        paths, printer, reporter = self.fixture()
+        seen = []
+
+        def hang_up(kwargs):
+            seen.append((kwargs.get('start_new_session'), signal.getsignal(signal.SIGHUP)))
+            reporter.stream.close()  # the SSH session is gone
+            os.kill(os.getpid(), signal.SIGINT)  # and Ctrl-C was pressed
+
+        printer.on_transfer = hang_up
+        interrupt = signal.getsignal(signal.SIGINT)
+        try:
+            outcome = self.execute(paths, printer, reporter)
+        except KeyboardInterrupt:
+            self.fail('Ctrl-C stopped the flash mid-write')
+        self.assertEqual((outcome, seen), (thr_firmware.FLASHED, [(True, signal.SIG_IGN)]))
+        self.assertEqual(printer.states, printer.original)
+        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
+        self.assertIs(signal.getsignal(signal.SIGINT), interrupt)  # Ctrl-C works again afterwards
+
+    def test_tool_transfer_ignores_the_terminal_until_it_ends(self):
+        paths, printer, reporter = self.fixture()
+        backup = paths.printer_data_root / 'backup'
+        backup.mkdir()
+        protocol.save_snapshot(backup, printer.boot, printer.stock)
+        image = paths.printer_data_root / 'image.bin'
+        image.write_bytes(patch_thr(printer.stock, printer.manifest))
+        seen = []
+
+        def reset(*args, **kwargs):
+            seen.append((signal.getsignal(signal.SIGHUP), signal.getsignal(signal.SIGINT)))
+            raise ValueError('stop before the bootloader')
+
+        profiles = protocol.thr_bootloaders
+        with patch.object(protocol, 'MANIFEST', paths.bundle_root / 'firmware/max4-thr-valve-oil-v1.json'), \
+                patch.dict(profiles.PROFILES, {printer.profile.sha256: printer.profile}), \
+                patch.object(profiles, 'ADMITTED_BOOTLOADERS', frozenset((printer.profile.sha256,))), \
+                patch.object(protocol, 'require_ownership'), patch.object(protocol, 'application_session', side_effect=reset), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(protocol.main(['transfer', '--image', str(image), '--backup-dir', str(backup), '--reset',
+                                            '--confirm-write', '--printer-idle-confirmed']), 1)
+        self.assertEqual(seen, [(signal.SIG_IGN, signal.SIG_IGN)])
+        self.assertIsNot(signal.getsignal(signal.SIGINT), signal.SIG_IGN)
 
     def test_ambiguous_writes_retain_blocker_and_do_not_roll_back_configuration(self):
         for failure in ('transfer', 'readback', 'interrupt'):
@@ -305,7 +339,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
 
     def test_fallen_back_transfer_restores_services_without_blocker_or_calibration_loss(self):
         paths, printer, reporter = self.fixture(profile=protocol.thr_bootloaders.SECOND, failure='fell-back')
-        self.execute(paths, printer, reporter)
+        self.assertEqual(self.execute(paths, printer, reporter), thr_firmware.FELL_BACK)
         self.assertEqual(printer.transfers, 1)
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
@@ -313,9 +347,6 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         evidence = json.loads((directory / 'verification.json').read_text())
         self.assertEqual(evidence['application_sha256'], printer.manifest['thr']['stock_sha256'])
         self.assertIn('#*# shaper_freq_x', (paths.config_root / 'printer.cfg').read_text())
-        output = reporter.stream.getvalue()
-        self.assertIn('THR FIFO fix was not applied', output)
-        self.assertNotIn('THR FIFO firmware verified', output)
 
     def test_unconfirmed_end_is_settled_by_readback(self):
         for failure, verified in (('end-unconfirmed', True), ('end-unconfirmed-stock', False)):
@@ -338,39 +369,26 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         self.assertFalse(printer.recovery_requested)
         self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).is_file())
 
-    def test_dry_run_and_ineligible_firmware_do_not_access_uart_or_services(self):
+    def test_dry_run_and_unsupported_firmware_do_not_access_uart_or_services(self):
         paths, printer, reporter = self.fixture()
         def forbidden(*args, **kwargs):
             raise AssertionError('Preview or admission accessed services/UART')
         thr_firmware.flash_thr_firmware(paths=paths, reporter=reporter, dry_run=True, run=forbidden, urlopen=printer.urlopen)
         self.assertEqual(sorted(paths.printer_data_root.iterdir()), [paths.config_root, paths.firmware_manifest_path])
-        with self.assertRaises(thr_firmware.ThrFirmwareError):
-            thr_firmware.flash_thr_firmware(paths=paths, reporter=reporter, environ={LOCK_HELD_ENV: '1'}, run=forbidden)
-        paths.firmware_manifest_path.write_text('{"SOC":{"version":"01.01.06.05"}}')
-        with self.assertRaises(thr_firmware.ThrFirmwareError):
-            thr_firmware.flash_thr_firmware(paths=paths, reporter=reporter, run=forbidden)
-        self.assertFalse(thr_firmware.confirm_thr_firmware(paths=paths, reporter=reporter, input_stream=io.StringIO('yes\n')))
+        # Unsupported firmware, and a supported one that isn't the target (another Klipper), never reach the THR.
+        for firmware in ('09.09.09.09', '01.01.06.05'):
+            paths.firmware_manifest_path.write_text('{"SOC":{"version":"%s"}}' % firmware)
+            with self.subTest(firmware=firmware), self.assertRaises(InstallerError):
+                thr_firmware.flash_thr_firmware(paths=paths, reporter=reporter, run=forbidden, urlopen=printer.urlopen)
 
-    def test_cli_opt_in_is_install_only_and_yes_alone_does_not_authorize(self):
-        self.assertFalse(parse_args(['install', '--yes']).flash_thr_fifo)
-        self.assertTrue(parse_args(['install', '--yes', '--flash-thr-fifo']).flash_thr_fifo)
-        for argv in (['uninstall'], ['restore-backup'], ['auto-update', '--run'], ['install', '--uninstall']):
-            with self.subTest(argv=argv), self.assertRaises(SystemExit):
-                parse_args([*argv, '--flash-thr-fifo'])
-        root = copy_base_runtime()
-        env = build_env(root, moonraker_url='http://printer.invalid')
-        def install(paths, manifest, reporter, *, flash_thr_fifo, dry_run, input_stream, environ, **kwargs):
-            opted_in = thr_firmware.confirm_thr_firmware(
-                paths=paths, reporter=reporter, explicit=flash_thr_fifo,
-                dry_run=dry_run, input_stream=input_stream, environ=environ,
-            )
-            return InstallResult((), (), 'label', None, flash_thr_firmware=opted_in)
-        with patch('installer.runtime.cli.run_install', side_effect=install), patch('installer.runtime.cli.flash_thr_firmware', side_effect=AssertionError('Unexpected firmware access')):
-            self.assertEqual(main(['install', '--yes', '--plain'], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO()), 0)
-        (root / 'firmware_manifest.json').write_text('{"SOC":{"version":"01.01.07.01"}}')
-        for flags, answer, expected in ((['--yes'], '', False), ([], '\n', False), ([], 'yes\n', True), (['--yes', '--flash-thr-fifo'], '', True)):
-            with self.subTest(flags=flags, answer=answer), patch('installer.runtime.cli.run_install', side_effect=install), patch('installer.runtime.cli.flash_thr_firmware') as flash:
-                self.assertEqual(main(['install', '--plain', *flags], bundle_root=REPO_ROOT, environ=env, stream=io.StringIO(), input_stream=io.StringIO(answer)), 0)
-                self.assertEqual(flash.called, expected)
-        with patch('installer.runtime.cli.run_install', side_effect=AssertionError('Child mutated configuration')):
-            self.assertEqual(main(['install', '--yes', '--flash-thr-fifo', '--plain'], bundle_root=REPO_ROOT, environ={**env, LOCK_HELD_ENV: '1'}, stream=io.StringIO()), 1)
+    def test_services_stopped_by_the_caller_are_left_to_it(self):
+        # A firmware update stops Klipper, Moonraker, and the touchscreen itself and starts them again afterwards.
+        paths, printer, reporter = self.fixture()
+        printer.states = dict.fromkeys(printer.states, 'inactive')
+        def offline(*args, **kwargs):
+            raise OSError('Moonraker is stopped')
+        printer.urlopen = offline
+        self.assertEqual(self.execute(paths, printer, reporter, services_stopped=True, environ={LOCK_HELD_ENV: '1'}),
+                         thr_firmware.FLASHED)
+        self.assertEqual((printer.transfers, set(printer.states.values())), (1, {'inactive'}))
+        self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())

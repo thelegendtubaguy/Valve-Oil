@@ -46,6 +46,17 @@ describe('tltgPrinterWarnings', () => {
       .toEqual([inputShaperDefaults])
   })
 
+  it.each([
+    ['keeps', 'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&board=box1', true],
+    ['drops', 'https://example.com/thelegendtubaguy/valve-oil/issues/new?x=1', false],
+    ['drops', 'javascript:alert(1)', false],
+    ['drops', 42, false]
+  ])("%s a board warning's issue link %s", (_, url, kept) => {
+    const board = { id: 'box_firmware_unsupported_box1', level: 'warning', title: "Box 1 can't get the Valve Oil Box firmware yet.", message: 'Its bootloader is not supported yet.' }
+
+    expect(tltgPrinterWarnings({ warnings: [{ ...board, url }] })).toEqual([kept ? { ...board, url } : board])
+  })
+
   it('shows a repeated id once', () => {
     expect(tltgPrinterWarnings({ warnings: [inputShaperOff, { ...inputShaperOff, title: 'Again' }] }))
       .toEqual([inputShaperOff])

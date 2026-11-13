@@ -13,6 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from installer.runtime.backup import requires_external_backup_manifest
+from installer.runtime.board_images import BOARD_MANIFESTS, pinned_board_image, validate_board_targets
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import (
     CompatibilityValidationError,
@@ -73,6 +74,63 @@ class InstallerCompatibilityTests(unittest.TestCase):
             with self.subTest(other=other["soc_file_prefix"]):
                 with self.assertRaises(ManifestValidationError):
                     parse_manifest({**raw, "printers": [max4, other]})
+
+    def test_target_firmware_comes_only_from_the_mirror_and_updates_every_older_firmware(self) -> None:
+        raw = yaml.safe_load((REPO_ROOT / "installer/package.yaml").read_text(encoding="utf-8"))
+        target = raw["printers"][0]["target_firmware"]
+        older = next(iter(target["update_from"]))
+        invalid = {
+            "other mirror": {"mirror": "someone/Qidi-Max4-Defaults"},
+            "tag of another archive": {"sha256": "0" * 64},
+            "another printer's archive": {"archive": target["archive"].replace("QD_MAX4_", "QD_PLUS5_")},
+            "empty archive": {"size": 0},
+            "not the newest firmware": {"version": older},
+            "older firmware left out": {"update_from": {k: v for k, v in target["update_from"].items() if k != older}},
+            "older firmware without a board": {"update_from": {**target["update_from"], older: {"mcu": "02.01.01.11", "thr": "02.02.01.08", "box": "02.03.01.21"}}},
+            "two target board versions": {"boards": {**target["boards"], "mcu": ["02.01.01.11", "02.01.01.12"]}},
+        }
+        for case, change in invalid.items():
+            with self.subTest(case=case):
+                printers = copy.deepcopy(raw["printers"])
+                printers[0]["target_firmware"].update(change)
+                with self.assertRaises(ManifestValidationError):
+                    parse_manifest({**raw, "printers": printers})
+
+        # A firmware QIDI published twice with different board images may change that board.
+        printers = copy.deepcopy(raw["printers"])
+        printers[0]["target_firmware"]["update_from"][older] = {
+            **target["boards"], "mcu": ["02.01.01.11", target["boards"]["mcu"]]}
+        spec = parse_manifest({**raw, "printers": printers}).printers[0].target_firmware
+        self.assertEqual([spec.changes_board(board, older) for board in ("mcu", "thr")], [True, False])
+        self.assertFalse(any(spec.changes_board(board, spec.version) for board in spec.boards.boards))
+        with self.assertRaises(ValueError):
+            spec.changes_board("mcu", "09.09.09.09")
+
+    def test_board_images_are_pinned_for_each_target_firmware(self) -> None:
+        validate_board_targets(self.manifest, REPO_ROOT)
+        for printer in self.manifest.printers:
+            closed_loop = printer.target_firmware.board_version("closed_loop") is not None
+            self.assertEqual({board: pinned_board_image(REPO_ROOT, printer, board).is_project_build for board in BOARD_MANIFESTS},
+                             {"thr": True, "box": True, "mcu": closed_loop})
+        plus5 = next(printer for printer in self.manifest.printers if printer.target_firmware.board_version("closed_loop") is None)
+        changes = {
+            "mainboard build without closed-loop drivers": ("mcu", lambda m: m["targets"].update({plus5.target_firmware.version: "patched"})),
+            "no image for a target": ("thr", lambda m: m["targets"].pop(plus5.target_firmware.version)),
+            "unknown build": ("box", lambda m: m["targets"].update({plus5.target_firmware.version: "latest"})),
+            "built from another board image": ("box", lambda m: m["box"].update(stock_version="02.03.01.22")),
+            "predecessor no older package carries": ("mcu", lambda m: m["mcu"]["predecessors"][0].update(version="02.01.01.10")),
+        }
+        for case, (board, change) in changes.items():
+            with self.subTest(case=case):
+                bundle = Path(tempfile.mkdtemp(prefix="board-targets-"))
+                self.addCleanup(shutil.rmtree, bundle)
+                shutil.copytree(REPO_ROOT / "firmware", bundle / "firmware")
+                path = bundle / BOARD_MANIFESTS[board]
+                data = json.loads(path.read_text())
+                change(data)
+                path.write_text(json.dumps(data))
+                with self.assertRaises(ManifestValidationError):
+                    validate_board_targets(self.manifest, bundle)
 
     def test_parser_rejects_malformed_duplicate_and_unsafe_envelope_entries(self) -> None:
         raw = {

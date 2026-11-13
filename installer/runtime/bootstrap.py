@@ -36,7 +36,7 @@ def run_as_printer_user(bundle_root: Path) -> Path:
         raise BootstrapError(f"{printer_data} is owned by root; it should belong to the printer's user, such as qidi.")
     home = Path(owner.pw_dir)
     if not bundle_root.resolve().is_relative_to(home.resolve()):
-        bundle_root = _copy_bundle(bundle_root, home / BUNDLE_DIRECTORY, owner)
+        bundle_root = copy_bundle(bundle_root, home / BUNDLE_DIRECTORY, owner)
     os.chdir(bundle_root)
     os.initgroups(owner.pw_name, owner.pw_gid)
     os.setgid(owner.pw_gid)
@@ -46,7 +46,7 @@ def run_as_printer_user(bundle_root: Path) -> Path:
 
 
 
-def _copy_bundle(source: Path, target: Path, owner: pwd.struct_passwd) -> Path:
+def copy_bundle(source: Path, target: Path, owner: pwd.struct_passwd) -> Path:
     staging = target.with_name(f".{target.name}.{os.getpid()}")
     previous = target.with_name(f".{target.name}.{os.getpid()}.previous")
     shutil.rmtree(staging, ignore_errors=True)
@@ -114,7 +114,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         vendor_root = prepare_sys_path(bundle_root)
         validate_vendored_imports(vendor_root)
-        from installer.runtime.cli import main as cli_main
+        if argv and argv[0] == "update-now":
+            # The status service's "update now" run (installer/runtime/update_now.py).
+            from installer.runtime.update_now import main as update_now_main
+
+            def cli_main(*, argv, bundle_root):
+                return update_now_main(argv=argv[1:], bundle_root=bundle_root)
+        elif argv and argv[0] == "firmware-update":
+            # tltg-firmware-update.service: the QIDI firmware update run (installer/runtime/firmware_update.py).
+            from installer.runtime.firmware_update import main as firmware_update_main
+
+            def cli_main(*, argv, bundle_root):
+                return firmware_update_main(argv=argv[1:], bundle_root=bundle_root)
+        else:
+            from installer.runtime.cli import main as cli_main
     except KeyboardInterrupt:
         sys.stderr.write("Interrupted. No further installer actions will run.\n")
         return 130

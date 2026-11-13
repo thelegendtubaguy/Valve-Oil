@@ -47,9 +47,20 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 |---|---|---|
 | [Chamber **Minimal** temperature](print-start.md#minimum-chamber-temperature) | OrcaSlicer 2.4.2+ filament profile | Starts printing once the chamber reaches this, while it keeps heating toward the target. |
 
-## Installer options
+## Updates
 
-See [Installing, updating, and uninstalling](install.md) for the dry run, OS optimizations, and automatic updates.
+Fluidd's Settings page has a **Valve Oil** section, and Valve Oil UI an [Updates](valve-oil-ui.md#updates) screen, with the **Automatic updates** switch and **Update now**. Over SSH:
+
+| Command | What it does |
+|---|---|
+| [`~/tltg-optimized-macros/install.sh`](install.md#updating) | Installs or updates Valve Oil, with the [QIDI firmware update](install.md#qidi-firmware-updates) when one is waiting, and follows, continues, or reports a firmware update already started. `--dry-run` shows what it would do; `--yes` runs without questions, and starts a waiting firmware update without asking. |
+| [`~/tltg-optimized-macros/auto-update.sh --enable`, `--disable`](install.md#automatic-updates) | Turns automatic updates on or off, without a password. The hourly update check runs either way. |
+| [`~/tltg-optimized-macros/auto-update.sh --status`](install.md#automatic-updates) | Says whether automatic updates are on, when the last check ran, and what's waiting. |
+| [`~/tltg-optimized-macros/auto-update.sh --run`](install.md#automatic-updates) | Runs the update check now. It installs only with automatic updates on. |
+| [`~/tltg-optimized-macros/box-firmware.sh status`, `install`, `restore`, `rescue`](firmware.md#qidi-box-firmware) | Shows, flashes, or restores QIDI's firmware on each USB Box. |
+| [`~/tltg-optimized-macros/mainboard-firmware.sh status`, `install`, `restore`, `rescue`](firmware.md#mainboard-closed-loop-reply-fix) | Shows, flashes, or restores QIDI's firmware on the mainboard. |
+
+See [Installing, updating, and uninstalling](install.md) for the dry run and the OS optimizations.
 
 ## Add-ons
 

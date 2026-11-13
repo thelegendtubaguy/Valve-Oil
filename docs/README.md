@@ -4,21 +4,21 @@
 
 ## Using it
 
-- [Installing, updating, and uninstalling](install.md): dry run, OS optimizations, slicer start G-code, automatic updates
+- [Installing, updating, and uninstalling](install.md): dry run, boards Valve Oil doesn't support yet, OS optimizations, slicer start G-code, QIDI firmware updates, automatic updates
 - [Print start and end](print-start.md): what's faster, saved bed mesh, minimum chamber temperature, exhaust fan with a heated chamber, staggered heating, keeping filament loaded, long pauses
 - [QIDI Box](qidi-box.md): load and unload speed, eject, stuck and failed loads, Box heater, editing QIDI's filament list, Anycubic, Elegoo, and Bambu Lab spool tags, RS-485 Boxes
 - [Spoolman](spoolman.md): setting it up, a spool for each Box slot
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
 - [Add-ons](addons.md): installing OctoEverywhere, Obico, Tailscale, and other optional programs from Fluidd
-- [Valve Oil UI](valve-oil-ui.md): the early second web interface at `/valve-oil/`, alongside Fluidd
+- [Valve Oil UI](valve-oil-ui.md): the early second web interface at `/valve-oil/`, alongside Fluidd, and its Updates screen
 - [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor, input shaper calibration, bed soak test
 - [Settings and commands](settings.md): everything you can change, in one table
 
 ## When something's wrong
 
 - [Fixes for QIDI bugs](fixes.md)
-- [If something goes wrong](troubleshooting.md): backups, restore, Box link monitor, reporting problems
-- [Firmware fixes](firmware.md): QIDI Box (shutdown fix and spool tag reading, flashed by the installer), and the optional toolhead accelerometer and Max 4 mainboard closed-loop reply fixes
+- [If something goes wrong](troubleshooting.md): firmware updates that didn't start or finish, backups, restore, Box link monitor, reporting problems
+- [Board firmware](firmware.md): the toolhead accelerometer fix, the QIDI Box shutdown fix and spool tag reading, and the Max 4 mainboard closed-loop reply fix, all flashed by the installer, and the Max 4's closed-loop motor drivers
 
 ## Details
 

@@ -58,8 +58,9 @@ WantedBy=multi-user.target
 
 NGINX_START = "    # tltg-optimized:remote-screen\n"
 NGINX_END = "    # /tltg-optimized:remote-screen\n"
-# The package's routes in the Fluidd site: the Printer screen card and the Add-ons settings. Moonraker authorizes each
-# connection: trusted client addresses, or the card's one-shot token.
+# The package's routes in the Fluidd site: the Printer screen card, the Add-ons settings, and the Valve Oil status
+# service (status_service). Moonraker authorizes each connection: trusted client addresses, or the card's one-shot
+# token.
 NGINX_BLOCK = NGINX_START + """\
     location /tltg-screen/ {
         set $tltg_screen_token $arg_token;
@@ -97,6 +98,29 @@ NGINX_BLOCK = NGINX_START + """\
     }
 
     location = /tltg-addons-auth {
+        internal;
+        # The subrequest would otherwise keep the client's method, and POST /access/user creates a Moonraker user.
+        proxy_method GET;
+        proxy_pass http://apiserver/access/user?token=$arg_token;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # The Valve Oil section of Fluidd and Valve Oil UI, authorized as the Add-ons settings are.
+    location /tltg-status/ {
+        auth_request /tltg-status-auth;
+        proxy_pass http://127.0.0.1:7133/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 30s;
+        client_max_body_size 1k;
+        access_log off;
+    }
+
+    location = /tltg-status-auth {
         internal;
         # The subrequest would otherwise keep the client's method, and POST /access/user creates a Moonraker user.
         proxy_method GET;

@@ -17,7 +17,7 @@ Boxes dropped with `Lost communication with MCU 'mcu_boxN'`, most often at print
 - Makes `SAVE_VARIABLE` skip saves that change nothing and stop re-reading the file it just wrote, so print end takes under 10 ms to save settings instead of about 0.4 s. Turning the printer off during a save can no longer leave the file empty or half written.
 - Stops reading Box heater sensors after a shutdown, which crashed Klipper and hid the real error.
 
-For a Box that still drops, the optional [Box firmware fix](firmware.md#qidi-box-shutdown-fix) keeps it connected so Klipper shows why, and the [Box link monitor](troubleshooting.md#box-link-monitor) records what happened.
+For a Box that still drops, the [Valve Oil Box firmware](firmware.md#qidi-box-firmware) keeps it connected so Klipper shows why, and the [Box link monitor](troubleshooting.md#box-link-monitor) records what happened.
 
 ## Klipper slowing down during long Box prints
 
@@ -67,7 +67,7 @@ With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or 
 
 The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
 
-The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. The same change [switches off QIDI's own firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
 ## Fixes from newer Klipper
 

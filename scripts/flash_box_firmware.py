@@ -18,9 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 if __package__:
-    from .build_box_firmware import PATCH_MANIFEST, load_manifest
+    from .build_box_firmware import (PATCH_MANIFEST, PREDECESSOR, known_images, load_manifest, programmable_images,
+                                     terminal_signals_ignored)
 else:
-    from build_box_firmware import PATCH_MANIFEST, load_manifest
+    from build_box_firmware import (PATCH_MANIFEST, PREDECESSOR, known_images, load_manifest, programmable_images,
+                                    terminal_signals_ignored)
 
 UNSUPPORTED = 3
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
@@ -55,12 +57,8 @@ def image_spec(manifest: dict) -> dict:
 
 
 def image_identity(data: bytes, manifest: dict) -> str | None:
-    spec = image_spec(manifest)
-    if len(data) != spec["size"]:
-        return None
-    known = {entry["sha256"]: "superseded" for entry in spec.get("superseded", ())}
-    known.update({spec["stock_sha256"]: "stock", spec["patched_sha256"]: "patched"})
-    return known.get(digest(data))
+    entry = known_images(image_spec(manifest)).get(digest(data))
+    return entry["identity"] if entry is not None and len(data) == entry["size"] else None
 
 
 def admitted_image(data: bytes, manifest: dict) -> str:
@@ -68,6 +66,21 @@ def admitted_image(data: bytes, manifest: dict) -> str:
     if identity is None:
         raise ValueError("Unrecognized application image")
     return identity
+
+
+def programmable_image(data: bytes, manifest: dict) -> str:
+    """The identity of an image a transfer may program. QIDI's predecessor images are admitted only as what a board
+    runs; a board on one gets the pinned image, and rescue restores QIDI's stock image."""
+    identity = admitted_image(data, manifest)
+    if identity == PREDECESSOR:
+        raise ValueError("QIDI's earlier image is admitted only as a board's current firmware; it is never programmed")
+    return identity
+
+
+def application_sizes(manifest: dict) -> list[int]:
+    """The sizes of the admitted applications, the image's own size first."""
+    spec = image_spec(manifest)
+    return [spec["size"], *sorted({entry["size"] for entry in known_images(spec).values()} - {spec["size"]})]
 
 
 def bootloader_profile(data: bytes, manifest: dict) -> dict:
@@ -192,7 +205,7 @@ class Bootloader:
         raise TransferFailed("No bootloader identity reply; nothing was erased")
 
     def transfer(self, image: bytes, manifest: dict) -> dict:
-        identity = admitted_image(image, manifest)
+        identity = programmable_image(image, manifest)
         self.probe()
         self._send(1, b"\x01\x00" + len(image).to_bytes(4, "big"))
         if not self._await(self.start_timeout, lambda kind, payload: kind == 1 and payload == b"\x01\x01"):
@@ -280,8 +293,8 @@ def application_session(tty: str, manifest: dict, *, application: bool = True, r
             region = b""
             if application:
                 supported = any(digest(boot) == p["sha256"] for p in manifest["bootloaders"])
-                # Admitted boards: the image plus its 1 KiB padding; otherwise the whole region.
-                length = ((image_spec(manifest)["size"] + 1023) // 1024 + 1) * 1024 if supported else board.application_region
+                # Admitted boards: the largest admitted image plus its 1 KiB padding; otherwise the whole region.
+                length = ((max(application_sizes(manifest)) + 1023) // 1024 + 1) * 1024 if supported else board.application_region
                 region = block(APPLICATION_BASE, APPLICATION_BASE + length)
             result["snapshot"] = boot, region, metadata
             if reset_expected_boot is not None:
@@ -313,7 +326,9 @@ def application_session(tty: str, manifest: dict, *, application: bool = True, r
 
 
 def save_snapshot(directory: Path, boot: bytes, region: bytes, manifest: dict, *, metadata=None) -> dict:
-    size = image_spec(manifest)["size"]
+    # The application is the admitted image the region starts with, if any; otherwise the image's own size of it.
+    sizes = application_sizes(manifest)
+    size = next((size for size in sizes if image_identity(region[:size], manifest)), sizes[0])
     app = region[:size]
     supported = any(len(boot) == BOOTLOADER_BYTES and digest(boot) == p["sha256"] for p in manifest["bootloaders"])
     identity = image_identity(app, manifest)
@@ -349,6 +364,8 @@ def main(argv=None, board: Board = BOX) -> int:
     parser.add_argument("--confirm-write", action="store_true", help="allow application erase and programming")
     parser.add_argument("--rescue", action="store_true", help=f"transfer to a {board.label} that is in, or is power-cycled into, its bootloader")
     parser.add_argument("--wait", type=float, default=0.0, help=f"seconds to wait for the {board.label} application or bootloader")
+    parser.add_argument("--firmware", help="the printer's target QIDI firmware; transfer then programs only the image "
+                                           "pinned for it or QIDI's stock image")
     args = parser.parse_args(argv)
     try:
         manifest = load_manifest(board.manifest)
@@ -385,25 +402,29 @@ def main(argv=None, board: Board = BOX) -> int:
         if args.image is None or args.backup_dir is None:
             raise ValueError("transfer needs --image and --backup-dir")
         image = args.image.read_bytes()
-        admitted_image(image, manifest)
+        programmable_image(image, manifest)
+        if args.firmware is not None and digest(image) not in programmable_images(manifest, args.firmware):
+            raise ValueError(f"The image is not pinned for QIDI firmware {args.firmware}")
         boot, _ = load_backup(args.backup_dir, manifest)
         profile = bootloader_profile(boot, manifest)
         require_ownership(args.printer_idle_confirmed)
-        import serial
-        ids, tty = usb_state(args.usb)
-        # A transfer that failed before erasing leaves the application running; rescue resets into the bootloader then.
-        if args.rescue and (ids != APP_IDS or tty is None):
-            print(f"Waiting for the {board.label} bootloader; {board.rescue_hint}.", file=sys.stderr)
-            tty = wait_for(args.usb, board.boot_ids, args.wait or 300.0)
-        else:
-            if ids != APP_IDS or tty is None:
-                raise ValueError(f"The {board.label} application is not running; use --rescue")
-            application_session(tty, manifest, application=False, reset_expected_boot=boot, board=board)
-            tty = wait_for(args.usb, board.boot_ids, 5.0)
-        with serial.Serial(tty, 115200, timeout=0.02, write_timeout=2, exclusive=True) as port:
-            print(json.dumps(Bootloader(port, profile).transfer(image, manifest), indent=2))
-        print(f"Wait for the {board.label} application, then use snapshot and verify for readback.", file=sys.stderr)
-        return 0
+        # From the first serial access to the end of the transfer.
+        with terminal_signals_ignored():
+            import serial
+            ids, tty = usb_state(args.usb)
+            # A transfer that failed before erasing leaves the application running; rescue resets into the bootloader then.
+            if args.rescue and (ids != APP_IDS or tty is None):
+                print(f"Waiting for the {board.label} bootloader; {board.rescue_hint}.", file=sys.stderr)
+                tty = wait_for(args.usb, board.boot_ids, args.wait or 300.0)
+            else:
+                if ids != APP_IDS or tty is None:
+                    raise ValueError(f"The {board.label} application is not running; use --rescue")
+                application_session(tty, manifest, application=False, reset_expected_boot=boot, board=board)
+                tty = wait_for(args.usb, board.boot_ids, 5.0)
+            with serial.Serial(tty, 115200, timeout=0.02, write_timeout=2, exclusive=True) as port:
+                print(json.dumps(Bootloader(port, profile).transfer(image, manifest), indent=2))
+            print(f"Wait for the {board.label} application, then use snapshot and verify for readback.", file=sys.stderr)
+            return 0
     except Exception as exc:
         print(f"{board.label} operation failed: {exc}", file=sys.stderr)
         return 1

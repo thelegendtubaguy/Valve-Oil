@@ -15,6 +15,18 @@
         "sha256": "2254a9dda60aa2eaac29a7bbe9350f09e10b2edb1f902ff406bca507fc6ee576"
       }
     ],
+    "predecessors": [
+      {
+        "version": "02.01.01.11",
+        "size": 36600,
+        "sha256": "33375f0debcb04fee18fbb65437fe6bd4082a6a6a70b2755f1de58320c56eab8",
+        "packages": [
+          "QD_MAX4_01.01.06.03_20260507_Release.zip",
+          "QD_MAX4_01.01.06.04_20260609_Release.zip"
+        ],
+        "description": "QIDI's QD_MAX4_MCU_02.01.01.11_20260402.bin, byte-identical in both packages. Its host Klipper does not use endstop_sync_reset, which 02.01.01.12 adds and later packages' Klipper looks up at connect."
+      }
+    ],
     "reply_lengths": {
       "0x31": 10,
       "0x37": 5,
@@ -78,5 +90,9 @@
       "identity_reply": "0112",
       "start_timeout": 60
     }
-  ]
+  ],
+  "targets": {
+    "01.01.07.01": "patched",
+    "01.01.02.01": "stock"
+  }
 }
