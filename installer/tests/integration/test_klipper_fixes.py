@@ -87,6 +87,44 @@ class GuardTest(unittest.TestCase):
         self.assertTrue(klipper_fixes._replace(Target, "method", label, fixed))
         self.assertEqual(Target().method(), "fixed")
 
+    def test_homing_fix_is_found_under_the_health_wrapper_after_a_restart(self) -> None:
+        from installer.tests.integration.test_klipper_health import klipper_health
+
+        def trsync_class():
+            class Trsync:
+                def start(self, print_time, report_offset, trigger_completion, expire_timeout):
+                    return "original"
+
+                def _handle_trsync_state(self, params):
+                    pass
+
+                def stop(self):
+                    pass
+            return Trsync
+
+        def fixed(self, print_time, report_offset, trigger_completion, expire_timeout):
+            return "fixed"
+
+        label = "MCU_trsync.start"
+        saved = klipper_fixes.ORIGINALS[label]
+        self.addCleanup(klipper_fixes.ORIGINALS.__setitem__, label, saved)
+        klipper_fixes.ORIGINALS[label] = klipper_fixes.source_hash(trsync_class().start)
+
+        # Klipper start: the fixes load before tltg_klipper_health wraps the sync.
+        Trsync = trsync_class()
+        self.assertTrue(klipper_fixes._replace(Trsync, "start", label, fixed))
+        self.assertTrue(klipper_health._wrap_trsync(Trsync))
+        # In-process restart: both run again on the same classes.
+        self.assertTrue(klipper_fixes._replace(Trsync, "start", label, fixed))
+        self.assertTrue(klipper_health._wrap_trsync(Trsync))
+        self.assertEqual(Trsync().start(0., 0., None, 1.), "fixed")
+
+        # Loaded the other way round, the fix doesn't replace the health wrapper.
+        Trsync = trsync_class()
+        self.assertTrue(klipper_health._wrap_trsync(Trsync))
+        wrapper = Trsync.start
+        self.assertFalse(klipper_fixes._replace(Trsync, "start", label, fixed))
+        self.assertIs(Trsync.start, wrapper)
 
 class LostMcuTest(unittest.TestCase):
     class Serial:

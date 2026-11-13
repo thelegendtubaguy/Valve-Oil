@@ -180,9 +180,16 @@ def _replace(cls, name, label, new):
     """Put new on cls in place of name when the current one is QIDI's
     original. Returns True when the fix is in place."""
     current = cls.__dict__.get(name)
-    if getattr(current, MARKER, False):
-        return True
-    if current is None or source_hash(current) != ORIGINALS[label]:
+    # Another of this project's modules may have wrapped the fix since; an
+    # in-process restart (RESTART, FIRMWARE_RESTART, SAVE_CONFIG) keeps it.
+    inner = current
+    while inner is not None:
+        if getattr(inner, MARKER, False):
+            return True
+        inner = getattr(inner, "__wrapped__", None)
+    # A wrapper's source hashes as the function it wraps; don't replace it.
+    if current is None or hasattr(current, "__wrapped__") \
+            or source_hash(current) != ORIGINALS[label]:
         return False
     setattr(new, MARKER, True)
     new.__name__ = name

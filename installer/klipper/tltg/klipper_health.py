@@ -181,6 +181,10 @@ def _wrap_trsync(cls):
         return result
 
     handle_report._tltg_klipper_health = True
+    # Lets tltg_klipper_fixes find its homing fix under this wrapper.
+    start_sync.__wrapped__ = start
+    handle_report.__wrapped__ = handle
+    stop_sync.__wrapped__ = stop
     cls.start = start_sync
     cls._handle_trsync_state = handle_report
     cls.stop = stop_sync
