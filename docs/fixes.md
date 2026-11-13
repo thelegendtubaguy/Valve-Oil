@@ -59,7 +59,15 @@ At power-on this can show on the touchscreen as **Printer service failed to star
 
 Moonraker now waits for the server's answer in the background, for at most 10 seconds, and keeps answering Fluidd, the touchscreen, and Klipper while it waits. When the answer doesn't come, QIDI's code gets the same error and retries as before. On the Max 4 test printer, with a test server that accepts connections and never answers, each Moonraker request took about 59 seconds before the change and about 15 ms after it.
 
-This doesn't change whether QIDI's cloud accepts your printer. `MQTT Connection Failed: Not authorized` in Fluidd means QIDI's server refused the printer's saved account.
+This doesn't change whether QIDI's cloud accepts your printer. For the `MQTT Connection Failed: Not authorized` warning, see the next section.
+
+## `Not authorized` from QIDI's cloud after the printer starts
+
+QIDI's Moonraker reads the printer's QIDI account through the touchscreen app. At power-on it connected to QIDI's cloud before the touchscreen app had started, so it connected without the account to QIDI's fallback server, which refused it. Fluidd then showed **Moonraker has failed plugins** with `mqtt`, and `MQTT Connection Failed: Not authorized`, even when the printer connected with its account seconds later. QIDI's code also reads the account through whichever program registered with Moonraker first as an agent, so when OrcaSlicer connected to the printer before the touchscreen app did, the account couldn't be read at all.
+
+Now, on a printer linked to a QIDI account, Moonraker waits for the touchscreen app before it first connects to QIDI's cloud, and always reads the account through the touchscreen app. If the touchscreen app hasn't connected after two minutes, Moonraker connects as QIDI's code did before.
+
+The warning still appears when QIDI's server refuses the printer's account, or answers too late. QIDI's code waits 2 seconds for the server to accept the account, then starts again, and keeps trying. Moonraker drops the warning as soon as the printer connects, but a Fluidd page that was already open keeps showing it until you reload the page. When `moonraker.log` has `MQTT connection successful` after the last `Not authorized`, the printer is connected to QIDI's cloud.
 
 ## Touchscreen offering firmware you already have
 
