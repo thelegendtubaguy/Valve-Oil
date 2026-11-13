@@ -13,6 +13,11 @@ images, show that:
 - replies of every other function code, and randomized streams of them with
   noise and gaps, reach the host exactly as they do on stock.
 
+--predecessor-image: checks each of the manifest's predecessors (QIDI's image of
+an earlier version) by size, hash, and the version its own data dictionary
+reports, and that the transfer tool admits it as a board's firmware, finds it in
+a snapshot, and never programs it.
+
 --bootloader-backup: runs the transfer tool against the captured mainboard
 bootloader's own code (clock, GPIO, and USB core stubbed; CDC packets injected
 into its class buffer; the GD32 flash controller's page erase modelled at
@@ -152,6 +157,56 @@ def check_image(stock: bytes, manifest: dict) -> bytes:
     require(patched_dictionary == stock_dictionary, "patched dictionary differs beyond the version")
     print("image: patch, changed regions, branch, and identify dictionary OK")
     return patched
+
+
+def embedded_dictionary(image: bytes) -> dict:
+    """The data dictionary a Klipper image carries: the zlib stream of a JSON object (read statically, since a
+    predecessor's identify handler is at another address)."""
+    for offset in range(len(image) - 2):
+        if image[offset] != 0x78 or image[offset + 1] not in (0x01, 0x5E, 0x9C, 0xDA):
+            continue
+        stream = zlib.decompressobj()
+        try:
+            data = stream.decompress(image[offset:])
+        except zlib.error:
+            continue
+        if stream.eof and data.startswith(b"{"):
+            try:
+                return json.loads(data)
+            except ValueError:
+                continue
+    raise CheckFailed("no data dictionary found")
+
+
+def check_predecessors(images: list[bytes], stock: bytes, manifest: dict) -> None:
+    """Each of the manifest's predecessors is QIDI's image of its version: given every one, check its size, hash, and
+    the version its own data dictionary reports; that the transfer tool admits it as a board's firmware, finds it in a
+    snapshot region, and never programs it; and that its dictionary differs from stock only in what Klipper reads."""
+    mcu = manifest["mcu"]
+    entries = {entry["sha256"]: entry for entry in mcu.get("predecessors", ())}
+    require({digest(image) for image in images} == set(entries), "pass exactly the manifest's predecessor images")
+    stock_dictionary = embedded_dictionary(stock)
+    for image in images:
+        entry = entries[digest(image)]
+        require(len(image) == entry["size"] and entry["version"] != mcu["stock_version"], f"{entry['version']}: size")
+        dictionary = embedded_dictionary(image)
+        require(dictionary["version"] == entry["version"], f"{entry['version']}: its dictionary reports {dictionary['version']}")
+        require(dictionary.get("config") == stock_dictionary.get("config") and dictionary.get("app") == "Klipper",
+                f"{entry['version']}: build constants differ from stock")
+        require(tool.image_identity(image, manifest) == "predecessor", f"{entry['version']}: not admitted")
+        sizes = tool.application_sizes(manifest)
+        region = image + b"\xff" * (((max(sizes) + 1023) // 1024 + 1) * 1024 - len(image))
+        found = next((size for size in sizes if tool.image_identity(region[:size], manifest)), None)
+        require(found == len(image), f"{entry['version']}: not found in a snapshot region")
+        try:
+            tool.programmable_image(image, manifest)
+        except ValueError:
+            pass
+        else:
+            raise CheckFailed(f"{entry['version']}: the transfer tool would program it")
+        added = sorted(set(stock_dictionary["commands"]) - set(dictionary["commands"]))
+        print(f"predecessor {entry['version']}: size, hash, dictionary version, never programmed OK; "
+              f"stock adds commands {added or 'none'}")
 
 
 # ---- closed-loop reply parser ----------------------------------------------
@@ -466,12 +521,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stock-image", type=Path, required=True)
     parser.add_argument("--bootloader-backup", type=Path)
+    parser.add_argument("--predecessor-image", type=Path, action="append", default=[],
+                        help="QIDI's image of each of the manifest's predecessors (02.01.01.11 from 01.01.06.03)")
     args = parser.parse_args()
     try:
         manifest = load_manifest()
         stock = args.stock_image.read_bytes()
         patched = check_image(stock, manifest)
         check_parser(stock, patched, manifest)
+        if args.predecessor_image:
+            check_predecessors([path.read_bytes() for path in args.predecessor_image], stock, manifest)
         if args.bootloader_backup:
             boot = args.bootloader_backup.read_bytes()
             require(digest(boot) in BOOTLOADER_HOOKS, "bootloader backup is not an admitted build")

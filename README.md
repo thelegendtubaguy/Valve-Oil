@@ -34,11 +34,17 @@ If you want to help support content like this, consider subscribing on YouTube o
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/49f26b9c2101). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
 5. Slice using your printer's Valve Oil profile, such as `Qidi X-Max 4 0.4 nozzle - Valve Oil`. Optionally, make a copy and customize it.
 
-The installer first asks whether to flash a fix for the toolhead board's accelerometer. **The default is No.** If you say yes, **run input shaper calibration before bed leveling or printing**. At the end, it flashes the [QIDI Box firmware](docs/firmware.md#qidi-box-firmware) to each USB Box that needs it, which stops Klipper and the touchscreen for about four minutes per Box. See [Firmware fixes](docs/firmware.md).
+Before changing anything, the installer reads the printer's boards, which stops Klipper and the touchscreen for a few minutes, and refuses a new install on a board it doesn't support yet. At the end, without asking, it flashes [Valve Oil's board firmware](docs/firmware.md) to the toolhead board, the Max 4's mainboard, and each USB QIDI Box. **After the toolhead board is flashed, run input shaper calibration before bed leveling or printing.** On an older QIDI firmware, it offers to [update the QIDI firmware](docs/install.md#qidi-firmware-updates) first. While Valve Oil is installed, the touchscreen no longer installs QIDI's firmware updates; Valve Oil delivers them.
 
-[Dry run, automatic updates, updating, and uninstalling →](docs/install.md)
+[Dry run, QIDI firmware updates, automatic updates, and uninstalling →](docs/install.md)
 
 ## What you get
+
+### Updates
+- Valve Oil delivers QIDI's firmware updates, once a release supports them, with its own board firmware in the same run.
+- An hourly check shows what's waiting in Fluidd's Settings and Valve Oil UI, and with automatic updates on, installs it while the printer is idle.
+
+[QIDI firmware updates and automatic updates →](docs/install.md#updating)
 
 ### Faster prints
 - Shorter print starts and filament changes: quicker homing and probing, and less fixed waiting around cuts, wipes, and saves.
@@ -73,7 +79,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 [Add-ons →](docs/addons.md)
 
 ### Valve Oil UI
-- An early second web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, with the dashboard, files, and QIDI Box screens.
+- An early second web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, with the dashboard, files, QIDI Box, and updates screens.
 
 [Valve Oil UI →](docs/valve-oil-ui.md)
 
@@ -99,7 +105,7 @@ The installer first asks whether to flash a fix for the toolhead board's acceler
 
 - [Every setting and command in one table](docs/settings.md)
 - [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
-- [Firmware fixes](docs/firmware.md) for the QIDI Box, which the installer flashes, and optional ones for the toolhead board and the Max 4 mainboard
+- [Board firmware](docs/firmware.md): fixes for the toolhead board, the QIDI Box, and the Max 4 mainboard, which the installer flashes
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)
 - [Help test releases](TESTING.md) and [run the dev branch](DEVELOPMENT.md)

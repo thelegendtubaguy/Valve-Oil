@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]+)\]\s*(?:[#;].*)?$")
@@ -64,13 +65,21 @@ def read_text(path: Path) -> str:
 
 
 def has_section(text: str, section_name: str) -> bool:
-    return any(span.name == section_name for span in _section_spans(text.splitlines(keepends=True)))
+    return any(span.name == section_name for span in _parsed(text)[1])
+
+
+
+@lru_cache(maxsize=8)
+def _parsed(text: str) -> tuple[tuple[str, ...], tuple[SectionSpan, ...]]:
+    # A patch run resolves many options in the same file text; its lines and sections are found once.
+    lines = text.splitlines(keepends=True)
+    return tuple(lines), tuple(_section_spans(lines))
 
 
 
 def resolve_unique_section(text: str, section_name: str) -> ResolvedSection:
-    lines = text.splitlines(keepends=True)
-    sections = [span for span in _section_spans(lines) if span.name == section_name]
+    lines, spans = _parsed(text)
+    sections = [span for span in spans if span.name == section_name]
     if not sections:
         raise TargetResolutionError("missing")
     if len(sections) > 1:
@@ -86,7 +95,7 @@ def resolve_unique_section(text: str, section_name: str) -> ResolvedSection:
 
 
 def resolve_unique_option(text: str, section_name: str, option_name: str) -> ResolvedOption:
-    lines = text.splitlines(keepends=True)
+    lines = _parsed(text)[0]
     section = resolve_unique_section(text, section_name)
     matches: list[ResolvedOption] = []
     for line_index in range(section.header_index + 1, section.end_index):

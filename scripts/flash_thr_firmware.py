@@ -17,8 +17,10 @@ from pathlib import Path
 MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-valve-oil-v1.json"
 if __package__:
     from . import thr_bootloaders
+    from .build_box_firmware import programmable_images, terminal_signals_ignored
 else:
     import thr_bootloaders
+    from build_box_firmware import programmable_images, terminal_signals_ignored
 
 identify_bootloader = thr_bootloaders.identify_bootloader
 
@@ -471,6 +473,8 @@ def main(argv=None) -> int:
     parser.add_argument("--confirm-write", action="store_true", help="allow application erase and programming")
     parser.add_argument("--recover-to-stock", action="store_true",
                         help="on a failed exchange, resume, or program the backup's stock application")
+    parser.add_argument("--firmware", help="the printer's target QIDI firmware; transfer then programs only the image "
+                                           "pinned for it or QIDI's stock image")
     args = parser.parse_args(argv)
     try:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -492,6 +496,10 @@ def main(argv=None) -> int:
             admitted_image(image, manifest)
             if args.operation == "transfer" and digest(image) not in (manifest["thr"]["stock_sha256"], manifest["thr"]["patched_sha256"]):
                 raise ValueError("Transfer only the stock application or the current patched image")
+            if args.operation == "transfer" and args.firmware is not None and digest(image) not in programmable_images(manifest, args.firmware):
+                raise ValueError(f"The image is not pinned for QIDI firmware {args.firmware}")
+        if args.firmware is not None and args.operation != "transfer":
+            raise ValueError("--firmware is only used by transfer")
         if args.operation == "verify":
             if args.backup_dir is None:
                 raise ValueError("--backup-dir must identify the readback snapshot")
@@ -527,31 +535,33 @@ def main(argv=None) -> int:
             admitted_image(app, manifest)
             print(json.dumps({"application_sha256": digest(app), "bootloader_sha256": digest(boot)}, indent=2))
             return 0
-        profile = identify_bootloader(backup[0])
-        if args.reset:
-            application_session(manifest, reset=True, expected_boot=backup[0], capture_root=args.backup_dir.parent)
-            time.sleep(1)
-        import serial
-        with serial.Serial(DEVICE, 115200, timeout=0.05, write_timeout=2, exclusive=True) as port:
-            client = Bootloader(port, profile)
-            if args.operation == "probe":
-                reply = client.probe()
-                print(json.dumps({"bootloader_reply": reply.hex(), "erase_requested": False}, indent=2))
-            elif args.recover_to_stock:
-                try:
-                    result = client.transfer_recovering(image, backup[1], manifest)
-                except RecoveryFailed:
-                    print(json.dumps({"recovered": False, "events": client.events}, indent=2))
-                    raise
-                print(json.dumps(result, indent=2))
-            else:
-                print(json.dumps(client.transfer(image, manifest), indent=2))
-        print("Keep services stopped until the application returns; use snapshot and verify for readback.", file=sys.stderr)
-        if args.recover_to_stock and result["fell_back"]:
-            return FELL_BACK
-        if args.recover_to_stock and not result["transfer_acknowledged"]:
-            return END_UNCONFIRMED
-        return 0
+        # From the reset to the end of the transfer.
+        with terminal_signals_ignored():
+            profile = identify_bootloader(backup[0])
+            if args.reset:
+                application_session(manifest, reset=True, expected_boot=backup[0], capture_root=args.backup_dir.parent)
+                time.sleep(1)
+            import serial
+            with serial.Serial(DEVICE, 115200, timeout=0.05, write_timeout=2, exclusive=True) as port:
+                client = Bootloader(port, profile)
+                if args.operation == "probe":
+                    reply = client.probe()
+                    print(json.dumps({"bootloader_reply": reply.hex(), "erase_requested": False}, indent=2))
+                elif args.recover_to_stock:
+                    try:
+                        result = client.transfer_recovering(image, backup[1], manifest)
+                    except RecoveryFailed:
+                        print(json.dumps({"recovered": False, "events": client.events}, indent=2))
+                        raise
+                    print(json.dumps(result, indent=2))
+                else:
+                    print(json.dumps(client.transfer(image, manifest), indent=2))
+            print("Keep services stopped until the application returns; use snapshot and verify for readback.", file=sys.stderr)
+            if args.recover_to_stock and result["fell_back"]:
+                return FELL_BACK
+            if args.recover_to_stock and not result["transfer_acknowledged"]:
+                return END_UNCONFIRMED
+            return 0
     except Exception as exc:
         print(f"THR operation failed: {exc}", file=sys.stderr)
         return 1

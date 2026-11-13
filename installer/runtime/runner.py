@@ -9,9 +9,11 @@ from .addons_cli import maybe_update_installed_addons
 from . import klipper_cfg, messages, patches, safety
 from .auto_update import (
     LOCK_HELD_ENV,
+    adopt_legacy_enrollment,
     maybe_prompt_enable_auto_updates,
-    maybe_repair_configured_auto_updates,
+    settle_installed_bundle,
 )
+from .board_firmware import UNADMITTED_STATES
 from .box_enablement import (
     maybe_initialize_box_motion,
     maybe_initialize_filament_retention,
@@ -100,8 +102,40 @@ from .system_optimizations import (
     validate_legacy_system_ledger,
     validate_system_ledger,
 )
-from .thr_firmware import confirm_thr_firmware
 
+
+
+def qidi_update_block(admission) -> tuple[bool | None, str]:
+    """The decision on QIDI's package updates for this printer's boards (board_firmware.BoardAdmission), and why.
+
+    True blocks them: this release admits the THR and the mainboard. False removes a block: a read found a THR or
+    mainboard this release doesn't admit, so a printer Valve Oil can't flash keeps QIDI's own updates. None keeps the
+    touchscreen app as it is (blocked stays blocked; otherwise not blocked): nothing positive is known, because a board
+    wasn't read this run and has no earlier record, or there is no admission record at all. A failed read or a lost
+    record never switches QIDI's updater back on.
+    """
+    if admission is None:
+        return None, "no record of this printer's boards"
+    boards = [status for status in admission.boards if status.kind != "box"]
+    names = {"thr": "the THR", "mcu": "the mainboard"}
+    unadmitted = [names[status.board] for status in boards if status.state in UNADMITTED_STATES]
+    if unadmitted:
+        return False, "this release doesn't support " + " or ".join(unadmitted) + " yet"
+    if all(status.admitted for status in boards):
+        return True, "this release supports the THR and the mainboard"
+    return None, " and ".join(names[status.board] for status in boards if not status.admitted) + " could not be read"
+
+
+QIDI_UPDATE_BLOCK_LINES = {
+    True: "QIDI's firmware updates stay blocked on the touchscreen ({}).",
+    False: "QIDI's firmware updates are left to the touchscreen ({}).",
+    None: "QIDI's firmware updates are left as they are on the touchscreen ({}).",
+}
+
+
+def block_qidi_package_updates(admission) -> bool | None:
+    """The block_qidi_updates value for system optimizations: True, False, or None (keep), as qidi_update_block()."""
+    return qidi_update_block(admission)[0]
 
 
 def _replace_legacy_system_ledger(state, ledger):
@@ -119,9 +153,10 @@ def run_install(
     disk_usage=shutil.disk_usage,
     environ: dict[str, str] | None = None,
     system_options: SystemOptimizationCliOptions | None = None,
-    flash_thr_fifo: bool = False,
+    block_qidi_updates: bool | None = True,
     run=None,
 ) -> InstallResult:
+    """block_qidi_updates: the caller's block_qidi_package_updates() decision for this printer's boards."""
     run = subprocess.run if run is None else run
     env = {} if environ is None else environ
     system_options = system_options or SystemOptimizationCliOptions()
@@ -216,14 +251,6 @@ def run_install(
             )
         except (CompatibilityValidationError, SourcePatchError) as exc:
             raise PreviousPackageValidationError() from exc
-    flash_thr_firmware = confirm_thr_firmware(
-        paths=paths,
-        reporter=reporter,
-        explicit=flash_thr_fifo,
-        dry_run=dry_run,
-        input_stream=input_stream,
-        environ=env,
-    )
     source_results = tuple(
         classify_install_source_patch(paths=paths, patch=patch, firmware=detected_firmware, prior_state=prior_state)
         for patch in manifest.install.source_patches
@@ -299,7 +326,6 @@ def run_install(
             backup_label=plan.backup_label,
             backup_zip_path=None,
             dry_run=True,
-            flash_thr_firmware=flash_thr_firmware,
         )
         reporter.emit_install_dry_run(plan=plan)
         maybe_emit_system_dry_run(
@@ -309,6 +335,7 @@ def run_install(
             prior_state=prior_state,
             cli_options=system_options,
             environ=env,
+            block_qidi_updates=block_qidi_updates,
             run=run,
         )
         reporter.debug(event="install.complete", dry_run=True, backup_label=plan.backup_label)
@@ -329,9 +356,10 @@ def run_install(
         system_options=system_options,
         source_results=source_results,
         config_changes=config_changes,
+        block_qidi_updates=block_qidi_updates,
         run=run,
     )
-    return replace(result, flash_thr_firmware=flash_thr_firmware)
+    return result
 
 
 
@@ -399,6 +427,7 @@ def _execute_install(
     system_options: SystemOptimizationCliOptions,
     source_results=(),
     config_changes=(),
+    block_qidi_updates: bool | None = True,
     run=subprocess.run,
 ) -> InstallResult:
     state_path = paths.printer_data_root / manifest.state_file
@@ -563,6 +592,8 @@ def _execute_install(
         install_counters["state_write"][0] = 1
         reporter.emit_install_counters(**_freeze_counters(install_counters))
 
+        # Units an earlier release wrote only for automatic updates mean they are on, before this install replaces them.
+        adopt_legacy_enrollment(paths, environ)
         state = maybe_apply_system_optimizations(
             paths=paths,
             manifest=manifest,
@@ -573,6 +604,7 @@ def _execute_install(
             cli_options=system_options,
             environ=environ,
             auto_update_child=environ.get(LOCK_HELD_ENV) == "1",
+            block_qidi_updates=block_qidi_updates,
             run=run,
             urlopen=urlopen,
         )
@@ -610,20 +642,14 @@ def _execute_install(
         environ=environ,
         run=run,
     )
-    if not maybe_repair_configured_auto_updates(
+    # The update check runs the bundle in the printer user's home; it is this one from now on.
+    settle_installed_bundle(paths, environ)
+    maybe_prompt_enable_auto_updates(
         paths=paths,
         reporter=reporter,
         input_stream=input_stream,
         environ=environ,
-        urlopen=urlopen,
-    ):
-        maybe_prompt_enable_auto_updates(
-            paths=paths,
-            reporter=reporter,
-            input_stream=input_stream,
-            environ=environ,
-            urlopen=urlopen,
-        )
+    )
     if klipper_halted:
         _restart_halted_klipper_and_update_saved_variables(
             paths=paths,

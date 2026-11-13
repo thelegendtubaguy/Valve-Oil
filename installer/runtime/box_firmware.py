@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .auto_update import LOCK_HELD_ENV
+from .board_guard import critical_window, detached
+from .board_images import BOARD_MANIFESTS, runs_target_firmware
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
 from .naming import REPOSITORY_URL
@@ -28,7 +30,7 @@ from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 SUBJECT = "Box firmware"
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
 BACKUP_DIRECTORY = ".tltg_box_firmware_backups"
-MANIFEST = "firmware/max4-box-valve-oil-v1.json"
+MANIFEST = BOARD_MANIFESTS["box"]
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
@@ -37,6 +39,9 @@ WARNING = "Box firmware: keep the printer and every Box powered on until this fi
 SUPPORT_ISSUE_URL = REPOSITORY_URL + "/issues/new?template=printer-support.yml"
 # Klipper's printer warnings show a Fluidd banner for each, and Fluidd's Logs offers it for download.
 LOG_REPORT = re.compile(r"^tltg_box_firmware_box(\d+)\.json$")
+# A Box on QIDI's image of an earlier version: the flash changes its version, which the installed Klipper may not
+# support, so it waits for the target firmware.
+_WAITING = "this Box will be updated after the QIDI firmware update"
 
 
 class BoxFirmwareError(InstallerError):
@@ -104,12 +109,19 @@ def _superseded_versions(manifest: dict) -> set[str]:
     return {entry["version"] for entry in manifest["box"].get("superseded", ())}
 
 
+def _predecessor_versions(manifest: dict) -> set[str]:
+    from scripts.build_box_firmware import predecessor_versions
+    return predecessor_versions(manifest["box"])
+
+
 def _describe(version: str | None, manifest: dict) -> str:
     box = manifest["box"]
     if version == box["patched_version"]:
         return "Valve Oil Box firmware installed (" + version + ")"
     if version in _superseded_versions(manifest):
         return "earlier Valve Oil Box firmware (" + version + "); install updates it"
+    if version in _predecessor_versions(manifest):
+        return "QIDI firmware of an earlier package (" + version + "); replaced once the printer runs its target QIDI firmware"
     if version == box["stock_version"]:
         return "QIDI stock firmware (" + version + ")"
     if version is None:
@@ -143,7 +155,7 @@ def _clear_unsupported(paths, numbers) -> None:
             pass
 
 
-def _prune_unsupported(paths, configured) -> None:
+def prune_unsupported(paths, configured) -> None:
     """Drop reports of Boxes no longer in box.cfg."""
     try:
         names = os.listdir(paths.printer_data_root / "logs")
@@ -154,8 +166,58 @@ def _prune_unsupported(paths, configured) -> None:
                                if match and int(match.group(1)) not in configured_numbers})
 
 
+# A Box the operator put back on QIDI's firmware with `restore` stays there through installs and update checks of the
+# same release; installing the next release, or `box-firmware.sh install` on that Box, ends the hold.
+HOLD_FILE = ".tltg_box_firmware_holds.json"
+HELD = "held: restored to QIDI's firmware with ./box-firmware.sh restore; kept until the next release"
+
+
+def current_release(paths) -> str | None:
+    from .manifest import ManifestValidationError, load_manifest
+    try:
+        return load_manifest(paths.installer_root / "package.yaml").package.version
+    except (OSError, ManifestValidationError):
+        return None
+
+
+def _read_holds(paths) -> dict:
+    try:
+        record = json.loads((paths.printer_data_root / HOLD_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) and isinstance(record.get("boxes"), list) else {}
+
+
+def held_boxes(paths, release: str | None) -> set[tuple[str, str | None]]:
+    """(name, serial) of each Box restored to QIDI's firmware while `release` was installed."""
+    record = _read_holds(paths)
+    if release is None or record.get("release") != release:
+        return set()
+    return {(entry.get("box"), entry.get("serial")) for entry in record["boxes"] if isinstance(entry, dict)}
+
+
+def _write_holds(paths, release: str | None, held) -> None:
+    if release is None:
+        return
+    target = paths.printer_data_root / HOLD_FILE
+    ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
+    if not held:
+        atomic_delete(target)
+        return
+    boxes = [{"box": name, "serial": serial} for name, serial in sorted(held, key=lambda item: (item[0], item[1] or ""))]
+    atomic_write_text(target, json.dumps({"release": release, "boxes": boxes}, indent=2) + "\n", mode=0o600)
+
+
+def clear_stale_holds(paths, release: str) -> None:
+    """Installing another release ends every hold."""
+    record = _read_holds(paths)
+    if record and record.get("release") != release:
+        _write_holds(paths, release, set())
+
+
 def _unsupported_capture(backup_root: Path, box: Box, manifest: dict) -> Path | None:
     """The report of this Box's newest capture, if the bundled manifest still can't flash what it found."""
+    from scripts.build_box_firmware import known_images
     from scripts.flash_box_firmware import image_spec
     if not box.serial:
         return None
@@ -171,8 +233,7 @@ def _unsupported_capture(backup_root: Path, box: Box, manifest: dict) -> Path | 
     if not captures:
         return None
     _, report_path, report = max(captures, key=lambda capture: capture[0])
-    spec = image_spec(manifest)
-    applications = {spec["stock_sha256"], spec["patched_sha256"], *(e["sha256"] for e in spec.get("superseded", ()))}
+    applications = set(known_images(image_spec(manifest)))
     bootloaders = {entry["sha256"] for entry in manifest["bootloaders"]}
     if report.get("bootloader_sha256") in bootloaders and report.get("application_sha256") in applications:
         return None
@@ -228,12 +289,12 @@ def pending_record(marker: Path) -> dict:
 
 
 def start_recorded_services(states, *, run, password, paths, urlopen, sleep, clock, marker, subject, error) -> None:
+    """Start every recorded service, also when one of them fails; the record stays until all of them run."""
     try:
-        for service in SERVICES:
-            if states.get(service) == "active":
-                result = run_sudo(["systemctl", "start", service], run=run, password=password, timeout=60)
-                if result.returncode:
-                    raise error("Could not start " + service)
+        failed = [service for service in SERVICES if states.get(service) == "active"
+                  and run_sudo(["systemctl", "start", service], run=run, password=password, timeout=60).returncode]
+        if failed:
+            raise error("Could not start " + ", ".join(failed))
         if states.get("klipper.service") == "active":
             wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, subject=subject)
         atomic_delete(marker)
@@ -245,10 +306,20 @@ def run_box_firmware(
     *, paths, reporter, action, boxes=None, input_stream=None, environ=None,
     run=None, urlopen=urllib.request.urlopen, sleep=time.sleep, clock=time.monotonic,
     resolve_usb=usb_path_for_serial, usb_state=None, confirmed=False,
+    services_stopped=False, firmware=None, outcomes=None,
 ) -> int:
-    """confirmed: the operator already chose this by running the installer, so no FLASH prompt."""
+    """confirmed: the operator already chose this by running the installer, so no FLASH prompt, and Boxes the
+    operator restored to QIDI's firmware are left there until the next release.
+
+    services_stopped: the caller already checked the printer and stopped Klipper, the touchscreen, and the update timer,
+    and starts them again itself, as a firmware update does; each Box is then read to see whether it needs flashing.
+    firmware: the printer's target QIDI firmware; transfers then program only the image pinned for it or QIDI's stock
+    image. outcomes, when given, receives each Box's name mapped to (outcome, description), with outcome one of
+    "current", "flashed", "restored", "held", "skipped", "not_admitted", or "waiting" (_WAITING).
+    """
     from scripts import build_box_firmware
     from scripts import flash_box_firmware as protocol
+    from scripts.build_box_firmware import PREDECESSOR
 
     run = subprocess.run if run is None else run
     usb_state = protocol.usb_state if usb_state is None else usb_state
@@ -269,6 +340,8 @@ def run_box_firmware(
 
     if env.get(LOCK_HELD_ENV) == "1" and action != "install":
         raise BoxFirmwareError("Box firmware " + action + " is not allowed in automatic-update child installs.")
+    if services_stopped and action != "install":
+        raise BoxFirmwareError("Only Box firmware install runs with services stopped by the caller.")
     if paths.restart_marker_path.exists():
         raise BoxFirmwareError("Complete pending Klipper source activation before Box firmware programming.")
     ensure_no_pending_firmware(paths.recovery_sentinel_path, allow_box=action == "rescue")
@@ -285,8 +358,10 @@ def run_box_firmware(
 
     target = "patched" if action == "install" else "stock"
     automatic = env.get(LOCK_HELD_ENV) == "1"
+    release = current_release(paths) if action in ("install", "restore") else None
+    held = held_boxes(paths, release) if action == "install" and confirmed else set()
     if action == "install":
-        _prune_unsupported(paths, configured)
+        prune_unsupported(paths, configured)
     if action == "rescue":
         box = selected[0]
         rescue_backup = admitted_backup(backup_root.glob(f"*/{box.name}/before"), manifest)
@@ -312,6 +387,7 @@ def run_box_firmware(
             raise BoxFirmwareError("No verified copy of QIDI's Box firmware " + manifest["box"]["stock_version"]
                                    + " was found in the Box firmware backups or ~/update.")
     previous = {}
+    kinds = {}
     if action == "rescue":
         usb = box.usb
         if usb is None:
@@ -321,29 +397,36 @@ def run_box_firmware(
             raise BoxFirmwareError(f"Cannot find {box.label}'s USB position.")
         plan = [(box, usb)]
     else:
-        versions = _versions(paths, selected, urlopen)
+        # Moonraker stops with Klipper; with services already stopped each Box is read instead.
+        versions = {} if services_stopped else _versions(paths, selected, urlopen)
         plan = []
         for box in selected:
-            version = versions[box.name]
-            reporter.line(f"{box.label} ({box.name}): {_describe(version, manifest)}")
+            version = versions.get(box.name)
+            if not services_stopped:
+                reporter.line(f"{box.label} ({box.name}): {_describe(version, manifest)}")
             wanted = manifest["box"]["patched_version" if target == "patched" else "stock_version"]
-            if version == wanted:
-                previous[box.name] = "already " + ("installed" if target == "patched" else "stock")
+            if (box.name, box.serial) in held:
+                previous[box.name], kinds[box.name] = HELD, "held"
+            elif version == wanted:
+                previous[box.name], kinds[box.name] = "already " + ("installed" if target == "patched" else "stock"), "current"
                 if target == "patched":
                     _clear_unsupported(paths, [box.number])
-            elif box.usb is None or version is None:
-                previous[box.name] = "skipped: not connected"
-            elif version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
-                                 *_superseded_versions(manifest)}:
-                previous[box.name] = "skipped: unsupported firmware"
+            elif box.usb is None or (version is None and not services_stopped):
+                previous[box.name], kinds[box.name] = "skipped: not connected", "skipped"
+            elif version is not None and version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
+                                                         *_superseded_versions(manifest), *_predecessor_versions(manifest)}:
+                previous[box.name], kinds[box.name] = "skipped: unsupported firmware", "not_admitted"
+            elif version in _predecessor_versions(manifest) and not runs_target_firmware(paths, "box", firmware):
+                previous[box.name], kinds[box.name] = "not changed: " + _WAITING, "waiting"
             elif automatic and (capture := _unsupported_capture(backup_root, box, manifest)) is not None:
                 # Reading it again would only stop Klipper and save the same capture.
                 previous[box.name] = "skipped by automatic updates, as an earlier capture found: " + unsupported_board_note(capture)
+                kinds[box.name] = "not_admitted"
                 _publish_unsupported(paths, box, capture)
             else:
                 plan.append((box, box.usb))
-                if version in _superseded_versions(manifest) and stock_image is None:
-                    # The fix is built from QIDI's stock image, which the Box no longer holds.
+                if version in _superseded_versions(manifest) | _predecessor_versions(manifest) and stock_image is None:
+                    # The fix is built from QIDI's stock image, which the Box doesn't hold.
                     stock_image = _stock_image(paths, manifest)
                     if stock_image is None:
                         raise BoxFirmwareError("Updating earlier Valve Oil Box firmware needs QIDI's Box firmware "
@@ -353,6 +436,9 @@ def run_box_firmware(
             for box in selected:
                 reporter.line(f"{box.label}: {previous[box.name]}")
             reporter.line("Nothing to flash.")
+            if outcomes is not None:
+                outcomes.update({name: (kinds[name], text) for name, text in previous.items()})
+            _settle_holds(paths, action, confirmed, release, selected, kinds)
             return 0
 
     verb = {"install": "Install the Valve Oil Box firmware on", "restore": "Restore QIDI's stock firmware on",
@@ -369,12 +455,12 @@ def run_box_firmware(
             return 1
 
     try:
-        if action != "rescue":
+        if action != "rescue" and not services_stopped:
             wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, reporter=reporter, subject=SUBJECT)
     except ThrFirmwareError as exc:
         raise BoxFirmwareError(str(exc)) from exc
     states = {}
-    for service in SERVICES:
+    for service in () if services_stopped else SERVICES:
         result = run(["systemctl", "show", service, "--property=LoadState,ActiveState"], capture_output=True, text=True, timeout=5)
         values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
         if service.endswith(".timer") and values.get("LoadState") == "not-found":
@@ -387,7 +473,8 @@ def run_box_firmware(
             states = json.loads(marker.read_text()).get("services") or states
         except ValueError:
             pass
-    password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
+    password = None if services_stopped else authenticate_sudo(run=run, environ=env, reporter=reporter,
+                                                                  input_stream=input_stream)
     backup_root.mkdir(mode=0o700, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix="box-", dir=backup_root))
     fsync_directory(backup_root)
@@ -396,10 +483,13 @@ def run_box_firmware(
     reporter.line("Box firmware recovery files: " + str(directory))
     results = dict(previous)
     pending = False
+    pin = ("--firmware", firmware) if firmware else ()
+    # From here to the services' restart the terminal's hangup and Ctrl-C can't stop the work (board_guard).
+    session = detached(run)
 
     def command(box_dir, operation, *arguments, allow=()):
-        result = run([str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed"],
-                     capture_output=True, text=True, timeout=960)
+        result = session([str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed"],
+                         capture_output=True, text=True, timeout=960)
         atomic_write_text(box_dir / (operation + ".stdout"), result.stdout or "", mode=0o600)
         atomic_write_text(box_dir / (operation + ".stderr"), result.stderr or "", mode=0o600)
         if result.returncode and result.returncode not in allow:
@@ -407,84 +497,110 @@ def run_box_firmware(
         return result
 
     def service_action(verb_name, service):
-        result = run_sudo(["systemctl", verb_name, service], run=run, password=password, timeout=60)
+        result = run_sudo(["systemctl", verb_name, service], run=session, password=password, timeout=60)
         if result.returncode:
             raise BoxFirmwareError("Could not " + verb_name + " " + service)
 
-    try:
-        for service in reversed(SERVICES):
-            if states.get(service) == "active":
-                service_action("stop", service)
-        for box, usb in plan:
-            box_dir = directory / box.name
-            box_dir.mkdir(mode=0o700)
-            atomic_write_text(box_dir / "box.json", json.dumps({"box": box.name, "usb": usb, "serial": box.serial}) + "\n",
-                              mode=0o600)
-            if action == "rescue":
-                before = rescue_backup
-                image = stock_image
-                reporter.line(f"{box.label}: waiting for its bootloader. Turn {box.label} off and on again now.")
-                record.update(phase="programming", box=box.name, usb=usb)
-                atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
-                pending = True
-                command(box_dir, "transfer", "--usb", usb, "--image", _write_image(box_dir, image),
-                        "--backup-dir", before, "--confirm-write", "--rescue", "--wait", 300)
-            else:
-                before = box_dir / "before"
-                reporter.line(f"{box.label}: reading and admitting its bootloader and firmware...")
-                snapshot = command(box_dir, "snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
-                if snapshot.returncode == protocol.UNSUPPORTED:
-                    results[box.name] = "not changed: " + unsupported_board_note(before / "report.json")
-                    if target == "patched":
-                        _publish_unsupported(paths, box, before / "report.json")
-                    continue
-                boot, app = protocol.load_backup(before, manifest)
-                current = protocol.image_identity(app, manifest)
-                if current == target:
-                    results[box.name] = "already " + ("installed" if target == "patched" else "stock") + " (verified by readback)"
-                    if target == "patched":
-                        _clear_unsupported(paths, [box.number])
-                    continue
-                if target == "patched":
-                    image = build_box_firmware.patch_box(app if current == "stock" else stock_image, manifest)
-                else:
+    with critical_window(reporter) as reporter:
+        try:
+            for service in reversed(SERVICES):
+                if states.get(service) == "active":
+                    service_action("stop", service)
+            for box, usb in plan:
+                box_dir = directory / box.name
+                box_dir.mkdir(mode=0o700)
+                atomic_write_text(box_dir / "box.json", json.dumps({"box": box.name, "usb": usb, "serial": box.serial}) + "\n",
+                                  mode=0o600)
+                if action == "rescue":
+                    before = rescue_backup
                     image = stock_image
-                record.update(phase="programming", box=box.name, usb=usb)
+                    reporter.line(f"{box.label}: waiting for its bootloader. Turn {box.label} off and on again now.")
+                    record.update(phase="programming", box=box.name, usb=usb)
+                    atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
+                    pending = True
+                    command(box_dir, "transfer", "--usb", usb, "--image", _write_image(box_dir, image),
+                            "--backup-dir", before, "--confirm-write", "--rescue", "--wait", 300, *pin)
+                else:
+                    before = box_dir / "before"
+                    reporter.line(f"{box.label}: reading and admitting its bootloader and firmware...")
+                    snapshot = command(box_dir, "snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
+                    if snapshot.returncode == protocol.UNSUPPORTED:
+                        results[box.name] = "not changed: " + unsupported_board_note(before / "report.json")
+                        kinds[box.name] = "not_admitted"
+                        if target == "patched":
+                            _publish_unsupported(paths, box, before / "report.json")
+                        continue
+                    boot, app = protocol.load_backup(before, manifest)
+                    current = protocol.image_identity(app, manifest)
+                    if current == PREDECESSOR and not runs_target_firmware(paths, "box", firmware):
+                        results[box.name], kinds[box.name] = "not changed: " + _WAITING, "waiting"
+                        continue
+                    if current == target:
+                        results[box.name] = "already " + ("installed" if target == "patched" else "stock") + " (verified by readback)"
+                        kinds[box.name] = "current"
+                        if target == "patched":
+                            _clear_unsupported(paths, [box.number])
+                        continue
+                    if target == "patched":
+                        if current != "stock" and stock_image is None:
+                            # Read only now, with the services the caller stopped: QIDI's image the update is built from.
+                            stock_image = _stock_image(paths, manifest)
+                            if stock_image is None:
+                                raise BoxFirmwareError("Updating earlier Valve Oil Box firmware needs QIDI's Box firmware "
+                                                       + manifest["box"]["stock_version"] + " from the Box firmware "
+                                                       "backups or ~/update; none was found. No Box firmware was changed.")
+                        image = build_box_firmware.patch_box(app if current == "stock" else stock_image, manifest)
+                    else:
+                        image = stock_image
+                    record.update(phase="programming", box=box.name, usb=usb)
+                    atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
+                    pending = True
+                    reporter.line(f"{box.label}: flashing; keep it powered on...")
+                    command(box_dir, "transfer", "--usb", usb, "--image", _write_image(box_dir, image),
+                            "--backup-dir", before, "--confirm-write", *pin)
+                reporter.line(f"{box.label}: reading back its firmware...")
+                after = box_dir / "after"
+                command(box_dir, "snapshot", "--usb", usb, "--output-dir", after, "--wait", APP_RETURN_SECONDS)
+                evidence = protocol.verify_readback(image, after, manifest,
+                                                    expected_bootloader=(before / "bootloader.bin").read_bytes())
+                atomic_write_text(box_dir / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
+                results[box.name] = ("Valve Oil Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
+                kinds[box.name] = "flashed" if target == "patched" else "restored"
+                if target == "patched":
+                    _clear_unsupported(paths, [box.number])
+                pending = False
+                record.update(phase="verified", box=box.name)
                 atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
-                pending = True
-                reporter.line(f"{box.label}: flashing; keep it powered on...")
-                command(box_dir, "transfer", "--usb", usb, "--image", _write_image(box_dir, image),
-                        "--backup-dir", before, "--confirm-write")
-            reporter.line(f"{box.label}: reading back its firmware...")
-            after = box_dir / "after"
-            command(box_dir, "snapshot", "--usb", usb, "--output-dir", after, "--wait", APP_RETURN_SECONDS)
-            evidence = protocol.verify_readback(image, after, manifest,
-                                                expected_bootloader=(before / "bootloader.bin").read_bytes())
-            atomic_write_text(box_dir / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
-            results[box.name] = ("Valve Oil Box firmware installed" if target == "patched" else "QIDI stock firmware restored") + " and verified"
-            if target == "patched":
-                _clear_unsupported(paths, [box.number])
-            pending = False
-            record.update(phase="verified", box=box.name)
-            atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
-    except Exception as exc:
-        failure = exc
-    else:
-        failure = None
-    if pending:
-        box = record.get("box")
-        number = next((b.number for b, _ in plan if b.name == box), "N")
-        reporter.line(f"{box} firmware is unverified. Klipper and the touchscreen stay stopped. "
-                      f"Run ./box-firmware.sh rescue --box {number} and follow its prompt.")
-        raise BoxFirmwareError("Box firmware operation failed: " + str(failure) + ". Recovery files: " + str(directory)) from failure
-    start_recorded_services(states, run=run, password=password, paths=paths, urlopen=urlopen, sleep=sleep, clock=clock,
-                            marker=marker, subject=SUBJECT, error=BoxFirmwareError)
+        except Exception as exc:
+            failure = exc
+        else:
+            failure = None
+        if pending:
+            box = record.get("box")
+            number = next((b.number for b, _ in plan if b.name == box), "N")
+            reporter.line(f"{box} firmware is unverified. Klipper and the touchscreen stay stopped. "
+                          f"Run ./box-firmware.sh rescue --box {number} and follow its prompt.")
+            raise BoxFirmwareError("Box firmware operation failed: " + str(failure) + ". Recovery files: " + str(directory)) from failure
+        start_recorded_services(states, run=session, password=password, paths=paths, urlopen=urlopen, sleep=sleep, clock=clock,
+                                marker=marker, subject=SUBJECT, error=BoxFirmwareError)
     labels = {box.name: box.label for box in configured}
     for name, outcome in results.items():
         reporter.line(f"{labels.get(name, name)}: {outcome}")
+    if outcomes is not None:
+        outcomes.update({name: (kinds.get(name, "skipped"), text) for name, text in results.items()})
+    _settle_holds(paths, action, confirmed, release, selected, kinds)
     if failure is not None:
         raise BoxFirmwareError("Box firmware operation stopped before any write: " + str(failure))
     return 0
+
+
+def _settle_holds(paths, action, confirmed, release, selected, kinds) -> None:
+    if action == "restore":
+        restored = {(box.name, box.serial) for box in selected if kinds.get(box.name) in ("restored", "current")}
+        _write_holds(paths, release, held_boxes(paths, release) | restored)
+    elif action == "install" and not confirmed:
+        # The operator asked for these Boxes again.
+        _write_holds(paths, release, held_boxes(paths, release) - {(box.name, box.serial) for box in selected})
 
 
 def flash_box_firmware_after_install(*, paths, reporter, dry_run=False, environ=None, input_stream=None, **seams) -> None:
@@ -502,9 +618,10 @@ def flash_box_firmware_after_install(*, paths, reporter, dry_run=False, environ=
         reporter.line("Box firmware dry-run: would flash the Valve Oil Box firmware to each USB Box that needs it.")
         return
     try:
-        wait_for_thr_printer_ready(paths, urlopen=seams.get("urlopen", urllib.request.urlopen),
-                                   sleep=seams.get("sleep", time.sleep), clock=seams.get("clock", time.monotonic),
-                                   reporter=reporter, subject=SUBJECT)
+        if not seams.get("services_stopped"):
+            wait_for_thr_printer_ready(paths, urlopen=seams.get("urlopen", urllib.request.urlopen),
+                                       sleep=seams.get("sleep", time.sleep), clock=seams.get("clock", time.monotonic),
+                                       reporter=reporter, subject=SUBJECT)
         run_box_firmware(paths=paths, reporter=reporter, action="install", input_stream=input_stream,
                          environ=env, confirmed=True, **seams)
     except InstallerError as exc:

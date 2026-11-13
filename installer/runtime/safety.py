@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import time
 import urllib.error
@@ -19,9 +20,53 @@ UrlOpenFn = Callable[..., object]
 THR_RECOVERY_MARKER = ".tltg_thr_firmware_pending.json"
 BOX_RECOVERY_MARKER = ".tltg_box_firmware_pending.json"
 MAINBOARD_RECOVERY_MARKER = ".tltg_mainboard_firmware_pending.json"
+# The QIDI firmware update's pending record (firmware_update.py). While it exists no other installer operation runs,
+# except the update's own steps and child install, which carry its id in FIRMWARE_UPDATE_RUN_ENV, and the Box and
+# mainboard rescues a failed board write in it may need.
+FIRMWARE_UPDATE_MARKER = ".tltg_firmware_update_pending.json"
+FIRMWARE_UPDATE_RUN_ENV = "TLTG_FIRMWARE_UPDATE_RUN"
+
+
+def firmware_update_blocks(printer_data_root: Path) -> bool:
+    """Whether a firmware update's pending record stops this process; its own run and child install pass."""
+    marker = printer_data_root / FIRMWARE_UPDATE_MARKER
+    if not (marker.exists() or marker.is_symlink()):
+        return False
+    try:
+        record_id = json.loads(marker.read_text(encoding="utf-8")).get("id")
+    except (OSError, ValueError, AttributeError):
+        return True
+    return not (isinstance(record_id, str) and record_id and os.environ.get(FIRMWARE_UPDATE_RUN_ENV) == record_id)
+
+
+def firmware_update_allows_rescue(printer_data_root: Path) -> bool:
+    """A board rescue may run beside a firmware update's record only once that update failed and its unit is not
+    running, so the rescue and the update never reset or program the same board."""
+    marker = printer_data_root / FIRMWARE_UPDATE_MARKER
+    try:
+        state = json.loads(marker.read_text(encoding="utf-8")).get("state")
+    except (OSError, ValueError, AttributeError):
+        return not (marker.exists() or marker.is_symlink())
+    if state != "failed":
+        return False
+    import subprocess
+
+    try:
+        active = subprocess.run(["systemctl", "is-active", "tltg-firmware-update.service"], capture_output=True,
+                                text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        active = ""
+    return active not in ("active", "activating", "deactivating", "reloading")
 
 
 def ensure_no_pending_firmware(path: Path, *, allow_box: bool = False, allow_mainboard: bool = False) -> None:
+    rescue = allow_box or allow_mainboard
+    if rescue and firmware_update_blocks(path.parent) and not firmware_update_allows_rescue(path.parent):
+        raise InstallerError("A QIDI firmware update is running or about to continue; a board rescue can run only "
+                             "after it has stopped with a failure: " + str(path.parent / FIRMWARE_UPDATE_MARKER))
+    if not rescue and firmware_update_blocks(path.parent):
+        raise InstallerError("A QIDI firmware update is in progress or did not finish; run ./install.sh to follow or "
+                             "finish it before anything else: " + str(path.parent / FIRMWARE_UPDATE_MARKER))
     marker = path.parent / THR_RECOVERY_MARKER
     if marker.exists() or marker.is_symlink():
         raise InstallerError("Unresolved THR firmware operation; recover and verify the board before continuing: " + str(marker))
@@ -66,7 +111,8 @@ def ensure_printer_idle(
     urlopen: UrlOpenFn = urllib.request.urlopen,
     wait_seconds: float = 0.0,
 ) -> str:
-    """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts.
+    """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts or
+    while QIDI's touchscreen app restarts Klipper as it starts (it does after a QIDI package was installed).
 
     A heater with a target counts as busy: restarting Klipper or rebooting the host stops the heater updates, and the
     MCU then shuts itself down, so Klipper comes back with "Can not update MCU ... config as it is shutdown" until a
@@ -76,7 +122,12 @@ def ensure_printer_idle(
     while True:
         try:
             state = query_printer_state(url, timeout=timeout, urlopen=urlopen)
-            break
+            if state in {"printing", "paused"}:
+                raise ActivePrintError()
+            # Klipper can go away between the two reads; the heaters are then read again with the state.
+            if _heater_on(url, timeout=timeout, urlopen=urlopen):
+                raise HeaterOnError()
+            return state
         except PrinterStateError:
             # A Klipper halted on an error has no print state and cannot be printing.
             if klipper_halted(url, urlopen=urlopen):
@@ -84,11 +135,6 @@ def ensure_printer_idle(
             if time.monotonic() >= deadline:
                 raise
             time.sleep(2.0)
-    if state in {"printing", "paused"}:
-        raise ActivePrintError()
-    if _heater_on(url, timeout=timeout, urlopen=urlopen):
-        raise HeaterOnError()
-    return state
 
 
 def _heater_on(url: str, *, timeout: int, urlopen: UrlOpenFn) -> bool:

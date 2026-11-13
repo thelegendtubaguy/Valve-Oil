@@ -25,6 +25,10 @@ The firmware reports its version as `02.03.01.21-valve-oil.1`, which is QIDI's v
 
 Every install and update, including one run with `--yes` and each release an automatic update installs, flashes each USB Box that needs it after the rest of the install finishes, without asking. It does what `install` below does, except for the `FLASH` prompt. If it can't flash a Box safely, for example because a heater is on, it leaves that Box as it is, says why, and the install still succeeds.
 
+The hourly update check also notices a USB Box that isn't on this firmware, such as one connected since the last install, from the version Klipper reports, without stopping anything. With automatic updates on and the printer idle, it reads that Box, which stops Klipper and the touchscreen, and flashes it in the same run. With them off, a printer warning says new firmware is waiting for it. A Box the check tried and couldn't flash isn't tried again by later checks until it reports another version; the next install tries again. A QIDI firmware update the installer runs doesn't flash Boxes: QIDI's package resets the Box list in `box.cfg`, and the next install or update check flashes them once the touchscreen has found them again.
+
+The manifest's `targets` pin this image for both Max 4 `01.01.07.01` and Plus 5 `01.01.02.01`; the Box is the same on both printers.
+
 Run these from the unpacked installer folder (`~/tltg-optimized-macros`) over SSH:
 
 ```sh
@@ -43,7 +47,7 @@ For each Box the script:
 2. Saves the read-back under `~/printer_data/.tltg_box_firmware_backups/`.
 3. Builds the patched image from the Box's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged.
 
-A Box that already has the requested firmware is skipped. A Box with the earlier shutdown fix is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. A Box whose bootloader or firmware the script does not recognize is not changed: the script saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private. An install also copies it to `~/printer_data/logs/tltg_box_firmware_box<N>.json`, where Fluidd's **Logs** offers it for download, and Fluidd shows a banner for that Box until it has the Valve Oil firmware. Automatic updates don't read that Box again until a release supports what the capture found, and then they flash it.
+A Box that already has the requested firmware is skipped. A Box with the earlier shutdown fix is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. A Box whose bootloader or firmware the script does not recognize is not changed: the script saves a read-only capture and points to a shareable `report.json` in it. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private. An install also copies it to `~/printer_data/logs/tltg_box_firmware_box<N>.json`, where Fluidd's **Logs** offers it for download, and Fluidd shows a banner for that Box until it has the Valve Oil firmware. A new Valve Oil install is refused in that case. Update checks and automatic updates don't read that Box again until it reports another version or a release supports what the capture found, and then they flash it.
 
 ## If a flash fails
 
@@ -53,13 +57,17 @@ The Box's bootloader is never erased or written. If a transfer stops part way, t
 ./box-firmware.sh rescue --box N
 ```
 
+During a QIDI firmware update, rescue can run once the update has stopped with that failure; then run `./install.sh` to finish the update.
+
 Rescue waits for the Box's bootloader, flashes QIDI's stock firmware from the backup or from `~/update`, verifies it, and starts the services again. If the Box is not already waiting, turn that Box off and on again when the script asks. Until the pending record is cleared, the installer refuses other operations.
 
 Rescue flashes only with a backup of a validated bootloader. If every backup of that Box is from a bootloader the script doesn't recognize, rescue changes nothing. If a pending record exists and the Box is still running its firmware, rescue starts Klipper and the touchscreen again and clears the record.
 
-Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A QIDI firmware update that reflashes the Box also restores stock firmware. Either way, the next install, or the next release an automatic update installs, flashes the Valve Oil Box firmware again.
+Uninstall and `restore.sh` do not change Box firmware. Use `./box-firmware.sh restore`. A Box restored this way stays on QIDI's firmware through installs and update checks until the next Valve Oil release is installed, which flashes it again, or until `./box-firmware.sh install` runs for it.
 
 ## Checks for developers
+
+The scripts run the transfer tool, `scripts/flash_box_firmware.py`, with `transfer --firmware <version>`, the printer's target QIDI firmware, so the tool refuses any image other than the one the manifest pins for it or QIDI's stock image.
 
 `scripts/generate_box_firmware_manifest.py` rebuilds [`max4-box-valve-oil-v1.json`](max4-box-valve-oil-v1.json) from QIDI's stock image and the sources in `box-rfid/`. It needs `clang` with the Thumb target and the `zopfli` Python package; `--check` compares instead of writing. Installs use only the manifest.
 

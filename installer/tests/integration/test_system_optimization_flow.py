@@ -16,6 +16,7 @@ from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services
 from installer.runtime import moonraker_speedups
 from installer.runtime import addons_service
+from installer.runtime import auto_update, status_service
 from installer.runtime import remote_screen
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
@@ -81,7 +82,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         )
         host_run = fake_host_run(system_root)
         qidiclient = system_root / qidiclient_firmware_popup.FILE.lstrip("/")
-        qidiclient_before, qidiclient_patched = fake_qidiclient()
+        qidiclient_before, qidiclient_patched, qidiclient_unblocked = fake_qidiclient()
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
         moonraker.write_bytes(moonraker.read_bytes().replace(b"\n", b"\r\n"))
         moonraker_before = moonraker.read_bytes()
@@ -106,6 +107,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         screen_server = system_root / remote_screen.SERVER_FILE.lstrip("/")
         addons_unit = system_root / addons_service.UNIT_FILE.lstrip("/")
         addons_server = system_root / addons_service.SERVER_FILE.lstrip("/")
+        status_unit = system_root / status_service.UNIT_FILE.lstrip("/")
+        status_server = system_root / status_service.SERVER_FILE.lstrip("/")
+        check_service = system_root / auto_update.SERVICE_FILE.lstrip("/")
+        check_timer = system_root / auto_update.TIMER_FILE.lstrip("/")
         fixes_module = system_root / moonraker_fixes.MODULE_FILE.lstrip("/")
         fixes_path = system_root / moonraker_fixes.PATH_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
@@ -188,6 +193,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             "moonraker answered",
             remote_screen.UNIT,
             addons_service.UNIT,
+            status_service.UNIT,
+            auto_update.TIMER_NAME,
             "qidi-client.service",
             "crowsnest.service",
             cpu_tuning.TUNING_UNIT,
@@ -281,7 +288,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
         self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
-        # The touchscreen app accepts a board version that starts with QIDI's, and stays executable.
+        # The touchscreen app accepts a board version that starts with QIDI's, no longer announces QIDI's online
+        # update or unpacks QIDI packages, and stays executable. Nothing else is installed for the block.
         self.assertIn(qidiclient_firmware_popup.OPERATION, state.system_ledger["restore_preimages"])
         self.assertEqual(qidiclient.read_bytes(), qidiclient_patched)
         self.assertEqual(qidiclient.stat().st_mode & 0o777, 0o755)
@@ -298,6 +306,14 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
         self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
         self.assertEqual(addons_server.read_bytes(), addons_service.SERVER_PAYLOAD.read_bytes())
+        self.assertEqual(status_unit.read_text(encoding="utf-8"), status_service.UNIT_CONTENT)
+        self.assertEqual(status_server.read_bytes(), status_service.SERVER_PAYLOAD.read_bytes())
+        # The update check is scheduled on every install; the operator didn't turn automatic updates on, and the
+        # install doesn't either.
+        self.assertEqual(check_service.read_text(encoding="utf-8"), auto_update.SERVICE_CONTENT)
+        self.assertEqual(check_timer.read_text(encoding="utf-8"), auto_update.TIMER_CONTENT)
+        self.assertEqual(json.loads((system_root / "systemd" / f"{auto_update.TIMER_NAME}.json").read_text(encoding="utf-8"))["enabled"], "enabled")
+        self.assertFalse(auto_update.auto_update_enrolled(paths))
         # Moonraker's Python imports the fixes module through the path file.
         self.assertEqual(fixes_module.read_bytes(), moonraker_fixes.MODULE_PAYLOAD.read_bytes())
         self.assertEqual(fixes_path.read_text(encoding="utf-8"), moonraker_fixes.PATH_CONTENT)
@@ -326,13 +342,74 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         fluidd_preimage = state.system_ledger["restore_preimages"][FLUIDD_BOX_OPERATION]
         cache_policy = copy.deepcopy({**state.system_ledger, "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}})
         cache_policy["outcomes"][FLUIDD_BOX_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(fluidd_previous).hexdigest()
+        # An earlier package version patched only the firmware-version notices; updates finish the patch whatever the
+        # OS optimization answer, and keep QIDI's executable for restoration.
+        qidiclient_preimage = state.system_ledger["restore_preimages"][qidiclient_firmware_popup.OPERATION]
+        qidiclient.write_bytes(qidiclient_unblocked)
+        cache_policy["outcomes"][qidiclient_firmware_popup.OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(qidiclient_unblocked).hexdigest()
         reconciled = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
-            source="auto_update_reconcile", run=host_run,
+            source="auto_update_reconcile", block_qidi_updates=True, run=host_run,
             urlopen=moonraker_urlopen(),
         )
         self.assertEqual(reconciled["restore_preimages"][cache_id], prior_preimage)
+        self.assertEqual(qidiclient.read_bytes(), qidiclient_patched)
+        self.assertEqual(reconciled["restore_preimages"][qidiclient_firmware_popup.OPERATION], qidiclient_preimage)
+        # Without the block, the touchscreen app keeps only the firmware-version notice fix and restarts, announcing
+        # and installing QIDI's packages again; deciding for the block again blocks it again.
+        block_events = []
+
+        def block_run(command, **kwargs):
+            if list(command)[-3:-1] == ["systemctl", "restart"]:
+                block_events.append(list(command)[-1])
+            return host_run(command, **kwargs)
+
+        unblocked = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", block_qidi_updates=False, run=block_run, urlopen=moonraker_urlopen(),
+        )
+        self.assertEqual(qidiclient.read_bytes(), qidiclient_unblocked)
+        self.assertEqual(unblocked["restore_preimages"][qidiclient_firmware_popup.OPERATION], qidiclient_preimage)
+        self.assertIn(qidiclient_firmware_popup.RESTART_SERVICE, block_events)
+        reconciled = apply_system_optimizations(
+            paths=paths, spec=manifest.system_optimizations, ledger=unblocked,
+            reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+            source="auto_update_reconcile", block_qidi_updates=True, run=host_run, urlopen=moonraker_urlopen(),
+        )
+        self.assertEqual(qidiclient.read_bytes(), qidiclient_patched)
+        # A later failure in a run that switches the touchscreen app between its forms rolls it back to the form it
+        # had, and the next run switches it; QIDI's executable stays the one copy kept for uninstall.
+        def qidiclient_backups():
+            return sorted((paths.printer_data_root / system_optimizations.SYSTEM_BACKUP_DIR).rglob("qidiclient"))
+
+        def touchscreen_restart_fails(command, **kwargs):
+            if list(command)[-3:] == ["systemctl", "restart", qidiclient_firmware_popup.RESTART_SERVICE] and not restart_failed:
+                restart_failed.append(True)
+                return CompletedProcess(command, 1, stdout="", stderr="restart failed")
+            return host_run(command, **kwargs)
+
+        self.assertEqual(qidiclient_backups(), [Path(qidiclient_preimage["backup_path"])])
+        for block, before, after in ((False, qidiclient_patched, qidiclient_unblocked), (True, qidiclient_unblocked, qidiclient_patched)):
+            restart_failed = []
+            with self.assertRaises(SystemOptimizationApplyError) as failed:
+                apply_system_optimizations(
+                    paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+                    reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env, source="auto_update_reconcile",
+                    block_qidi_updates=block, run=touchscreen_restart_fails, urlopen=moonraker_urlopen(),
+                )
+            self.assertEqual(qidiclient.read_bytes(), before)
+            self.assertFalse(_journal_path(paths).exists())
+            self.assertEqual(failed.exception.ledger["restore_preimages"][qidiclient_firmware_popup.OPERATION], qidiclient_preimage)
+            self.assertEqual(qidiclient_backups(), [Path(qidiclient_preimage["backup_path"])])
+            reconciled = apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=failed.exception.ledger,
+                reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env, source="auto_update_reconcile",
+                block_qidi_updates=block, run=host_run, urlopen=moonraker_urlopen(),
+            )
+            self.assertEqual(qidiclient.read_bytes(), after)
+            self.assertEqual(qidiclient_backups(), [Path(qidiclient_preimage["backup_path"])])
         # Runs that change none of them don't recommend another reboot.
         self.assertFalse(paths.reboot_recommended_path.exists())
         self.assertEqual(fluidd.read_bytes(), fluidd_current)
@@ -345,7 +422,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         reconciled = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
-            source="auto_update_reconcile", run=host_run,
+            source="auto_update_reconcile", block_qidi_updates=True, run=host_run,
             urlopen=moonraker_urlopen(),
         )
         self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
@@ -382,7 +459,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             return apply_system_optimizations(
                 paths=paths, spec=manifest.system_optimizations, ledger=ledger,
                 reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
-                source="auto_update_reconcile", run=run,
+                source="auto_update_reconcile", block_qidi_updates=True, run=run,
                 urlopen=moonraker_urlopen(),
             )
 
@@ -443,6 +520,13 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(b"    location ^~ /valve-oil/ {\r\n        alias /home/qidi/tltg-valve-oil-ui/;\r\n", nginx_site.read_bytes())
         self.assertIn(b"        alias /home/qidi/tltg-valve-oil-ui/index.html;\r\n        add_header Cache-Control \"no-store\";\r\n", nginx_site.read_bytes())
         self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
+        # A QIDI package that installs another reviewed build of the touchscreen app hands it to the next run, which
+        # patches it and keeps that build's QIDI executable, alone, for uninstall.
+        qidiclient_before, other_blocked, _ = fake_qidiclient(variant=1)
+        qidiclient.write_bytes(qidiclient_before)
+        reconciled = reconcile(reconciled)
+        self.assertEqual(qidiclient.read_bytes(), other_blocked)
+        self.assertEqual([backup.read_bytes() for backup in qidiclient_backups()], [qidiclient_before])
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
 
         # Declining the system-restoration prompt keeps only the optional OS optimizations; everything install makes
@@ -450,10 +534,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # it, and the pending Klipper restart still runs once it answers again.
         moonraker_down = 0
 
+        # Enrollment goes before the check's timer, so a check that outlives the uninstall can't install anything.
+        auto_update.enable_auto_updates(paths=paths, reporter=PlainReporter(io.StringIO()))
+        enrolled_when_timer_stopped = []
+
         def uninstall_run(command, **kwargs):
             nonlocal moonraker_down
             if list(command)[-3:] == ["systemctl", "restart", "moonraker.service"]:
                 moonraker_down = 3
+            if list(command)[-1] == auto_update.TIMER_NAME and "disable" in command:
+                enrolled_when_timer_stopped.append(auto_update.auto_update_enrolled(paths))
             return host_run(command, **kwargs)
 
         base_uninstall_urlopen = moonraker_urlopen()
@@ -506,6 +596,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(screen_server.exists())
         self.assertFalse(addons_unit.exists())
         self.assertFalse(addons_server.exists())
+        self.assertFalse(status_unit.exists())
+        self.assertFalse(status_server.exists())
+        self.assertFalse(check_service.exists() or check_timer.exists())
+        self.assertEqual(enrolled_when_timer_stopped, [False])
         self.assertFalse(fixes_module.exists())
         self.assertFalse(fixes_path.exists())
         self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
@@ -520,7 +614,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(zram_unit.read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
 
     def test_os_optimizations_apply_whatever_an_earlier_install_chose(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         root = fake_system_root()
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         boot_id = printer_root / "boot-id"
@@ -539,7 +633,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(root)
         host_run = fake_host_run(root)
         system_optimizations.maybe_reconcile_system_optimizations(
-            paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), environ=env, run=host_run, urlopen=urlopen,
+            paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), environ=env, block_qidi_updates=True,
+            run=host_run, urlopen=urlopen,
         )
 
         # An automatic update applies them anyway, leaving AI detection on.
@@ -558,8 +653,48 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotIn(messages.AI_DETECTION_PROMPT, report.getvalue())
         self.assertEqual(load_installed_state(state_path).system_ledger["policy"]["system_optimizations"], "enabled")
 
+    def test_touchscreen_app_keeps_its_form_without_a_decision_and_is_released_when_replaced(self):
+        printer_root = copy_base_runtime(homing_patched=True)
+        root = fake_system_root(include_qidiclient=True)
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        env[SYSTEM_ROOT_ENV] = str(root)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        qidiclient = root / qidiclient_firmware_popup.FILE.lstrip("/")
+        stock, blocked, unblocked = fake_qidiclient()
+        operation = qidiclient_firmware_popup.OPERATION
+        ledger = {"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}}
+
+        def apply(block):
+            return apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()),
+                input_stream=None, environ=env, source="yes_install", block_qidi_updates=block, run=fake_host_run(root),
+                urlopen=moonraker_urlopen(),
+            )
+
+        # Without a decision QIDI's executable still gets the firmware-version notice fix, unblocked, and a patched
+        # app keeps blocking or allowing QIDI's packages as it did.
+        for block, expected in ((None, unblocked), (True, blocked), (None, blocked), (False, unblocked), (None, unblocked)):
+            ledger = apply(block)
+            self.assertEqual(qidiclient.read_bytes(), expected, block)
+        report = io.StringIO()
+        system_optimizations.maybe_emit_system_dry_run(
+            paths=paths, manifest=manifest, reporter=PlainReporter(report), prior_state=None,
+            cli_options=SystemOptimizationCliOptions(), environ=env, block_qidi_updates=None, run=fake_host_run(root),
+        )
+        self.assertIn(f"{operation}: QIDI's package updates stay blocked or allowed as they are now", report.getvalue())
+        self.assertEqual(Path(ledger["restore_preimages"][operation]["backup_path"]).read_bytes(), stock)
+        # An app that is no longer a reviewed build is left as it is and given up, with its preserved copy.
+        unreviewed = stock[:-1] + b"\x01"
+        qidiclient.write_bytes(unreviewed)
+        ledger = apply(True)
+        self.assertEqual(qidiclient.read_bytes(), unreviewed)
+        self.assertNotIn(operation, ledger["restore_preimages"])
+        self.assertEqual(ledger["outcomes"][operation]["status"], "released")
+        self.assertEqual(list((paths.printer_data_root / system_optimizations.SYSTEM_BACKUP_DIR).rglob("qidiclient")), [])
+
     def test_unreviewed_host_files_are_preserved_without_blocking_other_patches(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         root = fake_system_root(
             include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True, include_qidiclient=True,
         )
@@ -587,12 +722,14 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths=paths, spec=manifest.system_optimizations,
             ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
             reporter=PlainReporter(io.StringIO()), input_stream=None,
-            environ=env, source="yes_install", run=fake_host_run(root),
+            environ=env, source="yes_install", block_qidi_updates=True, run=fake_host_run(root),
             urlopen=moonraker_urlopen(),
         )
 
         self.assertEqual(fluidd.read_bytes(), original)
         self.assertEqual(ledger["outcomes"][FLUIDD_BOX_OPERATION]["status"], "unsupported")
+        # Asked to block QIDI's updates, an unreviewed touchscreen build is still left as it is, so it installs QIDI's
+        # packages as it did before.
         self.assertEqual(qidiclient.read_bytes(), unreviewed)
         self.assertEqual(ledger["outcomes"][qidiclient_firmware_popup.OPERATION]["status"], "unsupported")
         self.assertNotIn(qidiclient_firmware_popup.OPERATION, ledger["restore_preimages"])
@@ -618,7 +755,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 paths=paths, spec=manifest.system_optimizations,
                 ledger={**ledger, "policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}},
                 reporter=PlainReporter(io.StringIO()), input_stream=None,
-                environ=env, source="yes_install", run=zram_fails,
+                environ=env, source="yes_install", block_qidi_updates=True, run=zram_fails,
                 urlopen=moonraker_urlopen(),
             )
         self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
@@ -632,7 +769,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
     def test_moonraker_cache_admission_and_restart_failure_preserve_source(self):
         for fault in ("unknown", "unknown_metascan", "symlink", "restart", "concurrent"):
             with self.subTest(fault=fault):
-                printer_root = copy_base_runtime()
+                printer_root = copy_base_runtime(homing_patched=True)
                 root = fake_system_root(include_moonraker_cache=True)
                 env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
                 env[SYSTEM_ROOT_ENV] = str(root)
@@ -669,7 +806,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                         paths=paths, spec=manifest.system_optimizations,
                         ledger={"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}},
                         reporter=PlainReporter(io.StringIO()), input_stream=None,
-                        environ=env, source="yes_install", run=run,
+                        environ=env, source="yes_install", block_qidi_updates=True, run=run,
                         urlopen=moonraker_urlopen(),
                     )
                 if fault == "concurrent":
@@ -689,7 +826,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual(target.is_symlink(), fault == "symlink")
 
     def test_forged_host_preimages_fail_closed_before_uninstall(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         system_root = fake_system_root()
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(system_root)
@@ -728,7 +865,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(_journal_path(paths).exists())
 
     def test_host_ledger_migration_and_rockchip_journal_recovery(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         system_root = fake_system_root()
         host_run = fake_host_run(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
@@ -785,7 +922,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths=paths, spec=manifest.system_optimizations,
             ledger={"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}},
             reporter=PlainReporter(io.StringIO()), input_stream=None,
-            environ=env, source="yes_install", run=host_run,
+            environ=env, source="yes_install", block_qidi_updates=True, run=host_run,
             urlopen=moonraker_urlopen(),
         )
         self.assertNotIn("sync", (system_root / "mounts/root.options").read_text(encoding="utf-8").strip().split(","))
@@ -805,7 +942,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(_journal_path(paths).exists())
 
     def test_uninstall_preserves_user_modified_host_state(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         system_root = fake_system_root(include_moonraker_cache=True, include_filament_config=True)
         host_run = fake_host_run(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
@@ -833,7 +970,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         reconciled = apply_system_optimizations(
             paths=paths, spec=manifest.system_optimizations, ledger=cache_policy,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
-            source="auto_update_reconcile", run=host_run,
+            source="auto_update_reconcile", block_qidi_updates=True, run=host_run,
             urlopen=moonraker_urlopen(),
         )
         self.assertEqual(moonraker.read_bytes(), drifted)
@@ -859,7 +996,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse((system_root / zram_swap.UNIT_FILE.lstrip("/")).exists())
 
     def test_legacy_host_preimages_migrate_and_restore(self):
-        printer_root = copy_base_runtime()
+        printer_root = copy_base_runtime(homing_patched=True)
         system_root = fake_system_root()
         host_run = fake_host_run(system_root)
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
@@ -1074,7 +1211,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         selected = ("service_xl2tpd", "service_bluetooth")
         with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
             with self.assertRaises(SystemOptimizationRecoveryError) as failed:
-                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", run=run, urlopen=moonraker_urlopen())
+                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", block_qidi_updates=True, run=run, urlopen=moonraker_urlopen())
         # The failure that started the rollback stays visible beside the rollback's own failure.
         self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, failed.exception.message)
         self.assertIn(messages.SYSTEM_RESTORE_FAILED, failed.exception.message)
@@ -1087,7 +1224,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, pending.exception.message)
         self.assertTrue(_journal_path(paths).exists())
         with self.assertRaises(SystemOptimizationRecoveryError):
-            apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", run=run, urlopen=moonraker_urlopen())
+            apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="next-lifecycle", block_qidi_updates=True, run=run, urlopen=moonraker_urlopen())
         calls["fail_restore"] = False
         output = io.StringIO()
         self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(output), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
@@ -1153,7 +1290,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         return paths, manifest, env, root
 
     def _host_context(self):
-        printer_root = copy_base_runtime(); root = fake_system_root()
+        printer_root = copy_base_runtime(homing_patched=True); root = fake_system_root()
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid"); env[SYSTEM_ROOT_ENV] = str(root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n", encoding="utf-8")

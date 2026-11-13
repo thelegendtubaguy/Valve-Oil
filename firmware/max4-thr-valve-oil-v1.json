@@ -65,5 +65,9 @@
     "archive": "QD_MAX4_01.01.07.01_20261016_VALVE_OIL_THR_v1.zip",
     "thr": "QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin",
     "report": "max4-thr-valve-oil-v1.report.json"
+  },
+  "targets": {
+    "01.01.07.01": "patched",
+    "01.01.02.01": "patched"
   }
 }

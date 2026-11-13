@@ -17,6 +17,15 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: firmware
+    attributes:
+      label: QIDI firmware
+      description: The firmware version the touchscreen's About page shows. Filled in when you open this form from the installer's link.
+      placeholder: "01.01.02.01"
+    validations:
+      required: false
+
   - type: textarea
     id: printer_details
     attributes:
@@ -39,7 +48,7 @@ body:
     id: board_report
     attributes:
       label: Board firmware report
-      description: If the installer, `box-firmware.sh`, or `mainboard-firmware.sh` said a board was not changed because its bootloader or firmware is not supported yet, paste the `report.json` it named. Leave out the `.bin` files beside it.
+      description: If the installer, `box-firmware.sh`, or `mainboard-firmware.sh` said a board was not changed because its bootloader or firmware is not supported yet, paste the `report.json` it named, unless the installer's link already filled it in. Leave out the `.bin` files beside it.
       render: json
     validations:
       required: false

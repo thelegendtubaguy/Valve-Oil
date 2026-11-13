@@ -64,13 +64,21 @@ atexit.register(_cleanup_temp_roots)
 
 
 
-def copy_base_runtime() -> Path:
-    temp_root = temp_path("installer-runtime-")
+def copy_base_runtime(*, homing_patched: bool = False) -> Path:
+    """A Max 4 01.01.06.03 printer_data, in a home of its own where the installer keeps its caches beside it.
+
+    homing_patched: Klipper's homing.py already carries Valve Oil's patch, so an install has no source patch to apply
+    or restore. For tests about other parts of an install: with QIDI's homing.py every state write carries its
+    40 KB original, which makes up most of an install's time here. test_source_patch_lifecycle_matrix covers the patch.
+    """
+    temp_root = temp_path("installer-runtime-") / "printer_data"
     shutil.copytree(BASE_RUNTIME_FIXTURE / "config", temp_root / "config")
     shutil.copy2(BASE_RUNTIME_FIXTURE / "firmware_manifest.json", temp_root / "firmware_manifest.json")
     target = temp_root / "klipper/klippy/extras"
     target.mkdir(parents=True, exist_ok=True)
-    (target / "homing.py").write_bytes(homing_fixture_bytes("01.01.06.03"))
+    homing = (REPO_ROOT / "installer/klipper/qidi/homing.py").read_bytes() if homing_patched else (
+        homing_fixture_bytes("01.01.06.03"))
+    (target / "homing.py").write_bytes(homing)
     return temp_root
 
 
@@ -85,15 +93,27 @@ def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
 
 
 
-def fake_qidiclient() -> tuple[bytes, bytes]:
-    # A small stand-in for QIDI's touchscreen executable and its patched form, admitted as a reviewed build.
+def fake_qidiclient(variant: int = 0) -> tuple[bytes, bytes, bytes]:
+    # A small stand-in for QIDI's touchscreen executable, admitted as a reviewed build, with its patched forms with and
+    # without QIDI's package updates blocked. Each variant is a different build of the same size.
     popup = qidiclient_firmware_popup
-    stock = b"\x7fELF\xff\xfe" + bytes(58) + popup.BRANCH_IF_EQUAL + bytes(64) + popup.BRANCH_IF_EQUAL + bytes(60)
-    patched = stock.replace(popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER)
-    popup.BUILDS[hashlib.sha256(stock).hexdigest()] = popup.Build(
-        size=len(stock), patched_sha256=hashlib.sha256(patched).hexdigest(), branches=(64, 132),
+    stock = (
+        b"\x7fELF\xff\xfe" + bytes([variant]) + bytes(57) + popup.BRANCH_IF_EQUAL + bytes(64) + popup.BRANCH_IF_EQUAL + bytes(60)
+        + popup.STORE_NEED_UPDATE + bytes(28) + popup.EXTRACT_PROLOGUE + bytes(24)
     )
-    return stock, patched
+    sites = (
+        popup.Site(64, popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER),
+        popup.Site(132, popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER),
+        popup.Site(196, popup.STORE_NEED_UPDATE, popup.STORE_ZERO, blocking=True),
+        popup.Site(228, popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE, blocking=True),
+    )
+    unblocked = stock.replace(popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER)
+    blocked = unblocked.replace(popup.STORE_NEED_UPDATE, popup.STORE_ZERO).replace(popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE)
+    popup.BUILDS[hashlib.sha256(stock).hexdigest()] = popup.Build(
+        size=len(stock), sites=sites,
+        patched_sha256=hashlib.sha256(unblocked).hexdigest(), blocked_sha256=hashlib.sha256(blocked).hexdigest(),
+    )
+    return stock, blocked, unblocked
 
 
 def fake_system_root(

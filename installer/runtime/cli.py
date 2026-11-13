@@ -7,10 +7,13 @@ import traceback
 from contextlib import nullcontext
 from pathlib import Path
 
-from . import addons_cli, messages, safety
+from . import addons_cli, firmware_update, messages, safety, valve_oil_status
 from .auto_update import (
+    KIND_ENV,
     LOCK_HELD_ENV,
     AutoUpdateError,
+    auto_update_enrolled,
+    auto_update_status_lines,
     current_auto_update_checksum,
     disable_auto_updates,
     enable_auto_updates,
@@ -20,7 +23,7 @@ from .box_enablement import maybe_reconcile_tool_slots_after_box_count_change
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
-from .errors import ActivePrintError, InstallerError, OperationCancelled, PrinterStateError
+from .errors import ActivePrintError, InstallerError, OperationCancelled, PrinterStateError, RecoveryRequiredError
 from .host_reboot import (
     HostRebootError,
     maybe_schedule_recommended_reboot,
@@ -36,7 +39,7 @@ from .ownership import repair_installer_ownership
 from .reporter import create_reporter
 from .restore_helper import RestoreHelperError, run_restore_helper
 from .rollback import clear_recovery_sentinel
-from .runner import run_install
+from .runner import QIDI_UPDATE_BLOCK_LINES, block_qidi_package_updates, qidi_update_block, run_install
 from .safety import ensure_no_recovery_sentinel
 from .state_file import StateValidationError
 from .system_optimizations import (
@@ -45,14 +48,15 @@ from .system_optimizations import (
     verify_rockchip_postflight,
 )
 from .uninstall import run_uninstall
-from .thr_firmware import flash_thr_firmware, validate_thr_firmware_request
-from .box_firmware import flash_box_firmware_after_install, run_box_firmware
+from .board_firmware import board_preflight, deliver_board_firmware, load_board_admission
+from .box_firmware import run_box_firmware
 from .mainboard_firmware import run_mainboard_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
 DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
 DEFAULT_MOONRAKER_URL = "http://127.0.0.1:7125/printer/objects/query?print_stats"
 FIRMWARE_MODES = {"box-firmware", "mainboard-firmware"}
+AUTO_UPDATE_SWITCH_MODES = {"enable-auto-updates", "disable-auto-updates", "auto-update-status"}
 
 
 def main(
@@ -118,7 +122,30 @@ def main(
             )
             return 0
 
-        if not args.dry_run and not (args.mode in FIRMWARE_MODES and args.box_action == "status"):
+        if args.mode in AUTO_UPDATE_SWITCH_MODES:
+            # Only the enrollment marker changes: no sudo, no lock, and the check reads it at its next run.
+            if args.mode == "enable-auto-updates":
+                enable_auto_updates(paths=paths, reporter=reporter, environ=env)
+            elif args.mode == "disable-auto-updates":
+                disable_auto_updates(paths=paths, reporter=reporter, environ=env)
+            else:
+                for line in auto_update_status_lines(paths, env):
+                    reporter.line(line)
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
+            return 0
+
+        in_firmware_update = bool(env.get(safety.FIRMWARE_UPDATE_RUN_ENV))
+        if args.mode == "install" and not in_firmware_update:
+            # A QIDI firmware update this or an earlier session started: follow or finish it, or report how it ended.
+            rc = firmware_update.report_or_attach(paths=paths, reporter=reporter, environ=env,
+                                                  input_stream=input_stream, dry_run=args.dry_run)
+            if rc is not None:
+                reporter.debug(event="cli.complete", mode=args.mode, return_code=rc, action="firmware-update")
+                return rc
+
+        # A check on a printer that isn't enrolled uses no sudo at all.
+        checking_only = args.mode == "auto-update-check" and not auto_update_enrolled(paths)
+        if not args.dry_run and not (args.mode in FIRMWARE_MODES and args.box_action == "status") and not checking_only:
             repair_installer_ownership(paths, reporter=reporter, environ=env, input_stream=input_stream)
 
         if args.mode == "box-firmware":
@@ -151,8 +178,6 @@ def main(
             return rc
 
         safety.ensure_no_pending_firmware(paths.recovery_sentinel_path)
-        if args.flash_thr_fifo:
-            validate_thr_firmware_request(paths=paths, environ=env)
 
         if args.mode == "complete-host-reboot":
             with acquire(paths.lock_path):
@@ -199,7 +224,23 @@ def main(
                     mode=args.mode,
                     lock_path=paths.lock_path,
                 )
-                ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+                enrolled = auto_update_enrolled(paths)
+                if not enrolled:
+                    # Only check and publish: no recovery, reconciliation, install, board flash, service change, or
+                    # reboot on a printer whose operator hasn't turned automatic updates on.
+                    result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=False)
+                    reporter.debug(event="cli.complete", mode=args.mode, return_code=0, action=result.action)
+                    return 0
+                try:
+                    ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
+                except RecoveryRequiredError:
+                    # What is waiting is still shown, with recovery as the reason it doesn't run.
+                    try:
+                        run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=True,
+                                              recovery_required=True)
+                    except InstallerError:
+                        pass
+                    raise
                 reporter.debug(
                     event="cli.recovery_sentinel.clear",
                     sentinel_path=paths.recovery_sentinel_path,
@@ -244,8 +285,12 @@ def main(
                         action="pending-host-reboot",
                     )
                     return 0
-                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env)
-                if result.action == "already-current":
+                result = run_auto_update_check(paths=paths, reporter=reporter, environ=env, enrolled=True)
+                if result.action == "firmware-update-started":
+                    # The firmware update runs on its own and stops the services; nothing else runs beside it.
+                    reporter.debug(event="cli.complete", mode=args.mode, return_code=0, action=result.action)
+                    return 0
+                if result.action in ("already-current", "boards-updated", "boards-not-updated"):
                     try:
                         safety.ensure_printer_idle(paths.moonraker_url)
                     except ActivePrintError:
@@ -259,6 +304,7 @@ def main(
                             manifest=current_manifest,
                             reporter=reporter,
                             environ=env,
+                            block_qidi_updates=block_qidi_package_updates(load_board_admission(paths)),
                         )
                 current_manifest = load_manifest(paths.installer_root / "package.yaml")
                 _verify_completed_host_reboot(
@@ -299,16 +345,6 @@ def main(
                     action=result.action,
                 )
                 return 0
-
-        if args.mode == "enable-auto-updates":
-            enable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream, environ=env)
-            reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
-            return 0
-
-        if args.mode == "disable-auto-updates":
-            disable_auto_updates(paths=paths, reporter=reporter, input_stream=input_stream)
-            reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
-            return 0
 
         if args.mode == "clear-recovery-sentinel":
             with acquire(paths.lock_path):
@@ -370,6 +406,7 @@ def main(
         reporter.debug(event="cli.compatibility.validated")
 
         lock_inherited = _lock_inherited(args.mode, env)
+        firmware = None
         with nullcontext() if lock_inherited else acquire(paths.lock_path):
             reporter.debug(
                 event="cli.lock.inherited" if lock_inherited else "cli.lock.acquired",
@@ -396,25 +433,39 @@ def main(
                     environ=env,
                 )
             if args.mode == "install":
-                result = run_install(
-                    paths,
-                    manifest,
-                    reporter,
-                    dry_run=args.dry_run,
-                    input_stream=input_stream,
-                    environ=env,
-                    system_options=_system_options_from_args(args),
-                    flash_thr_fifo=args.flash_thr_fifo,
-                )
-                if result.flash_thr_firmware:
-                    flash_thr_firmware(
-                        paths=paths, reporter=reporter, dry_run=args.dry_run,
-                        input_stream=input_stream, environ=env,
-                    )
-                flash_box_firmware_after_install(
-                    paths=paths, reporter=reporter, dry_run=args.dry_run,
+                # Every board is read before anything changes; a new install with a board this release doesn't
+                # admit stops here.
+                printer, admission = board_preflight(
+                    paths=paths, reporter=reporter, manifest=manifest, dry_run=args.dry_run,
                     input_stream=input_stream, environ=env,
                 )
+                if not in_firmware_update:
+                    # On a firmware this release updates from, the detached firmware update does the rest of the
+                    # install; when it can't start, Valve Oil installs for the current firmware below.
+                    firmware = firmware_update.start_firmware_update(
+                        paths=paths, reporter=reporter, manifest=manifest, admission=admission,
+                        kind=env.get(KIND_ENV) or "install", environ=env, input_stream=input_stream,
+                        dry_run=args.dry_run,
+                    )
+                if firmware is None or not firmware.handled:
+                    block, why = qidi_update_block(admission)
+                    reporter.line(QIDI_UPDATE_BLOCK_LINES[block].format(why))
+                    run_install(
+                        paths,
+                        manifest,
+                        reporter,
+                        dry_run=args.dry_run,
+                        input_stream=input_stream,
+                        environ=env,
+                        system_options=_system_options_from_args(args),
+                        block_qidi_updates=block,
+                    )
+                    deliver_board_firmware(
+                        paths=paths, reporter=reporter, manifest=manifest, printer=printer, admission=admission,
+                        dry_run=args.dry_run, input_stream=input_stream, environ=env,
+                    )
+                    if not args.dry_run:
+                        _settle_waiting_release(paths, manifest.package.version)
             else:
                 run_uninstall(
                     paths,
@@ -426,6 +477,9 @@ def main(
                     environ=env,
                     system_options=_system_options_from_args(args),
                 )
+        if firmware is not None and firmware.state == firmware_update.FAILED:
+            reporter.debug(event="cli.complete", mode=args.mode, return_code=1, action="firmware-update")
+            return 1
         if args.dry_run:
             if args.mode == "install":
                 reporter.line("Host reboot dry-run: would schedule a delayed reboot after successful completion if a system change needs one.")
@@ -564,6 +618,18 @@ def _host_reboot_operation_current(*, manifest, reporter, environ: dict[str, str
     return True
 
 
+def _settle_waiting_release(paths, version: str) -> None:
+    """This release is installed now: what the last update check listed as waiting for it, such as installing it
+    again after QIDI's package emptied the config folder, is done. Readers can't tell that from the version alone."""
+    pending = valve_oil_status.load_status(paths).pending
+    if not any(item.kind == valve_oil_status.RELEASE and item.version == version for item in pending):
+        return
+    try:
+        valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE, version=version)
+    except OSError:
+        pass
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Valve Oil installer runtime")
     parser.add_argument(
@@ -577,6 +643,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "auto-update-check",
             "enable-auto-updates",
             "disable-auto-updates",
+            "auto-update-status",
             "complete-host-reboot",
             "box-firmware",
             "mainboard-firmware",
@@ -591,7 +658,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--demo-tui", action="store_true", help="Render a demo of the install/uninstall TUI without writing changes.")
     parser.add_argument("--backup", help="Backup label or path to restore with restore-backup mode.")
     parser.add_argument("--yes", action="store_true", help="Run non-interactively using default yes-mode choices.")
-    parser.add_argument("--flash-thr-fifo", action="store_true", help="Explicitly opt in to the THR FIFO firmware fix (Max 4 01.01.07.01, Plus 5 01.01.02.01); requires idle/ready state, zero heater targets, and verified readback. Not enabled by --yes or automatic updates.")
+    # Every install now brings the THR to Valve Oil's firmware; the old opt-in is accepted and does nothing.
+    parser.add_argument("--flash-thr-fifo", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--disable-ai-detection", action="store_true", help="Disable the QIDI AI detection backend service when system optimizations run.")
     parser.add_argument("--keep-ai-detection", action="store_true", help="Keep the QIDI AI detection backend service enabled when system optimizations run.")
     parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, keep the DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
@@ -600,9 +668,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--uninstall", action="store_true", help="Compatibility alias for the uninstall mode.")
     parser.add_argument("--clear-recovery-sentinel", action="store_true", help="Compatibility alias for the clear-recovery-sentinel mode.")
     auto_update_actions = parser.add_mutually_exclusive_group()
-    auto_update_actions.add_argument("--run", dest="auto_update_action", action="store_const", const="run", help="Run an automatic-update check (auto-update mode only).")
-    auto_update_actions.add_argument("--enable-systemd", dest="auto_update_action", action="store_const", const="enable-systemd", help="Enable automatic-update systemd units (auto-update mode only).")
-    auto_update_actions.add_argument("--disable-systemd", dest="auto_update_action", action="store_const", const="disable-systemd", help="Disable automatic-update systemd units (auto-update mode only).")
+    auto_update_actions.add_argument("--run", dest="auto_update_action", action="store_const", const="run", help="Run the update check now (auto-update mode only).")
+    # The check is scheduled by every install; these only turn automatic updates on or off. The -systemd names are
+    # what earlier releases documented.
+    for flags, action, text in ((("--enable", "--enable-systemd"), "enable", "Turn automatic updates on"),
+                                (("--disable", "--disable-systemd"), "disable", "Turn automatic updates off"),
+                                (("--status",), "status", "Show whether automatic updates are on and what is waiting")):
+        auto_update_actions.add_argument(*flags, dest="auto_update_action", action="store_const", const=action,
+                                         help=text + " (auto-update mode only).")
     args = parser.parse_args(_normalize_command_aliases(argv))
     if args.uninstall:
         if args.mode != "install":
@@ -617,12 +690,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.mode == "auto-update":
         if args.auto_update_action == "run":
             args.mode = "auto-update-check"
-        elif args.auto_update_action == "enable-systemd":
+        elif args.auto_update_action == "enable":
             args.mode = "enable-auto-updates"
-        elif args.auto_update_action == "disable-systemd":
+        elif args.auto_update_action == "disable":
             args.mode = "disable-auto-updates"
+        elif args.auto_update_action == "status":
+            args.mode = "auto-update-status"
         else:
-            parser.error("auto-update requires --run, --enable-systemd, or --disable-systemd.")
+            parser.error("auto-update requires --run, --enable, --disable, or --status.")
     if args.dry_run and args.mode not in {"install", "uninstall"}:
         parser.error("--dry-run is only supported with install and uninstall.")
     if args.demo_tui and args.mode not in {"install", "uninstall"}:

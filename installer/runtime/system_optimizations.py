@@ -39,6 +39,8 @@ from . import moonraker_spoolman
 from . import moonraker_used_extruders
 from . import qidiclient_firmware_popup
 from . import addons_service
+from . import status_service
+from . import auto_update
 from . import remote_screen
 from . import restart_on_exit
 from . import cpu_tuning
@@ -131,6 +133,8 @@ SERVICE_NAMES = {
     KLIPPER_SERVICE: "Klipper",
     remote_screen.UNIT: "the Printer screen service",
     addons_service.UNIT: "the add-ons service",
+    status_service.UNIT: "the Valve Oil status service",
+    auto_update.TIMER_NAME: "the update check",
     QIDICLIENT_SERVICE: "the touchscreen",
     cpu_governor.SERVICE: "the CPU governor",
     "crowsnest.service": "the camera",
@@ -152,7 +156,7 @@ STEP_LABELS = {
 SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
 # Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker.
-RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, QIDICLIENT_SERVICE)
+RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, status_service.UNIT, auto_update.TIMER_NAME, QIDICLIENT_SERVICE)
 MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
@@ -180,7 +184,7 @@ class _GuardedFilePatch:
     patch_options: Callable[[SystemOptimizationsSpec, Path], dict[str, Any]] | None = None
     patch_variants: tuple[dict[str, Any], ...] = ({},)
     # A file too large to hold in memory, patched in pieces instead of as text: a module with needs_patch(path),
-    # write_patched(source, destination) and patched_sha256(stock_sha256).
+    # write_patched(source, destination) and patched_sha256(source_sha256).
     binary: Any = None
 
     def patched(self, text: str, *, spec: SystemOptimizationsSpec, root: Path) -> str:
@@ -425,6 +429,49 @@ GUARDED_FILE_PATCHES = {
         skip_unrecognized=True,
         create_if_missing=True,
     ),
+    status_service.UNIT_OPERATION: _GuardedFilePatch(
+        label="Valve Oil status service unit",
+        file=lambda spec: status_service.UNIT_FILE,
+        patch=status_service.patch_unit,
+        restart_service=status_service.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=status_service.UNIT,
+    ),
+    status_service.SERVER_OPERATION: _GuardedFilePatch(
+        label="Valve Oil status service",
+        file=lambda spec: status_service.SERVER_FILE,
+        patch=status_service.patch_server,
+        restart_service=status_service.UNIT,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    # The update check runs on every install; enrollment alone decides whether it installs anything (auto_update.py).
+    # Restarting the oneshot service would run a check, so only the timer is restarted.
+    auto_update.SERVICE_OPERATION: _GuardedFilePatch(
+        label="update check service",
+        file=lambda spec: auto_update.SERVICE_FILE,
+        patch=auto_update.patch_service,
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+    ),
+    auto_update.TIMER_OPERATION: _GuardedFilePatch(
+        label="update check timer",
+        file=lambda spec: auto_update.TIMER_FILE,
+        patch=auto_update.patch_timer,
+        restart_service=auto_update.TIMER_NAME,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=auto_update.TIMER_NAME,
+        # Enabled, it starts at the next boot anyway; a failed start doesn't undo the install's host changes.
+        restart_optional=True,
+    ),
     remote_screen.NGINX_OPERATION: _GuardedFilePatch(
         label="Fluidd nginx site",
         file=lambda spec: remote_screen.NGINX_SITE,
@@ -465,6 +512,7 @@ def maybe_apply_system_optimizations(
     cli_options: SystemOptimizationCliOptions,
     environ: dict[str, str],
     auto_update_child: bool,
+    block_qidi_updates: bool | None,
     run=subprocess.run,
     urlopen=urllib.request.urlopen,
 ) -> InstalledState:
@@ -494,6 +542,7 @@ def maybe_apply_system_optimizations(
             environ=environ,
             source="auto_update_child" if auto_update_child else "yes_install" if input_stream is None else "interactive_install",
             package_version=manifest.package.version,
+            block_qidi_updates=block_qidi_updates,
             run=run,
             urlopen=urlopen,
         )
@@ -574,6 +623,7 @@ def maybe_reconcile_system_optimizations(
     manifest: Manifest,
     reporter,
     environ: dict[str, str],
+    block_qidi_updates: bool | None,
     run=subprocess.run,
     urlopen=urllib.request.urlopen,
 ) -> None:
@@ -602,6 +652,7 @@ def maybe_reconcile_system_optimizations(
             environ=environ,
             source="auto_update_reconcile",
             package_version=manifest.package.version,
+            block_qidi_updates=block_qidi_updates,
             run=run,
             urlopen=urlopen,
         )
@@ -626,6 +677,7 @@ def maybe_emit_system_dry_run(
     prior_state: InstalledState | None,
     cli_options: SystemOptimizationCliOptions,
     environ: dict[str, str],
+    block_qidi_updates: bool | None,
     run=subprocess.run,
 ) -> None:
     if manifest.system_optimizations is None:
@@ -702,15 +754,19 @@ def maybe_emit_system_dry_run(
             spec = manifest.system_optimizations
             prior = prior_ledger or {}
             try:
+                if guarded.binary is not None and block_qidi_updates is None:
+                    reporter.line(f"  - {operation_id}: QIDI's package updates stay blocked or allowed as they are now")
                 if _guarded_file_has_drift(operation_id, spec, root, prior.get("restore_preimages", {}), prior.get("outcomes", {})):
                     reporter.line(f"  - would preserve modified {guarded.label}")
-                elif _operation_needs_apply(operation_id, spec=spec, root=root, run=run):
+                elif _operation_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates):
                     restart = {
                         "moonraker.service": " and restart Moonraker",
                         "klipper.service": " and restart Klipper",
                         "nginx.service": " and restart nginx",
                         remote_screen.UNIT: " and restart the printer screen service",
                         addons_service.UNIT: " and restart the add-ons service",
+                        status_service.UNIT: " and restart the Valve Oil status service",
+                        auto_update.TIMER_NAME: " and schedule the update check",
                         QIDICLIENT_SERVICE: " and restart the touchscreen app",
                         zram_swap.UNIT: " and start zram swap",
                         cpu_governor.SERVICE: " and apply the CPU governor",
@@ -1073,6 +1129,9 @@ def _guarded_file_has_drift(operation_id: str, spec: SystemOptimizationsSpec, ro
     expected = _outcome_file_sha256(outcomes.get(operation_id, {}))
     if GUARDED_FILE_PATCHES[operation_id].create_if_missing and not target.exists() and not _path_has_symlink_component(target, root=root):
         return False
+    if GUARDED_FILE_PATCHES[operation_id].binary is not None:
+        # Ownership of a binary is ownership of a reviewed build, whatever form it is in (_binary_original).
+        return _path_has_symlink_component(target, root=root)
     return _path_has_symlink_component(target, root=root) or not target.is_file() or (
         _sha256_file(target) != expected
         and not _file_matches_preimage(preimages[operation_id], root=root)
@@ -1144,7 +1203,10 @@ def restore_system_optimizations(
             if guarded is not None:
                 target = _map_path(root, guarded.file(manifest.system_optimizations))
                 expected = _outcome_file_sha256(outcome)
-                if _path_has_symlink_component(target, root=root) or not target.is_file() or _sha256_file(target) != expected:
+                if _path_has_symlink_component(target, root=root) or not target.is_file() or (
+                    not guarded.binary.same_build(_sha256_file(target), preimage["sha256"])
+                    if guarded.binary is not None else _sha256_file(target) != expected
+                ):
                     reporter.line(f"{guarded.label} was modified after install and was preserved.")
                     continue
             if operation_id == FILAMENT_CONFIG_OPERATION:
@@ -1290,10 +1352,13 @@ def apply_system_optimizations(
     input_stream,
     environ: dict[str, str],
     source: str,
+    block_qidi_updates: bool | None,
     package_version: str = "unknown",
     run=subprocess.run,
     urlopen=urllib.request.urlopen,
 ) -> dict[str, Any]:
+    """Apply the package's host changes. block_qidi_updates decides whether a reviewed touchscreen app is patched to
+    refuse QIDI firmware packages and hide QIDI's online update, or keeps only the firmware-version notice fix."""
     root = _system_root(environ)
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
@@ -1320,6 +1385,10 @@ def apply_system_optimizations(
         _validate_qidiclient_archive(paths.installer_root / spec.qidiclient_static_gifs.archive, spec.qidiclient_static_gifs.sha256)
     applied_any = False
     current_preimages: dict[str, Any] = {}
+    # Backups of the touchscreen app made in this transaction, and preserved originals it stops owning; each is
+    # discarded once nothing in the ledger refers to it.
+    binary_created: list[dict[str, Any]] = []
+    binary_superseded: list[dict[str, Any]] = []
     # The Rockchip journal stays until the installed state commits its transaction.
     rockchip_journal: dict[str, Any] | None = None
     try:
@@ -1348,6 +1417,32 @@ def apply_system_optimizations(
                     )
                     applied_any = True
                 continue
+            binary_original: dict[str, Any] | None = None
+            binary_adopted = False
+            if guarded is not None and guarded.binary is not None and not _path_has_symlink_component(_map_path(root, guarded.file(spec)), root=root):
+                owned_before = operation_id in restore_preimages
+                binary_original = _binary_original(
+                    operation_id, guarded, paths=paths, spec=spec, root=root, restore_preimages=restore_preimages,
+                    created=binary_created, superseded=binary_superseded,
+                )
+                # Newly owned, or a different build adopted: the outcome is recorded even when nothing is patched.
+                binary_adopted = any(item is binary_original for item in binary_created)
+                if binary_original is None and owned_before:
+                    reporter.line("The touchscreen app is not a reviewed QIDI build; it was left as it is, and uninstall no longer restores it.")
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status="released",
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": guarded.file(spec)},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    applied_any = True
+                    continue
             if guarded is not None and _guarded_file_has_drift(operation_id, spec, root, restore_preimages, ledger.get("outcomes", {})):
                 if guarded.required:
                     raise SystemOptimizationError(f"Required {guarded.label} was modified and was preserved.")
@@ -1407,7 +1502,7 @@ def apply_system_optimizations(
                 continue
             if guarded is not None and guarded.skip_unrecognized:
                 try:
-                    _operation_needs_apply(operation_id, spec=spec, root=root, run=run)
+                    _operation_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates)
                 except InstallerError as exc:
                     reporter.line(getattr(exc, "message", str(exc)))
                     actions.append(
@@ -1843,8 +1938,8 @@ def apply_system_optimizations(
                         )
                     )
                     continue
-            elif not _operation_needs_apply(operation_id, spec=spec, root=root, run=run):
-                if guarded is not None and operation_id in restore_preimages:
+            elif not _operation_needs_apply(operation_id, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates):
+                if guarded is not None and operation_id in restore_preimages and not binary_adopted:
                     # A no-op must not adopt concurrent edits as a new owned file hash.
                     continue
                 status = "already_current"
@@ -1859,7 +1954,7 @@ def apply_system_optimizations(
                         started_at=started_at,
                         preimage=None,
                         desired=_desired(operation_id, spec),
-                        postflight=(_postflight_operation(operation_id, paths=paths, spec=spec, root=root, run=run)
+                        postflight=(_postflight_operation(operation_id, paths=paths, spec=spec, root=root, run=run, block_qidi_updates=block_qidi_updates)
                                     if guarded is not None else "ok"),
                         source=source,
                         reconciled=False,
@@ -1867,6 +1962,9 @@ def apply_system_optimizations(
                 )
                 continue
             _report_step(reporter, operation_id, spec)
+            if preimage is None and binary_original is not None and _file_matches_preimage(binary_original, root=root):
+                # QIDI's executable is on the host: the preserved original also rolls the transaction back.
+                preimage = binary_original
             if preimage is None:
                 preimage = _capture_operation_preimage(
                     operation_id,
@@ -1875,6 +1973,8 @@ def apply_system_optimizations(
                     root=root,
                     run=run,
                 )
+                if binary_original is not None:
+                    binary_created.append(preimage)
             current_preimages[operation_id] = preimage
             _write_host_journal(
                 paths,
@@ -1893,6 +1993,7 @@ def apply_system_optimizations(
                 run=run,
                 preimage=preimage,
                 restarts=restarts,
+                block_qidi_updates=block_qidi_updates,
             )
             postflight = _postflight_operation(
                 operation_id,
@@ -1900,10 +2001,11 @@ def apply_system_optimizations(
                 spec=spec,
                 root=root,
                 run=run,
+                block_qidi_updates=block_qidi_updates,
             )
             if guarded is not None:
                 if guarded.binary is not None:
-                    expected = guarded.binary.patched_sha256(preimage["sha256"])
+                    expected = guarded.binary.patched_sha256(preimage["sha256"], block=block_qidi_updates)
                 else:
                     original = Path(preimage["backup_path"]).read_bytes().decode("utf-8") if preimage.get("exists") else ""
                     expected = hashlib.sha256(guarded.patched(original, spec=spec, root=root).encode("utf-8")).hexdigest()
@@ -1964,7 +2066,17 @@ def apply_system_optimizations(
             recovery_ledger = _compact_host_ledger(
                 ledger,
                 actions=actions,
-                restore_preimages={**initial_restore_preimages, **current_preimages},
+                restore_preimages={
+                    **initial_restore_preimages,
+                    **current_preimages,
+                    # A binary's restoration is always QIDI's executable, never a form a transaction started from.
+                    **{
+                        operation_id: restore_preimages[operation_id]
+                        for operation_id in current_preimages
+                        if GUARDED_FILE_PATCHES.get(operation_id) is not None
+                        and GUARDED_FILE_PATCHES[operation_id].binary is not None and operation_id in restore_preimages
+                    },
+                },
             )
             raise SystemOptimizationRecoveryError(
                 f"System optimization failed: {_failure_text(exc)} "
@@ -1972,6 +2084,7 @@ def apply_system_optimizations(
                 recovery_ledger,
             ) from rollback_exc
         atomic_delete(_journal_path(paths))
+        _discard_unreferenced_backups(binary_created, initial_restore_preimages, paths)
         if isinstance(exc, KeyboardInterrupt):
             raise
         partial = _compact_host_ledger(
@@ -1980,6 +2093,7 @@ def apply_system_optimizations(
             restore_preimages=initial_restore_preimages,
         )
         raise SystemOptimizationApplyError(getattr(exc, "message", str(exc)), partial) from exc
+    _discard_unreferenced_backups([*binary_created, *binary_superseded], restore_preimages, paths)
     # The replaced static builds and Moonraker speedups are kept only while the transaction can still roll back.
     for build in STATIC_BUILDS.values():
         with suppress(OSError, InstallerError):
@@ -2074,6 +2188,7 @@ def _postflight_operation(
     spec: SystemOptimizationsSpec,
     root: Path,
     run,
+    block_qidi_updates: bool | None = None,
 ) -> Any:
     if operation_id.startswith("service_"):
         service = _service_for_operation(operation_id, spec)
@@ -2089,7 +2204,7 @@ def _postflight_operation(
         target = _map_path(root, path)
         if not target.exists():
             return {"path": path, "exists": False}
-        if _guarded_file_needs_patch(guarded, target, spec=spec, root=root):
+        if _guarded_file_needs_patch(guarded, target, spec=spec, root=root, block_qidi_updates=block_qidi_updates):
             raise SystemOptimizationError(f"{guarded.label} patch failed postflight.")
         return {"path": path, "sha256": _sha256_file(target)}
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -2132,7 +2247,7 @@ def _capture_operation_preimage(operation_id: str, *, paths: RuntimePaths, spec:
 
 
 
-def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
+def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts, block_qidi_updates: bool | None = None) -> None:
     if operation_id == "dns":
         _apply_dns(paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run)
         return
@@ -2143,7 +2258,7 @@ def _apply_operation(operation_id: str, *, paths: RuntimePaths, spec: SystemOpti
         _apply_gifs(paths=paths, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
         return
     if operation_id in GUARDED_FILE_PATCHES:
-        _apply_guarded_file_patch(operation_id, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
+        _apply_guarded_file_patch(operation_id, spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts, block_qidi_updates=block_qidi_updates)
         return
     if operation_id == MOONRAKER_METADATA_OPERATION:
         _apply_moonraker_metadata_patch(spec=spec, root=root, sudo_password=sudo_password, run=run, preimage=preimage, restarts=restarts)
@@ -2201,7 +2316,7 @@ def _apply_service(service: str, *, root: Path, sudo_password: str | None, run, 
 
 
 
-def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
+def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts, block_qidi_updates: bool | None = None) -> None:
     guarded = GUARDED_FILE_PATCHES[operation_id]
     path = guarded.file(spec)
     target = _map_path(root, path)
@@ -2225,8 +2340,10 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
             # The backup just taken is the reviewed original; its directory is on the printer's storage.
             backup = Path(preimage["backup_path"])
             with tempfile.TemporaryDirectory(dir=backup.parent) as work:
-                guarded.binary.write_patched(backup, Path(work) / "patched")
+                guarded.binary.write_patched(backup, Path(work) / "patched", block=block_qidi_updates)
                 _install_file_preserving_preimage(staged_path, Path(work) / "patched", preimage=preimage, root=root, sudo_password=sudo_password, run=run)
+            # A power cut after the rename must not leave a truncated executable.
+            _sync_host_path(staged_path, root=root, sudo_password=sudo_password, run=run)
         else:
             patched = guarded.patched((original or b"").decode("utf-8"), spec=spec, root=root)
             _write_file_preserving_preimage(staged_path, patched, preimage=preimage, root=root, sudo_password=sudo_password, run=run)
@@ -2242,6 +2359,8 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
             os.replace(staged, target)
         else:
             run_sudo_or_raise(["mv", "-f", staged_path, path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        if guarded.binary is not None:
+            _sync_host_path(str(PurePosixPath(path).parent), root=root, sudo_password=sudo_password, run=run)
     finally:
         if _is_fake_root(root):
             staged.unlink(missing_ok=True)
@@ -2437,7 +2556,7 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     target = _map_path(root, preimage["path"])
     _reject_symlink_path(target, root=root)
     if guarded.binary is not None:
-        if not target.is_file() or _sha256_file(target) not in (preimage["sha256"], guarded.binary.patched_sha256(preimage["sha256"])):
+        if not target.is_file() or not guarded.binary.same_build(_sha256_file(target), preimage["sha256"]):
             raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
         _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
         return
@@ -2454,7 +2573,7 @@ def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], 
     if guarded.service_unit:
         run_sudo_ignore_failure(["systemctl", "disable", "--now", "--no-reload", guarded.service_unit], run=run, password=sudo_password or "")
         restarts.discard(guarded.service_unit)
-    _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run)
+    _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, durable=guarded.binary is not None)
     if guarded.service_unit:
         restarts.reload_units()
     elif guarded.restart_service:
@@ -2536,7 +2655,7 @@ def _operation_matches_preimage(
     return False
 
 
-def _restore_file_preimage(preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run) -> None:
+def _restore_file_preimage(preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, durable: bool = False) -> None:
     path = preimage["path"]
     mapped = _map_path(root, path)
     if not preimage.get("exists"):
@@ -2561,12 +2680,18 @@ def _restore_file_preimage(preimage: dict[str, Any], *, paths: RuntimePaths, roo
         mapped.unlink(missing_ok=True)
         mapped.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup_path, mapped)
+        if durable:
+            _sync_host_path(path, root=root, sudo_password=sudo_password, run=run)
     else:
         _reject_parent_symlink_path(mapped, root=root)
         tmp_path = f"{path}.tltg-restore-{_now_for_path()}.tmp"
         try:
             run_sudo_or_raise(["install", "-D", "-m", preimage.get("mode", "0644"), str(backup_path), tmp_path], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
+            if durable:
+                _sync_host_path(tmp_path, root=root, sudo_password=sudo_password, run=run)
             run_sudo_or_raise(["mv", "-f", tmp_path, path], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
+            if durable:
+                _sync_host_path(str(PurePosixPath(path).parent), root=root, sudo_password=sudo_password, run=run)
             if "uid" in preimage and "gid" in preimage:
                 run_sudo_or_raise(["chown", f"{preimage['uid']}:{preimage['gid']}", path], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
         finally:
@@ -2639,6 +2764,8 @@ def _capture_file(path: str, *, paths: RuntimePaths, root: Path) -> dict[str, An
     backup_path = backup_root / path.lstrip("/")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(mapped, backup_path)
+    with backup_path.open("rb") as handle:
+        os.fsync(handle.fileno())
     stat = mapped.stat()
     preimage.update({
         "type": "file",
@@ -2699,9 +2826,90 @@ def _sha256_file(path: Path) -> str:
     return qidiclient_firmware_popup.sha256_file(path)
 
 
-def _guarded_file_needs_patch(guarded: _GuardedFilePatch, path: Path, *, spec: SystemOptimizationsSpec, root: Path) -> bool:
+def _binary_original(
+    operation_id: str,
+    guarded: _GuardedFilePatch,
+    *,
+    paths: RuntimePaths,
+    spec: SystemOptimizationsSpec,
+    root: Path,
+    restore_preimages: dict[str, Any],
+    created: list[dict[str, Any]],
+    superseded: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Keep the ledger's restoration of a patched executable on QIDI's executable of the reviewed build the host has,
+    whichever form it is in, and return it. A different reviewed build, such as one a QIDI package installed, is
+    adopted with its own QIDI executable preserved. A file that is not a reviewed build is released and returns None."""
+    path = guarded.file(spec)
+    target = _map_path(root, path)
+    owned = restore_preimages.get(operation_id)
+    sha256 = _sha256_file(target) if target.is_file() and target.stat().st_size in {build.size for build in guarded.binary.BUILDS.values()} else None
+    stock = guarded.binary.stock_sha256(sha256) if sha256 is not None else None
+    if stock is None:
+        if owned is not None:
+            superseded.append(restore_preimages.pop(operation_id))
+        return None
+    if owned is not None and owned.get("sha256") == stock:
+        return owned
+    if sha256 == stock:
+        original = _capture_file(path, paths=paths, root=root)
+    else:
+        original = _capture_binary_original(guarded, path, paths=paths, root=root)
+    created.append(original)
+    if owned is not None:
+        superseded.append(owned)
+    restore_preimages[operation_id] = original
+    return original
+
+
+def _capture_binary_original(guarded: _GuardedFilePatch, path: str, *, paths: RuntimePaths, root: Path) -> dict[str, Any]:
+    """Preserve QIDI's executable of the build a patched executable is a form of."""
+    mapped = _map_path(root, path)
+    backup_path = paths.printer_data_root / SYSTEM_BACKUP_DIR / _now_for_path() / "files" / path.lstrip("/")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    sha256 = guarded.binary.write_original(mapped, backup_path)
+    stat = mapped.stat()
+    return {
+        "path": path, "exists": True, "type": "file", "backup_path": str(backup_path), "sha256": sha256,
+        "mode": f"{stat.st_mode & 0o777:04o}", "uid": stat.st_uid, "gid": stat.st_gid,
+    }
+
+
+def _discard_unreferenced_backups(preimages: list[dict[str, Any]], kept: dict[str, Any], paths: RuntimePaths) -> None:
+    """Remove the backups of preimages that no kept preimage refers to, with directories left empty."""
+    referenced = {item.get("backup_path") for item in kept.values() if isinstance(item, dict)}
+    backup_root = (paths.printer_data_root / SYSTEM_BACKUP_DIR).resolve()
+    for preimage in preimages:
+        backup = preimage.get("backup_path")
+        if not backup or backup in referenced:
+            continue
+        with suppress(OSError, ValueError):
+            path = Path(backup).resolve()
+            path.relative_to(backup_root)
+            path.unlink(missing_ok=True)
+            for parent in path.parents:
+                if parent == backup_root or backup_root not in parent.parents:
+                    break
+                parent.rmdir()
+
+
+def _sync_host_path(path: str, *, root: Path, sudo_password: str | None, run) -> None:
+    """Flush a written file, or a directory after a rename in it, to the printer's storage."""
+    if _is_fake_root(root):
+        descriptor = os.open(_map_path(root, path), os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    else:
+        run_sudo_or_raise(["sync", path], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+
+
+def _guarded_file_needs_patch(
+    guarded: _GuardedFilePatch, path: Path, *, spec: SystemOptimizationsSpec, root: Path, block_qidi_updates: bool | None = None,
+) -> bool:
     if guarded.binary is not None:
-        return guarded.binary.needs_patch(path)
+        return guarded.binary.needs_patch(path, block=block_qidi_updates)
     text = path.read_bytes().decode("utf-8")
     return guarded.patched(text, spec=spec, root=root) != text
 
@@ -2869,7 +3077,7 @@ def _reject_operation_unsafe_for_compare(operation_id: str, *, spec: SystemOptim
         return
 
 
-def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, run) -> bool:
+def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, root: Path, run, block_qidi_updates: bool | None = None) -> bool:
     _reject_operation_unsafe_for_compare(operation_id, spec=spec, root=root)
     if operation_id == "dns":
         resolv = _map_path(root, spec.dns.resolv_conf)
@@ -2896,7 +3104,7 @@ def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, 
         path = _map_path(root, guarded.file(spec))
         if not path.exists():
             return guarded.create_if_missing
-        return _guarded_file_needs_patch(guarded, path, spec=spec, root=root)
+        return _guarded_file_needs_patch(guarded, path, spec=spec, root=root, block_qidi_updates=block_qidi_updates)
     if operation_id == MOONRAKER_METADATA_OPERATION:
         path = _map_path(root, spec.moonraker_metadata_3mf.file)
         return path.exists() and MOONRAKER_METADATA_PATCH_MARKER not in path.read_text(encoding="utf-8")
@@ -3301,6 +3509,10 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         remote_screen.SERVER_OPERATION,
         addons_service.UNIT_OPERATION,
         addons_service.SERVER_OPERATION,
+        status_service.UNIT_OPERATION,
+        status_service.SERVER_OPERATION,
+        auto_update.SERVICE_OPERATION,
+        auto_update.TIMER_OPERATION,
         remote_screen.NGINX_OPERATION,
     ]
     if enabled:
@@ -3377,6 +3589,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
         addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
+        status_service.UNIT_OPERATION, status_service.SERVER_OPERATION,
+        auto_update.SERVICE_OPERATION, auto_update.TIMER_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
@@ -3841,6 +4055,10 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             remote_screen.SERVER_OPERATION,
             addons_service.UNIT_OPERATION,
             addons_service.SERVER_OPERATION,
+            status_service.UNIT_OPERATION,
+            status_service.SERVER_OPERATION,
+            auto_update.SERVICE_OPERATION,
+            auto_update.TIMER_OPERATION,
             remote_screen.NGINX_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),

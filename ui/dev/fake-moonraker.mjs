@@ -2,11 +2,14 @@
 // A fake Moonraker for developing Valve Oil UI without a printer.
 //
 //   node dev/fake-moonraker.mjs [--port 7125] [--scenario printing|idle|box-busy|box-failed|stranded|no-box]
+//                               [--updates none|release-off|firmware-printing|boards|running|failed|interrupted|refused|
+//                                          firmware-failed|firmware-rescue|closed-loop|thr-waiting|reinstall|absent]
 //
 // Serves the Moonraker websocket and file endpoints the UI uses, plus ui/dist at /valve-oil/ (same origin, like the
 // printer's nginx). Run `npm run build` first to use /valve-oil/, or point `npm run dev` at it with
 // http://localhost:5173/?moonraker=localhost:7125. The data is shaped like a QIDI Max 4 on firmware 01.01.07.01 with
-// two Boxes; switch scenarios at runtime from the console with `VO_SCENARIO NAME=<scenario>`.
+// two Boxes; switch scenarios at runtime from the console with `VO_SCENARIO NAME=<scenario>`, and Valve Oil's update
+// status (/tltg-status/api) with `VO_UPDATES NAME=<scenario>`.
 import { createServer } from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -16,7 +19,8 @@ import { WebSocketServer } from 'ws'
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []))
 const PORT = Number(args.port ?? 7125)
 const DIST = fileURLToPath(new URL('../dist/', import.meta.url))
-let scenario = args.scenario ?? 'printing'
+// With only --updates given, the printer starts idle so Update now is available.
+let scenario = args.scenario ?? (args.updates ? 'idle' : 'printing')
 
 // ---------- printer model ----------
 const FILAMENTS = {
@@ -344,6 +348,7 @@ async function gcode(script) {
       set('toolhead', { position: pos })
       set('gcode_move', { gcode_position: pos })
     } else if (C === 'VO_SCENARIO') applyScenario(p.NAME ?? 'idle')
+    else if (C === 'VO_UPDATES') applyUpdates(p.NAME ?? 'none')
     else if (C === 'SAVE_VARIABLE') {
       // Roughly Klipper: outer double quotes are stripped, then the value is a Python literal.
       let v = p.VALUE
@@ -445,8 +450,8 @@ function rpcError(message) {
 
 const handlers = {
   'server.connection.identify': () => ({ connection_id: 1 }),
-  'server.info': () => ({ klippy_connected: true, klippy_state: 'ready', components: ['history', 'webcam', 'file_manager'], moonraker_version: 'fake' }),
-  'printer.info': () => ({ state: 'ready', state_message: 'Printer is ready', hostname: 'fake-max4', software_version: 'v0.12-fake' }),
+  'server.info': () => ({ klippy_connected: true, klippy_state: state.klippy, components: ['history', 'webcam', 'file_manager'], moonraker_version: 'fake' }),
+  'printer.info': () => ({ state: state.klippy, state_message: state.klippy === 'ready' ? 'Printer is ready' : 'Klipper is restarting', hostname: 'fake-max4', software_version: 'v0.12-fake' }),
   'printer.objects.list': () => ({ objects: [...Object.keys(state.status), 'gcode', 'configfile'] }),
   'printer.objects.subscribe': (p, ws) => {
     subs.set(ws, p.objects)
@@ -593,6 +598,335 @@ setInterval(() => {
   }
 }, 1000)
 
+// ---------- Valve Oil status service (/tltg-status/api, installer/system/tltg_status.py) ----------
+// Pick a starting state with --updates, or switch at runtime with `VO_UPDATES NAME=<scenario>`. Update now runs a
+// simulated update; with QIDI or board firmware waiting it takes Moonraker and this API away for a while, as the real
+// one restarts them.
+const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'absent']
+const ISSUE_URL =
+  'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&title=Box+1+bootloader+not+supported&printer=QIDI+Max+4&firmware=01.01.07.01&board=box1'
+const iso = (secondsAgo = 0) => new Date(Date.now() - secondsAgo * 1000).toISOString().replace(/\.\d+Z$/, 'Z')
+const board = (id, state, firmware, build, extra = {}) => ({ id, state, name: { thr: 'THR', mcu: 'Mainboard', closed_loop: 'Closed-loop drivers' }[id] ?? `Box ${id.slice(3)}`, firmware, build, pinned: firmware, bootloader: null, issue_url: null, report: null, detail: null, checked_at: iso(3600), waiting_for_firmware_update: false, ...extra })
+// installer/runtime/valve_oil_status.py BLOCKERS and installer/system/tltg_status.py UPDATE_NOW_BLOCKERS.
+const BLOCKERS = {
+  printing: 'a print is running or paused',
+  heaters_on: 'a heater is set to a temperature',
+  printer_state_unknown: "Klipper didn't report whether the printer is idle",
+  last_run_failed: "the last attempt didn't finish",
+  run_in_progress: 'another update is still running',
+  installer_busy: 'another installer run is in progress',
+  // As the service names the rescue to run, for the mainboard write the firmware-rescue scenario leaves unverified.
+  recovery_required: "a mainboard firmware write wasn't verified; run ./mainboard-firmware.sh rescue first",
+}
+const WAITING_FOR_FIRMWARE = { waiting_for_firmware_update: true, detail: 'will be updated after the QIDI firmware update to 01.01.07.01' }
+// The update check's timer: hourly, a few minutes past the hour.
+const nextCheck = () => {
+  const next = new Date()
+  next.setMinutes(5, 0, 0)
+  if (next.getTime() <= Date.now()) next.setHours(next.getHours() + 1)
+  return next.toISOString().replace(/\.\d+Z$/, 'Z')
+}
+const CLOSED_LOOP_DETAIL =
+  "X driver reports firmware 03.01.01, hardware 9.2, state idle. Valve Oil sent no firmware to the X and Y closed-loop motor drivers, so they keep the firmware they have; QIDI firmware 01.01.07.01 carries driver firmware 03.01.02. Update the motor drivers from the touchscreen's firmware page."
+// A firmware update kept after it failed part way, which Update now or ./install.sh continues.
+const FIRMWARE_FAILED = {
+  firmware_update: true,
+  can_continue: true,
+  kind: 'automatic',
+  state: 'failed',
+  step: 'soc',
+  step_label: 'Installing QIDI firmware 01.01.07.01',
+  resumed: false,
+  message: "Installing QIDI firmware 01.01.07.01 failed (dpkg returned 1: dpkg: error processing archive /home/qidi/update/QIDI_Max4/soc.deb (--install): unexpected end of file in archive). Klipper and Moonraker were started again; run ./install.sh to try again.",
+}
+const FIRMWARE_RESCUE = {
+  firmware_update: true,
+  // Kept and failed, so Update now continues it, once the rescue has run (update_now says so).
+  can_continue: true,
+  kind: 'automatic',
+  state: 'failed',
+  step: 'boards',
+  step_label: 'Updating the board firmware',
+  resumed: true,
+  message: "A board firmware write could not be verified (mainboard: no answer from the bootloader after writing 01.01.07.01-tltg.2). Don't turn the printer off; run ./mainboard-firmware.sh rescue, then run ./install.sh to finish the update.",
+}
+let vo = null
+let voGeneration = 0
+let outage = false
+state.klippy = 'ready'
+
+function applyUpdates(name) {
+  if (!UPDATE_SCENARIOS.includes(name)) throw rpcError(`Unknown updates scenario ${name}: use ${UPDATE_SCENARIOS.join(', ')}`)
+  voGeneration++
+  outage = false
+  vo = {
+    scenario: name,
+    absent: name === 'absent',
+    auto: true,
+    release: '26.11.11.3',
+    firmware: '01.01.07.01',
+    target: '01.01.07.01',
+    check: { at: iso(5400), result: 'ok', message: '' },
+    pending: [],
+    boards: [board('thr', 'current', '1.0.4', 'patched'), board('mcu', 'current', '1.0.6', 'patched'), board('box1', 'current', '1.0.3', 'patched'), board('box2', 'current', '1.0.3', 'patched')],
+    run: null,
+    job: null,
+    failNext: false,
+    // Update now's next request is refused: the update check holds the installer lock, with a heater on, until this time.
+    refuseNext: false,
+    installerBusyUntil: 0,
+    recovery: false,
+    continueFirmware: false,
+  }
+  const release = { kind: 'release', version: '26.11.12.1', current: '26.11.11.3', board: null, reinstall: false }
+  const firmware = { kind: 'firmware', version: '01.01.07.01', current: '01.01.06.02', board: null, reinstall: false }
+  const thr = { kind: 'board', version: '1.0.4', current: '1.0.2', board: 'thr', reinstall: false }
+  if (name === 'release-off') {
+    vo.auto = false
+    vo.pending = [release]
+  } else if (name === 'firmware-printing' || name === 'running' || name === 'interrupted' || name === 'failed') {
+    vo.firmware = '01.01.06.02'
+    vo.pending = [firmware, thr, release]
+    vo.boards[0] = board('thr', 'needs_image', '1.0.2', 'stock', { pinned: '1.0.4' })
+    if (name === 'firmware-printing' && state.status.print_stats?.state !== 'printing') applyScenario('printing')
+  } else if (name === 'boards') {
+    vo.boards[1] = board('mcu', 'unknown', null, null, { detail: 'Klipper was not ready, so the board was not read.' })
+    vo.boards[2] = board('box1', 'unrecognized_bootloader', '1.0.2', 'stock', { issue_url: ISSUE_URL, detail: "QIDI firmware 01.01.07.01 carries Box firmware 1.0.3; update this Box from the touchscreen's firmware page." })
+    vo.boards[3] = board('box2', 'held', '1.0.3', 'stock')
+  } else if (name === 'refused') {
+    // The status still says Update now can start; the hourly check takes the installer lock just before it's pressed.
+    vo.pending = [release]
+    vo.refuseNext = true
+  } else if (name === 'firmware-failed' || name === 'firmware-rescue') {
+    // Failed after QIDI's package went in (firmware-failed: while installing it), with the THR still to flash.
+    vo.firmware = name === 'firmware-failed' ? '01.01.06.02' : '01.01.07.01'
+    vo.pending = name === 'firmware-failed' ? [firmware] : []
+    vo.boards[0] = board('thr', 'needs_image', '1.0.2', 'stock', { pinned: '1.0.4', ...(name === 'firmware-failed' ? WAITING_FOR_FIRMWARE : {}) })
+    vo.boards[1] = name === 'firmware-rescue' ? board('mcu', 'unknown', null, null, { detail: 'Klipper does not report this board.' }) : vo.boards[1]
+    vo.run = { id: `run-${name}`, ...(name === 'firmware-failed' ? FIRMWARE_FAILED : FIRMWARE_RESCUE), started_at: iso(2400), finished_at: iso(1500) }
+    vo.recovery = name === 'firmware-rescue'
+    vo.continueFirmware = true
+  } else if (name === 'closed-loop') {
+    // After a firmware update that left the Max 4's closed-loop drivers on their firmware.
+    vo.boards.splice(2, 0, board('closed_loop', 'held', '03.01.01', null, { pinned: '03.01.02', detail: CLOSED_LOOP_DETAIL }))
+    vo.run = { id: 'run-closed-loop', kind: 'update_now', state: 'succeeded', step: 'finish', step_label: 'Starting the printer again', started_at: iso(2400), finished_at: iso(900), message: `QIDI firmware 01.01.07.01 is installed, with Valve Oil for it. ${CLOSED_LOOP_DETAIL}`, resumed: false }
+  } else if (name === 'thr-waiting') {
+    // The THR's image needs the newer QIDI firmware: it's flashed in the firmware update, so it has no update of its own.
+    vo.firmware = '01.01.06.02'
+    vo.pending = [firmware]
+    vo.boards[0] = board('thr', 'needs_image', '1.0.2', 'stock', { pinned: '1.0.4', ...WAITING_FOR_FIRMWARE })
+    vo.boards[1] = board('mcu', 'needs_image', '1.0.5', 'stock', { pinned: '1.0.6', ...WAITING_FOR_FIRMWARE })
+  } else if (name === 'reinstall') {
+    // QIDI's firmware package emptied the config folder: the installed release has to be installed again.
+    vo.pending = [{ kind: 'release', version: vo.release, current: vo.release, board: null, reinstall: true }]
+  }
+  if (name === 'failed') {
+    const log = ['Checking that the printer is idle', 'Downloading QIDI firmware 01.01.07.01', "The download didn't match its checksum, so nothing on the printer was changed."]
+    vo.job = { id: 'job-failed', state: 'failed', started_at: iso(1800), finished_at: iso(1740), log, message: log.at(-1) }
+    vo.run = { id: 'run-failed', kind: 'update_now', state: 'failed', step: 'download', step_label: 'Downloading QIDI firmware 01.01.07.01', started_at: iso(1799), finished_at: iso(1740), message: "The download didn't match its checksum, so nothing on the printer was changed.", resumed: false }
+    vo.check = { at: iso(1700), result: 'failed', message: "The release list couldn't be reached." }
+    vo.failNext = true
+  } else if (name === 'interrupted') {
+    vo.run = { id: 'run-interrupted', firmware_update: true, kind: 'automatic', state: 'interrupted', step: 'install_firmware', step_label: "Installing QIDI's firmware package", started_at: iso(7200), finished_at: null, message: '', resumed: false }
+  } else if (name === 'running') {
+    if (voPrinterBusy()) applyScenario('idle')
+    startUpdate()
+  }
+  voWarnings()
+}
+
+// The printer warnings Klipper's tltg_printer_warnings reports for the update state (installer/klipper/tltg/
+// printer_warnings.py), beside the printer scenario's own.
+function voWarnings() {
+  const kept = (state.status.tltg_printer_warnings?.warnings ?? []).filter((w) => !w.id.startsWith('valve_oil_') && !w.id.startsWith('box_firmware_'))
+  const warnings = []
+  const run = vo.run
+  const step = run?.step_label ? `It stopped at: ${run.step_label}. ` : ''
+  if (run?.state === 'running') warnings.push({ id: 'valve_oil_update_running', level: 'warning', title: 'A Valve Oil update is running.', message: "Don't turn the printer off until it finishes." })
+  else if (run?.state === 'interrupted') warnings.push({ id: 'valve_oil_update_interrupted', level: 'error', title: 'A Valve Oil update was interrupted.', message: `${step}Finish it with Update now or by running the Valve Oil installer.` })
+  else if (run?.state === 'failed' && run.firmware_update)
+    warnings.push({
+      id: 'valve_oil_firmware_update_failed',
+      level: 'error',
+      title: "A QIDI firmware update didn't finish.",
+      message: `${step}${run.message}${run.can_continue && !vo.recovery ? ' Continue it with Update now or by running the Valve Oil installer.' : ''}`,
+    })
+  const firmware = vo.pending.find((p) => p.kind === 'firmware')
+  const release = vo.pending.find((p) => p.kind === 'release')
+  const reasons = [...new Set(voStatus().pending.flatMap((item) => item.blocked_by.map((b) => b.message)))]
+  const waiting = !vo.auto
+    ? 'Automatic updates are off, so run the Valve Oil installer to install it.'
+    : reasons.length
+      ? `Automatic updates are on, but it hasn't been installed yet: ${reasons.join('; ')}.`
+      : 'Automatic updates are on, so it will be installed at the next update check while the printer is idle.'
+  const firmwareNote = vo.auto && !reasons.length ? " The printer can't be used while it installs." : ''
+  if (release) warnings.push({ id: 'valve_oil_release_waiting', level: 'warning', title: release.reinstall ? 'Valve Oil needs to be installed again.' : `Valve Oil ${release.version} is waiting.`, message: waiting })
+  if (firmware) warnings.push({ id: 'valve_oil_firmware_waiting', level: 'warning', title: `QIDI firmware ${firmware.version} is waiting.`, message: waiting + firmwareNote })
+  if (vo.scenario === 'boards')
+    warnings.push({
+      id: 'box_firmware_unsupported_box1',
+      level: 'warning',
+      title: "Box 1 can't get the Valve Oil Box firmware yet.",
+      message:
+        "Its bootloader or firmware isn't supported yet, so it keeps the firmware it has. To get it supported, open an issue at https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml and attach tltg_box_firmware_box1.json from Fluidd's Logs. QIDI firmware 01.01.07.01 carries Box firmware 1.0.3; update this Box from the touchscreen's firmware page.",
+      url: ISSUE_URL,
+    })
+  set('tltg_printer_warnings', { warnings: [...kept, ...warnings] })
+}
+
+function voPrinterBusy() {
+  return ['printing', 'paused'].includes(state.status.print_stats?.state)
+}
+
+function voStatus() {
+  const live = []
+  if (voPrinterBusy()) live.push('printing')
+  else if (state.status.extruder?.target > 0 || state.status.heater_bed?.target > 0 || Date.now() < vo.installerBusyUntil) live.push('heaters_on')
+  const blockers = [...live]
+  if (vo.recovery) blockers.push('recovery_required')
+  if (vo.run?.state === 'failed') blockers.push('last_run_failed')
+  const running = vo.run?.state === 'running' || vo.job?.state === 'running'
+  // tltg_status.py _update_now: every reason POST api/update-now would refuse, read live.
+  const refusal = [running ? 'run_in_progress' : Date.now() < vo.installerBusyUntil ? 'installer_busy' : null, ...live, vo.recovery ? 'recovery_required' : null].filter(Boolean)
+  return {
+    schema: 1,
+    updated_at: iso(60),
+    release: { installed: vo.release },
+    printer: { id: 'max4', name: 'QIDI Max 4', firmware: vo.firmware, target_firmware: vo.target },
+    auto_update: { enabled: vo.auto, scheduled: true },
+    check: { ...vo.check, next_at: nextCheck() },
+    pending: vo.pending.map((item) => ({ ...item, blocked_by: vo.auto ? blockers.map((code) => ({ code, message: BLOCKERS[code] })) : [] })),
+    boards: vo.boards,
+    run: vo.run && { firmware_update: false, can_continue: false, ...vo.run, job: undefined },
+    // The job names its run once the run has begun and is the latest.
+    job: vo.job && { ...vo.job, log: vo.job.log.slice(-200), message: vo.job.log.findLast((l) => l.trim()) ?? '', run_id: vo.run?.job === vo.job.id ? vo.run.id : null },
+    busy: running,
+    printer_busy: voPrinterBusy(),
+    update_now: { allowed: refusal.length === 0, blocked_by: refusal.map((code) => ({ code, message: BLOCKERS[code] })) },
+  }
+}
+
+// Klipper restarts while Valve Oil installs; Moonraker too while QIDI's package installs.
+function klipperRestart(seconds) {
+  // Stopped, as the installer stops it, then starting for the last second.
+  state.klippy = 'disconnected'
+  broadcast('notify_klippy_disconnected', [])
+  setTimeout(() => (state.klippy = 'startup'), (seconds - 1) * 1000)
+  setTimeout(() => {
+    state.klippy = 'ready'
+    broadcast('notify_klippy_ready', [])
+  }, seconds * 1000)
+}
+function moonrakerOutage(seconds) {
+  outage = true
+  for (const ws of clients) ws.terminate()
+  setTimeout(() => {
+    outage = false
+    klipperRestart(4)
+  }, seconds * 1000)
+}
+
+function startUpdate() {
+  const generation = voGeneration
+  const firmware = vo.pending.find((p) => p.kind === 'firmware') ?? (vo.continueFirmware ? { version: vo.target } : null)
+  const boards = vo.pending.filter((p) => p.kind === 'board')
+  const release = vo.pending.find((p) => p.kind === 'release')
+  const steps = []
+  if (vo.continueFirmware) {
+    // Update now continues the kept firmware update from the step it failed at.
+    const from = vo.run.step
+    if (from === 'soc') steps.push(['stop_services', 'Stopping Klipper, Moonraker, and the touchscreen', 3], ['soc', `Installing QIDI firmware ${vo.target}`, 18, () => moonrakerOutage(15)], ['update_folder', "Updating QIDI's update folder", 2])
+    steps.push(['boards', 'Updating the board firmware', 6, () => klipperRestart(5)], ['install', `Installing Valve Oil for QIDI firmware ${vo.target}`, 6, () => klipperRestart(5)], ['finish', 'Starting the printer again', 3])
+    vo.continueFirmware = false
+  } else {
+    steps.push(['check', 'Checking that the printer is idle', 3])
+    if (firmware) steps.push(['download_firmware', `Downloading QIDI firmware ${firmware.version}`, 5], ['install_firmware', "Installing QIDI's firmware package", 18, () => moonrakerOutage(15)])
+    for (const b of boards) steps.push([`flash_${b.board}`, `Updating the ${vo.boards.find((x) => x.id === b.board)?.name ?? b.board} firmware`, 6, () => klipperRestart(5)])
+    if (release || !firmware) steps.push(['download', 'Downloading the latest Valve Oil release', 3], ['install', 'Installing the latest Valve Oil release', 6, () => klipperRestart(5)])
+  }
+  // The failed scenario's next update fails once, while downloading.
+  const failAt = vo.failNext ? 2 : -1
+  vo.failNext = false
+  vo.job = { id: `job-${Date.now()}`, state: 'running', started_at: iso(), finished_at: null, log: ['Starting Valve Oil update now…'] }
+  let i = -1
+  const next = () => {
+    if (generation !== voGeneration) return
+    i++
+    const log = vo.job.log
+    if (i === failAt) {
+      const message = "The download didn't match its checksum, so nothing on the printer was changed."
+      log.push(message)
+      vo.run = { ...vo.run, state: 'failed', finished_at: iso(), message }
+      setTimeout(() => generation === voGeneration && Object.assign(vo.job, { state: 'failed', finished_at: iso() }), 1000)
+      return
+    }
+    if (i >= steps.length) {
+      log.push('Everything is up to date.')
+      vo.release = release?.version ?? vo.release
+      vo.firmware = firmware?.version ?? vo.firmware
+      vo.boards = vo.boards.map((b) => (b.state === 'needs_image' || (b.state === 'unknown' && vo.recovery) ? { ...b, state: 'current', firmware: b.pinned ?? b.firmware, build: 'patched', detail: null } : b))
+      vo.recovery = false
+      vo.pending = []
+      vo.run = { ...vo.run, state: 'succeeded', step: '', step_label: '', finished_at: iso(), message: firmware ? 'QIDI firmware and Valve Oil are up to date.' : 'The latest Valve Oil release is installed.' }
+      voWarnings()
+      setTimeout(() => generation === voGeneration && Object.assign(vo.job, { state: 'succeeded', finished_at: iso() }), 1500)
+      return
+    }
+    if (i === 0) voWarnings()
+    const [step, label, seconds, effect] = steps[i]
+    log.push(`${label}…`)
+    for (let n = 1; n < seconds; n += 2) setTimeout(() => generation === voGeneration && vo.job.log.push(`  ${label.toLowerCase()}: ${Math.round((n / seconds) * 100)}%`), n * 1000)
+    vo.run = { ...vo.run, step, step_label: label }
+    effect?.()
+    setTimeout(next, seconds * 1000)
+  }
+  // The run records itself a moment after Update now's job starts, naming the job.
+  const resumed = vo.run?.state === 'failed' && vo.run.can_continue === true
+  setTimeout(() => {
+    if (generation !== voGeneration) return
+    vo.run = { id: `run-${Date.now()}`, kind: 'update_now', state: 'running', step: '', step_label: '', started_at: iso(), finished_at: null, message: '', resumed, job: vo.job.id, firmware_update: resumed, can_continue: false }
+    next()
+  }, 1200)
+  return vo.job
+}
+
+async function statusApi(req, res, path) {
+  const send = (code, body) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body))
+  // nginx answers for the service while Moonraker (its authorizer) or the service is down.
+  if (outage) return res.writeHead(502, { 'Content-Type': 'text/html' }).end('<html><body>502 Bad Gateway</body></html>')
+  if (vo.absent) return res.writeHead(404, { 'Content-Type': 'text/html' }).end('<html><body>404 Not Found</body></html>')
+  const route = path.slice('/tltg-status/api/'.length)
+  if (req.method === 'GET') return route === 'status' ? send(200, voStatus()) : send(404, { error: 'Not found.' })
+  if (req.method !== 'POST') return send(405, { error: 'Use GET.' })
+  if (req.headers['x-valve-oil'] !== 'status') return send(403, { error: 'Missing X-Valve-Oil header.' })
+  let raw = ''
+  for await (const chunk of req) raw += chunk
+  let body
+  try {
+    body = raw ? JSON.parse(raw) : {}
+  } catch {
+    return send(400, { error: 'Expected a JSON request.' })
+  }
+  await new Promise((r) => setTimeout(r, 400))
+  if (route === 'auto-update') {
+    if (typeof body.enabled !== 'boolean') return send(400, { error: 'Expected {"enabled": true} or {"enabled": false}.' })
+    vo.auto = body.enabled
+    return send(200, voStatus())
+  }
+  if (route === 'update-now') {
+    if (vo.refuseNext) {
+      // Meanwhile the hourly check took the installer lock, and a heater was turned on; both clear after 20 seconds.
+      vo.refuseNext = false
+      vo.installerBusyUntil = Date.now() + 20000
+    }
+    const blocked = voStatus().update_now.blocked_by
+    if (blocked.length) return send(409, { error: `Update now can't start: ${blocked.map((b) => b.message).join('; ')}.`, blocked_by: blocked })
+    const job = startUpdate()
+    return send(202, { job: { ...job, log: [...job.log], message: job.log.at(-1), run_id: null } })
+  }
+  return send(404, { error: 'Not found.' })
+}
+
 // ---------- http ----------
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png' }
 
@@ -609,6 +943,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
       return res.end(await readFile(file))
     }
+    if (path.startsWith('/tltg-status/')) return await statusApi(req, res, path)
     if (path.startsWith('/webcam/')) {
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' })
       return res.end(camSvg())
@@ -639,6 +974,8 @@ const server = createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/websocket' })
 wss.on('connection', (ws) => {
+  // Moonraker is down during a simulated firmware update.
+  if (outage) return ws.terminate()
   clients.add(ws)
   ws.on('close', () => (clients.delete(ws), subs.delete(ws)))
   ws.on('message', async (raw) => {
@@ -660,4 +997,5 @@ wss.on('connection', (ws) => {
 })
 
 applyScenario(scenario)
-server.listen(PORT, () => console.log(`fake Moonraker (${scenario}) on http://localhost:${PORT}/valve-oil/`))
+applyUpdates(args.updates ?? 'none')
+server.listen(PORT, () => console.log(`fake Moonraker (${scenario}, updates ${vo.scenario}) on http://localhost:${PORT}/valve-oil/`))

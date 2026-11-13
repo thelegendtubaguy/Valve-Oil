@@ -141,6 +141,40 @@ class HostRebootTests(unittest.TestCase):
                 self.assertEqual(calls, [])
                 self.assertTrue(self.paths.host_reboot_marker_path.exists())
 
+    def test_idle_check_reads_the_printer_again_when_klipper_goes_away_between_its_reads(self):
+        # QIDI's touchscreen app restarts Klipper as it starts; a read that fails meanwhile is not the answer.
+        from unittest import mock
+
+        from installer.runtime import safety
+        from installer.runtime.errors import HeaterOnError, PrinterStateError
+
+        def flaky(targets):
+            answers = moonraker_urlopen("standby", heater_targets=targets)
+            failed = []
+
+            def urlopen(request, timeout=0):
+                url = getattr(request, "full_url", str(request))
+                if "heater_bed" in url and not failed:
+                    failed.append(url)
+                    raise OSError("Klippy Disconnected")
+                return answers(request, timeout=timeout)
+
+            return urlopen
+
+        with mock.patch.object(safety.time, "sleep"):
+            with self.assertRaises(PrinterStateError):
+                safety.ensure_printer_idle(self.paths.moonraker_url, urlopen=flaky({"heater_bed": 0.0}))
+            self.assertEqual(
+                safety.ensure_printer_idle(
+                    self.paths.moonraker_url, urlopen=flaky({"heater_bed": 0.0}), wait_seconds=30.0
+                ),
+                "standby",
+            )
+            with self.assertRaises(HeaterOnError):
+                safety.ensure_printer_idle(
+                    self.paths.moonraker_url, urlopen=flaky({"heater_bed": 60.0}), wait_seconds=30.0
+                )
+
     def test_auto_update_arms_followup_without_rebooting(self):
         self.paths.bundle_root.mkdir(parents=True)
         (self.paths.bundle_root / "auto-update.sh").write_text("#!/bin/sh\n", encoding="utf-8")

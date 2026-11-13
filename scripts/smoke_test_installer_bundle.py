@@ -130,7 +130,6 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run",
         "--demo-tui",
         "--yes",
-        "--flash-thr-fifo",
         "--disable-ai-detection",
         "--keep-ai-detection",
         "--keep-system-optimizations",

@@ -7,7 +7,9 @@ import json
 import shutil
 import subprocess
 import tarfile
+import types
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -19,15 +21,21 @@ from installer.runtime.box_enablement import (
     maybe_write_required_tool_slot_variables,
     saved_variable_verify_marker_path,
 )
+from installer.runtime import auto_update, firmware_update, valve_oil_status
+from installer.runtime.board_images import load_board_manifest, pinned_board_image
+from installer.runtime.errors import InstallerError
 from installer.runtime.auto_update import (
     AutoUpdateError,
     LOCK_HELD_ENV,
-    disable_auto_updates,
-    enable_auto_updates,
+    SYSTEM_ROOT_ENV,
+    TIMER_CONTENT,
+    TIMER_NAME,
     enrollment_path,
     run_auto_update_check,
+    staging_root,
     state_path,
 )
+from installer.runtime.cli import main
 from installer.runtime.backup import load_backup_snapshot, snapshot_runtime_tree
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
@@ -51,7 +59,7 @@ from installer.tests.helpers import (
     homing_fixture_bytes,
     homing_sync_reset_fixture_bytes,
     moonraker_urlopen,
-    temp_path,
+    snapshot_tree,
 )
 
 
@@ -130,6 +138,16 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             ),
             environ=environ,
         )
+
+    @staticmethod
+    def _installed_bundle(printer_root: Path, prefix: str) -> Path:
+        """The bundle the update check runs from, in the printer user's home."""
+        bundle_root = printer_root.parent / "tltg-optimized-macros"
+        bundle_root.mkdir()
+        (bundle_root / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        for name in ("installer", "firmware", "scripts"):
+            (bundle_root / name).symlink_to(REPO_ROOT / name)
+        return bundle_root
 
     def _assert_homing_speed(self, printer_root: Path, value: str) -> None:
         text = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
@@ -805,9 +823,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         printer_root, _, _ = self._fixture(
             firmware, source_variant=source_variant
         )
-        bundle_root = temp_path("auto-update-lifecycle-") / "tltg-optimized-macros"
-        bundle_root.mkdir()
-        (bundle_root / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        bundle_root = self._installed_bundle(printer_root, "auto-update-lifecycle-")
         paths = resolve_runtime_paths(
             bundle_root=bundle_root,
             environ=build_env(
@@ -872,6 +888,14 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
         self.assertEqual(result.action, "updated")
         self.assertEqual(len(child_calls), 1)
+        # The release was staged under the installer's cache in the printer user's home, not /tmp, which QIDI's
+        # firmware package empties, and nothing of it is left once the bundle is in place.
+        self.assertEqual(child_calls[0][0][1], str(bundle_root / "install.sh"))
+        self.assertEqual((bundle_root / "install.sh").read_bytes(), b"#!/bin/sh\nexit 0\n")
+        self.assertEqual(list(staging_root(paths).iterdir()), [])
+        self.assertEqual(staging_root(paths).parent.parent, printer_root.parent)
+        status = valve_oil_status.load_status(paths)
+        self.assertEqual((status.run.kind, status.run.state), ("automatic", valve_oil_status.SUCCEEDED))
         saved_variables = (printer_root / "config/saved_variables.cfg").read_text(
             encoding="utf-8"
         )
@@ -898,63 +922,65 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         )
         self.assertFalse(paths.restart_marker_path.exists())
 
-    def test_auto_update_enrollment_survives_config_cleanup_and_is_cleared_before_sudo(self):
+    def test_auto_update_switch_changes_only_enrollment_without_sudo(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
-        checksum = "a" * 64
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats")
+        units = printer_root.parent / "system/etc/systemd/system"
+        units.mkdir(parents=True)
+        env[SYSTEM_ROOT_ENV] = str(printer_root.parent / "system")
+        others = sorted(path.name for path in printer_root.iterdir())
 
-        with mock.patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
-            enable_auto_updates(
-                paths=paths,
-                reporter=PlainReporter(io.StringIO()),
-                urlopen=lambda url, timeout=0: _BytesResponse(
-                    f"{checksum} bundle\n".encode()
-                ),
-                run=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
-            )
+        def switch(*flags):
+            stream = io.StringIO()
+            with mock.patch("subprocess.run", side_effect=AssertionError("the switch ran a command")):
+                self.assertEqual(main(["auto-update", *flags, "--plain"], bundle_root=REPO_ROOT, environ=env,
+                                      stream=stream), 0)
+            return stream.getvalue()
 
+        output = switch("--enable-systemd")
+        self.assertIn("Automatic updates are on", output)
+        self.assertIn("isn't scheduled", output)
         self.assertEqual(enrollment_path(paths).read_text(encoding="utf-8"), "1\n")
         self.assertEqual(enrollment_path(paths).stat().st_mode & 0o777, 0o600)
+        # QIDI's firmware package cleans the config folder; enrollment lives outside it.
         shutil.rmtree(printer_root / "config")
         (printer_root / "config").mkdir()
         self.assertTrue(enrollment_path(paths).exists())
-
-        def failed_sudo(command, **kwargs):
-            return subprocess.CompletedProcess(command, 1)
-
-        with mock.patch("installer.runtime.auto_update.shutil.which", return_value="/usr/bin/tool"):
-            with self.assertRaises(AutoUpdateError):
-                disable_auto_updates(
-                    paths=paths,
-                    reporter=PlainReporter(io.StringIO()),
-                    run=failed_sudo,
-                )
+        (units / TIMER_NAME).write_text(TIMER_CONTENT, encoding="utf-8")
+        output = switch("--status")
+        self.assertIn("Automatic updates are on", output)
+        self.assertNotIn("isn't scheduled", output)
+        output = switch("--disable")
+        self.assertIn("Automatic updates are off", output)
+        self.assertEqual(sorted(path.name for path in printer_root.iterdir()), others)
+        self.assertTrue((units / TIMER_NAME).exists())
+        switch("--enable")
+        self.assertTrue(enrollment_path(paths).exists())
+        switch("--disable-systemd")
         self.assertFalse(enrollment_path(paths).exists())
 
-    def test_unenrolled_current_checksum_does_not_repair_saved_variables(self):
+    def test_earlier_releases_automatic_update_units_mean_enrolled_and_are_replaced(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
-        checksum = "a" * 64
-        before = (printer_root / "config/saved_variables.cfg").read_bytes()
-        state_path(paths).write_text(json.dumps({"latest_checksum": checksum}), encoding="utf-8")
-        base_urlopen = self._fixture_urlopen(printer_root)
-        gcode_scripts = []
+        environ = {SYSTEM_ROOT_ENV: str(printer_root.parent / "system")}
+        units = printer_root.parent / "system/etc/systemd/system"
+        units.mkdir(parents=True)
+        legacy_service = ("[Unit]\nDescription=TLTG QIDI Max 4 optimized config auto-update\n"
+                          "Wants=network-online.target\nAfter=network-online.target\n\n[Service]\nType=oneshot\n"
+                          "User=qidi\nWorkingDirectory=/home/qidi/tltg-optimized-macros\n"
+                          "ExecStart=/home/qidi/tltg-optimized-macros/auto-update.sh --run\n")
+        legacy_timer = ("[Unit]\nDescription=Run TLTG optimized config auto-update hourly\n\n[Timer]\n"
+                        "OnBootSec=10min\nOnUnitActiveSec=1h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n")
+        self.assertFalse(auto_update.adopt_legacy_enrollment(paths, environ))
+        (units / TIMER_NAME).write_text(legacy_timer, encoding="utf-8")
+        self.assertTrue(auto_update.adopt_legacy_enrollment(paths, environ))
+        self.assertTrue(enrollment_path(paths).exists())
+        self.assertEqual(auto_update.patch_service(legacy_service), auto_update.SERVICE_CONTENT)
+        self.assertEqual(auto_update.patch_timer(legacy_timer), TIMER_CONTENT)
+        self.assertEqual(auto_update.patch_timer(""), TIMER_CONTENT)
+        with self.assertRaises(InstallerError):
+            auto_update.patch_timer(legacy_timer.replace("OnUnitActiveSec=1h", "OnUnitActiveSec=5min"))
 
-        def urlopen(request, timeout=0):
-            if getattr(request, "full_url", str(request)).endswith(".sha256"):
-                return _BytesResponse(f"{checksum} bundle\n".encode())
-            if "/printer/gcode/script" in getattr(request, "full_url", str(request)):
-                gcode_scripts.append(request.data)
-            return base_urlopen(request, timeout=timeout)
-
-        result = run_auto_update_check(
-            paths=paths,
-            reporter=PlainReporter(io.StringIO()),
-            environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
-            urlopen=urlopen,
-        )
-        self.assertEqual(result.action, "initialized")
-        self.assertEqual(gcode_scripts, [])
-        self.assertEqual((printer_root / "config/saved_variables.cfg").read_bytes(), before)
-
+    def test_enrolled_current_release_repairs_saved_variables(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
         self._run_install(paths)
         saved_variables_path = printer_root / "config/saved_variables.cfg"
@@ -1066,40 +1092,112 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], old_checksum
                 )
 
-    def test_unenrolled_changed_checksum_records_latest_without_installing(self):
-        printer_root, paths, _ = self._fixture("01.01.06.03")
-        old_checksum = "1" * 64
-        checksum = "2" * 64
-        state_path(paths).write_text(
-            json.dumps({"latest_checksum": old_checksum}), encoding="utf-8"
-        )
-        opened_urls = []
+    def _waiting_printer(self, latest="99.1.1.1"):
+        """An installed Max 4 on QIDI firmware this release updates from, with a Box connected since the last install
+        on QIDI's Box firmware, a newer release published, and a Klipper restart an earlier install left pending."""
+        printer_root, paths, _ = self._fixture("01.01.06.05", source_variant="sync-reset")
+        (printer_root / "config/tltg_optimized_state.yaml").write_text("", encoding="utf-8")
+        (printer_root / "config/box.cfg").write_text("[mcu mcu_box1]\nserial: /dev/serial/by-id/usb-box1\n",
+                                                     encoding="utf-8")
+        paths.restart_marker_path.write_text("{}", encoding="utf-8")
+        printer = self.manifest.printer_for_firmware("01.01.06.05")
+        box_stock = load_board_manifest(REPO_ROOT, "box")["box"]["stock_version"]
+        versions = {"mcu": pinned_board_image(REPO_ROOT, printer, "mcu").version,
+                    "mcu THR": pinned_board_image(REPO_ROOT, printer, "thr").version, "mcu mcu_box1": box_stock}
+        state = {"print": "standby", "opened": []}
 
         def urlopen(request, timeout=0):
             url = getattr(request, "full_url", str(request))
-            opened_urls.append(url)
+            state["opened"].append(url)
+            if getattr(request, "data", None) is not None:
+                self.fail(f"The check changed something: {url}")
             if url.endswith(".sha256"):
-                return _BytesResponse(f"{checksum} bundle\n".encode())
-            if "printer/objects/query" in url:
-                return moonraker_urlopen()(request, timeout=timeout)
-            self.fail(f"Unexpected URL: {url}")
+                return _BytesResponse(f"{'2' * 64}  tltg-optimized-macros.tar.gz\n".encode(), url=(
+                    f"https://github.com/thelegendtubaguy/valve-oil/releases/download/v{latest}/"
+                    "tltg-optimized-macros.tar.gz.sha256" if latest else url))
+            if "printer/objects/query" not in url:
+                self.fail(f"Unexpected URL: {url}")
+            names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
+            status = {"print_stats": {"state": state["print"]}, "webhooks": {"state": "ready"},
+                      "heaters": {"available_heaters": []},
+                      **{name: {"mcu_version": version} for name, version in versions.items()}}
+            return _JsonResponse({"result": {"status": {name: status[name] for name in names if name in status}}})
 
-        result = run_auto_update_check(
-            paths=paths,
-            reporter=PlainReporter(io.StringIO()),
-            environ={
-                "TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256",
-                "TLTG_AUTO_UPDATE_ARCHIVE_URL": "https://example.invalid/latest.tar.gz",
-            },
-            urlopen=urlopen,
-        )
+        def forbidden(*args, **kwargs):
+            raise AssertionError(f"The check changed something: {args} {kwargs}")
 
-        self.assertEqual(result.action, "initialized")
-        self.assertEqual(
-            json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"],
-            checksum,
-        )
-        self.assertFalse(any(url.endswith(".tar.gz") for url in opened_urls))
+        return printer_root, paths, urlopen, forbidden, state
+
+    def test_unenrolled_check_only_publishes_what_is_waiting(self):
+        # The safety boundary: without enrollment the check never installs, starts a firmware update, reconciles,
+        # reads or flashes a board, stops or restarts a service, or reboots. It records the latest checksum.
+        printer_root, paths, urlopen, forbidden, state = self._waiting_printer()
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid/printer/objects/query?print_stats")
+        env["TLTG_AUTO_UPDATE_CHECKSUM_URL"] = "https://example.invalid/latest.sha256"
+        before = snapshot_tree(printer_root)
+        check = functools.partial(run_auto_update_check, urlopen=urlopen, run=forbidden, start_firmware=forbidden,
+                                  deliver=forbidden, read_session=forbidden)
+        with mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=check), \
+                mock.patch("installer.runtime.cli.repair_installer_ownership", side_effect=forbidden), \
+                mock.patch("installer.runtime.cli.recover_pending_system_optimization", side_effect=forbidden), \
+                mock.patch("installer.runtime.cli.maybe_reconcile_system_optimizations", side_effect=forbidden), \
+                mock.patch("installer.runtime.cli.maybe_schedule_host_reboot", side_effect=forbidden), \
+                mock.patch("installer.runtime.cli.maybe_schedule_recommended_reboot", side_effect=forbidden):
+            self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
+                                  stream=io.StringIO()), 0)
+
+        self.assertFalse(any(url.endswith(".tar.gz") for url in state["opened"]))
+        self.assertEqual(json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], "2" * 64)
+        written = {"config/tltg_optimized_auto_update_state.json", valve_oil_status.STATUS_FILE,
+                   valve_oil_status.LOCK_FILE, ".tltg_optimized_installer.lock"}
+        after = snapshot_tree(printer_root)
+        self.assertEqual({key: value for key, value in after.items() if key not in written},
+                         {key: value for key, value in before.items() if key not in written})
+        status = valve_oil_status.load_status(paths)
+        self.assertEqual((status.check.enrolled, status.check.result), (False, "ok"))
+        self.assertEqual([(item.kind, item.version, item.board, item.blocked_by) for item in status.pending], [
+            ("release", "99.1.1.1", None, ()),
+            ("firmware", self.manifest.printer_for_firmware("01.01.06.05").target_firmware.version, None, ()),
+            ("board", pinned_board_image(REPO_ROOT, self.manifest.printer_for_firmware("01.01.06.05"), "box").version,
+             "box1", ()),
+        ])
+        self.assertTrue(paths.restart_marker_path.exists())
+        # Enrolled but printing: still nothing changes, and the waiting work says why it hasn't run.
+        paths.restart_marker_path.unlink()
+        enrollment_path(paths).write_text("1\n", encoding="utf-8")
+        state["print"] = "printing"
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), environ=env,
+                                       urlopen=urlopen, run=forbidden, start_firmware=forbidden, deliver=forbidden,
+                                       read_session=forbidden)
+        self.assertEqual(result.action, "skipped-active-print")
+        self.assertTrue(all(item.blocked_by[0].code == "printing" for item in valve_oil_status.load_status(paths).pending))
+
+    def test_enrolled_check_starts_the_firmware_update_still_waiting_after_the_release(self):
+        # The mirror was unreachable when the release was installed; the release is current now.
+        printer_root, paths, urlopen, forbidden, _ = self._waiting_printer(latest=None)
+        paths.restart_marker_path.unlink()
+        enrollment_path(paths).write_text("1\n", encoding="utf-8")
+        state_path(paths).write_text(json.dumps({"latest_checksum": "2" * 64}), encoding="utf-8")
+        boards = [{"board": board, "state": "current"} for board in ("thr", "mcu")]
+        (printer_root / ".tltg_board_admission.json").write_text(json.dumps({
+            "schema_version": 1, "package_version": self.manifest.package.version, "printer": "max4",
+            "firmware": "01.01.06.05", "target_firmware": "01.01.07.01", "new_install": False, "boards": boards}))
+        started = []
+
+        def start(**kwargs):
+            started.append(kwargs)
+            return firmware_update.FirmwareUpdateResult(firmware_update.RUNNING)
+
+        with mock.patch("installer.runtime.auto_update._installation_requires_reconciliation", return_value=False), \
+                mock.patch("installer.runtime.auto_update.maybe_repair_saved_variables"):
+            result = run_auto_update_check(
+                paths=paths, reporter=PlainReporter(io.StringIO()),
+                environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                urlopen=urlopen, run=forbidden, start_firmware=start, deliver=forbidden, read_session=forbidden,
+                disk_usage=lambda path: types.SimpleNamespace(free=2 ** 40))
+        self.assertEqual(result.action, "firmware-update-started")
+        self.assertEqual([(call["kind"], call["follow"], call["input_stream"]) for call in started],
+                         [("automatic", False, None)])
 
     def test_enrolled_auto_update_recovers_after_firmware_config_cleanup(self):
         firmware = "01.01.07.01"
@@ -1125,9 +1223,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             homing_sync_reset_fixture_bytes()
         )
 
-        bundle_root = temp_path("auto-update-recovery-") / "tltg-optimized-macros"
-        bundle_root.mkdir()
-        (bundle_root / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        bundle_root = self._installed_bundle(printer_root, "auto-update-recovery-")
         paths = resolve_runtime_paths(
             bundle_root=bundle_root,
             environ=build_env(
@@ -1207,37 +1303,41 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             SYNC_RESET_DESIRED_HOMING_SHA256,
         )
 
-    def test_uninstall_without_config_markers_still_disables_enrollment(self):
+    def test_uninstall_removes_enrollment_before_the_update_check(self):
+        # With nothing else left to uninstall, uninstall still ends automatic updates first, then removes the check's
+        # units, its status, and its records.
         printer_root, paths, _ = self._fixture("01.01.06.03")
+        environ = {SYSTEM_ROOT_ENV: str(printer_root.parent / "system")}
+        units = printer_root.parent / "system/etc/systemd/system"
+        units.mkdir(parents=True)
+        (units / TIMER_NAME).write_text(TIMER_CONTENT, encoding="utf-8")
+        (units / auto_update.SERVICE_NAME).write_text(auto_update.SERVICE_CONTENT, encoding="utf-8")
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
-        calls = []
+        valve_oil_status.record_check(paths, enrolled=True, printer=valve_oil_status.PrinterInfo(),
+                                      installed_release=None, pending=())
+        enrolled_at_removal = []
+        remove = auto_update.remove_auto_update_units
 
-        def disable(*, paths, reporter, input_stream, require_sudo):
-            calls.append(require_sudo)
-            enrollment_path(paths).unlink()
+        def removing_units(**kwargs):
+            enrolled_at_removal.append(enrollment_path(paths).exists())
+            return remove(**kwargs)
 
-        with mock.patch(
-            "installer.runtime.uninstall.auto_updates_configured", return_value=False
-        ), mock.patch(
-            "installer.runtime.uninstall.disable_auto_updates", side_effect=disable
-        ):
-            result = run_uninstall(
-                paths,
-                self.manifest,
-                self.compatibility,
-                PlainReporter(io.StringIO()),
-                urlopen=moonraker_urlopen(),
-            )
+        with mock.patch("installer.runtime.uninstall.remove_auto_update_units", side_effect=removing_units):
+            result = run_uninstall(paths, self.manifest, self.compatibility, PlainReporter(io.StringIO()),
+                                   urlopen=moonraker_urlopen(), environ=environ)
 
         self.assertIsNone(result.backup_label)
-        self.assertEqual(calls, [False])
-        self.assertFalse(enrollment_path(paths).exists())
+        self.assertEqual(enrolled_at_removal, [False])
+        self.assertEqual(list(units.iterdir()), [])
+        self.assertFalse(valve_oil_status.status_path(paths).exists())
 
     def test_auto_update_checksum_mismatch_preserves_bundle_and_release_state(self):
         printer_root, _, _ = self._fixture("01.01.06.03")
-        bundle_root = temp_path("auto-update-mismatch-") / "tltg-optimized-macros"
-        bundle_root.mkdir()
+        bundle_root = self._installed_bundle(printer_root, "auto-update-mismatch-")
         (bundle_root / "old.txt").write_text("old bundle", encoding="utf-8")
+        # An interrupted earlier run's download is cleared too.
+        (staging_root(resolve_runtime_paths(bundle_root=bundle_root, environ=build_env(printer_root, moonraker_url="x")))
+         / "run-interrupted").mkdir(parents=True)
         paths = resolve_runtime_paths(
             bundle_root=bundle_root,
             environ=build_env(
@@ -1288,6 +1388,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertEqual(
             (bundle_root / "old.txt").read_text(encoding="utf-8"), "old bundle"
         )
+        self.assertEqual(list(staging_root(paths).iterdir()), [])
 
     def test_source_write_failure_rolls_back_source_and_marker(self):
         for firmware, source_variant, _ in RESTORE_CASES:
@@ -1498,8 +1599,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
 
 class _BytesResponse:
-    def __init__(self, body: bytes):
-        self.body = body
+    def __init__(self, body: bytes, url: str = ""):
+        self.body = io.BytesIO(body)
+        self.url = url
 
     def __enter__(self):
         return self
@@ -1507,8 +1609,11 @@ class _BytesResponse:
     def __exit__(self, exc_type, exc, traceback):
         return False
 
-    def read(self):
-        return self.body
+    def read(self, size=-1):
+        return self.body.read(size)
+
+    def geturl(self):
+        return self.url
 
 
 def _release_archive() -> bytes:
