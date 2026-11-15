@@ -46,7 +46,7 @@ What it says, and what it left running:
 - **`Not carried over:`** after a finished update, or **`The saved calibration could not be restored`**: the update finished, but that part of your saved calibration from before it isn't in the new `printer.cfg`. Copy what you need by hand from `config/printer.cfg` in the backup the message names, or calibrate again. Don't restore that whole backup with `./restore.sh`: it holds the old firmware's stock config files.
 - **`This release can't continue the firmware update`**: another Valve Oil release started it. The message gives the command that installs that release, which finishes it.
 
-The update's full log is `~/.cache/tltg-firmware-update/update.log`. What QIDI's package printed while it installed, much of it in Chinese, is in `qidi-package.log` beside it; the update shows its last lines when the package fails.
+The update's full log is `~/.cache/valve-oil/firmware-update/update.log`. What QIDI's package printed while it installed, much of it in Chinese, is in `qidi-package.log` beside it; the update shows its last lines when the package fails.
 
 ### A board flash couldn't be verified
 
@@ -198,7 +198,7 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
 - **Installer output:** copy everything the installer printed, from the command to the end. To get more detail, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
 - **Automatic update output:** `journalctl -u tltg-optimized-auto-update.service --since "2 days ago"`.
-- **QIDI firmware update output:** `~/.cache/tltg-firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u tltg-firmware-update.service --since "2 days ago"`.
-- **Update now output:** `~/.cache/tltg-status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.
+- **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u tltg-firmware-update.service --since "2 days ago"`.
+- **Update now output:** `~/.cache/valve-oil/status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.
 - **`moonraker.log`:** `~/printer_data/logs/moonraker.log`, for Fluidd or file upload problems.
 - **The sliced file**, for print problems: attach the `.gcode` or `.gcode.3mf`, zipped.

@@ -25,11 +25,12 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import naming
 from .errors import InstallerError, PathSafetyError
 from .fs_atomic import atomic_write_text, fsync_directory
 from .path_safety import ensure_external_path_has_no_symlink_components
 
-CACHE_DIRECTORY = ".cache/tltg-firmware-update"  # under the printer user's home
+CACHE_DIRECTORY = f"{naming.CACHE_DIRECTORY}/firmware-update"  # under the printer user's home
 STAGING_DIRECTORY = ".tltg-update-staging"  # beside QIDI's update folder, so the two can be swapped by rename
 PREVIOUS_DIRECTORY = ".tltg-update-previous"  # QIDI's update folder while it is replaced without an atomic exchange
 STAGED_MARKER = ".tltg-staged.json"

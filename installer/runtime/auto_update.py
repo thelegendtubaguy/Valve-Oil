@@ -46,7 +46,8 @@ from .postflight import verify_install_postflight
 from .process_restart import ProcessRestartError, restart_entries, restart_pending
 from .manifest import ManifestValidationError, load_manifest
 from .state_file import StateValidationError, load_installed_state
-from .naming import ARCHIVE_NAME, BUNDLE_ROOT_NAME, LEGACY_BUNDLE_ROOT_NAME, REPOSITORY_URL
+from .naming import (ARCHIVE_NAME, BUNDLE_ROOT_NAME, CACHE_DIRECTORY, LEGACY_BUNDLE_ROOT_NAME, LEGACY_CACHE_DIRECTORIES,
+                     REPOSITORY_URL)
 from .sudo import run_sudo_ignore_failure as _run_sudo_ignore_failure
 
 DEFAULT_ARCHIVE_URL = f"{REPOSITORY_URL}/releases/latest/download/{ARCHIVE_NAME}"
@@ -69,7 +70,7 @@ URL_OVERRIDE_ENVIRONMENT = (
 )
 # A release bundle is downloaded and unpacked here, in the printer user's home and never /tmp, which QIDI's firmware
 # package empties; one directory per run, removed when the run's bundle is in place or the run fails.
-STAGING_DIRECTORY = ".cache/tltg-auto-update"
+STAGING_DIRECTORY = f"{CACHE_DIRECTORY}/auto-update"
 STAGING_PREFIX = "run-"
 UrlOpenFn = Callable[..., object]
 RunFn = Callable[..., subprocess.CompletedProcess]
@@ -235,7 +236,11 @@ def retire_legacy_bundle(home: Path) -> None:
     """Put a link to ~/valve-oil in place of ~/tltg-optimized-macros, where releases up to 26.11.12.2 installed, so
     commands and units that name the earlier folder run the installed bundle. Called once ~/valve-oil holds this
     install's bundle; a process still running from the earlier folder, such as the install itself when it was started
-    there, then reads the same files through the link."""
+    there, then reads the same files through the link. The cache folders under their earlier names go too."""
+    for name in LEGACY_CACHE_DIRECTORIES:
+        cache = home / name
+        if cache.is_dir() and not cache.is_symlink():
+            shutil.rmtree(cache, ignore_errors=True)
     legacy, target = home / LEGACY_BUNDLE_ROOT_NAME, home / BUNDLE_ROOT_NAME
     if legacy.is_symlink() or not legacy.is_dir() or not (target / "install.sh").is_file():
         return

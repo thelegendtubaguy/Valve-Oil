@@ -45,7 +45,7 @@ from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import ActivePrintError, PrinterStateError, UnsupportedFirmwareError
 from installer.runtime.manifest import load_manifest
-from installer.runtime.naming import BUNDLE_ROOT_NAME, LEGACY_BUNDLE_ROOT_NAME
+from installer.runtime.naming import BUNDLE_ROOT_NAME, CACHE_DIRECTORY, LEGACY_BUNDLE_ROOT_NAME, LEGACY_CACHE_DIRECTORIES
 from installer.runtime.models import (
     InstalledState,
     ManagedTreeState,
@@ -949,7 +949,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertEqual(child_calls[0][0][1], str(bundle_root / "install.sh"))
         self.assertEqual((bundle_root / "install.sh").read_bytes(), b"#!/bin/sh\nexit 0\n")
         self.assertEqual(list(staging_root(paths).iterdir()), [])
-        self.assertEqual(staging_root(paths).parent.parent, printer_root.parent)
+        self.assertTrue(staging_root(paths).is_relative_to(printer_root.parent / ".cache"))
         status = valve_oil_status.load_status(paths)
         self.assertEqual((status.run.kind, status.run.state), ("automatic", valve_oil_status.SUCCEEDED))
         saved_variables = (printer_root / "config/saved_variables.cfg").read_text(
@@ -983,14 +983,20 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         legacy, installed = home / LEGACY_BUNDLE_ROOT_NAME, home / BUNDLE_ROOT_NAME
         legacy.mkdir()
         (legacy / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        # The cache folders under their earlier names go; Valve Oil's own stay.
+        for name in (*LEGACY_CACHE_DIRECTORIES, f"{CACHE_DIRECTORY}/addons"):
+            (home / name).mkdir(parents=True)
+            (home / name / "job.log").write_text("log\n", encoding="utf-8")
         auto_update.retire_legacy_bundle(home)
         self.assertFalse(legacy.is_symlink(), "kept until ~/valve-oil holds the bundle")
+        self.assertEqual([str(path.relative_to(home)) for path in sorted((home / ".cache").rglob("*"))],
+                         [".cache/valve-oil", ".cache/valve-oil/addons", ".cache/valve-oil/addons/job.log"])
         copy_bundle(legacy, installed, pwd.getpwuid(os.getuid()))
         for _ in range(2):
             auto_update.retire_legacy_bundle(home)
             self.assertEqual(legacy.resolve(), installed.resolve())
             self.assertEqual((legacy / "install.sh").read_text(encoding="utf-8"), "#!/bin/sh\n")
-            self.assertEqual(sorted(path.name for path in home.iterdir()), sorted([legacy.name, installed.name]))
+            self.assertEqual(sorted(path.name for path in home.iterdir()), sorted([".cache", legacy.name, installed.name]))
 
     def test_auto_update_switch_changes_only_enrollment_without_sudo(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
