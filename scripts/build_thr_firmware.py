@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the hash-locked Valve Oil Max 4 THR firmware (FIFO fix) without flashing hardware."""
+"""Generate a hash-locked Valve Oil THR firmware (FIFO fix) from its patch manifest without flashing hardware."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,10 @@ if __package__:
 else:
     from build_box_firmware import apply_patches
 
-PATCH_MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-valve-oil-v1.json"
+FIRMWARE = Path(__file__).resolve().parents[1] / "firmware"
+# One patch manifest per QIDI THR image: the Max 4 and Plus 5 share 02.02.01.08, the Smart 5 runs 02.02.01.09.
+PATCH_MANIFESTS = (FIRMWARE / "max4-thr-valve-oil-v1.json", FIRMWARE / "smart5-thr-valve-oil-v1.json")
+PATCH_MANIFEST = PATCH_MANIFESTS[0]
 
 
 def sha256(data: bytes) -> str:
@@ -29,10 +32,10 @@ def patch_thr(stock: bytes, manifest: dict) -> bytes:
     return apply_patches(stock, manifest["thr"], "THR")
 
 
-def build(stock_archive: Path, output_dir: Path) -> None:
+def build(stock_archive: Path, output_dir: Path, manifest_path: Path = PATCH_MANIFEST) -> None:
     if output_dir.exists() or output_dir.is_symlink():
         raise ValueError("Output directory already exists; choose a new destination")
-    manifest = json.loads(PATCH_MANIFEST.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     # Use the same immutable snapshot for admission and ZIP reads.
     archive_bytes = stock_archive.read_bytes()
     if sha256(archive_bytes) != manifest["stock_archive"]["sha256"]:
@@ -74,7 +77,7 @@ def build(stock_archive: Path, output_dir: Path) -> None:
             report = {
                 "schema_version": 1,
                 "patch_id": manifest["patch_id"],
-                "patch_manifest_sha256": sha256(PATCH_MANIFEST.read_bytes()),
+                "patch_manifest_sha256": sha256(manifest_path.read_bytes()),
                 "upstream_fix": manifest["upstream_fix"],
                 "stock_archive": manifest["stock_archive"],
                 "thr": manifest["thr"],
@@ -107,11 +110,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stock-archive", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True, help="new directory; must not exist")
+    parser.add_argument("--manifest", default=PATCH_MANIFEST.name, choices=[path.name for path in PATCH_MANIFESTS],
+                        help="patch manifest in firmware/ of the THR image to patch (default: Max 4 and Plus 5)")
     args = parser.parse_args()
     if sys.version_info < (3, 11):
         parser.error("Python 3.11 or newer is required")
     try:
-        build(args.stock_archive, args.output_dir)
+        build(args.stock_archive, args.output_dir, FIRMWARE / args.manifest)
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         print(f"Firmware generation failed: {error}", file=sys.stderr)
         return 1

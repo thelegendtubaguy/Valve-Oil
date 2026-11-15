@@ -13,7 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from installer.runtime.backup import requires_external_backup_manifest
-from installer.runtime.board_images import BOARD_MANIFESTS, pinned_board_image, validate_board_targets
+from installer.runtime.board_images import BOARD_MANIFESTS, managed_boards, pinned_board_image, validate_board_targets
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import (
     CompatibilityValidationError,
@@ -111,14 +111,22 @@ class InstallerCompatibilityTests(unittest.TestCase):
 
     def test_board_images_are_pinned_for_each_target_firmware(self) -> None:
         validate_board_targets(self.manifest, REPO_ROOT)
-        for printer in self.manifest.printers:
-            closed_loop = printer.target_firmware.board_version("closed_loop") is not None
-            self.assertEqual({board: pinned_board_image(REPO_ROOT, printer, board).is_project_build for board in BOARD_MANIFESTS},
-                             {"thr": True, "box": True, "mcu": closed_loop})
+        # THR and Box get this project's build everywhere; the mainboard build only with closed-loop drivers, and the
+        # Smart 5's i.MX RT mainboard is not managed.
+        expected = {"max4": {"thr": True, "box": True, "mcu": True}, "plus5": {"thr": True, "box": True, "mcu": False},
+                    "smart5": {"thr": True, "box": True}}
+        self.assertEqual({printer.id: {board: pinned_board_image(REPO_ROOT, printer, board).is_project_build
+                                       for board in managed_boards(REPO_ROOT, printer)}
+                          for printer in self.manifest.printers}, expected)
+        smart5 = next(printer for printer in self.manifest.printers if printer.id == "smart5")
+        with self.assertRaises(ValueError):
+            pinned_board_image(REPO_ROOT, smart5, "mcu")
         plus5 = next(printer for printer in self.manifest.printers if printer.target_firmware.board_version("closed_loop") is None)
         changes = {
             "mainboard build without closed-loop drivers": ("mcu", lambda m: m["targets"].update({plus5.target_firmware.version: "patched"})),
             "no image for a target": ("thr", lambda m: m["targets"].pop(plus5.target_firmware.version)),
+            "two images for a target": ("thr", lambda m: m["targets"].update({smart5.target_firmware.version: "patched"})),
+            "image for firmware no printer targets": ("box", lambda m: m["targets"].update({"09.09.09.09": "patched"})),
             "unknown build": ("box", lambda m: m["targets"].update({plus5.target_firmware.version: "latest"})),
             "built from another board image": ("box", lambda m: m["box"].update(stock_version="02.03.01.22")),
             "predecessor no older package carries": ("mcu", lambda m: m["mcu"]["predecessors"][0].update(version="02.01.01.10")),
@@ -128,7 +136,7 @@ class InstallerCompatibilityTests(unittest.TestCase):
                 bundle = Path(tempfile.mkdtemp(prefix="board-targets-"))
                 self.addCleanup(shutil.rmtree, bundle)
                 shutil.copytree(REPO_ROOT / "firmware", bundle / "firmware")
-                path = bundle / BOARD_MANIFESTS[board]
+                path = bundle / BOARD_MANIFESTS[board][0]
                 data = json.loads(path.read_text())
                 change(data)
                 path.write_text(json.dumps(data))

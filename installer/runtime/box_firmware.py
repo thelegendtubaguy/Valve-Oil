@@ -32,7 +32,8 @@ from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 SUBJECT = "Box firmware"
 SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
 BACKUP_DIRECTORY = ".tltg_box_firmware_backups"
-MANIFEST = BOARD_MANIFESTS["box"]
+# Every printer carries the same Box image, so one manifest pins it for all of them (board_images).
+MANIFEST = BOARD_MANIFESTS["box"][0]
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")

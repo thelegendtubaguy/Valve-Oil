@@ -47,6 +47,7 @@ ALLOWED_FILES = [
     "scripts/klipper_debug_read.py",
     "scripts/build_thr_firmware.py",
     "firmware/max4-thr-valve-oil-v1.json",
+    "firmware/smart5-thr-valve-oil-v1.json",
     "scripts/flash_box_firmware.py",
     "scripts/build_box_firmware.py",
     "firmware/max4-box-valve-oil-v1.json",

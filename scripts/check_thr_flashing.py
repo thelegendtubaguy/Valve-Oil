@@ -191,6 +191,11 @@ class Peer:
         return len(raw)
 
 
+def run_tool(manifest, arguments):
+    """The flashing tool's main with the THR manifest the images belong to."""
+    return tool.main([*arguments, "--manifest", manifest["patch_id"] + ".json"])
+
+
 def check_admission(stock, patched, boot, manifest, profile):
     with tempfile.TemporaryDirectory(prefix="thr-transfer-check-") as temporary:
         root = Path(temporary)
@@ -215,14 +220,14 @@ def check_admission(stock, patched, boot, manifest, profile):
             for args in cases:
                 with patch.object(tool.subprocess, "run", side_effect=AssertionError("Admission opened service access")):
                     with contextlib.redirect_stderr(io.StringIO()):
-                        assert tool.main(args) == 1
+                        assert run_tool(manifest, args) == 1
             # A transfer for a target firmware programs only the image pinned for it or QIDI's stock image.
             pinned = next(firmware for firmware, build in manifest["targets"].items() if build == "patched")
             for firmware, image_path, reaches in (("09.09.09.09", patched_path, False), ("09.09.09.09", stock_path, False),
                                                    (pinned, patched_path, True), (pinned, stock_path, True)):
                 with patch.object(tool, "require_ownership", side_effect=ValueError("stop before UART")) as ownership:
                     with contextlib.redirect_stderr(io.StringIO()):
-                        assert tool.main(["transfer", "--image", str(image_path), "--confirm-write", "--backup-dir",
+                        assert run_tool(manifest, ["transfer", "--image", str(image_path), "--confirm-write", "--backup-dir",
                                           str(backup), "--printer-idle-confirmed", "--firmware", firmware]) == 1
                 assert ownership.called == reaches, (firmware, image_path.name)
             result = tool.verify_readback(stock, backup, manifest)
@@ -240,14 +245,14 @@ def check_admission(stock, patched, boot, manifest, profile):
                 try:
                     with patch.object(tool.subprocess, "run", side_effect=AssertionError("Invalid backup opened service access")):
                         with contextlib.redirect_stderr(io.StringIO()):
-                            assert tool.main(["transfer", "--image", str(patched_path), "--confirm-write",
+                            assert run_tool(manifest, ["transfer", "--image", str(patched_path), "--confirm-write",
                                               "--backup-dir", str(backup), "--printer-idle-confirmed"]) == 1
                 finally:
                     target.write_bytes(original)
             for state in ("active", "activating", "deactivating", "failed", ""):
                 with patch.object(tool.subprocess, "run", return_value=type("Result", (), {"stdout": state, "returncode": 0})()):
                     with contextlib.redirect_stderr(io.StringIO()):
-                        assert tool.main(["transfer", "--image", str(patched_path), "--confirm-write",
+                        assert run_tool(manifest, ["transfer", "--image", str(patched_path), "--confirm-write",
                                           "--backup-dir", str(backup), "--printer-idle-confirmed"]) == 1
 
             def absent_timer(command, **kwargs):
@@ -263,7 +268,7 @@ def check_admission(stock, patched, boot, manifest, profile):
                     arguments += ["--image", str(patched_path), "--confirm-write"]
                 with patch.object(tool.subprocess, "run", side_effect=AssertionError("Unadmitted backup opened services/UART")):
                     with contextlib.redirect_stderr(io.StringIO()):
-                        assert tool.main(arguments) == 1
+                        assert run_tool(manifest, arguments) == 1
             try:
                 tool.verify_readback(stock, backup, manifest)
             except ValueError:
@@ -331,7 +336,7 @@ def check_capture(stock, boot, manifest):
         directory = Path(temporary) / "capture"
         with patch.object(tool.subprocess, "run", return_value=SimpleNamespace(stdout="inactive", returncode=0)):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                status = tool.main(["snapshot", "--output-dir", str(directory), "--printer-idle-confirmed"])
+                status = run_tool(manifest, ["snapshot", "--output-dir", str(directory), "--printer-idle-confirmed"])
         supported = tool.digest(boot) in tool.thr_bootloaders.ADMITTED_BOOTLOADERS
         assert status == (0 if supported else tool.UNSUPPORTED_BOOTLOADER)
         assert len(commands) == len(set(commands)) and addresses
@@ -484,8 +489,10 @@ def main():
     parser.add_argument("--patched-image", required=True, type=Path)
     parser.add_argument("--bootloader-backup", type=Path, action="append", default=[],
                         help="captured image; repeat to check multiple exact profiles")
+    parser.add_argument("--manifest", default=tool.MANIFEST.name, choices=tool.MANIFESTS,
+                        help="THR manifest in firmware/ the images belong to (default: Max 4 and Plus 5)")
     args = parser.parse_args()
-    manifest = json.loads(tool.MANIFEST.read_text())
+    manifest = json.loads((tool.FIRMWARE / args.manifest).read_text())
     stock, patched = args.stock_image.read_bytes(), args.patched_image.read_bytes()
     assert tool.admitted_image(stock, manifest) == manifest["thr"]["stock_sha256"]
     assert tool.admitted_image(patched, manifest) == manifest["thr"]["patched_sha256"]

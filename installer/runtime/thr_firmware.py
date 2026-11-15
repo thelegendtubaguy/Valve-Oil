@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import messages
 from .board_guard import critical_window, detached
-from .board_images import BOARD_MANIFESTS, pinned_for_installed_printer, runs_target_firmware
+from .board_images import board_manifest_path, installed_printer, pinned_for_installed_printer, runs_target_firmware
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_bytes, atomic_write_text, fsync_directory
 from .naming import ISSUES_URL
@@ -140,7 +140,9 @@ def flash_thr_firmware(
         reporter.line("THR firmware dry-run: would back up and admit THR, skip a board already on Valve Oil's THR firmware, or flash and verify it. No UART or services accessed.")
         return None
 
-    manifest = json.loads((paths.bundle_root / BOARD_MANIFESTS["thr"]).read_text())
+    _, printer, _ = installed_printer(paths)
+    manifest_path = board_manifest_path(paths.bundle_root, printer, "thr")
+    manifest = json.loads((paths.bundle_root / manifest_path).read_text())
     tool = paths.bundle_root / "scripts/flash_thr_firmware.py"
     python = paths.printer_data_root.parent / "klippy-env/bin/python"
     if not tool.is_file() or tool.is_symlink() or not python.is_file():
@@ -180,7 +182,8 @@ def flash_thr_firmware(
 
     def command(operation, *arguments, allow=()):
         result = session(
-            [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed"],
+            [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed",
+             "--manifest", Path(manifest_path).name],
             capture_output=True, text=True, timeout=960,
         )
         atomic_write_text(directory / (operation + ".stdout"), result.stdout or "", mode=0o600)

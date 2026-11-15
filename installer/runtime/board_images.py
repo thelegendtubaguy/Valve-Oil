@@ -1,7 +1,9 @@
 """The firmware each board must end on: the image its firmware manifest pins for the printer's target QIDI firmware.
 
 THR and USB Box get this project's build on every printer. The mainboard build fixes closed-loop motor replies, so it
-goes only to printers with closed-loop drivers; any other mainboard is pinned to QIDI's stock image.
+goes only to printers with closed-loop drivers; the Plus 5 mainboard is pinned to QIDI's stock image. A board no
+manifest pins for the printer's target firmware is not managed there: it is neither read nor flashed, as the Smart 5's
+i.MX RT mainboard, which this project's tools can't read.
 """
 from __future__ import annotations
 
@@ -12,11 +14,12 @@ from pathlib import Path
 from .manifest import ManifestValidationError
 from .models import Manifest, PrinterSpec
 
-# Board firmware manifests in the bundle; one per board, shared by every printer.
+# Board firmware manifests in the bundle, per board: one per QIDI board image, each pinning its image for the target
+# firmware of the printers that carry it. The Max 4 and Plus 5 THR run 02.02.01.08, the Smart 5's 02.02.01.09.
 BOARD_MANIFESTS = {
-    "thr": "firmware/max4-thr-valve-oil-v1.json",
-    "box": "firmware/max4-box-valve-oil-v1.json",
-    "mcu": "firmware/max4-mcu-valve-oil-v1.json",
+    "thr": ("firmware/max4-thr-valve-oil-v1.json", "firmware/smart5-thr-valve-oil-v1.json"),
+    "box": ("firmware/max4-box-valve-oil-v1.json",),
+    "mcu": ("firmware/max4-mcu-valve-oil-v1.json",),
 }
 
 
@@ -34,16 +37,36 @@ class PinnedImage:
         return self.build == "patched"
 
 
-def load_board_manifest(bundle_root: Path, board: str) -> dict:
-    return json.loads((bundle_root / BOARD_MANIFESTS[board]).read_text(encoding="utf-8"))
+def board_manifest_path(bundle_root: Path, printer: PrinterSpec, board: str) -> str | None:
+    """The bundle path of the manifest pinning `board`'s image for `printer`'s target firmware; None when the board
+    isn't managed on that printer."""
+    firmware = printer.target_firmware.version
+    for path in BOARD_MANIFESTS[board]:
+        if firmware in json.loads((bundle_root / path).read_text(encoding="utf-8")).get("targets", {}):
+            return path
+    return None
+
+
+def managed_boards(bundle_root: Path, printer: PrinterSpec) -> tuple[str, ...]:
+    """The boards this release reads and flashes on `printer`, in BOARD_MANIFESTS order."""
+    return tuple(board for board in BOARD_MANIFESTS if board_manifest_path(bundle_root, printer, board) is not None)
+
+
+def load_board_manifest(bundle_root: Path, board: str, printer: PrinterSpec) -> dict:
+    """The manifest pinning `board`'s image for `printer`; ValueError when the board isn't managed there."""
+    path = board_manifest_path(bundle_root, printer, board)
+    if path is None:
+        raise ValueError(f"No {board} image is pinned for QIDI firmware {printer.target_firmware.version}")
+    return json.loads((bundle_root / path).read_text(encoding="utf-8"))
 
 
 def pinned_board_image(bundle_root: Path, printer: PrinterSpec, board: str) -> PinnedImage:
-    """The image `board` must end on for `printer`'s target firmware."""
+    """The image `board` must end on for `printer`'s target firmware; ValueError when the board isn't managed there."""
     from scripts.build_box_firmware import pinned_image
 
     firmware = printer.target_firmware.version
-    return PinnedImage(board=board, firmware=firmware, **pinned_image(load_board_manifest(bundle_root, board), firmware))
+    return PinnedImage(board=board, firmware=firmware,
+                       **pinned_image(load_board_manifest(bundle_root, board, printer), firmware))
 
 
 def installed_printer(paths) -> tuple[Manifest, PrinterSpec, str]:
@@ -97,33 +120,48 @@ def runs_target_firmware(paths, board: str, target_firmware: str | None = None) 
 
 
 def validate_board_targets(manifest: Manifest, bundle_root: Path) -> None:
-    """Every board manifest pins an image for exactly the printers' target firmware, built from the board image the
-    target package carries, with the mainboard build only where the package carries closed-loop drivers."""
+    """Each board manifest pins images only for printers' target firmware, each target firmware is pinned by at most
+    one manifest per board, and the THR and USB Box are pinned for every printer. A pinned image is built from the
+    board image the target package carries, with the mainboard build only where the package carries closed-loop
+    drivers."""
     from scripts.build_box_firmware import board_spec, pinned_image
 
     targets = {printer.target_firmware.version: printer for printer in manifest.printers}
-    for board, path in BOARD_MANIFESTS.items():
-        board_manifest = load_board_manifest(bundle_root, board)
-        if set(board_manifest.get("targets", {})) != set(targets):
-            raise ManifestValidationError(f"{path} must pin an image for each target firmware: {', '.join(sorted(targets))}.")
-        stock_version = board_spec(board_manifest)["stock_version"]
-        for firmware, printer in targets.items():
-            try:
-                image = pinned_image(board_manifest, firmware)
-            except ValueError as exc:
-                raise ManifestValidationError(f"{path}: {exc}") from exc
-            carried = printer.target_firmware.board_version(board)
-            if carried != stock_version:
-                raise ManifestValidationError(f"{path} is built from {board} {stock_version}, but {printer.display_name} "
-                                              f"firmware {firmware} carries {carried}.")
-            if board == "mcu" and image["build"] == "patched" and printer.target_firmware.board_version("closed_loop") is None:
-                raise ManifestValidationError(f"{path} pins this project's mainboard build for {printer.display_name}, "
-                                              "which has no closed-loop drivers.")
-        # A predecessor is QIDI's image of an earlier version that a package of a firmware the release updates from
-        # carries; it is replaced by the pinned image, which a target package carries.
-        older = {version for printer in manifest.printers for _, boards in printer.target_firmware.update_from
-                 for version in boards.get(board)}
-        for entry in board_spec(board_manifest).get("predecessors", ()):
-            if entry["version"] == stock_version or entry["version"] not in older:
-                raise ManifestValidationError(f"{path}: predecessor {entry['version']} is not {board} firmware that a "
-                                              "package of a firmware this release updates from carries.")
+    for board, paths in BOARD_MANIFESTS.items():
+        pinned_by: dict[str, str] = {}
+        for path in paths:
+            board_manifest = json.loads((bundle_root / path).read_text(encoding="utf-8"))
+            pinned = set(board_manifest.get("targets", {}))
+            if not pinned or not pinned <= set(targets):
+                raise ManifestValidationError(f"{path} must pin images only for target firmware: "
+                                              f"{', '.join(sorted(targets))}.")
+            stock_version = board_spec(board_manifest)["stock_version"]
+            for firmware in sorted(pinned):
+                if firmware in pinned_by:
+                    raise ManifestValidationError(f"{path} and {pinned_by[firmware]} both pin a {board} image for "
+                                                  f"{firmware}.")
+                pinned_by[firmware] = path
+                printer = targets[firmware]
+                try:
+                    image = pinned_image(board_manifest, firmware)
+                except ValueError as exc:
+                    raise ManifestValidationError(f"{path}: {exc}") from exc
+                carried = printer.target_firmware.board_version(board)
+                if carried != stock_version:
+                    raise ManifestValidationError(f"{path} is built from {board} {stock_version}, but "
+                                                  f"{printer.display_name} firmware {firmware} carries {carried}.")
+                if (board == "mcu" and image["build"] == "patched"
+                        and printer.target_firmware.board_version("closed_loop") is None):
+                    raise ManifestValidationError(f"{path} pins this project's mainboard build for "
+                                                  f"{printer.display_name}, which has no closed-loop drivers.")
+            # A predecessor is QIDI's image of an earlier version that a package of a firmware the release updates
+            # from carries; it is replaced by the pinned image, which a target package carries.
+            older = {version for firmware in pinned for _, boards in targets[firmware].target_firmware.update_from
+                     for version in boards.get(board)}
+            for entry in board_spec(board_manifest).get("predecessors", ()):
+                if entry["version"] == stock_version or entry["version"] not in older:
+                    raise ManifestValidationError(f"{path}: predecessor {entry['version']} is not {board} firmware "
+                                                  "that a package of a firmware this release updates from carries.")
+        if board in ("thr", "box") and set(pinned_by) != set(targets):
+            raise ManifestValidationError(f"No {board} image is pinned for "
+                                          f"{', '.join(sorted(set(targets) - set(pinned_by)))}.")

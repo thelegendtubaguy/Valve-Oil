@@ -45,7 +45,8 @@ The installer SHALL admit QIDI Smart 5 firmware `01.01.02.01` as the Smart 5, un
 
 #### Scenario: Other printers' hardware fixes are not applied to the Smart 5
 - **WHEN** install, update, or a firmware tool runs on a Smart 5
-- **THEN** the THR FIFO fix and the mainboard closed-loop fix are not offered
+- **THEN** its THR gets the FIFO fix built from its own `02.02.01.09` image, never the `02.02.01.08` build
+- **AND** the mainboard closed-loop fix is not offered, and the mainboard is not read or flashed
 - **AND** the Box firmware fix is offered only for bootloader builds already admitted for it
 - **AND** zram modules load only on a kernel build declared for them
 

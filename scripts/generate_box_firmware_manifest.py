@@ -39,7 +39,7 @@ BOOTLOADERS = [
     {"sha256": "1e00811df777a8cf21098b1386319a440c90e04aa2a9ab0aeef11dc810891b1e", "identity_reply": "01120103"},
 ]
 # The image a Box must end on for each printer's target QIDI firmware (installer/package.yaml).
-TARGETS = {"01.01.07.01": "patched", "01.01.02.01": "patched"}
+TARGETS = {"01.01.07.01": "patched", "01.01.02.01": "patched", "smart5-01.01.02.01": "patched"}
 
 CLANG_FLAGS = ["--target=thumbv7em-none-eabi", "-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os",
                "-ffreestanding", "-fno-builtin", "-fno-common", "-fno-stack-protector", "-fno-jump-tables",

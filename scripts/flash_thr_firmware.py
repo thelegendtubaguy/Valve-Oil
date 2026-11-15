@@ -14,7 +14,10 @@ import tempfile
 import time
 from pathlib import Path
 
-MANIFEST = Path(__file__).resolve().parents[1] / "firmware/max4-thr-valve-oil-v1.json"
+FIRMWARE = Path(__file__).resolve().parents[1] / "firmware"
+# One manifest per QIDI THR image; the installer passes the one pinned for the printer's target firmware.
+MANIFESTS = ("max4-thr-valve-oil-v1.json", "smart5-thr-valve-oil-v1.json")
+MANIFEST = FIRMWARE / MANIFESTS[0]
 if __package__:
     from . import thr_bootloaders
     from .build_box_firmware import programmable_images, terminal_signals_ignored
@@ -475,9 +478,11 @@ def main(argv=None) -> int:
                         help="on a failed exchange, resume, or program the backup's stock application")
     parser.add_argument("--firmware", help="the printer's target QIDI firmware; transfer then programs only the image "
                                            "pinned for it or QIDI's stock image")
+    parser.add_argument("--manifest", default=MANIFEST.name, choices=MANIFESTS,
+                        help="THR manifest in firmware/ for the printer's THR image (default: Max 4 and Plus 5)")
     args = parser.parse_args(argv)
     try:
-        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        manifest = json.loads((FIRMWARE / args.manifest).read_text(encoding="utf-8"))
         if args.recover_to_stock and args.operation != "transfer":
             raise ValueError("--recover-to-stock is only used by transfer")
         if args.reset and args.operation not in ("probe", "transfer"):

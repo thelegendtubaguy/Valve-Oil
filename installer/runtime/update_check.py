@@ -138,9 +138,9 @@ def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliatio
 def _assess_boards(paths, *, manifest, printer, firmware, urlopen, resolve_usb):
     """Each configured board against its pinned image, without reading any board."""
     boxes = tuple(discover_boxes(paths, resolve_usb=resolve_usb))
-    names = {"thr": "mcu THR", "mcu": "mcu", **{f"box{box.number}": f"mcu {box.name}" for box in boxes}}
+    names = board_firmware.board_names(paths, printer, boxes)
     kinds = {name: "box" if name.startswith("box") else name for name in names}
-    manifests = {kind: load_board_manifest(paths.bundle_root, kind) for kind in set(kinds.values())}
+    manifests = {kind: load_board_manifest(paths.bundle_root, kind, printer) for kind in set(kinds.values())}
     pinned = {kind: pinned_board_image(paths.bundle_root, printer, kind) for kind in manifests}
     versions = board_firmware.reported_versions(paths, names, urlopen)
     previous = load_board_admission(paths)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the Valve Oil Max 4 THR artifacts, emulate the bounded LIS2DW FIFO query, and the identify dictionary."""
+"""Check Valve Oil THR artifacts, emulate the bounded LIS2DW FIFO query, and the identify dictionary."""
 from __future__ import annotations
 
 import argparse
@@ -16,8 +16,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "firmware/max4-thr-valve-oil-v1.json"
-# Stock 02.02.01.08 identify handler and the sendf it tail-calls.
-IDENTIFY, SENDF = 0x080097A4, 0x0800848C
+# Per THR image (patch manifest): the identify handler and the sendf it tail-calls; the FIFO instruction patches and how
+# many bytes they change; and the FIFO query the emulation runs. 02.02.01.08 inlines the query in its timer handler
+# (entered at `entry` with r4 = oid and r5 = the accelerometer, leaving at `exit`); 02.02.01.09 makes it a function
+# (r0 = the accelerometer, r1 = oid). `body` bounds the instructions it may run besides the stubbed calls.
+CHECKS = {
+    "max4-thr-valve-oil-v1": {
+        "identify": 0x080097A4, "sendf": 0x0800848C, "fifo_offsets": (0x0BFE, 0x0C04), "fifo_bytes": 5,
+        "query": "inline", "entry": 0x0B74, "exit": 0x09D6, "body": ((0x0B74, 0x0C2E), (0x1260, 0x1280)),
+        "spi": 0x3338, "add_timer": 0x01F8, "task_wake": 0x5C,
+    },
+    "smart5-thr-valve-oil-v1": {
+        "identify": 0x08009894, "sendf": 0x0800848C, "fifo_offsets": (0x4430, 0x4434), "fifo_bytes": 2,
+        "query": "function", "entry": 0x43A8, "exit": None, "body": ((0x43A8, 0x448E),),
+        "spi": 0x3428, "add_timer": 0x01F8, "task_wake": 0x60,
+    },
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -30,7 +44,8 @@ def file_hash(path: Path) -> str:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
-def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict) -> tuple[bytes, bytes]:
+def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict, manifest_path: Path = MANIFEST) -> tuple[bytes, bytes]:
+    checks = CHECKS[manifest["patch_id"]]
     require(file_hash(stock_path) == manifest["stock_archive"]["sha256"], "Unknown stock archive")
     archive = patched_dir / manifest["outputs"]["archive"]
     raw_path = patched_dir / manifest["outputs"]["thr"]
@@ -74,14 +89,14 @@ def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict) -> tupl
             before = bytes.fromhex(patch["before"])
             require(len(before) == len(after), "Instruction replacement changes length")
             require(stock[offset:offset + len(before)] == before, "Instruction preimage mismatch")
-            if offset < IDENTIFY - int(manifest["thr"]["load_address"], 0):
+            if offset in checks["fifo_offsets"]:
                 fifo.update({offset + i: (old, new) for i, (old, new) in enumerate(zip(before, after)) if old != new})
         else:
             require(hashlib.sha256(stock[offset:offset + len(after)]).hexdigest() == patch["before_sha256"],
                     "Dictionary preimage mismatch")
     changed = {i for i, (old, new) in enumerate(zip(stock, patched)) if old != new}
     require(changed <= allowed, "THR bytes changed outside the manifest")
-    require({i: (stock[i], patched[i]) for i in changed if i in fifo} == fifo and len(fifo) == 5,
+    require({i: (stock[i], patched[i]) for i in changed if i in fifo} == fifo and len(fifo) == checks["fifo_bytes"],
             "Unexpected FIFO instruction delta")
     stock_dictionary = json.loads(zlib.decompress(emulate_identify(stock, manifest)))
     patched_dictionary = json.loads(zlib.decompress(emulate_identify(patched, manifest)))
@@ -94,14 +109,14 @@ def check_artifacts(stock_path: Path, patched_dir: Path, manifest: dict) -> tupl
     require(report == {
         "schema_version": 1,
         "patch_id": manifest["patch_id"],
-        "patch_manifest_sha256": file_hash(MANIFEST),
+        "patch_manifest_sha256": file_hash(manifest_path),
         "upstream_fix": manifest["upstream_fix"],
         "stock_archive": manifest["stock_archive"],
         "thr": manifest["thr"],
         "members": members,
         "artifacts": [{"name": path.name, "sha256": file_hash(path)} for path in (archive, raw_path)],
     }, "Provenance report mismatch")
-    print("Verified: five FIFO instruction bytes and the version-only identify dictionary changed; "
+    print(f"Verified: {checks['fifo_bytes']} FIFO instruction bytes and the version-only identify dictionary changed; "
           "other payloads and ZIP member metadata unchanged")
     return stock, patched
 
@@ -122,7 +137,8 @@ def emulate_identify(image: bytes, manifest: dict) -> bytes:
         captured.append((uc.reg_read(UC_ARM_REG_R1), uc.reg_read(UC_ARM_REG_R2), uc.reg_read(UC_ARM_REG_R3)))
         uc.emu_stop()
 
-    machine.hook_add(UC_HOOK_CODE, sendf, begin=SENDF, end=SENDF + 1)
+    identify, sendf_address = CHECKS[manifest["patch_id"]]["identify"], CHECKS[manifest["patch_id"]]["sendf"]
+    machine.hook_add(UC_HOOK_CODE, sendf, begin=sendf_address, end=sendf_address + 1)
     data = b""
     while True:
         machine.mem_write(args, struct.pack("<II", len(data), 40))
@@ -130,7 +146,7 @@ def emulate_identify(image: bytes, manifest: dict) -> bytes:
         machine.reg_write(UC_ARM_REG_SP, 0x2000F000)
         machine.reg_write(UC_ARM_REG_LR, sentinel)
         captured.clear()
-        machine.emu_start(IDENTIFY | 1, sentinel & ~1, count=200)
+        machine.emu_start(identify | 1, sentinel & ~1, count=200)
         require(len(captured) == 1, "THR identify did not send a response")
         offset, count, pointer = captured[0]
         require(offset == len(data), "THR identify answered the wrong offset")
@@ -144,7 +160,7 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
     from capstone import Cs, CS_ARCH_ARM, CS_MODE_MCLASS, CS_MODE_THUMB
     from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
     from unicorn.arm_const import (
-        UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
+        UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
         UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_SP,
     )
 
@@ -158,9 +174,14 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
         )
         print("Patched instructions:", "; ".join(f"{i.address:#010x}: {i.mnemonic} {i.op_str}" for i in instructions))
 
+    checks = CHECKS[manifest["patch_id"]]
     ram, ax, stack, clock = 0x20000000, 0x20002000, 0x2000F000, 0xE0001000
-    entry, exit_pc = base + 0x0B74, base + 0x09D6
-    spi, sendf, add_timer = base + 0x3338, base + 0x048C, base + 0x01F8
+    function = checks["query"] == "function"
+    entry = base + checks["entry"]
+    # A function returns to a sentinel just past the image; the inline query jumps to its handler's exit.
+    exit_pc = base + 0x8F00 if function else base + checks["exit"]
+    spi, sendf, add_timer = base + checks["spi"], checks["sendf"], base + checks["add_timer"]
+    body = tuple((base + start, base + end) for start, end in checks["body"])
     sample = bytes([1, 2, 3, 4, 5, 6])
     cases = 0
     for image, fixed in ((stock, False), (patched, True)):
@@ -188,8 +209,7 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
             elif address == add_timer:
                 state["timers"] += 1
             else:
-                require(entry <= address < base + 0x0C2E or base + 0x1260 <= address < base + 0x1280,
-                        f"Execution escaped FIFO block: {address:#x}")
+                require(any(start <= address < end for start, end in body), f"Execution escaped FIFO block: {address:#x}")
                 return
             uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
 
@@ -205,15 +225,20 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
                 machine.mem_write(ax + 0x14, b"\x01")
                 machine.mem_write(ax + 0x16, struct.pack("<HHB", 7, 17, buffered))
                 machine.reg_write(UC_ARM_REG_SP, stack)
-                machine.reg_write(UC_ARM_REG_R4, 3)
-                machine.reg_write(UC_ARM_REG_R5, ax)
+                if function:
+                    machine.reg_write(UC_ARM_REG_R0, ax)
+                    machine.reg_write(UC_ARM_REG_R1, 3)
+                    machine.reg_write(UC_ARM_REG_LR, exit_pc | 1)
+                else:
+                    machine.reg_write(UC_ARM_REG_R4, 3)
+                    machine.reg_write(UC_ARM_REG_R5, ax)
                 machine.emu_start(entry | 1, exit_pc, count=256)
                 require(machine.reg_read(UC_ARM_REG_PC) == exit_pc, "FIFO block did not terminate")
                 wake = bool(status & 0x3F) if fixed else not bool(status & 0x3F)
                 context = f"{'patched' if fixed else 'stock'} status={status:#x} buffered={buffered}"
                 require(state["spi"] == [(0xA8, 7), (0xAF, 2)], f"SPI sample read changed: {context}")
                 require(state["timers"] == int(not wake), f"FIFO timer decision wrong: {context}")
-                require(machine.mem_read(ram + 0x5C, 1)[0] == int(wake), f"Task wake wrong: {context}")
+                require(machine.mem_read(ram + checks["task_wake"], 1)[0] == int(wake), f"Task wake wrong: {context}")
                 require(machine.mem_read(ram + 8, 1)[0] == int(not wake), f"Scheduler state wrong: {context}")
                 require(machine.mem_read(ax + 0x14, 1)[0] == int(wake), f"Pending flag wrong: {context}")
                 require(machine.mem_read(ax + 0x1B + buffered, 6) == sample, f"Sample copy changed: {context}")
@@ -230,7 +255,8 @@ def check_fifo_execution(stock: bytes, patched: bytes, manifest: dict) -> None:
     print(f"Verified {cases} stock/patched ARM executions: all FIFO status bytes, partial/full report buffers")
 
 
-def check_rejections(stock_path: Path, patched_dir: Path, manifest: dict) -> None:
+def check_rejections(stock_path: Path, patched_dir: Path, manifest: dict, manifest_path: Path = MANIFEST) -> None:
+    choose = ["--manifest", manifest_path.name]
     with tempfile.TemporaryDirectory(prefix="thr-fifo-rejections-") as temporary:
         root = Path(temporary)
         corrupt = root / "corrupt.zip"
@@ -241,7 +267,7 @@ def check_rejections(stock_path: Path, patched_dir: Path, manifest: dict) -> Non
                                       patched_dir / manifest["outputs"]["thr"])):
             output = root / f"rejected-{index}"
             result = subprocess.run([sys.executable, str(ROOT / "scripts/build_thr_firmware.py"),
-                                     "--stock-archive", str(path), "--output-dir", str(output)],
+                                     "--stock-archive", str(path), "--output-dir", str(output), *choose],
                                     capture_output=True, text=True)
             require(result.returncode == 1 and not output.exists(), "Unsafe input produced artifacts")
         existing = root / "existing"
@@ -249,7 +275,7 @@ def check_rejections(stock_path: Path, patched_dir: Path, manifest: dict) -> Non
         sentinel = existing / "keep.txt"
         sentinel.write_bytes(b"keep")
         result = subprocess.run([sys.executable, str(ROOT / "scripts/build_thr_firmware.py"),
-                                 "--stock-archive", str(stock_path), "--output-dir", str(existing)],
+                                 "--stock-archive", str(stock_path), "--output-dir", str(existing), *choose],
                                 capture_output=True, text=True)
         require(result.returncode == 1 and list(existing.iterdir()) == [sentinel]
                 and sentinel.read_bytes() == b"keep", "Existing output was overwritten")
@@ -261,12 +287,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stock-archive", type=Path, required=True)
     parser.add_argument("--patched-dir", type=Path, required=True)
+    parser.add_argument("--manifest", default=MANIFEST.name, choices=sorted(f"{patch_id}.json" for patch_id in CHECKS),
+                        help="patch manifest in firmware/ the artifacts were built from (default: Max 4 and Plus 5)")
     args = parser.parse_args()
     try:
-        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        stock, patched = check_artifacts(args.stock_archive, args.patched_dir, manifest)
+        manifest_path = ROOT / "firmware" / args.manifest
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        stock, patched = check_artifacts(args.stock_archive, args.patched_dir, manifest, manifest_path)
         check_fifo_execution(stock, patched, manifest)
-        check_rejections(args.stock_archive, args.patched_dir, manifest)
+        check_rejections(args.stock_archive, args.patched_dir, manifest, manifest_path)
     except ImportError as error:
         print(f"Missing checking dependency: {error}. Install firmware/check-requirements.txt", file=sys.stderr)
         return 1

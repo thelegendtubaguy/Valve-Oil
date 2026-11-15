@@ -1,6 +1,6 @@
 ## Context
 
-Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Smart 5, all of it from QIDI's `01.01.02.01` package. In short:
+Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Smart 5: QIDI's `01.01.02.01` package, and the project's own Smart 5 on that firmware. In short:
 
 - **Same as the Plus 5:**
   - Host software: Fluidd, both virtualenvs, `system_stats`, `/etc` files, the SOC package's maintainer scripts, and all but three Moonraker binaries.
@@ -12,7 +12,8 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Smart 5, a
   - Motion: X, Y, and Z run through `cuc.so` with no TMC objects; X and Y home toward their minimums by motor stall with QIDI's checked second homing (`SET_SECOND_HOMING`, `before_homing_gcode`, `after_homing_gcode`).
   - Geometry: travel X −2–185 and Y −4–200, one Z motor up to 182 mm, `max_velocity` 400, no Z tilt, chamber heater, auxiliary fan, or polar cooler, a bed limited to 85 °C.
   - Positions: chute at X 100 Y 199 with its wiper along Y 180–199; cutter at the front right (X 175–180 at Y 1); scrape strip behind the bed at X 79–95, Y 185–187.
-  - THR firmware `02.02.01.09`, whose code moved; the FIFO bug remains but the existing fix doesn't apply.
+  - THR firmware `02.02.01.09`, whose code moved; the FIFO bug remains, the existing fix's bytes don't occur, and its bootloader is a new build (`a21a3019…`, identity `01020103`) that announces itself at startup.
+  - Host board and memory are the Plus 5's; the kernel is a later build (`#15`) of the same code.
   - `homing.py` (`9c2d0a47…`), `stepper_enable.py` (the Max 4's early enable), `box_extras.so`, `box_stepper.so`, and `multi_color_controller.so`.
 - **SOC version shared with the Plus 5:** both ship `01.01.02.01`, released the same day.
 
@@ -27,7 +28,7 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Smart 5, a
 **Non-Goals:**
 
 - New optimizations specific to the Smart 5. Homing, cut, and speed tuning follow measurement on the project printer.
-- A THR FIFO fix for `02.02.01.09` or any mainboard firmware work.
+- Any mainboard firmware work. Valve Oil has no tool for the i.MX RT mainboard, and none of its mainboard fixes applies to it.
 - Earlier Smart 5 firmware.
 
 ## Decisions
@@ -62,13 +63,18 @@ Homing speeds, retract distances, Z retract, and speed limits stay QIDI's until 
 - The timelapse layer change leaves the chute to Y 179 instead of QIDI's out-of-range Y 380.
 
 **D8. Gate features on what is known for the Smart 5.**
-- THR FIFO fix: its gate uses firmware keys, so Smart 5 `01.01.02.01` isn't offered it. Its THR image needs its own fix.
-- Mainboard closed-loop fix: it already requires a `QD_MAX4_` SOC file.
-- zram: it already loads only on declared kernel builds, and no Smart 5 kernel is declared.
+- THR FIFO fix: the Smart 5 gets its own build, `smart5-thr-valve-oil-v1`, from QIDI's `02.02.01.09` image: `cbnz r6` becomes `cbz r6`, and the empty-FIFO store writes `r7`, zero throughout the function, instead of the sample count. The checker emulates the FIFO function for every status byte, as for `02.02.01.08`. The bootloader `a21a3019…` is admitted from emulated transfers against its own code and a live non-erasing probe; its startup identity frame can't be taken for any other reply, because the flasher accepts replies by kind and payload.
+- Mainboard: not managed (D9).
+- zram: the Smart 5's `#15` kernel is declared, after its `Image` and built-in symbols matched the Plus 5's `#3` apart from the build string and build ID.
 - 565 mm/s cap: it has no Smart 5 variant.
 - Box motion: release defaults are empty for the Smart 5, and `tltg_box_feed_motion` already stays inactive on its unlisted `box_stepper.so`.
-- Box firmware: the flasher already requires an admitted bootloader. Its stock-image lookup now accepts any printer's file prefix, including `S5_`.
+- Box firmware: the Smart 5 ships the Max 4's Box image byte for byte, so the Box manifest pins this project's build for it; the flasher still requires an admitted bootloader. Its stock-image lookup accepts any printer's file prefix, including `S5_`.
+- Touchscreen app: the Smart 5 `01.01.02.01` build (`6beea0a1…`) is a reviewed build, with the same five patch sites; its online-update flag sits at another offset in the same structure.
 - Klipper fixes: each replaces QIDI code only when its source hash matches. The Smart 5's sources match every fix the Max 4 gets, including the early-enable timing fix.
+
+**D9. Board manifests are chosen per printer, and a board no manifest pins is not managed.** QIDI's packages no longer carry one image per board for every printer: the Smart 5 has its own THR image and an i.MX RT mainboard. Each board keeps a list of manifests, each pinning its image for the target firmware of the printers that carry it, and the printer's target firmware picks one. The THR and Box must be pinned for every printer, and a target firmware may be pinned by at most one manifest per board. A printer whose mainboard no manifest pins neither reads nor flashes it, leaves it out of board admission, and `mainboard-firmware.sh` refuses on it. Considered instead: per-printer exceptions in the board flows, which would leave the single-manifest assumption in every caller.
+
+**D10. Target firmware is a firmware key.** `target_firmware.version` is the printer's firmware key, so it compares with installed state, board admission, and firmware-update records as every other version does. QIDI's own version names the mirror release, the archive, the package's manifest, and the Debian package version, and the Debian package name comes from the SOC file prefix (`S5_SOC_` → `s5-system`).
 
 ## Data to collect on a running Smart 5
 
@@ -99,5 +105,5 @@ All read-only unless noted. Results go into the Smart 5 observations.
 ## Open Questions
 
 - Does the Smart 5's toolhead put the extruder above the cutter, as the cold cut assumes?
-- Does the Smart 5's framebuffer use the Plus 5's portrait layout, so the screen card's rotation applies?
+- Does the Smart 5's UI rotation and touch frame match the Plus 5's? Its framebuffer is the same 480×800.
 - Does QIDI's first single touch per axis matter for repeatability, or can the checked second homing stand alone?

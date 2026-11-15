@@ -29,6 +29,9 @@ BRANCH_IF_NOT_LONGER = bytes.fromhex("49020054")
 # notices and update still compare the boards with ~/update/firmware_manifest.json.
 STORE_NEED_UPDATE = bytes.fromhex("43c00139")  # strb w3, [x2, #0x70]
 STORE_ZERO = bytes.fromhex("5fc00139")  # strb wzr, [x2, #0x70]
+# The Smart 5 build keeps the byte 0x50 earlier in the same structure.
+STORE_NEED_UPDATE_SMART5 = bytes.fromhex("43800039")  # strb w3, [x2, #0x20]
+STORE_ZERO_SMART5 = bytes.fromhex("5f800039")  # strb wzr, [x2, #0x20]
 # The online, USB, and mandatory-file updates all unpack the package through one function, which deletes
 # ~/update, recreates it, and runs unzip. Development builds made it return false on entry, so every QIDI package
 # update stopped at "Extract failed". That also took away the USB update, the one way back onto a printer that has
@@ -83,11 +86,12 @@ class Build:
         return next(site for site in self.sites if site.original == DETECTOR_CHANGED)
 
 
-def _sites(show_branch: int, clear_branch: int, need_update_store: int, extract: int, detector: int) -> tuple[Site, ...]:
+def _sites(show_branch: int, clear_branch: int, need_update_store: int, extract: int, detector: int, *,
+           store: tuple[bytes, bytes] = (STORE_NEED_UPDATE, STORE_ZERO)) -> tuple[Site, ...]:
     return (
         Site(show_branch, BRANCH_IF_EQUAL, BRANCH_IF_NOT_LONGER),
         Site(clear_branch, BRANCH_IF_EQUAL, BRANCH_IF_NOT_LONGER),
-        Site(need_update_store, STORE_NEED_UPDATE, STORE_ZERO, blocking=True),
+        Site(need_update_store, *store, blocking=True),
         Site(extract, EXTRACT_PROLOGUE, RETURN_FALSE, retired=True),
         Site(detector, DETECTOR_CHANGED, DETECTOR_UNCHANGED),
     )
@@ -116,6 +120,16 @@ BUILDS = {
                               "6d39c942beca99a53ab1f3107d0e355f573f9450e3d5b66b33c83544e5b22661"),
         other_blocked_sha256=("8db64463e4a8eb24b233c6d8878e5948532a8fce8545575ed7d45423acc146ea",
                               "58fe6ed91c5f609777d8b4226dae59219563b1c900d0b4ad7edfe1a2fb4a8cdc"),
+    ),
+    # QIDI Smart 5 firmware 01.01.02.01
+    "6beea0a13cc7448c7f6ab8c345915f22e6d5c04c917a66478d6e43b1ceecd6bf": Build(
+        size=91322056,
+        sites=_sites(0x1F0558, 0x1F0700, 0x293200, 0x2E85D0, 0x22EA38,
+                     store=(STORE_NEED_UPDATE_SMART5, STORE_ZERO_SMART5)),
+        patched_sha256="2ca522f96c95f2dd2836024f09fb267065d0da21be05161495b855f12808958c",
+        blocked_sha256="69173cefdf2791d328353a215a3214ec99493a09f5d5953fc5fa34c2c01dcbfa",
+        # The Smart 5 test printer's development install blocked the unpack step too.
+        other_blocked_sha256=("5f00200ad708916bfaa939be5e746d43e39e852db6cf19b2178956f0af94afb6",),
     ),
 }
 

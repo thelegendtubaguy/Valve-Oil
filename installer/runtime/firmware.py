@@ -33,6 +33,14 @@ def detect_firmware(path: Path) -> DetectedFirmware:
     return DetectedFirmware(version=version, soc_file=soc_file if isinstance(soc_file, str) else None)
 
 
+def detect_firmware_version_best_effort(path: Path) -> Optional[str]:
+    """QIDI's SOC version as the firmware manifest gives it, without a printer's key prefix; for display only."""
+    try:
+        return detect_firmware(path).version
+    except FirmwareDetectionError:
+        return None
+
+
 def firmware_key(manifest: Manifest, detected: DetectedFirmware) -> str:
     """The detected firmware as the installer records it: the SOC version, with the printer's key prefix.
 

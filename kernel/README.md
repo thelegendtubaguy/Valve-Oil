@@ -1,15 +1,18 @@
 # Zram swap kernel modules
 
-QIDI's Max 4 and Plus 5 kernels can swap but ship without zram, so the installer's [zram swap](../docs/install.md#os-optimizations) brings its own modules: `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram`. They are committed in [`installer/system/zram/`](../installer/system/zram/), and [`installer/package.yaml`](../installer/package.yaml) (`system_optimizations.zram_swap`) records their SHA-256 hashes, load order, and the kernel builds they load on:
+QIDI's Max 4, Plus 5, and Smart 5 kernels can swap but ship without zram, so the installer's [zram swap](../docs/install.md#os-optimizations) brings its own modules: `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram`. They are committed in [`installer/system/zram/`](../installer/system/zram/), and [`installer/package.yaml`](../installer/package.yaml) (`system_optimizations.zram_swap`) records their SHA-256 hashes, load order, and the kernel builds they load on:
 
 ```text
 5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025    (Max 4)
 5.10.160 #3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025   (Plus 5)
+5.10.160 #15 SMP PREEMPT Fri Apr 3 15:46:16 CST 2026   (Smart 5)
 ```
 
 Both the installer and the boot script compare `/proc/sys/kernel/osrelease` and `/proc/sys/kernel/version` with those builds and load nothing on any other kernel.
 
 The modules are built for `#4`. The Plus 5's `#3` was checked against it from both printers' boot partitions and `/proc/kallsyms`. The decompressed `Image` files are the same size and differ in 173 bytes, all from the build string: the version banner and string, the build ID, and data and instructions shifted by the one-character-longer date. The built-in symbols, addresses included, and the 9,593 exported symbols are identical, and every symbol the modules import is exported. A QIDI-built Wi-Fi module with the same hash loads on both kernels and has the modules' 0x300-byte `struct module`.
+
+The Smart 5's `#15`, on QIDI firmware `01.01.01.03` and `01.01.02.01`, was checked against the Plus 5's `#3` the same way. Its decompressed `Image` is the same size and differs in 76 bytes: the version banner, the version string, and the 20-byte build ID. The date strings are the same length, so nothing shifts, and the built-in symbols in `/proc/kallsyms`, all 42,585 of them, have the same names and addresses.
 
 ## Rebuild and check
 

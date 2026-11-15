@@ -1,7 +1,7 @@
-"""Exact Max 4 THR build identities and their recovered transfer profiles."""
+"""Exact THR bootloader build identities and their recovered transfer profiles."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 
 
@@ -64,9 +64,13 @@ SECOND = BootloaderProfile(
     reset_hook=0x08000130, tick=0x08001bfc, startup_ticks=4000,
     session_ticks=10000, exit_ticks=1000,
 )
-PROFILES = {profile.sha256: profile for profile in (FIRST, SECOND)}
+# The Smart 5's: FIRST's code with one more call in main, which sends the identity reply once at startup, unasked; every
+# hook and buffer below that call keeps FIRST's address. It identifies as bootloader 1.3.
+THIRD = replace(FIRST, sha256="a21a3019004a4a3e50ec2e07882b8b39b7ff028161e692e83191144c14da7342",
+                identity_reply=bytes.fromhex("01020103"))
+PROFILES = {profile.sha256: profile for profile in (FIRST, SECOND, THIRD)}
 # Admission requires matching offline checks and live non-erasing evidence.
-ADMITTED_BOOTLOADERS = frozenset((FIRST.sha256, SECOND.sha256))
+ADMITTED_BOOTLOADERS = frozenset((FIRST.sha256, SECOND.sha256, THIRD.sha256))
 
 
 def identify_bootloader(data: bytes, *, admitted: bool = True) -> BootloaderProfile:

@@ -301,7 +301,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             raise ValueError('stop before the bootloader')
 
         profiles = protocol.thr_bootloaders
-        with patch.object(protocol, 'MANIFEST', paths.bundle_root / 'firmware/max4-thr-valve-oil-v1.json'), \
+        with patch.object(protocol, 'FIRMWARE', paths.bundle_root / 'firmware'), \
                 patch.dict(profiles.PROFILES, {printer.profile.sha256: printer.profile}), \
                 patch.object(profiles, 'ADMITTED_BOOTLOADERS', frozenset((printer.profile.sha256,))), \
                 patch.object(protocol, 'require_ownership'), patch.object(protocol, 'application_session', side_effect=reset), \

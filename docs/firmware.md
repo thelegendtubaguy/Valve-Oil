@@ -2,14 +2,14 @@
 
 [← Back to the README](../README.md)
 
-Valve Oil puts its own firmware on the printer's boards, with fixes for QIDI's: the toolhead board (THR) on both printers, the mainboard on the Max 4, and each USB QIDI Box. Every install and update, automatic ones included, flashes each board that doesn't have it yet, without asking. A board that already has it is left alone.
+Valve Oil puts its own firmware on the printer's boards, with fixes for QIDI's: the toolhead board (THR) on every printer, the mainboard on the Max 4, and each USB QIDI Box. Every install and update, automatic ones included, flashes each board that doesn't have it yet, without asking. A board that already has it is left alone.
 
-| Board | QIDI Max 4 | QIDI Plus 5 |
-|---|---|---|
-| Toolhead board (THR) | [Valve Oil's](#toolhead-accelerometer-fix), `02.02.01.08-valve-oil.1` | [Valve Oil's](#toolhead-accelerometer-fix), `02.02.01.08-valve-oil.1` |
-| Mainboard | [Valve Oil's](#mainboard-closed-loop-reply-fix), `02.01.01.12-valve-oil.1` | QIDI's, `02.01.01.12` |
-| USB QIDI Box | [Valve Oil's](#qidi-box-firmware), `02.03.01.21-valve-oil.1` | [Valve Oil's](#qidi-box-firmware), `02.03.01.21-valve-oil.1` |
-| Closed-loop X/Y motor drivers | [QIDI's, updated with a QIDI firmware update](#closed-loop-motor-drivers) | none |
+| Board | QIDI Max 4 | QIDI Plus 5 | QIDI Smart 5 |
+|---|---|---|---|
+| Toolhead board (THR) | [Valve Oil's](#toolhead-accelerometer-fix), `02.02.01.08-valve-oil.1` | [Valve Oil's](#toolhead-accelerometer-fix), `02.02.01.08-valve-oil.1` | [Valve Oil's](#toolhead-accelerometer-fix), `02.02.01.09-valve-oil.1` |
+| Mainboard | [Valve Oil's](#mainboard-closed-loop-reply-fix), `02.01.01.12-valve-oil.1` | QIDI's, `02.01.01.12` | QIDI's, `02.01.01.110`, [left alone](#mainboard-closed-loop-reply-fix) |
+| USB QIDI Box | [Valve Oil's](#qidi-box-firmware), `02.03.01.21-valve-oil.1` | [Valve Oil's](#qidi-box-firmware), `02.03.01.21-valve-oil.1` | [Valve Oil's](#qidi-box-firmware), `02.03.01.21-valve-oil.1` |
+| Closed-loop X/Y motor drivers | [QIDI's, updated with a QIDI firmware update](#closed-loop-motor-drivers) | none | none |
 
 The versions are what each board reports in Fluidd and `klippy.log`. Valve Oil's are QIDI's version followed by `-valve-oil.` and a revision number that goes up with each new build.
 
@@ -27,7 +27,7 @@ Uninstalling Valve Oil doesn't change firmware. To put QIDI's firmware back on a
 
 ## Toolhead accelerometer fix
 
-On the Max 4 with QIDI firmware `01.01.07.01` and the Plus 5 with `01.01.02.01`, QIDI's toolhead board (THR) firmware reads its accelerometer incorrectly, which affects input shaper calibration. Both printers use the same toolhead board and THR firmware. Valve Oil's THR firmware fixes the LIS2DW FIFO bug.
+On the Max 4 with QIDI firmware `01.01.07.01` and the Plus 5 with `01.01.02.01`, QIDI's toolhead board (THR) firmware reads its accelerometer incorrectly, which affects input shaper calibration. Both printers use the same toolhead board and THR firmware. The Smart 5 with `01.01.02.01` runs a later THR firmware, `02.02.01.09`, with the same bug. Valve Oil's THR firmware fixes the LIS2DW FIFO bug, with a build for each of QIDI's two THR firmware versions.
 
 > [!IMPORTANT]
 > **After the THR is flashed, run input shaper calibration before bed leveling or printing.** Your saved calibration stays in use, including after a [QIDI firmware update](install.md#qidi-firmware-updates), which puts it back before the THR is flashed, but it was measured with QIDI's firmware. Fluidd shows the warning `Run input shaper calibration.` until a new calibration is saved. Run input shaper calibration on its own first: the screen's calibration page runs bed leveling before input shaping when both are checked. The installer does not run calibration for you.
@@ -70,6 +70,8 @@ On the Max 4, the X and Y motors are closed-loop: each one's driver knows where 
 **When it's flashed:** on the Max 4, by every install and update. A mainboard with QIDI's `02.01.01.11`, from firmware `01.01.06.03` or the first `01.01.06.04`, is flashed after Valve Oil has updated the QIDI firmware to `01.01.07.01`, since the new firmware's Klipper can't use `02.01.01.11`. A mainboard with the earlier build of the fix (`02.01.01.12-tltg-clreplies1`) is updated, with the new firmware built from QIDI's stock mainboard firmware in its backups or `~/update`.
 
 **On the Plus 5,** whose motors aren't closed-loop, the mainboard keeps QIDI's firmware. Valve Oil flashes QIDI's image only if a QIDI firmware it delivers changes the mainboard's version.
+
+**On the Smart 5,** the mainboard is a different chip, an i.MX RT, which drives the X, Y, and Z motors itself; it has no closed-loop drivers. Valve Oil neither reads nor flashes it, and `./mainboard-firmware.sh` stops without touching it.
 
 To check or change the mainboard's firmware yourself, run these over SSH from the installer folder:
 

@@ -13,19 +13,28 @@
 ## 2. On the Smart 5, read-only
 
 - [ ] 2.1 Run the collection script from issue 190 on the stock printer, including `MCU_ID.cfg`, Klipper objects, and MCU versions.
-- [ ] 2.2 Capture the boot image and `/proc/kallsyms`, and compare the kernel with the builds the zram modules target.
+- [x] 2.2 Capture the boot image and `/proc/kallsyms`, and compare the kernel with the builds the zram modules target.
 - [ ] 2.3 Capture `/dev/fb0` on a known screen and read `event0`'s axis ranges; record the rotation and touch frame.
-- [ ] 2.4 Diff the live `printer.cfg` against stock `01.01.02.01`.
+- [x] 2.4 Diff the live `printer.cfg` against stock `01.01.02.01`.
 - [ ] 2.5 Time stock `G28` repeatedly and keep the `klippy.log` lines; check repeatability with and without QIDI's first single touch.
 - [ ] 2.6 Watch stock cut, wipe, chute, scrape, and park moves cold at Z 70 for clearances, and check whether the extruder sits above the cutter.
-- [ ] 2.7 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
+- [x] 2.7 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
 - [ ] 2.8 Measure idle and printing host load and memory.
 - [ ] 2.9 Photograph the mainboard, THR, and SoC boards and the bed screws.
 
 ## 3. On the Smart 5, with services stopped
 
-- [ ] 3.1 Snapshot the THR bootloader and classify it.
+- [x] 3.1 Snapshot the THR bootloader and classify it.
 - [ ] 3.2 With a Box attached, snapshot its bootloader, trace a stock load, unload, and tool change with `scripts/box_trace/`, and decide Smart 5 Box motion defaults.
+
+## 3a. Smart 5 boards
+
+- [x] 3a.1 Read the mainboard's flash through `debug_read` and compare it with QIDI's image; record its bootloader.
+- [x] 3a.2 Build the THR FIFO fix from `02.02.01.09`, check it in emulation, and check flashing against the captured bootloader.
+- [x] 3a.3 Probe the THR bootloader without erasing, and admit it.
+- [x] 3a.4 Choose board manifests per printer, leave the Smart 5 mainboard unmanaged, and pin the Box build for the Smart 5.
+- [x] 3a.5 Add the Smart 5 `01.01.02.01` touchscreen app to the reviewed builds.
+- [ ] 3a.6 Flash the Smart 5 THR through an install and verify readback, the restore procedure, and input shaper calibration afterwards.
 
 ## 4. Admission and validation
 

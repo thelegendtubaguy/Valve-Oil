@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from .board_guard import critical_window, detached
-from .board_images import deliverable_on, load_board_manifest, pinned_board_image
+from .board_images import board_manifest_path, deliverable_on, load_board_manifest, managed_boards, pinned_board_image
 from .box_firmware import (
     BACKUP_DIRECTORY as BOX_BACKUP_DIRECTORY,
     SERVICES,
@@ -245,6 +245,15 @@ def reported_versions(paths, names, urlopen) -> dict[str, str | None]:
         return dict.fromkeys(names)
 
 
+def board_names(paths, printer, boxes) -> dict[str, str]:
+    """Each board this release manages on `printer` (thr, mcu, box<N>) -> its Klipper MCU object name."""
+    managed = managed_boards(paths.bundle_root, printer)
+    names = {board: name for board, name in (("thr", "mcu THR"), ("mcu", "mcu")) if board in managed}
+    if "box" in managed:
+        names.update({f"box{box.number}": f"mcu {box.name}" for box in boxes})
+    return names
+
+
 def _admitted_bootloaders(kind: str, board_manifest: dict) -> frozenset[str]:
     if kind == "thr":
         from scripts import thr_bootloaders
@@ -292,9 +301,9 @@ def read_boards(
     env = {} if environ is None else environ
     automatic = env.get(LOCK_HELD_ENV) == "1"
     boxes = discover_boxes(paths, resolve_usb=resolve_usb)
-    names = {"thr": "mcu THR", "mcu": "mcu", **{f"box{box.number}": f"mcu {box.name}" for box in boxes}}
+    names = board_names(paths, printer, boxes)
     kinds = {name: "box" if name.startswith("box") else name for name in names}
-    manifests = {kind: load_board_manifest(paths.bundle_root, kind) for kind in set(kinds.values())}
+    manifests = {kind: load_board_manifest(paths.bundle_root, kind, printer) for kind in set(kinds.values())}
     pinned = {kind: pinned_board_image(paths.bundle_root, printer, kind) for kind in manifests}
     versions = reported_versions(paths, names, urlopen)
     previous = None if new_install else load_board_admission(paths)
@@ -357,7 +366,7 @@ def read_boards(
             reports = read_session(paths, reporter, [(name, kinds[name], next(
                 (box for box in boxes if f"box{box.number}" == name), None)) for name in to_read],
                 environ=env, input_stream=input_stream, run=run, urlopen=urlopen, sleep=sleep, clock=clock,
-                resolve_usb=resolve_usb)
+                resolve_usb=resolve_usb, thr_manifest=Path(board_manifest_path(paths.bundle_root, printer, "thr")).name)
         except ThrFirmwareError as exc:
             unread_reason = exc.message
         else:
@@ -389,7 +398,8 @@ def read_boards(
     return with_issue_links(paths, admission, printer=printer, box_count=len(boxes))
 
 
-def read_session(paths, reporter, boards, *, environ, input_stream, run, urlopen, sleep, clock, resolve_usb):
+def read_session(paths, reporter, boards, *, environ, input_stream, run, urlopen, sleep, clock, resolve_usb,
+                 thr_manifest="max4-thr-valve-oil-v1.json"):
     """Read each board's snapshot with its tool, with Klipper, the touchscreen, and the update timer stopped.
 
     Returns board name -> (report path, report, problem); report is None when the board could not be read. Raises
@@ -437,7 +447,8 @@ def read_session(paths, reporter, boards, *, environ, input_stream, run, urlopen
     with critical_window(reporter) as reporter:
         try:
             _read_each(paths, reporter, boards, states=states, service_action=service_action, run=session_run,
-                       roots=roots, tools=tools, python=python, resolve_usb=resolve_usb, reports=reports)
+                       roots=roots, tools=tools, python=python, resolve_usb=resolve_usb, reports=reports,
+                       thr_manifest=thr_manifest)
         finally:
             # Every service is started even when one fails, or the read itself failed.
             failed = [service for service in SERVICES if states.get(service) == "active"
@@ -454,7 +465,8 @@ def read_session(paths, reporter, boards, *, environ, input_stream, run, urlopen
     return reports
 
 
-def _read_each(paths, reporter, boards, *, states, service_action, run, roots, tools, python, resolve_usb, reports):
+def _read_each(paths, reporter, boards, *, states, service_action, run, roots, tools, python, resolve_usb, reports,
+               thr_manifest="max4-thr-valve-oil-v1.json"):
     """Stop the services and read each board into `reports`; the caller starts the services again.
 
     The boards are read at the same time: each tool reads one board through its own port (the THR's UART, or the
@@ -472,6 +484,8 @@ def _read_each(paths, reporter, boards, *, states, service_action, run, roots, t
         arguments = []
         if kind == "thr":
             session = Path(tempfile.mkdtemp(prefix="thr-", dir=root))
+            # The THR tool reads the application size of the printer's THR image from its manifest.
+            arguments = ["--manifest", thr_manifest]
         elif kind == "mcu":
             session = Path(tempfile.mkdtemp(prefix="mainboard-", dir=root))
             usb = resolve_usb(mainboard_serial(paths))
@@ -794,7 +808,7 @@ def deliverable_now(status: BoardStatus, printer, firmware: str, bundle_root: Pa
 
     from_predecessor = status.application == QIDI_APPLICATION
     if from_predecessor and status.application_sha256 not in predecessor_hashes(
-            board_spec(load_board_manifest(bundle_root, status.kind))):
+            board_spec(load_board_manifest(bundle_root, status.kind, printer))):
         return False
     return deliverable_on(printer, status.kind, firmware, bundle_root, from_predecessor=from_predecessor)
 
@@ -846,6 +860,8 @@ def deliver_board_firmware(
         return (paths.printer_data_root / marker).exists()
 
     for board, marker in (("thr", THR_RECOVERY_MARKER), ("mcu", MAINBOARD_RECOVERY_MARKER)):
+        if board not in statuses:
+            continue  # not managed on this printer (board_images)
         status = statuses[board]
         pinned = pinned_board_image(paths.bundle_root, printer, board)
         if status.state == CURRENT:

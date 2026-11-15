@@ -744,12 +744,14 @@ system_optimizations:
         sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
   # Compressed swap in RAM for QIDI's kernel, which ships without zram. The modules load only on these exact kernel
   # builds; scripts/build_zram_modules.py rebuilds them from kernel/ and checks these hashes. The Plus 5's #3 differs
-  # from the Max 4's #4 only in its build string and the bytes that string shifts (kernel/README.md).
+  # from the Max 4's #4 only in its build string and the bytes that string shifts, and the Smart 5's #15 from the
+  # Plus 5's #3 only in its build string and build ID (kernel/README.md).
   zram_swap:
     kernel_release: 5.10.160
     kernel_versions:
       - "#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025"
       - "#3 SMP PREEMPT Sat Aug 23 12:12:00 CST 2025"
+      - "#15 SMP PREEMPT Fri Apr 3 15:46:16 CST 2026"
     modules:
       - name: lz4_compress
         archive: system/zram/lz4_compress.ko

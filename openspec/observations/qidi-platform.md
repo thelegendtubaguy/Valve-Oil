@@ -162,7 +162,7 @@ Comparisons in this section are against Max 4 firmware `01.01.07.01`, released t
 
 ## QIDI Smart 5
 
-Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released the same day with the same SOC version. Nothing here comes from a running Smart 5. Unless a bullet says otherwise, the observations elsewhere in this file come from Max 4 or Plus 5 printers and are not established for the Smart 5.
+Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released the same day with the same SOC version. Runtime-confirmed bullets come from the project's Smart 5 on 2026-11-15: it arrived on `01.01.01.03` and was updated to `01.01.02.01` through QIDI's touchscreen update. Unless a bullet says otherwise, the observations elsewhere in this file come from Max 4 or Plus 5 printers and are not established for the Smart 5.
 
 ### Firmware packages
 
@@ -177,12 +177,22 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 - **Config-confirmed:** the SOC payload is Debian package `s5-system` `01.01.02.01`. `preinst` and `prerm` are byte-identical to the Plus 5's, and `postinst` differs only in `VERSION`, so an update removes the same config files.
 - **Config-confirmed:** `/home/qidi/fluidd`, both virtualenvs, `system_stats`, and the shipped `/etc` files are byte-identical to the Plus 5's. Moonraker differs only in `extensions.so`, `frp_manager.so`, and `mqtt.so`. The payload ships no kernel, boot image, or modules, and no `algo_app.service`.
 - **Static-recovered:** `qidiclient` (SHA-256 `6beea0a13cc7448c7f6ab8c345915f22e6d5c04c917a66478d6e43b1ceecd6bf`) is built from its own source tree, `/builds/qidi/3dprinter_s5/qidiclient`. It names the printer `SMART5`, reads offline updates from `USB/QD_Update/S5_`, draws its UI from `draw_ui/S5/3.97_inch` (the Plus 5's size class) with 800×480 landscape art, and adds `/dev/ttyS1` to its mainboard search paths.
+- **Runtime-confirmed:** the earlier `01.01.01.03` (`S5_SOC_01.01.01.03_20260831_Release_NA`) carried the same MCU, THR, and BOX versions, with `S5_MCU_02.01.01.110_20260829.bin`. Its configuration had no `[box485]` or `[box2base]`, no `T0`–`T11` macros, an older `RESUME`, a 6200 Ω thermistor pullup where `01.01.02.01` has 5700, and a `restore_factory_settings` macro; its Klipper tree lacked the RS-485 Box modules and differed in the other Box `.so` files and `toolhead.py`. After the update, the live configuration matched the `01.01.02.01` snapshot apart from the redacted copyright lines, and the update replaced `printer.cfg`, dropping the operator's saved shaper and mesh.
 - **Config-confirmed:** `resource/model_config/S5.json` declares `printer_series` `series_s5`, a `0`–`315 °C` nozzle range and a `0`–`85 °C` bed range, no chamber, chamber fan, or auxiliary fan, AI monitoring, and `p2p` camera access at 720p.
 
 ### Boards
 
 - **Static-recovered:** the mainboard image is not an STM32 image. It starts with an NXP i.MX RT FlexSPI configuration block and image vector table, its strings name `src/rt1050/drivers/`, and its Klipper dictionary has `CLOCK_FREQ` 600 MHz, pins `GPIO1.0`–`GPIO4.31`, no `MCU` constant, and the `config_cuc*`, `cuc_setup_home`, and `query_cuc*` commands. Stock `printer.cfg` reaches it on `/dev/ttyS1` at 500000 baud.
-- **Static-recovered:** THR `02.02.01.09` is built for the Plus 5's `stm32f103xe` at 72 MHz with the same command set as `02.02.01.08`, but its code moved. The LIS2DW FIFO poll is now its own function with the same logic, and the byte sequences the THR FIFO fix replaces in `02.02.01.08` occur nowhere in it.
+- **Static-recovered:** THR `02.02.01.09` is built for the Plus 5's `stm32f103xe` at 72 MHz with the same command set as `02.02.01.08`, but its code moved. The LIS2DW FIFO poll is now its own function (`0x0800c3a8`) with the same logic: a nonzero sample count (`r6`) rearms the poll timer at `0x0800c430`, and an empty FIFO stores `r6` into the scheduler state and wakes the task. `r7` is zero for the whole function. The byte sequences the THR FIFO fix replaces in `02.02.01.08` occur nowhere in it.
+- **Runtime-confirmed:** the THR application is QIDI's `S5_THR_02.02.01.09` image byte for byte (35,072 bytes, then erased flash). Its bootloader, SHA-256 `a21a3019004a4a3e50ec2e07882b8b39b7ff028161e692e83191144c14da7342`, answered a non-erasing probe after the application's `reset` with identity `01020103`, and the application returned unchanged.
+- **Static-recovered:** that bootloader is the `46358f30…` code with one more call in `main` (`0x080018ca`), to the function that builds the identity reply, so it sends `a5 00 0004 01020103` with its CRC once at startup without being asked. Every hook and buffer the transfer profile uses keeps the `46358f30…` address; the later code shifts by those 4 bytes.
+- **Runtime-confirmed:** the mainboard is an i.MX RT1052 (NXP SDK paths `lib/nxp/rt1052`, `CLOCK_FREQ` 600 MHz) whose Klipper application answers `debug_read` across its FlexSPI flash at `0x60000000`. That flash holds a separate bootloader of 29,944 bytes (SHA-256 of those bytes `f260161127ae745491f7e698aaebb1a09d6c847450a03796e3d51223d58b83ed`) with its own boot header, and at `0x60020000` QIDI's `S5_MCU_02.01.01.110_20260918.bin` byte for byte, so the update from `01.01.01.03` reflashed it.
+- **Static-recovered:** the mainboard bootloader talks on the same UART as Klipper (`/dev/ttyS1`) at 115200 with the THR's A5 framing and CRC16, sends identity `01410103` unasked at reset, and listens 5 s before jumping to the application; it erases and programs only from `0x60020000`. The application itself drives the X, Y, and Z motors (current loops on FlexPWM and ADC_ETC), has no SPI, I²C, accelerometer, or closed-loop driver commands, no watchdog, and no "Timer too close" check.
+
+### Host
+
+- **Runtime-confirmed:** the host board is the Max 4's and Plus 5's: Rockchip RK3308B-S (`rk3308bs-evb-amic-v11`), four Cortex-A35 cores at up to 1.104 GHz, 498,620 kB of memory, a 29 GB eMMC. `/dev/fb0` is 480×800 at 32 bpp, the touchscreen is a Goodix on `event0`, and the camera an icSpring `4a54:5231`. `usbdevice.service` runs, and `rockchip.service` fails as on the Plus 5.
+- **Runtime-confirmed:** the kernel is `5.10.160 #15 SMP PREEMPT Fri Apr 3 15:46:16 CST 2026` on both `01.01.01.03` and `01.01.02.01`. Its decompressed `Image` is the Plus 5's `#3` apart from 76 bytes, the version banner, the version string, and the build ID, and its 42,585 built-in `/proc/kallsyms` symbols have the Plus 5's names and addresses.
 
 ### Klipper and stock configuration
 
@@ -212,17 +222,26 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
   - Wiper: Y180–Y199 and Y182–Y199 strokes into the chute, and a pad across X66–X100 at Y185–Y199. `CLEAR_NOZZLE` probes once at X79 Y187, scrubs 0.1 mm above that, and repeats over X85–X95, Y185–Y187.
   - `fans.cfg` has no polar cooler; `heaters.cfg` sets the nozzle maximum to 300 and the bed to 80, and comments out `_CHECK_HEATER_PARAMS`.
 
+### Motion
+
+- **Runtime-confirmed:** stock `01.01.02.01`, cold, idle: a full `G28` took 32.0–33.2 s over five timed runs. Each checked second home landed 0.73–0.80 mm (X) and 0.69–0.81 mm (Y) past the first, within QIDI's 2 mm tolerance, and the second Z touch agreed within 2–5 µm. `PROBE_ACCURACY` at X90 Y90 (10 samples) gave a 7.5 µm range and a 2.2 µm standard deviation. QIDI's cut stroke (Y1, X175 to X180 at F60), chute entrance (X100 Y199), and wipe strokes (Y182–Y199, X66 Y189 to X100 Y198) ran at Z70 without errors.
+
+### Touchscreen expert mode
+
+- **Static-recovered:** in Smart 5 `qidiclient` `01.01.01.03` and `01.01.02.01`, the Settings page's Expert Mode switch (`general.expert_mode` in QIDI Moonraker's `config` table, default `"0"`) only changes the Control page's XYZ tab: with it on, the jog buttons work before homing and an "Unlock steppers" button sends `M84`. An unhomed jog sends `SET_KINEMATIC_POSITION X=150 Y=150 Z=150`, the relative move, then `M84`, so Klipper's travel limits are checked against that position. The Plus 5 client has the key and the strings but no Settings switch.
+- **Runtime-confirmed:** the project's Smart 5 had it on before its update.
+
 ### Slicer profiles
 
 - **Config-confirmed:** QIDI Studio (`21d47457`, `Qidi X-Smart 5`, `model_id` `S5`) and OrcaSlicer (`478cc90a`, `Qidi X-Smart 5`) ship a 180×180 printable area, 180 mm height, 400 mm/s, 15,000 mm/s², and a `bed_exclude_area` of X168–180, Y0–32 under the cutter. Their G-code is the same in both slicers apart from the chamber placeholder. Against the Plus 5's, the start leaves out the chamber commands, `M1004`, and `Z_TILT_ADJUST`; it purges 180 mm, wipes at the chute, probes and scrubs behind the bed, presses the cutter at X175–X181, and draws the prime line from X70 to X110 at Y1. Each filament-change flush ends with five chute wipes. The timelapse-with-wipe-tower layer change moves to Y380, past the Smart 5's Y travel.
 
 ### Unresolved
 
-- The Smart 5's kernel build, framebuffer orientation and touch frame, THR bootloader, and whether `qidiclient` writes `MCU_ID.cfg` on it.
+- The Smart 5's UI rotation and touch frame; whether `qidiclient` writes `MCU_ID.cfg` on it (a root-owned one exists that `printer.cfg` doesn't include).
 - Whether the toolhead extruder sits above the cutter, which the cold cut depends on.
 - Box load and unload lengths with the Smart 5's `box_stepper.so`, and whether its `do_home` lengths are the Plus 5's.
 - The bed screws' positions and thread.
-- Stock `G28` duration and repeatability, and whether its `M84` before homing and its first single touch per axis are needed.
+- Whether QIDI's `M84` before homing and its first single touch per axis are needed for that repeatability.
 
 ## Klipper shutdown reporting
 

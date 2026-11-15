@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from installer.runtime import board_firmware, box_firmware, mainboard_firmware, update_check, valve_oil_status
 from installer.runtime.board_images import BOARD_MANIFESTS as BOARD_MANIFEST_PATHS
 from installer.runtime.auto_update import LOCK_HELD_ENV
-from installer.runtime.board_images import pinned_board_image
+from installer.runtime.board_images import managed_boards, pinned_board_image
 from installer.runtime.cli import main, parse_args, resolve_runtime_paths
 from installer.runtime.errors import InstallerError
 from installer.runtime.manifest import load_manifest
@@ -566,6 +566,15 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / MAINBOARD_RECOVERY_MARKER).exists())
 
+    def test_smart5_mainboard_is_left_alone(self):
+        # No manifest pins a Smart 5 mainboard image, so every action stops before any read or service change.
+        paths, printer, reporter = self.fixture("stock", soc_file="S5_SOC_01.01.02.01_20261016_Release_NA",
+                                                firmware="01.01.02.01")
+        for action in ("status", "install", "restore"):
+            with self.subTest(action=action), self.assertRaises(mainboard_firmware.MainboardFirmwareError):
+                self.execute(paths, printer, reporter, action)
+        self.assertEqual(printer.states, printer.original)
+
     def test_transfer_tool_programs_only_images_pinned_for_the_target_firmware(self):
         # A Plus 5 mainboard is pinned to QIDI's stock image, so this project's build is refused before any serial access.
         manifest, stock, boot = synthetic_manifest("max4-mcu-valve-oil-v1.json")
@@ -582,6 +591,8 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
         cases = ([(None, build, build != "predecessor") for build in images]
                  + [("09.09.09.09", build, False) for build in images])
         for printer in load_manifest(REPO_ROOT / "installer/package.yaml").printers:
+            if "mcu" not in managed_boards(REPO_ROOT, printer):
+                continue
             pinned = pinned_board_image(REPO_ROOT, printer, "mcu")
             cases += [(pinned.firmware, build, build in ("stock", pinned.build)) for build in images]
         seen = []
@@ -628,7 +639,8 @@ class MainboardFirmwareFlowTests(unittest.TestCase):
             self.assertEqual(protocol.usb_state("2-1.9"), (None, None))
 
 
-BOARD_MANIFESTS = {kind: json.loads((REPO_ROOT / path).read_text()) for kind, path in BOARD_MANIFEST_PATHS.items()}
+# The Max 4 and Plus 5 manifests, each board's first.
+BOARD_MANIFESTS = {kind: json.loads((REPO_ROOT / paths[0]).read_text()) for kind, paths in BOARD_MANIFEST_PATHS.items()}
 UNKNOWN = "0" * 64
 # A Box's by-id path carries its MCU serial; it must never reach a link, a warning, or the admission record.
 BOX_SERIAL = "usb-Klipper_stm32f401xc_SECRETSERIAL0042-if00"
@@ -642,8 +654,11 @@ class Boards:
     don't have ("<version>+modified", or a version without a predecessor).
     """
 
-    def __init__(self, boards):
+    def __init__(self, boards, specs=None):
         self.boards = dict(boards)
+        # Image specs that differ from the Max 4's, by board kind (the Smart 5's THR).
+        self.specs = specs or {}
+        self.commands = {}
         self.states = {"klipper.service": "active", "qidi-client.service": "active",
                        "tltg-optimized-auto-update.timer": "active"}
         self.original = dict(self.states)
@@ -656,13 +671,13 @@ class Boards:
 
     def version(self, name):
         _, app = self.boards[name]
-        spec = image_spec_of(self.kind(name))
+        spec = self.specs.get(self.kind(name)) or image_spec_of(self.kind(name))
         return spec.get(app + "_version", app.split("+")[0] if app != "unknown" else spec["stock_version"])
 
     def report(self, name):
         boot, app = self.boards[name]
         kind = self.kind(name)
-        spec = image_spec_of(kind)
+        spec = self.specs.get(kind) or image_spec_of(kind)
         bootloaders = (sorted(thr_bootloaders.ADMITTED_BOOTLOADERS) if kind == "thr"
                        else [entry["sha256"] for entry in BOARD_MANIFESTS[kind]["bootloaders"]])
         return {"bootloader_sha256": bootloaders[0] if boot == "admitted" else UNKNOWN,
@@ -713,6 +728,7 @@ class Boards:
         name = ("thr" if tool == "flash_thr_firmware.py" else "mcu" if tool == "flash_mcu_firmware.py"
                 else {usb: box for box, usb in BOARD_USB.items()}[command[command.index("--usb") + 1]])
         self.snapshots.append(name)
+        self.commands[name] = command
         before = Path(command[command.index("--output-dir") + 1])
         before.mkdir()
         report = self.report(name)
@@ -732,7 +748,7 @@ class BoardAdmissionTests(unittest.TestCase):
     """Installs read every board before changing anything, refuse a new install with a board this release doesn't
     admit, and bring admitted boards to their pinned images without a question."""
 
-    def fixture(self, boards, *, firmware="01.01.07.01", existing=False):
+    def fixture(self, boards, *, firmware="01.01.07.01", soc_prefix="QD_MAX4_SOC_", existing=False, specs=None):
         root = temp_path("board-admission-")
         data = root / "printer_data"
         (data / "config").mkdir(parents=True)
@@ -742,14 +758,14 @@ class BoardAdmissionTests(unittest.TestCase):
         (data / "config/box.cfg").write_text("".join(
             f"[mcu mcu_{name}]\nserial: /dev/serial/by-id/{BOX_SERIAL}-{name}\n\n" for name in boards if name.startswith("box")))
         (data / "firmware_manifest.json").write_text(json.dumps(
-            {"SOC": {"file": f"QD_MAX4_SOC_{firmware}_20261016_Release_NA", "version": firmware}}))
+            {"SOC": {"file": f"{soc_prefix}{firmware}_20261016_Release_NA", "version": firmware}}))
         (root / "klippy-env/bin").mkdir(parents=True)
         (root / "klippy-env/bin/python").write_text("")
         if existing:
             (data / "config/tltg_optimized_state.yaml").write_text("")
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=build_env(
             data, moonraker_url="http://printer.invalid/printer/objects/query"))
-        printer = Boards(boards)
+        printer = Boards(boards, specs)
         reporter = create_reporter(io.StringIO(), prefer_plain=True, bundle_root=REPO_ROOT, environ={})
         return paths, printer, reporter
 
@@ -935,6 +951,23 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertEqual((len(printer.snapshots), printer.stops, starting), (reads, stops, []))
         self.assertEqual({status.state for status in admission.boards}, {board_firmware.CURRENT})
 
+    def test_smart5_gets_its_own_thr_image_and_its_mainboard_is_left_alone(self):
+        # The Smart 5's THR runs 02.02.01.09 under its own manifest; its i.MX RT mainboard isn't read or flashed.
+        smart5_thr = json.loads((REPO_ROOT / "firmware/smart5-thr-valve-oil-v1.json").read_text())
+        paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "box1": ("admitted", "stock")},
+                                                firmware="01.01.02.01", soc_prefix="S5_SOC_",
+                                                specs={"thr": smart5_thr["thr"]})
+        board_printer, admission = self.preflight(paths, printer, reporter)
+        self.assertEqual(board_printer.id, "smart5")
+        self.assertEqual([status.board for status in admission.boards], ["thr", "box1"])
+        self.assertTrue(admission.admitted and block_qidi_package_updates(admission))
+        self.assertEqual(sorted(printer.snapshots), ["box1", "thr"])
+        thr_read = printer.commands["thr"]
+        self.assertEqual(thr_read[thr_read.index("--manifest") + 1], "smart5-thr-valve-oil-v1.json")
+        calls, delivery = self.deliver(paths, printer, reporter, board_printer, admission)
+        self.assertEqual(calls, [("thr", None, smart5_thr["thr"]["patched_sha256"]), ("box", (1,), None)])
+        self.assertEqual({status.state for status in delivery.admission.boards}, {board_firmware.CURRENT})
+
     def test_a_box_this_release_does_not_admit_does_not_stop_firmware_for_the_rest_of_the_printer(self):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "patched"),
                                                  "box1": ("unknown", "02.03.01.19")}, existing=True)
@@ -976,7 +1009,7 @@ class BoardAdmissionTests(unittest.TestCase):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "02.01.01.11")},
                                                 firmware="01.01.06.03")
         with patch.object(board_firmware, "load_board_manifest",
-                          side_effect=lambda root, kind: unnamed if kind == "mcu" else load(root, kind)), \
+                          side_effect=lambda root, kind, printer: unnamed if kind == "mcu" else load(root, kind, printer)), \
                 self.assertRaises(board_firmware.BoardAdmissionError):
             self.preflight(paths, printer, reporter)
 

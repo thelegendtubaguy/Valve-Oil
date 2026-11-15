@@ -1,4 +1,4 @@
-# Max 4 THR FIFO fix
+# THR FIFO fix
 
 `max4-thr-valve-oil-v1` patches the LIS2DW FIFO-empty decision in the Max 4 THR `02.02.01.08` image shipped with QIDI firmware `01.01.07.01`. It applies the behavior of [upstream Klipper fix `6269dda56b`](https://github.com/Klipper3d/klipper/commit/6269dda56bb7c08263153b18715d08e2d964bcab), without the separate FIFO batching change.
 
@@ -46,6 +46,21 @@ Generation and checking do not contact or flash a printer. The optimized-macro i
 The package's `firmware_manifest.json` still lists QIDI's THR version. A completed touchscreen update is not proof that the patched THR was flashed. These build checks do not establish installation or physical recovery. See [THR-only operations](FLASHING.md) for the restricted tool, readback verification, and required recovery-entry validation.
 
 The ZIP is a **full QIDI update**, including the unchanged SOC and other MCU components. Installing it can replace printer configuration and remove optimized macros, as a stock update does; while Valve Oil is installed, the touchscreen refuses to install it, as it does every QIDI package. Keep the original archive for recovery and back up printer configuration before any firmware installation. Use the standalone image only with a verified Max 4 THR flashing and recovery procedure.
+
+## Smart 5 build
+
+`smart5-thr-valve-oil-v1` applies the same fix to the Smart 5 THR `02.02.01.09` image shipped with QIDI firmware `01.01.02.01`, whose FIFO query moved into its own function. It changes two instruction bytes, `cbnz r6` to `cbz r6` and the scheduler store from `r6` to `r7`, which is zero for the whole function, and the version, which becomes `02.02.01.09-valve-oil.1`, in the same way as above. Its hashes are in [`smart5-thr-valve-oil-v1.json`](smart5-thr-valve-oil-v1.json); the patched THR SHA-256 is `aec05626791d939a8355e995a61f9c94c7d2524dbb7570e12552dceaf95de71b`. Build and check it from the [Smart 5 release archive](https://github.com/thelegendtubaguy/Qidi-Smart5-Defaults/releases/tag/qidi-smart5-firmware-01.01.02.01-5677f126716aaa0c084c02a787145bc911cd346badd87cca350cecaeebbc041e) with `--manifest`:
+
+```bash
+python3 scripts/build_thr_firmware.py \
+  --stock-archive S5_01.01.02.01_20261016_Release.zip \
+  --output-dir dist/smart5-thr-valve-oil-v1 --manifest smart5-thr-valve-oil-v1.json
+.venv-thr/bin/python scripts/check_thr_firmware.py \
+  --stock-archive S5_01.01.02.01_20261016_Release.zip \
+  --patched-dir dist/smart5-thr-valve-oil-v1 --manifest smart5-thr-valve-oil-v1.json
+```
+
+The installer flashes it on the Smart 5 as it flashes the Max 4 build on the Max 4 and Plus 5. To restore the Smart 5's stock THR firmware, follow the procedure below with `S5_01.01.02.01_20261016_Release.zip`, `S5_THR_02.02.01.09_20260520.bin`, the stock hash `4bcc5dea3fec9d114dc444c0b9b24933eca901adf0051932a9c5b6afca144b54`, and `--manifest smart5-thr-valve-oil-v1.json` on every `flash_thr_firmware.py` command.
 
 ## Restore the stock THR firmware from backup
 

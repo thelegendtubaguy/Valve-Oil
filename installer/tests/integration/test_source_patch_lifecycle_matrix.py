@@ -1250,7 +1250,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                                                      encoding="utf-8")
         paths.restart_marker_path.write_text("{}", encoding="utf-8")
         printer = self.manifest.printer_for_firmware("01.01.06.05")
-        box_stock = load_board_manifest(REPO_ROOT, "box")["box"]["stock_version"]
+        box_stock = load_board_manifest(REPO_ROOT, "box", printer)["box"]["stock_version"]
         versions = {"mcu": pinned_board_image(REPO_ROOT, printer, "mcu").version,
                     "mcu THR": pinned_board_image(REPO_ROOT, printer, "thr").version, "mcu mcu_box1": box_stock}
         state = {"print": "standby", "opened": []}

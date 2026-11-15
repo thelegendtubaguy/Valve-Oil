@@ -51,7 +51,7 @@ from .box_firmware import usb_path_for_serial
 from . import closed_loop_firmware
 from .closed_loop_firmware import DriverUpdateFailed, KlipperAPI, klipper_api_path
 from .errors import ActivePrintError, FirmwareDetectionError, HeaterOnError, InstallerError, PrinterStateError
-from .firmware import detect_firmware, detect_firmware_version_best_effort, supported_printer
+from .firmware import detect_firmware, detect_firmware_key_best_effort, supported_printer
 from .fs_atomic import atomic_delete, atomic_write_text
 from .mainboard_firmware import mainboard_serial
 from .manifest import load_manifest
@@ -1100,8 +1100,10 @@ def _stranded_mainboard(ctx, detail: str, *, outcome: str | None = None) -> _Fai
     earlier version than the new Klipper needs. In the second case the touchscreen comes back too, since QIDI's own
     board update from its firmware page can still fix the mainboard."""
     from scripts.build_box_firmware import board_spec, predecessor_versions
-    from .board_images import load_board_manifest
+    from .board_images import load_board_manifest, managed_boards
 
+    if "mcu" not in managed_boards(ctx.paths.bundle_root, ctx.printer):
+        return None
     if ctx.resolve_usb(mainboard_serial(ctx.paths)) is None:
         return _Failed(f"The mainboard was not found on USB, so its firmware wasn't updated ({detail}). Klipper and "
                        "Moonraker were started again; check that the printer is fully powered, then run ./install.sh "
@@ -1110,7 +1112,7 @@ def _stranded_mainboard(ctx, detail: str, *, outcome: str | None = None) -> _Fai
     status = admission.board("mcu") if admission is not None else None
     version = status.version if status is not None else None
     if outcome != "waiting" and version is not None and version not in predecessor_versions(
-            board_spec(load_board_manifest(ctx.paths.bundle_root, "mcu"))):
+            board_spec(load_board_manifest(ctx.paths.bundle_root, "mcu", ctx.printer))):
         return None
     return _Failed(
         f"The mainboard still runs firmware {version or 'of an unknown version'}, which the Klipper in QIDI firmware "
@@ -1125,8 +1127,7 @@ def _stranded_mainboard(ctx, detail: str, *, outcome: str | None = None) -> _Fai
 def _check(ctx: _Run) -> None:
     if ctx.changed():
         return
-    installed = detect_firmware_version_best_effort(ctx.paths.firmware_manifest_path)
-    installed = ctx.printer.firmware_key(installed) if installed is not None else None
+    installed = detect_firmware_key_best_effort(ctx.paths.firmware_manifest_path, ctx.manifest)
     if installed != ctx.record["from_firmware"] or not ctx.target.can_update_from(installed or ""):
         raise _NotStarted(f"the printer's firmware is now {installed}, not {ctx.record['from_firmware']}",
                           "run_failed")

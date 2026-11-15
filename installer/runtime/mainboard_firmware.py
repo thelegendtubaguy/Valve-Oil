@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .auto_update import LOCK_HELD_ENV
 from .board_guard import critical_window, detached
-from .board_images import BOARD_MANIFESTS, pinned_for_installed_printer, runs_target_firmware
+from .board_images import BOARD_MANIFESTS, board_manifest_path, installed_printer, pinned_for_installed_printer, runs_target_firmware
 from .box_firmware import (SERVICES, _write_image, admitted_backup, pending_record, start_recorded_services,
                            unsupported_board_note, usb_path_for_serial)
 from .errors import InstallerError
@@ -29,7 +29,8 @@ from .sudo import authenticate_sudo, run_sudo
 from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 
 SUBJECT = "Mainboard firmware"
-MANIFEST = BOARD_MANIFESTS["mcu"]
+# The only mainboard manifest; a printer it pins no image for has no managed mainboard (board_images).
+MANIFEST = BOARD_MANIFESTS["mcu"][0]
 BACKUP_DIRECTORY = ".tltg_mainboard_firmware_backups"
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
@@ -145,6 +146,13 @@ def run_mainboard_firmware(
     env = {} if environ is None else environ
     manifest = build_mcu_firmware.load_manifest(paths.bundle_root / MANIFEST)
     marker = paths.printer_data_root / MAINBOARD_RECOVERY_MARKER
+    try:
+        printer = installed_printer(paths)[1] if pinned is None else None
+    except (InstallerError, ValueError):
+        printer = None  # an unsupported firmware is refused below, as before
+    if printer is not None and board_manifest_path(paths.bundle_root, printer, "mcu") is None:
+        raise MainboardFirmwareError(f"Valve Oil doesn't read or flash the {printer.display_name} mainboard; it keeps "
+                                     "QIDI's firmware.")
 
     if action == "status":
         reporter.line("Mainboard: " + _describe(_version(paths, urlopen), manifest))
