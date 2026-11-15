@@ -15,19 +15,82 @@
 # running the shutdown-fix firmware stays connected in its shutdown state and
 # refuses I2C reads; QIDI's aht20_f does not catch the resulting error, which
 # would crash Klippy and replace the shutdown reason with a generic error.
+#
+# The saved variable vo_box_heater_pwm_cycle_time sets how often each Box
+# heater switches on and off, as pwm_cycle_time does for the bed and chamber
+# heaters. QIDI's box_config builds the Box heaters from a fixed list of
+# box.cfg options that leaves pwm_cycle_time out, so they keep Klipper's
+# 0.1 s; the Box MCU receives the cycle time when Klippy configures it, so it
+# is set here before that. A change applies at Klippy's next start, where the
+# changed Box MCU configuration makes Klippy restart the Box MCUs.
 
 import logging
 import re
 
 REFRESH_TIME = 1.0
 BOX_HEATER_NAME = re.compile(r"^heater_box\d+$")
+CYCLE_TIME_VARIABLE = "vo_box_heater_pwm_cycle_time"
+# Faster switching only adds work for the Box MCU, which also runs the Box's
+# motors and link, so it is held to 100 cycles a second. QIDI's 0.1 s,
+# Klipper's default, is the longest allowed.
+MIN_CYCLE_TIME = 0.01
+STOCK_CYCLE_TIME = 0.1
 
 
 class BoxHeaterRefresh:
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.printer.register_event_handler("klippy:mcu_identify",
+                                            self._set_cycle_time)
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:ready", self._guard_sensors)
+
+    def _cycle_time(self):
+        variables = getattr(self.printer.lookup_object("save_variables", None),
+                            "allVariables", None) or {}
+        if CYCLE_TIME_VARIABLE not in variables:
+            return None
+        value = variables[CYCLE_TIME_VARIABLE]
+        try:
+            cycle_time = float(value)
+        except (TypeError, ValueError):
+            cycle_time = 0.
+        if isinstance(value, bool) or \
+                not MIN_CYCLE_TIME <= cycle_time <= STOCK_CYCLE_TIME:
+            logging.warning("tltg_box_heater_refresh: %s=%r is not between"
+                            " %g and %g s; Box heaters keep %g s",
+                            CYCLE_TIME_VARIABLE, value, MIN_CYCLE_TIME,
+                            STOCK_CYCLE_TIME, STOCK_CYCLE_TIME)
+            return None
+        return cycle_time
+
+    def _set_cycle_time(self):
+        # Runs before Klippy sends the MCUs their configuration, which carries
+        # each heater's cycle time.
+        cycle_time = self._cycle_time()
+        if cycle_time is None:
+            return
+        pheaters = self.printer.lookup_object("heaters", None)
+        for name, heater in sorted(getattr(pheaters, "heaters", {}).items()):
+            if not BOX_HEATER_NAME.match(name):
+                continue
+            mcu_pwm = getattr(heater, "mcu_pwm", None)
+            pwm_delay = getattr(heater, "pwm_delay", None)
+            if not callable(getattr(mcu_pwm, "setup_cycle_time", None)) \
+                    or not isinstance(pwm_delay, (int, float)):
+                logging.warning("tltg_box_heater_refresh: %s has an unexpected"
+                                " heater layout; cycle time left unchanged",
+                                name)
+                continue
+            if cycle_time > pwm_delay:
+                # Klipper's own limit for pwm_cycle_time.
+                logging.warning("tltg_box_heater_refresh: %s cycle time %g s"
+                                " is above its sensor's %g s report time; left"
+                                " unchanged", name, cycle_time, pwm_delay)
+                continue
+            mcu_pwm.setup_cycle_time(cycle_time)
+            logging.info("tltg_box_heater_refresh: %s switches every %g s",
+                         name, cycle_time)
 
     def _connect(self):
         pheaters = self.printer.lookup_object("heaters")

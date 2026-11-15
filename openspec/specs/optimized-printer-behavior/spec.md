@@ -858,6 +858,17 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **WHEN** the extruder, bed, or chamber heater holds a steady output
 - **THEN** it is resent on Klipper's normal schedule
 
+### Requirement: QIDI Box heater switching speed
+Optimized configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_time` set the PWM cycle time of every USB QIDI Box heater, from 0.01 s to 0.1 s and no longer than the heater sensor's report time, taking effect when Klipper next configures the Box MCUs. Without the variable, or with any other value, Box heaters SHALL keep QIDI's 0.1 s. Other heaters SHALL be unchanged.
+
+#### Scenario: Faster Box heater switching
+- **WHEN** `vo_box_heater_pwm_cycle_time` is `0.02` and Klipper restarts
+- **THEN** each USB Box heater is configured with a 0.02 s cycle and the bed, chamber, and extruder heaters keep theirs
+
+#### Scenario: Unusable setting
+- **WHEN** `vo_box_heater_pwm_cycle_time` is missing, not a number, or outside 0.01 s to 0.1 s
+- **THEN** Box heaters keep a 0.1 s cycle and `klippy.log` says why for a value that was set
+
 ### Requirement: Klipper main-loop health
 Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
 

@@ -26,6 +26,17 @@ Box heater targets can be set from Fluidd, up to 65 °C, the Box's advertised ma
 
 Each Box's processor temperature shows in Fluidd's temperature card as **Box1 MCU** through **Box4 MCU**. These sensors have no limits, so they never stop a print.
 
+### Box heater switching speed
+
+To hold its target, the Box heater switches on and off 10 times a second, Klipper's default. If that makes lights on the same circuit flicker, it can switch faster, as `pwm_cycle_time` does for the bed and chamber heaters. QIDI's Box code takes no cycle time from `box.cfg`. In seconds, for every USB Box:
+
+```text
+SAVE_VARIABLE VARIABLE=vo_box_heater_pwm_cycle_time VALUE=0.02
+FIRMWARE_RESTART
+```
+
+It takes effect the next time Klipper restarts, a plain `RESTART` included. Values from `0.01` to `0.1` work; anything else, or no setting, keeps `0.1`. If you've shortened `pwm_cycle_time` for the bed or chamber, the same value is a good start. Switching faster doesn't change how much the heater heats. To go back, save `0.1` and restart Klipper. `klippy.log` shows the cycle each Box heater uses, for example `tltg_box_heater_refresh: heater_box1 switches every 0.02 s`. RS-485 Boxes aren't changed.
+
 ## Load and unload speed
 
 A load pushes filament from the spool to the Box hub, then fast toward the toolhead, then slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back, the Box pull it back to the hub, and then back to its parked position.
