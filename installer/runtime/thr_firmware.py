@@ -58,7 +58,8 @@ def check_thr_printer_ready(paths, *, urlopen=urllib.request.urlopen, subject="T
         if (not isinstance(heaters, list) or not 1 <= len(heaters) <= 32
                 or not all(isinstance(n, str) and n for n in heaters)
                 or len(set(heaters)) != len(heaters)
-                or not {"extruder", "heater_bed", "heater_generic chamber"}.issubset(heaters)):
+                # Every heater Klipper lists is checked below; the Smart 5 has no chamber heater.
+                or not {"extruder", "heater_bed"}.issubset(heaters)):
             raise ValueError("Incomplete heater registry")
         status = _query(paths, (*names, *heaters), urlopen, subject)
         if status["heaters"]["available_heaters"] != heaters:
@@ -98,8 +99,8 @@ def _stock_thr_image(paths, backup_root, manifest) -> bytes | None:
     from scripts.flash_thr_firmware import digest
     thr = manifest["thr"]
     candidates = sorted(backup_root.glob("thr-*/before/application.bin"))
-    # QIDI names the image after the printer's package (QD_MAX4_, QD_PLUS5_); both carry the same THR image.
-    candidates += sorted((paths.printer_data_root.parent / "update").glob("QD_*_THR_" + thr["stock_version"] + "_*.bin"))
+    # QIDI names the image after the printer's package (QD_MAX4_, QD_PLUS5_, S5_); the hash says which it is.
+    candidates += sorted((paths.printer_data_root.parent / "update").glob("*_THR_" + thr["stock_version"] + "_*.bin"))
     for candidate in candidates:
         try:
             data = candidate.read_bytes()

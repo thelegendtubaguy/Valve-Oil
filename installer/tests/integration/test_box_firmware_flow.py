@@ -659,6 +659,7 @@ class Boards:
         # Image specs that differ from the Max 4's, by board kind (the Smart 5's THR).
         self.specs = specs or {}
         self.commands = {}
+        self.heaters = ["extruder", "heater_bed", "heater_generic chamber"]
         self.states = {"klipper.service": "active", "qidi-client.service": "active",
                        "tltg-optimized-auto-update.timer": "active"}
         self.original = dict(self.states)
@@ -701,8 +702,7 @@ class Boards:
                 status[name] = {"stepper_version": self.drivers}
         status.update({"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
                        "idle_timeout": {"state": "Ready"},
-                       "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber"]},
-                       "extruder": {"target": 0}, "heater_bed": {"target": 0}, "heater_generic chamber": {"target": 0}})
+                       "heaters": {"available_heaters": self.heaters}, **{heater: {"target": 0} for heater in self.heaters}})
         return io.BytesIO(json.dumps({"result": {"status": status}}).encode())
 
     def run(self, command, **kwargs):
@@ -957,6 +957,7 @@ class BoardAdmissionTests(unittest.TestCase):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "box1": ("admitted", "stock")},
                                                 firmware="01.01.02.01", soc_prefix="S5_SOC_",
                                                 specs={"thr": smart5_thr["thr"]})
+        printer.heaters = ["extruder", "heater_bed"]  # no chamber heater
         board_printer, admission = self.preflight(paths, printer, reporter)
         self.assertEqual(board_printer.id, "smart5")
         self.assertEqual([status.board for status in admission.boards], ["thr", "box1"])

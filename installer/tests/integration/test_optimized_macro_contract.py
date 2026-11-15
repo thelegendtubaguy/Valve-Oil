@@ -52,14 +52,21 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("[temperature_sensor Toolhead_MCU]", temperatures)
         self.assertIn("sensor_type: temperature_mcu", temperatures)
         self.assertIn("sensor_mcu: THR", temperatures)
-        self.assertIn("[adc_temperature GD32F425]", temperatures)
-        self.assertIn("temperature1: 0\nvoltage1: 1.5100", temperatures)
-        self.assertIn("temperature2: 100\nvoltage2: 1.0700", temperatures)
-        self.assertIn("[temperature_sensor Mainboard_MCU]", temperatures)
-        self.assertIn("sensor_type: GD32F425", temperatures)
-        self.assertIn("sensor_pin: ADC_TEMPERATURE", temperatures)
-        self.assertIn("min_temp: -100\nmax_temp: 500", temperatures)
         self.assertNotIn("sensor_mcu: mcu", temperatures)
+        # The GD32F425 mainboard sensor is the Max 4's and Plus 5's; the Smart 5's i.MX RT mainboard has none.
+        self.assertNotIn("ADC_TEMPERATURE", temperatures)
+        for printer in ("max4", "plus5"):
+            with self.subTest(printer=printer):
+                profile = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
+                self.assertIn("[adc_temperature GD32F425]", profile)
+                self.assertIn("temperature1: 0\nvoltage1: 1.5100", profile)
+                self.assertIn("temperature2: 100\nvoltage2: 1.0700", profile)
+                self.assertIn("[temperature_sensor Mainboard_MCU]", profile)
+                self.assertIn("sensor_type: GD32F425", profile)
+                self.assertIn("sensor_pin: ADC_TEMPERATURE", profile)
+                self.assertIn("min_temp: -100\nmax_temp: 500", profile)
+        smart5 = "\n".join(path.read_text(encoding="utf-8") for path in (PRINTER_MACRO_ROOT / "smart5").glob("*.cfg"))
+        self.assertNotIn("ADC_TEMPERATURE", smart5)
         self.assertNotIn("[temperature_sensor Mainboard_GD32F425]", temperatures)
         self.assertNotIn("[temperature_sensor Mainboard_MCU_Approx]", temperatures)
 
@@ -267,7 +274,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
 
     def test_printer_folders_define_the_same_sections(self):
         # Driver sections only add options to the printer's own stock driver sections, which differ by printer.
-        # Bed screw positions are set up only for printers whose screws have been measured.
+        # Bed screw positions are set up only for printers whose screws have been measured, and the mainboard
+        # temperature sensor only on the GD32F425 mainboards (not the Smart 5's).
+        mainboard_sensor = {"adc_temperature gd32f425", "temperature_sensor mainboard_mcu"}
         sections = {}
         for printer, stock_root in NEWEST_STOCK.items():
             stock = {
@@ -282,7 +291,10 @@ class OptimizedMacroContractTests(unittest.TestCase):
             drivers = {name for name in names if name.startswith("tmc")}
             with self.subTest(printer=printer):
                 self.assertLessEqual(drivers, stock)
-            sections[printer] = sorted(name for name in names if name not in drivers and name != "screws_tilt_adjust")
+            sections[printer] = sorted(name for name in names if name not in drivers and name != "screws_tilt_adjust"
+                                       and name not in mainboard_sensor)
+            with self.subTest(printer=printer):
+                self.assertEqual(mainboard_sensor <= set(names), printer != "smart5")
         self.assertEqual(sections["plus5"], sections["max4"])
         self.assertEqual(sections["smart5"], sections["max4"])
 
