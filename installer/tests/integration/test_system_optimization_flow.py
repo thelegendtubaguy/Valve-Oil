@@ -18,6 +18,7 @@ from installer.runtime import moonraker_speedups
 from installer.runtime import addons_service
 from installer.runtime import auto_update, status_service
 from installer.runtime import remote_screen
+from installer.runtime import adb_usb_only
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
 from installer.runtime import box_config as box_monitor
@@ -1203,20 +1204,33 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse((root / zram_swap.DESTINATION.lstrip("/")).exists())
         self.assertFalse((root / zram_swap.UNIT_FILE.lstrip("/")).exists())
         self.assertEqual((root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
+        # ADB stays on the USB port: its service keeps running, and the profile file keeps it off the network.
+        usbdevice = root / "systemd" / f"{adb_usb_only.SERVICE}.json"
+        self.assertFalse(usbdevice.exists())
+        self.assertEqual((root / adb_usb_only.FILE.lstrip("/")).read_text(encoding="utf-8"), adb_usb_only.CONTENT)
         # An update that finds the repair already in place still lets uninstall put the mount back, including after
-        # an earlier version recorded that outcome without the mount options.
+        # an earlier version recorded that outcome without the mount options. ADB, which an earlier version turned
+        # off, comes back on.
         state_path = paths.printer_data_root / manifest.state_file
         state = load_installed_state(state_path)
         state.system_ledger["outcomes"]["rockchip_root_sync"] = {"status": "already_current_owned", "source": "yes_install", "postflight": {"classification": "already_current_owned"}}
+        on = {"exists": True, "service": adb_usb_only.SERVICE, "enabled": "enabled", "active": "active"}
+        state.system_ledger["restore_preimages"]["service_usbdevice.service"] = on
         write_installed_state(state_path, state)
+        usbdevice.write_text(json.dumps({**on, "enabled": "disabled", "active": "inactive"}), encoding="utf-8")
         run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO("yes\nno\nno\n"), urlopen=moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg"), environ=env, run=fake_host_run(root))
+        ledger = load_installed_state(state_path).system_ledger
+        self.assertEqual({key: json.loads(usbdevice.read_text(encoding="utf-8"))[key] for key in ("enabled", "active")}, {"enabled": "enabled", "active": "active"})
+        self.assertNotIn("service_usbdevice.service", ledger["restore_preimages"])
+        self.assertEqual(ledger["outcomes"]["service_usbdevice.service"]["status"], "retired")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
         report = io.StringIO()
         run_uninstall(paths, manifest, compatibility, PlainReporter(report), input_stream=io.StringIO("yes\nyes\n"), urlopen=moonraker_urlopen(), environ=env, run=fake_host_run(root))
         self.assertNotIn("Rockchip system state was modified", report.getvalue())
         self.assertEqual((root / "mounts/root.options").read_text(encoding="utf-8"), "ro,noatime,sync\n")
-        # Accepted restoration puts back QIDI's ondemand governor.
+        # Accepted restoration puts back QIDI's ondemand governor, and QIDI's ADB settings.
         self.assertFalse((root / cpu_governor.FILE.lstrip("/")).exists())
+        self.assertFalse((root / adb_usb_only.FILE.lstrip("/")).exists())
 
     def test_compensation_journal_blocks_until_all_services_recover(self):
         paths, manifest, env, root = self._host_context()

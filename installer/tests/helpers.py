@@ -336,7 +336,7 @@ def fake_host_run(root: Path):
             state["active"] = "active" if command[1] == "start" else "inactive"
             write_service_state(service, state)
             return result(command)
-        if command[:2] == ["systemctl", "restart"]:
+        if command[:2] in (["systemctl", "restart"], ["systemctl", "try-restart"]):
             return result(command)
         if command[:2] == ["systemctl", "daemon-reload"] or command[:2] == ["systemctl", "reset-failed"]:
             return result(command)

@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from . import messages
+from . import adb_usb_only
 from . import cpu_governor
 from . import static_build
 from . import fluidd_filament_config as filament_config
@@ -118,7 +119,7 @@ ZRAM_SWAP_UPDATE_PREIMAGE = {"path": zram_swap.DESTINATION, "exists": True, "pre
 # host change, because install makes them regardless of policy.
 OPTIONAL_OPERATIONS = frozenset({
     "dns", "apt_sources", "qidiclient_static_gifs", ROCKCHIP_ROOT_SYNC_OPERATION, ZRAM_SWAP_OPERATION, zram_swap.UNIT_OPERATION,
-    cpu_governor.OPERATION,
+    cpu_governor.OPERATION, adb_usb_only.OPERATION,
 })
 # QIDI's bundle is patched only while nginx serves it; serving the package build retires these patches.
 FLUIDD_BUNDLE_OPERATIONS = (FLUIDD_BOX_OPERATION, FLUIDD_SERVICE_WORKER_OPERATION)
@@ -145,7 +146,10 @@ SERVICE_NAMES = {
     "crowsnest.service": "the camera",
     cpu_tuning.TUNING_UNIT: "QIDI's CPU tuning",
     cpu_tuning.IRQBALANCE_UNIT: "irqbalance",
+    adb_usb_only.SERVICE: "ADB over USB",
 }
+# Restarted only when already running: a restart that only applies a setting doesn't start a stopped service.
+TRY_RESTART_SERVICES = frozenset({adb_usb_only.SERVICE})
 STEP_LABELS = {
     ROCKCHIP_ROOT_SYNC_OPERATION: "Speeding up file writes on the printer's storage",
     "dns": "Updating DNS settings",
@@ -377,6 +381,17 @@ GUARDED_FILE_PATCHES = {
         )
         for operation in cpu_tuning.FILES
     },
+    # The restart, only of a running usbdevice, starts adbd again without its network port.
+    adb_usb_only.OPERATION: _GuardedFilePatch(
+        label="ADB network setting",
+        file=lambda spec: adb_usb_only.FILE,
+        patch=adb_usb_only.patch_profile,
+        restart_service=adb_usb_only.SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        restart_optional=True,
+    ),
     cpu_governor.OPERATION: _GuardedFilePatch(
         label="CPU governor settings",
         file=lambda spec: cpu_governor.FILE,
@@ -830,6 +845,7 @@ def maybe_emit_system_dry_run(
                         "crowsnest.service": " and restart the camera",
                         cpu_tuning.TUNING_UNIT: " and pin the toolhead and USB interrupts",
                         cpu_tuning.IRQBALANCE_UNIT: " and restart irqbalance",
+                        adb_usb_only.SERVICE: " and restart ADB if it's running",
                     }.get(guarded.restart_service or "", "")
                     reporter.line(f"  - would apply {operation_id}{restart}")
                 else:
@@ -1226,6 +1242,51 @@ def _retire_dns(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Pat
         if path.read_text(encoding="utf-8") == ours and not _file_matches_preimage(item, root=root):
             _restore_file_preimage(item, paths=paths, root=root, sudo_password=sudo_password, run=run)
     del restore_preimages["dns"]
+
+
+def _retire_services(restore_preimages: dict[str, Any], actions: list[dict[str, Any]], *, spec: SystemOptimizationsSpec,
+                     root: Path, sudo_password: str | None, run, reporter, source: str) -> bool:
+    """Put back each service an earlier package version turned off and this one no longer does, once the change
+    replacing it is in place: usbdevice, once its profile file keeps ADB off the network. Runs after the transaction's
+    other changes have settled, so no rollback removes that file again; a service that fails to come back keeps its
+    preimage, and the next install tries again."""
+    retired = False
+    for operation_id, replacement in adb_usb_only.RETIRED_SERVICE_OPERATIONS.items():
+        preimage = restore_preimages.get(operation_id)
+        if not isinstance(preimage, dict):
+            continue
+        guarded = GUARDED_FILE_PATCHES[replacement]
+        target = _map_path(root, guarded.file(spec))
+        try:
+            in_place = target.is_file() and not target.is_symlink() and (
+                target.read_text(encoding="utf-8") == guarded.patched("", spec=spec, root=root)
+            )
+        except (OSError, UnicodeDecodeError):
+            in_place = False
+        if not in_place:
+            continue
+        started_at = _now()
+        try:
+            _restore_service(preimage, root=root, sudo_password=sudo_password, run=run)
+        except InstallerError as exc:
+            reporter.line(f"  Could not turn {SERVICE_NAMES.get(str(preimage.get('service', '')), operation_id)} back on: {exc}")
+            continue
+        del restore_preimages[operation_id]
+        service = str(preimage.get("service", ""))
+        actions.append(
+            _action_record(
+                operation_id=operation_id,
+                status="retired",
+                started_at=started_at,
+                preimage=None,
+                desired={"enabled": preimage.get("enabled"), "active": preimage.get("active")},
+                postflight={**_service_state(service, root=root, run=run), "service": service},
+                source=source,
+                reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+            )
+        )
+        retired = True
+    return retired
 
 
 def _replace_link_with_file(path: str, content: str, *, root: Path, sudo_password: str | None, run) -> None:
@@ -2285,6 +2346,10 @@ def apply_system_optimizations(
                 )
             )
         restarts.flush()
+        applied_any = _retire_services(
+            restore_preimages, actions, spec=spec, root=root, sudo_password=sudo_password, run=run, reporter=reporter,
+            source=source,
+        ) or applied_any
     except BaseException as exc:
         if current_preimages:
             last_id = next(reversed(current_preimages))
@@ -3203,10 +3268,11 @@ def _service_state_is_disabled(state: dict[str, Any]) -> bool:
 
 
 def _restart_service(service: str, *, root: Path, sudo_password: str | None, run, required: bool = False) -> None:
+    command = ["systemctl", "try-restart" if service in TRY_RESTART_SERVICES else "restart", service]
     if required:
-        run_sudo_or_raise(["systemctl", "restart", service], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
+        run_sudo_or_raise(command, messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
     else:
-        run_sudo_ignore_failure(["systemctl", "restart", service], run=run, password=sudo_password or "")
+        run_sudo_ignore_failure(command, run=run, password=sudo_password or "")
 
 
 class _ServiceRestarts:
@@ -3775,7 +3841,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         remote_screen.NGINX_OPERATION,
     ]
     if enabled:
-        ids.extend(["dns", "apt_sources", "qidiclient_static_gifs"])
+        ids.extend(["dns", "apt_sources", "qidiclient_static_gifs", adb_usb_only.OPERATION])
         ids.extend(f"service_{service}" for service in spec.services.disable)
         if policy.get("ai_detection") == "disable":
             ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
@@ -3805,6 +3871,8 @@ def _service_for_operation(operation_id: str, spec: SystemOptimizationsSpec) -> 
     service = operation_id.removeprefix("service_")
     services = set(spec.services.disable)
     services.update(item.service for item in spec.services.optional_disable)
+    # Kept valid so ledgers from earlier package versions can still be restored and retired.
+    services.update(operation.removeprefix("service_") for operation in adb_usb_only.RETIRED_SERVICE_OPERATIONS)
     if service not in services:
         raise SystemOptimizationError(f"Unknown service operation: {operation_id}")
     return service
@@ -3846,7 +3914,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
-        remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
+        adb_usb_only.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
         addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
         status_service.UNIT_OPERATION, status_service.SERVER_OPERATION,
         boot_screen.PLAYER_OPERATION, boot_screen.UNIT_OPERATION,
@@ -4310,6 +4378,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             ZRAM_SWAP_OPERATION,
             zram_swap.UNIT_OPERATION,
             cpu_governor.OPERATION,
+            adb_usb_only.OPERATION,
             FILAMENT_CONFIG_OPERATION,
             *STATIC_BUILDS,
             remote_screen.UNIT_OPERATION,
@@ -4329,6 +4398,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),
             *(f"service_{item.service}" for item in spec.services.optional_disable),
+            *adb_usb_only.RETIRED_SERVICE_OPERATIONS,
         }
     )
 

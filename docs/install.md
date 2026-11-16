@@ -72,7 +72,7 @@ Every install and update applies these, including on printers where an earlier i
 - Adding `1.1.1.1` and `8.8.8.8` as fallback DNS servers, on Max 4 firmware `01.01.06.03` only. From Max 4 `01.01.06.04`, and on the Plus 5, QIDI's firmware adds fallback DNS servers itself, so Valve Oil leaves DNS to it, and an update hands back DNS that an earlier install changed.
 - Pointing the printer's package sources at Debian's official servers.
 - Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and QIDI AI detection if you choose.
-- Turning off [ADB](#adb), which gives anyone on your network a root shell on the printer without a password.
+- Taking [ADB](#adb) off the network, where it gives anyone a root shell on the printer without a password. It stays on the board's USB port, for recovery with a cable.
 - Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode.
 - Compressed swap in memory ([zram](#zram-swap)), so the printer doesn't run out of memory.
 - Running the CPU at full speed, so Klipper's short bursts of work don't start at a third of it. With a 65 °C chamber, the processor ran about 1 °C warmer, 11 °C below where it starts slowing itself down.
@@ -93,9 +93,11 @@ QIDI's kernel has no zram, so the package carries its own modules, built for the
 
 ### ADB
 
-QIDI's system image runs ADB (Android Debug Bridge) as `root` on TCP port 5555, on every network the printer joins, with no authentication. Anyone who can reach the printer can run commands on it as root, and changing the `qidi` password doesn't stop them, since ADB doesn't use it. It comes from `usbdevice.service`, a leftover from Rockchip's board image whose only function is ADB. Nothing QIDI ships uses it, and the USB port for flash drives is separate and keeps working.
+QIDI's system image runs ADB (Android Debug Bridge) as `root`, with no authentication, on the USB-C port of the board inside the printer and on TCP port 5555 of every network the printer joins. Over the network, anyone who can reach the printer can run commands on it as root, and changing the `qidi` password doesn't stop them, since ADB doesn't use it. It comes from `usbdevice.service`, Rockchip's USB gadget service, which reads the port from `/etc/profile.d/adbd.sh`.
 
-The installer stops and disables `usbdevice.service`. To check that ADB is off, run `sudo ss -tlnp | grep 5555` over SSH; it should print nothing. If QIDI support asks for ADB, `sudo systemctl start usbdevice` turns it back on until the printer reboots or the next install or automatic update check turns it off again.
+The installer adds `/etc/profile.d/valve-oil-adb-usb-only.sh`, which unsets that port, and restarts ADB if it's running, so ADB no longer listens on the network. ADB over the board's USB-C port keeps working: it's a way back onto a printer that has lost its network. Plug a cable from that port into a computer and run `adb shell`. A Mac's USB-C port may not see the board through a USB-C to USB-C cable; use a USB-A port, or a USB-C to USB-A adapter. Earlier versions turned ADB off entirely; an update turns it back on once the network port is closed.
+
+To check that ADB is off the network, run `sudo ss -tlnp | grep 5555` over SSH; it should print nothing.
 
 ## Slicer start G-code
 
