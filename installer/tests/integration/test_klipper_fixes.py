@@ -21,7 +21,8 @@ def _load():
     patches; the tests attach the classes they need."""
     saved = {name: sys.modules.get(name)
              for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks", "extras",
-                          "extras.heaters", "extras.probe", "extras.stepper_enable", "extras.tmc")}
+                          "extras.fan", "extras.heaters", "extras.output_pin", "extras.probe",
+                          "extras.stepper_enable", "extras.tmc")}
     for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks"):
         sys.modules[name] = types.ModuleType(name)
     sys.modules["serialhdl"].error = SerialError
@@ -30,7 +31,7 @@ def _load():
     package = types.ModuleType("extras")
     package.__path__ = []
     sys.modules["extras"] = package
-    for name in ("heaters", "probe", "stepper_enable", "tmc"):
+    for name in ("fan", "heaters", "output_pin", "probe", "stepper_enable", "tmc"):
         module = types.ModuleType("extras." + name)
         sys.modules["extras." + name] = module
         setattr(package, name, module)
@@ -356,6 +357,150 @@ class StepperEnableTest(unittest.TestCase):
                 self.assertAlmostEqual(callbacks[0], 10.02)
                 self.assertTrue(tracking.is_enabled)
         self.assertEqual(pin.sent, [])
+
+
+class PinRequestTest(unittest.TestCase):
+    """M106, SET_FAN_SPEED and SET_PIN reach their MCU close enough to their
+    time for its 32-bit clock, and never for a time already past."""
+
+    class Reactor:
+        NEVER = 9999999999999999.
+
+        def __init__(self):
+            self.now = 100.
+            self.timers = []
+
+        def monotonic(self):
+            return self.now
+
+        def register_timer(self, callback, waketime=NEVER):
+            timer = types.SimpleNamespace(callback=callback, waketime=waketime)
+            self.timers.append(timer)
+            return timer
+
+        def update_timer(self, timer, waketime):
+            timer.waketime = waketime
+
+        def run_until(self, systime):
+            """Advance to systime, running timers as they fall due."""
+            while True:
+                due = [t for t in self.timers if t.waketime <= systime]
+                if not due:
+                    break
+                timer = min(due, key=lambda t: t.waketime)
+                self.now = max(self.now, timer.waketime)
+                timer.waketime = timer.callback(self.now)
+            self.now = systime
+
+    def setUp(self) -> None:
+        reactor = self.reactor = self.Reactor()
+        self.lookahead = []
+        self.flushes = []
+        self.shutdown = False
+        toolhead = types.SimpleNamespace(
+            register_lookahead_callback=self.lookahead.append,
+            note_mcu_movequeue_activity=lambda print_time: None)
+        self.printer = types.SimpleNamespace(
+            get_reactor=lambda: reactor, is_shutdown=lambda: self.shutdown,
+            lookup_object=lambda name: toolhead)
+        # The MCU's print time runs with the host clock.
+        self.mcu = types.SimpleNamespace(
+            estimated_print_time=lambda eventtime: eventtime,
+            register_flush_callback=self.flushes.append)
+        self.sent = []
+
+    def fan(self):
+        """QIDI's Fan as the queue uses it: set_speed spaces changes 0.1 s
+        apart and ignores a speed the fan already has."""
+        test = self
+        fan = types.SimpleNamespace(printer=self.printer, last_fan_value=0., last_fan_time=0.,
+                                    mcu_fan=types.SimpleNamespace(get_mcu=lambda: self.mcu))
+
+        def set_speed(print_time, value):
+            if value == fan.last_fan_value:
+                return
+            print_time = max(fan.last_fan_time + .1, print_time)
+            test.sent.append((test.reactor.now, print_time, value))
+            fan.last_fan_value, fan.last_fan_time = value, print_time
+        fan.set_speed = set_speed
+        return fan
+
+    def plan(self, print_time):
+        """Klipper flushes the lookahead: the requests that follow a move ending at print_time."""
+        callbacks, self.lookahead[:] = list(self.lookahead), []
+        for callback in callbacks:
+            callback(print_time)
+
+    def flush_steps(self, print_time):
+        for callback in self.flushes:
+            callback(print_time, int(print_time * 1000))
+
+    def test_a_request_after_a_long_move_waits_until_it_is_close(self) -> None:
+        fan = self.fan()
+        klipper_fixes._fan_set_speed_from_command(fan, 1.)
+        # QIDI's start G-code: the chamber fan follows a 10 s prime line,
+        # whose steps QIDI's toolhead generates at once.
+        self.plan(112.)
+        self.flush_steps(112.)
+        self.assertEqual(self.sent, [])
+
+        self.reactor.run_until(115.)
+
+        self.assertEqual(self.sent, [(112. - klipper_fixes.REQUEST_AHEAD, 112., 1.)])
+
+    def test_requests_in_the_usual_buffer_go_out_with_their_moves(self) -> None:
+        fan = self.fan()
+        klipper_fixes._fan_set_speed_from_command(fan, 1.)
+        klipper_fixes._fan_set_speed_from_command(fan, .5)
+        self.plan(102.5)
+        self.flush_steps(102.6)
+        klipper_fixes._fan_set_speed_from_command(fan, .5)
+        self.plan(102.8)
+        self.flush_steps(102.9)
+
+        # Requests for the same time collapse to the last; a repeat changes nothing.
+        self.assertEqual(self.sent, [(100., 102.5, .5)])
+
+    def test_a_request_already_due_goes_out_ahead_of_the_mcu(self) -> None:
+        fan = self.fan()
+        klipper_fixes._fan_set_speed_from_command(fan, 1.)
+        self.plan(99.)
+        self.reactor.run_until(100.)
+
+        self.assertEqual(len(self.sent), 1)
+        self.assertAlmostEqual(self.sent[0][1], 100. + klipper_fixes.PIN_MIN_TIME)
+
+    def test_pending_requests_are_dropped_at_shutdown(self) -> None:
+        fan = self.fan()
+        klipper_fixes._fan_set_speed_from_command(fan, 1.)
+        self.plan(110.)
+        self.shutdown = True
+
+        self.reactor.run_until(120.)
+
+        self.assertEqual(self.sent, [])
+
+    def test_set_pin_waits_too_and_resends_keep_their_time(self) -> None:
+        pin = types.SimpleNamespace(printer=self.printer, last_value=0., last_print_time=0.,
+                                    mcu_pin=types.SimpleNamespace(get_mcu=lambda: self.mcu))
+
+        def qidi_set_pin(owner, print_time, value, is_resend=False):
+            if value == owner.last_value and not is_resend:
+                return
+            print_time = max(print_time, owner.last_print_time + .1)
+            self.sent.append((self.reactor.now, print_time, value))
+            owner.last_value, owner.last_print_time = value, print_time
+        self.addCleanup(klipper_fixes._SET_PIN.__setitem__, 0, klipper_fixes._SET_PIN[0])
+        klipper_fixes._SET_PIN[0] = qidi_set_pin
+
+        # SET_PIN's lookahead callback, after a 10 s move.
+        klipper_fixes._pin_set_pin(pin, 110., 1.)
+        self.assertEqual(self.sent, [])
+        self.reactor.run_until(111.)
+        klipper_fixes._pin_set_pin(pin, 111.1, 1., True)
+
+        self.assertEqual(self.sent, [(110. - klipper_fixes.REQUEST_AHEAD, 110., 1.),
+                                     (111., 111.1, 1.)])
 
 
 class TimerTest(unittest.TestCase):

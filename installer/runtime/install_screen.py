@@ -35,6 +35,9 @@ from .sudo import SudoError, authenticate_sudo, run_sudo
 TOUCHSCREEN = "qidi-client.service"
 MARKER = ".tltg_install_screen"  # in printer_data while an install holds the app stopped
 WATCHER_UNIT_PREFIX = "tltg-install-screen-"
+# Without a description, systemd-run makes one from the command line, and systemd writes it unescaped into the transient
+# unit file; a systemctl daemon-reload while the install runs then reads the script's lines as broken settings.
+WATCHER_DESCRIPTION = "Valve Oil install screen watcher"
 # Run as root by systemd-run: wait for the installer to end, then start the app if the installer didn't release it and
 # no recovery record exists. $1 is the installer's process id, $2 the marker, and the rest the recovery records.
 WATCHER_SCRIPT = """pid=$1; marker=$2; shift 2
@@ -127,7 +130,8 @@ def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw) -> str 
         atomic_write_text(marker, f"{os.getpid()}\n", mode=0o644)
     except OSError:
         return None
-    watcher = run_sudo(["systemd-run", f"--unit={WATCHER_UNIT_PREFIX}{os.getpid()}", "--collect", "--quiet",
+    watcher = run_sudo(["systemd-run", f"--unit={WATCHER_UNIT_PREFIX}{os.getpid()}",
+                        f"--description={WATCHER_DESCRIPTION}", "--collect", "--quiet",
                         "/bin/sh", "-c", WATCHER_SCRIPT, "sh", str(os.getpid()), str(marker),
                         *(str(record) for record in recovery_records(paths))],
                        run=run, password=password, timeout=30)

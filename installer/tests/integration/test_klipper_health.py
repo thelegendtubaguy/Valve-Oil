@@ -455,6 +455,9 @@ class LateCommandTest(unittest.TestCase):
             # Ahead of the MCU, but held behind the pin's change 40 ms later.
             (self.clock(100.02), self.clock(100.06), "40.0 ms late"),
             (self.clock(100.003), 0, "only 3.0 ms ahead"),
+            # So far ahead that the MCU's 32-bit clock reads it as past.
+            (self.clock(113.5), 0, "MCU command too far ahead: queue_digital_out on 'mcu' "
+                                   "13500.0 ms ahead, beyond the 12782.6 ms its clock reaches"),
         )
         for clock, minclock, expected in cases:
             with self.subTest(expected=expected):

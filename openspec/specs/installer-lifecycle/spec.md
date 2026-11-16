@@ -961,7 +961,7 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/tltg-addons/` and its systemd unit. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
 
 #### Scenario: An add-on installs offline into its own directories
-- **WHEN** the operator installs an add-on while the printer is not printing or paused
+- **WHEN** the operator installs an add-on while no print is running or paused and Klipper is not running G-code such as a calibration, whether or not a heater is on
 - **THEN** its source, pinned wheels, and pinned source-only packages are verified against the manifest before anything is written, and it gets its own Python environment without pip under its directory
 - **AND** pinned source-only packages are pure Python and are built offline after the wheels, with the setuptools pinned among the wheels
 - **AND** its settings and identity are kept in a separate data directory that updates keep
@@ -1020,7 +1020,7 @@ Normal install and update SHALL provide a package-owned add-ons service and a Fl
 - **WHEN** a client calls the add-ons route
 - **THEN** it is served only if Moonraker authorizes that client, by trusted address or by Fluidd's login, and the service listens only on the printer's loopback address
 - **AND** a request that changes add-ons is refused unless it is a JSON request from the same origin carrying `X-Valve-Oil: addons`
-- **AND** installs, updates, and relinks are refused while a print is running or paused
+- **AND** installs, updates, and relinks are refused while a print is running or paused or Klipper is running G-code such as a calibration, and not because a heater is on
 
 #### Scenario: Changes finish and report on their own
 - **WHEN** an add-on change starts

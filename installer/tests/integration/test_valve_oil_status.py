@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
+import shutil
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -54,6 +58,11 @@ class StatusServiceTests(unittest.TestCase):
         server.STATE_DIR = root / "cache"
         server.JOB_FILE, server.JOB_LOG, server.JOB_RC = (server.STATE_DIR / name for name in ("job.json", "job.log", "job.rc"))
         server.BUNDLE = root / "tltg-optimized-macros"
+        server.RELEASE_METADATA = server.BUNDLE / "RELEASE_METADATA.yaml"
+        server.LOGS = cls.paths.printer_data_root / "logs"
+        server.CACHE = root / "valve-oil-cache"
+        server.BOX_CFG = root / "box.cfg"
+        server.FIRMWARE_UPDATE_RESULT = cls.paths.printer_data_root / ".tltg_firmware_update_result.json"
         (server.BUNDLE / "installer/runtime").mkdir(parents=True)
         (server.BUNDLE / "installer/runtime/bootstrap.py").write_text("")
         server.INSTALLER_LOCK = cls.paths.printer_data_root / ".tltg_optimized_installer.lock"
@@ -162,7 +171,7 @@ class StatusServiceTests(unittest.TestCase):
         status, body = self.request("/api/status", method="GET")
         self.assertEqual(status, 200)
         self.assertEqual(body["schema"], 1)
-        self.assertEqual(body["release"], {"installed": "26.11.11.3"})
+        self.assertEqual(body["release"], {"installed": "26.11.11.3", "channel": None, "commit": None})
         self.assertEqual((body["printer"]["firmware"], body["printer"]["target_firmware"]), ("01.01.06.02", "01.01.07.01"))
         self.assertEqual([(item["kind"], item["reinstall"]) for item in body["pending"]],
                          [("release", True), ("firmware", False), ("board", False)])
@@ -275,6 +284,50 @@ class StatusServiceTests(unittest.TestCase):
             self.server.AUTO_UPDATE_TIMER.unlink()
             self.server.read_timer_property = lambda name: None
             self.server._next_check.update(until=0.0)
+
+    def test_dev_builds_and_the_support_bundle(self) -> None:
+        """A dev build says so, for the UIs to leave out its failing update check; the support issue links only to
+        this project's form; the bundle holds the newest part of each log and is only fetched."""
+        metadata = self.server.RELEASE_METADATA
+        logs = self.server.LOGS
+        logs.mkdir(exist_ok=True)
+        self.server.SUPPORT_LOG_BYTES = 64
+        try:
+            metadata.write_text('package_version: "26.11.11.3"\nchannel: "dev"\ngit_short_sha: "a8dda52"\n')
+            status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(name="QIDI Max 4"),
+                                     installed_release="26.11.11.3", pending=(), failed="Could not fetch latest release checksum.")
+            body = self.request("/api/status", method="GET")[1]
+            self.assertEqual(body["release"], {"installed": "26.11.11.3", "channel": "dev", "commit": "a8dda52"})
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(body["support"]["issue_url"]).query)
+            self.assertTrue(body["support"]["issue_url"].startswith(self.server.ISSUE_URL_PREFIX))
+            self.assertEqual((query["template"], query["printer"], query["install_source"]),
+                             (["bug-report.yml"], ["QIDI Max 4"], ["Dev prerelease"]))
+            self.assertIn("Valve Oil: 26.11.11.3 (dev build a8dda52)", query["printer_details"][0])
+            # The bundle in ~/valve-oil is for another version: what installed the installed release isn't known.
+            metadata.write_text('package_version: "26.11.15.1"\nchannel: "dev"\n')
+            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["channel"], None)
+
+            (logs / "klippy.log").write_text("".join(f"line {number}\n" for number in range(40)))
+            (logs / "klippy.log.2026-11-15").write_text("yesterday\n")
+            (logs / "klippy.log.2026-11-14").write_text("older\n")
+            os.utime(logs / "klippy.log.2026-11-14", (1, 1))
+            (logs / "moonraker.log").write_text("moonraker\n")
+            self.assertEqual(self.request("/api/support-bundle", headers=self.GOOD)[0], 405)
+            with urllib.request.urlopen(self.base + "/api/support-bundle", timeout=5) as response:
+                self.assertEqual(response.headers["Content-Type"], "application/zip")
+                self.assertRegex(response.headers["Content-Disposition"], r'^attachment; filename="valve-oil-support-printer-\d{8}T\d{6}Z\.zip"$')
+                archive = zipfile.ZipFile(io.BytesIO(response.read()))
+            self.assertEqual(sorted(archive.namelist()), ["firmware_manifest.json", "logs/klippy.log", "logs/klippy.log.2026-11-15", "logs/moonraker.log",
+                                                          "printer-details.txt", "valve-oil-status.json",
+                                                          "valve-oil/RELEASE_METADATA.yaml"])
+            klippy = archive.read("logs/klippy.log").decode().splitlines()
+            self.assertTrue(klippy[0].startswith("[The start of this") and klippy[-1] == "line 39")
+            self.assertTrue(all(line.startswith("line ") for line in klippy[1:]))
+            self.assertEqual(list(self.server.STATE_DIR.glob("tmp*")), [])
+        finally:
+            self.server.SUPPORT_LOG_BYTES = 16 * 1024 * 1024
+            metadata.unlink(missing_ok=True)
+            shutil.rmtree(logs, ignore_errors=True)
 
 
 class UpdateNowRunTests(unittest.TestCase):

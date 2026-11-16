@@ -897,8 +897,8 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **AND** the console gets nothing
 
 #### Scenario: Late MCU command
-- **WHEN** Klipper sends an MCU a command whose format has a `clock` or `report_clock` parameter, through Klipper's Python command wrappers, and that clock is less than 5 ms ahead of the MCU's estimated time, or of the clock of an earlier command it is held behind
-- **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
+- **WHEN** Klipper sends an MCU a command whose format has a `clock` or `report_clock` parameter, through Klipper's Python command wrappers, and that clock is less than 5 ms ahead of the MCU's estimated time, or of the clock of an earlier command it is held behind, or 2^31 MCU ticks or more ahead, which the MCU's 32-bit clock reads as past
+- **THEN** `klippy.log` gets a warning naming the MCU, the command, how many ms late or ahead it is, for one too far ahead how far the MCU's clock reaches, and the Python calls that sent it, at most once every 10 s for each MCU and command, with a count of the ones in between
 - **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
 ### Requirement: Macros read cheap printer facts
@@ -965,6 +965,22 @@ Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop 
 #### Scenario: Timer rescheduled while its run is paused
 - **WHEN** a timer's callback pauses and another task calls `update_timer` for it
 - **THEN** the callback is not started again until the paused run returns
+
+### Requirement: Fan and pin requests stay within their MCU's reach
+When the vendor fan and output pin functions match their originals, optimized configuration SHALL queue `M106`, `M107`, `SET_FAN_SPEED`, and `SET_PIN` requests in upstream Klipper's G-code request queue and send each no earlier than 3 s before it takes effect, with the vendor fan and pin code still setting the pin. The fix is listed and skipped as the other upstream Klipper fixes are.
+
+#### Scenario: Fan or pin request after a long move
+- **WHEN** `M106`, `M107`, `SET_FAN_SPEED`, or `SET_PIN` follows a move that ends more than 3 s ahead of the MCU
+- **THEN** its MCU command is sent 3 s before the move ends, for the move's end
+- **AND** requests for the same time collapse to the last, and a request that changes nothing sends nothing
+
+#### Scenario: Fan or pin request already due
+- **WHEN** a queued fan or pin request's time has passed by the time it is sent
+- **THEN** it is scheduled 0.1 s ahead of the MCU instead
+
+#### Scenario: Shutdown with requests queued
+- **WHEN** Klipper shuts down while fan or pin requests are queued
+- **THEN** they are dropped unsent
 
 ### Requirement: Early stepper enables stay schedulable
 When the vendor stepper enable function matches the original that enables `ENABLE_DELAY_TIME` before a stepper's first step, optimized configuration SHALL schedule the enable at that time but no earlier than 20 ms after the later of the stepper MCU's estimated time and the enable pin's previous change, and no later than the first step. The enable callbacks, the pin, and the vendor `ENABLE delay` log line SHALL use that same time.

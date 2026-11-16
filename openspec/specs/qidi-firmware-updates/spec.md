@@ -203,3 +203,19 @@ While a release, a firmware update, or a board flash is waiting, `tltg_printer_w
 #### Scenario: Only authorized same-origin requests change settings
 - **WHEN** a client reads the Valve Oil section's data or changes a setting in it
 - **THEN** the request is served only under the same authorization and same-origin rules as the add-ons route
+
+#### Scenario: A dev build is named and its failing check is not reported
+- **WHEN** the installed release was installed from a dev bundle
+- **THEN** the Valve Oil section marks the release as a dev build with its commit
+- **AND** a failed update check is not reported there, while a release build's failed check is
+
+#### Scenario: Finished updates do not stay forever
+- **WHEN** an update has finished
+- **THEN** its result is shown until the operator closes it, and a successful result for at most a day after it finished
+- **AND** a failed or stopped result stays until it is closed or a later update replaces it
+
+#### Scenario: A problem is reported with a support bundle
+- **WHEN** the operator chooses to report a problem from the Valve Oil section
+- **THEN** this project's bug report form opens with the printer, its details from files only, and the install channel filled in
+- **AND** the browser downloads a support bundle holding the newest part of `klippy.log` and `moonraker.log` and of their last rotated copies, the Box link log, the last Update now, add-on change, and QIDI firmware update logs, Valve Oil's status, and the printer details
+- **AND** the bundle is fetched under the same authorization as the section's data, one at a time, and changes nothing on the printer

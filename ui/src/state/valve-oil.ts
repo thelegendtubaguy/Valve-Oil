@@ -15,6 +15,8 @@ import {
   tltgStatusRequest,
   TltgStatusRequestError,
   tltgStatusView,
+  tltgShownUpdate,
+  tltgSupportBundle,
   TLTG_STATUS_RECONNECT_PATIENCE_MS,
   type TltgStatus,
   type TltgStatusBlocker,
@@ -38,6 +40,8 @@ export type ValveOilState = {
   /** Why the printer refused Update now, when it said. */
   updateNowBlockedBy: TltgStatusBlocker[]
   dismissed: string[]
+  supportPending: boolean
+  supportError: string
 }
 
 // The same keys as the Fluidd fork's section: both are served from the printer's one origin, so a result closed in
@@ -87,6 +91,8 @@ export const valveOil = createStore<ValveOilState>({
   updateNowError: '',
   updateNowBlockedBy: [],
   dismissed: loadDismissed(),
+  supportPending: false,
+  supportError: '',
 })
 
 const patch = (changes: Partial<ValveOilState>) => valveOil.set((s) => ({ ...s, ...changes }))
@@ -236,6 +242,34 @@ export function dismissUpdate(id: string) {
   }
 }
 
+/**
+ * Opens the prefilled issue, then downloads the support bundle to attach to it. The issue opens first, while the click
+ * still lets this page open a tab.
+ */
+export async function reportProblem() {
+  const s = valveOil.get()
+  const url = s.status ? tltgStatusView(s.status).supportIssueUrl : null
+  const base = apiBase()
+  if (!url || !base || s.supportPending) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+  patch({ supportPending: true, supportError: '' })
+  try {
+    const { blob, name } = await tltgSupportBundle(base)
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = name
+    link.click()
+    // Deferred, as revoking right after the click can cancel the download.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  } catch (e) {
+    patch({ supportError: e instanceof Error ? e.message : String(e) })
+  } finally {
+    patch({ supportPending: false })
+  }
+}
+
+export const clearSupportError = () => patch({ supportError: '' })
 export const clearAutoUpdateError = () => patch({ autoUpdateError: '' })
 export const clearUpdateNowError = () => patch({ updateNowError: '', updateNowBlockedBy: [] })
 
@@ -264,10 +298,9 @@ export function useValveOilView(): TltgStatusView | null {
   return status ? tltgStatusView(status) : null
 }
 
-/** The update to show: a running one always, a finished one until it's closed. */
+/** The update to show: a running one always, a finished one until it's closed, and a success for a day at most. */
 export function shownUpdate(view: TltgStatusView | null, dismissed: string[]): TltgUpdateView | null {
-  const update = view?.update
-  return update && (update.state === 'running' || !dismissed.includes(update.id)) ? update : null
+  return tltgShownUpdate(view?.update ?? null, dismissed)
 }
 
 /** Whether an update is running, or the printer went quiet during one: what the app shell warns about. */

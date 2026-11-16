@@ -34,7 +34,7 @@ STATE_DIR = Path("/home/qidi/.cache/valve-oil/addons")
 JOB_FILE = STATE_DIR / "job.json"
 JOB_LOG = STATE_DIR / "job.log"
 JOB_RC = STATE_DIR / "job.rc"
-MOONRAKER_PRINT_STATS = "http://127.0.0.1:7125/printer/objects/query?print_stats=state"
+MOONRAKER_PRINT_STATS = "http://127.0.0.1:7125/printer/objects/query?print_stats=state&idle_timeout=state"
 LIST_TIMEOUT = 120.0
 LOG_LINES = 200
 ACTIONS = ("install", "update", "remove", "relink")
@@ -452,11 +452,22 @@ EXTRA_ACTIONS = {
 
 
 def printer_busy() -> bool:
+    """Whether a print is running or paused, or Klipper is running G-code, such as a calibration, which idle_timeout
+    reports as "Printing". Building an add-on takes the CPU and memory those need; a heater that is on doesn't count.
+    A Moonraker that can't be read doesn't block, as a stopped Klipper can't be printing."""
     try:
-        state = _get_json(MOONRAKER_PRINT_STATS, timeout=2.0)["result"]["status"]["print_stats"]["state"]
+        status = _get_json(MOONRAKER_PRINT_STATS, timeout=2.0)["result"]["status"]
     except (OSError, ValueError, KeyError, TypeError):
         return False
-    return state in {"printing", "paused"}
+    return busy_state(status)
+
+
+def busy_state(status) -> bool:
+    """installer/runtime/addons_cli.py printer_busy reads the same answer the same way."""
+    if not isinstance(status, dict):
+        return False
+    print_stats, idle_timeout = (status.get(name) if isinstance(status.get(name), dict) else {} for name in ("print_stats", "idle_timeout"))
+    return print_stats.get("state") in {"printing", "paused"} or idle_timeout.get("state") == "Printing"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -508,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
             if not any(entry["id"] == addon for entry in self.catalog.entries()):
                 raise RequestError(HTTPStatus.NOT_FOUND, f"Unknown add-on: {addon}")
             if action != "remove" and printer_busy():
-                raise Conflict("Add-ons can be changed only while the printer is not printing.")
+                raise Conflict("Add-ons can be changed only while the printer isn't printing or calibrating.")
             self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(addon, action, _options(action, body))})
         except Conflict as exc:
             self._send(HTTPStatus.CONFLICT, {"error": str(exc)})

@@ -398,5 +398,38 @@ class AddonServiceRequestTests(unittest.TestCase):
         self.assertEqual((status, body["addons"][0]["id"], body["busy"]), (200, "octoeverywhere", False))
 
 
+class AddonPrinterStateTests(unittest.TestCase):
+    """Building an add-on takes the CPU and memory a print or a calibration needs, so the service and addons.sh refuse
+    installs, updates, and relinks while either runs; a heater that is on doesn't block."""
+
+    STATES = (
+        ({"print_stats": {"state": "printing"}, "idle_timeout": {"state": "Printing"}}, True),
+        ({"print_stats": {"state": "paused"}, "idle_timeout": {"state": "Idle"}}, True),
+        # A calibration runs G-code outside a print.
+        ({"print_stats": {"state": "standby"}, "idle_timeout": {"state": "Printing"}}, True),
+        # Heaters on, nothing running.
+        ({"print_stats": {"state": "standby"}, "idle_timeout": {"state": "Ready"}}, False),
+        ({"print_stats": {"state": "complete"}, "idle_timeout": {"state": "Idle"}}, False),
+    )
+
+    def test_installs_wait_for_prints_and_calibrations_but_not_heaters(self) -> None:
+        from installer.runtime import addons_cli
+
+        server = _load_server()
+        for status, busy in self.STATES:
+            with self.subTest(status=status):
+                server._get_json = lambda url, timeout, status=status: {"result": {"status": status}}
+                self.assertEqual(server.printer_busy(), busy)
+
+                def urlopen(url, timeout, status=status):
+                    return io.BytesIO(json.dumps({"result": {"status": status}}).encode())
+
+                if busy:
+                    with self.assertRaises(addons.AddonError):
+                        addons_cli._ensure_not_printing("http://moonraker/printer/objects/query?print_stats", urlopen=urlopen)
+                else:
+                    addons_cli._ensure_not_printing("http://moonraker/printer/objects/query?print_stats", urlopen=urlopen)
+
+
 if __name__ == "__main__":
     unittest.main()
