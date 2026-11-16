@@ -887,8 +887,14 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 #### Scenario: Endstop sync timeout
 - **WHEN** a homing move fails with `Communication timeout during homing`, or a load-cell probe move fails with `WEIGHT sensor error`, QIDI's report of a failed endstop sync
 - **THEN** the console and `klippy.log` name the MCUs involved, the MCUs whose sync timed out, and for each MCU the largest gap between its status reports by its own clock and by Klipper's receive time, along with Klipper's main-thread load and largest timer delay over the previous 10 seconds and the timer count
-- **AND** `klippy.log` lists each MCU's last status reports with their receive and send spacing
+- **AND** the console also gives, for each MCU, the least time it had left before its timeout when Klipper read the report that renews it and whose report that was, the longest time a report took from the MCU to Klipper, and any retransmits, invalid bytes, or serial-port errors during the sync
+- **AND** `klippy.log` lists each MCU's last status reports with their receive and send spacing, and how often Klipper's threads were preempted and the per-CPU serial and USB interrupt and softirq counts during the sync
 - **AND** the error is otherwise unchanged
+
+#### Scenario: Passing endstop syncs
+- **WHEN** homing or probing moves pass their endstop syncs
+- **THEN** once none has run for 3 seconds, `klippy.log` gets one line for them with the sync count and, for each MCU, the least time it had left before its timeout, whose report renewed it, the longest report delay, and any link errors
+- **AND** the console gets nothing
 
 #### Scenario: Late MCU command
 - **WHEN** Klipper sends an MCU a command whose format has a `clock` or `report_clock` parameter, through Klipper's Python command wrappers, and that clock is less than 5 ms ahead of the MCU's estimated time, or of the clock of an earlier command it is held behind

@@ -251,6 +251,8 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         health.reactor = Reactor()
         health.reactor.monotonic = lambda: 20.
         health.samples = collections.deque([(10., 1., 0.002), (15., 2.5, 0.040)])
+        health.sync_summary = None
+        self.health = health
         self.messages = []
         health.gcode = types.SimpleNamespace(respond_info=self.messages.append)
         klipper_health._current[0] = health
@@ -305,6 +307,80 @@ class LoadCellProbeSyncFailureTest(unittest.TestCase):
         detail = "\n".join(logs.output)
         self.assertIn("THR (5 reports, result 2)", detail)
         self.assertIn("reason=4", detail)
+
+    def timed_boards(self) -> None:
+        """Give both boards a clock that reads host time and a link with
+        stats, as Klipper's MCU has."""
+        for trsync in (self.thr, self.mcu):
+            mcu = trsync.mcu
+            freq = mcu.freq
+            mcu._clocksync = types.SimpleNamespace(
+                estimate_clock_systime=lambda clock, freq=freq: clock / freq,
+                clock32_to_clock64=lambda clock: clock)
+            mcu.print_time_to_clock = lambda print_time, freq=freq: int(print_time * freq)
+            mcu.retransmits = 9
+            mcu._serial = types.SimpleNamespace(
+                stats=lambda eventtime, mcu=mcu: "bytes_retransmit=%d bytes_invalid=0" % mcu.retransmits)
+
+    def run_sync(self, mcu_delays, thr_result=1):
+        """One sync from host time 5 s: THR reports every 15 ms and Klipper
+        reads each 2 ms later; the mainboard reports 5 ms after THR, each
+        read after its delay in mcu_delays."""
+        for trsync in (self.thr, self.mcu):
+            trsync.start(5., 0., None, 0.050)
+        events = []
+        for i in range(len(mcu_delays)):
+            events.append((5.002 + i * .015, self.thr, 5. + i * .015))
+            events.append((5.005 + i * .015 + mcu_delays[i], self.mcu, 5.005 + i * .015))
+        for receive_time, trsync, sent in sorted(events, key=lambda e: e[0]):
+            self.report(trsync, receive_time, int(sent * trsync.mcu.freq))
+        end = max(e[0] for e in events) + .001
+        if thr_result == 4:
+            self.report(self.thr, end, int(end * 72000000), can_trigger=0, reason=4)
+        self.thr.reason, self.mcu.reason = thr_result, 2
+
+    def test_failed_sync_shows_how_late_the_renewing_reports_came(self) -> None:
+        # The mainboard's fourth report reaches Klipper 45 ms after it was
+        # sent, 10 ms after THR's deadline, which only the mainboard's
+        # reports renew; the mainboard retransmits twice meanwhile.
+        self.timed_boards()
+        self.thr.mcu.retransmits = 9
+        self.run_sync([.002, .002, .002, .045], thr_result=4)
+        self.mcu.mcu.retransmits = 11
+        self.endstop.error = "WEIGHT sensor error"
+
+        with self.assertLogs(level="INFO") as logs, \
+                self.assertRaisesRegex(RuntimeError, "^WEIGHT sensor error$"):
+            self.endstop.home_wait(3.)
+
+        message = self.messages[0]
+        self.assertIn("as little as -10.0 ms on THR (from mcu's reports)", message)
+        self.assertIn("45.0 ms (mcu)", message)
+        self.assertIn("mcu: 2 retransmit", message)
+        detail = "\n".join(logs.output)
+        self.assertIn("THR spare -10.0 ms from mcu", detail)
+
+    def test_passing_syncs_are_logged_once_homing_pauses(self) -> None:
+        self.timed_boards()
+        for _ in range(3):
+            self.run_sync([.002, .002, .002, .002])
+            self.endstop.home_wait(3.)
+        self.assertIsNotNone(self.health.sync_summary)
+        health = self.health
+        health._waketime = health._next_cleanup = health._next_report = 1e9
+        last = health.sync_summary["last"]
+
+        with self.assertNoLogs(level="INFO"):
+            health._sample(last + 1.)
+        with self.assertLogs(level="INFO") as logs:
+            health._sample(last + klipper_health.SYNC_SUMMARY_IDLE)
+
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("3 endstop syncs", logs.output[0])
+        self.assertIn("THR spare 28.0 ms from mcu", logs.output[0])
+        self.assertIn("mcu spare 33.0 ms from THR", logs.output[0])
+        self.assertEqual(self.messages, [])
+        self.assertIsNone(health.sync_summary)
 
     def test_other_probe_errors_are_not_reported(self) -> None:
         self.endstop.error = "Probe triggered prior to movement"

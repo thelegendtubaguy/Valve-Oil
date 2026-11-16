@@ -34,6 +34,19 @@
 # then says which board timed out, and whether a board sent its reports late
 # or they reached Klipper late.
 #
+# Sync timing: Klipper's C serial code renews each board's timeout from the
+# other boards' latest reports, the moment it reads one, to that report's
+# send time plus the timeout. From the reports kept here, each sync works out
+# the same deadlines: how much time a board had left when the report that
+# renews it reached Klipper, and whose report that was, and how long each
+# report took from the board to Klipper by the board's clock. Every sync also
+# counts each board's retransmits, invalid bytes, and serial-port framing and
+# overrun errors. A failed sync adds how often Klipper's threads were
+# preempted and where the serial and USB interrupts and softirqs ran.
+# Passing syncs go to klippy.log as one line for each run of homing or
+# probing, with the least time any board had left, so a printer that comes
+# close shows it before a sync fails.
+#
 # Status copies: QIDI's multi_color_controller status, which Moonraker reads
 # every second, deep-copies its flattened Box status, a dict of about 440
 # strings, numbers, and lists, which takes about half of the status's 11 ms.
@@ -56,9 +69,12 @@
 
 import collections
 import copy
+import fcntl
 import logging
 import os
+import struct
 import sys
+import threading
 import time
 import traceback
 import types
@@ -89,6 +105,21 @@ PROBE_SYNC_FAILURE = ("Load-cell probe endstop sync failure (QIDI reports it "
 # many of them klippy.log gets after a failure.
 SYNC_REPORTS = 64
 SYNC_REPORTS_LOGGED = 12
+# Reports kept per board for a sync's timing, about 75 s of QIDI's.
+SYNC_TIMING_REPORTS = 5000
+# Klipper renews a board's timeout only when that moves it at least this
+# share of the report interval, which is 30% of the timeout.
+MIN_EXTEND = .8 * .3
+# Passing syncs are logged together once none has run for this long.
+SYNC_SUMMARY_IDLE = 3.
+# Host counters read for a failed sync; a dispatch's boards share them.
+SYSTEM_SNAPSHOT_REUSE = .1
+# Linux TIOCGICOUNT and its struct serial_icounter_struct of 20 ints.
+TIOCGICOUNT = 0x545D
+ICOUNT_FIELDS = ("cts", "dsr", "rng", "dcd", "rx", "tx", "frame",
+                 "overrun", "parity", "brk", "buf_overrun")
+UART_ERRORS = ("frame", "overrun", "parity", "brk", "buf_overrun")
+LINK_ERRORS = ("bytes_retransmit", "bytes_invalid")
 # Objects whose modules deep-copy whole statuses: QIDI's Box status, and
 # Klipper's macro access to every object's status.
 STATUS_COPIERS = ("multi_color_controller", "gcode_macro")
@@ -160,17 +191,28 @@ def _wrap_trsync(cls):
 
     def start_sync(trsync, *args, **kwargs):
         timeout = args[3] if len(args) > 3 else kwargs.get("expire_timeout")
-        trsync._tltg_sync = {"timeout": timeout, "result": None,
-                             "reports": collections.deque(maxlen=SYNC_REPORTS)}
+        print_time = args[0] if args else kwargs.get("print_time")
+        sync = {"timeout": timeout, "result": None, "noted": False,
+                "reports": collections.deque(maxlen=SYNC_REPORTS),
+                "timing": [], "start": None, "link": None, "system": None}
+        try:
+            sync["start"] = _start_systime(trsync.get_mcu(), print_time)
+            sync["link"] = link_counters(trsync.get_mcu())
+            sync["system"] = _system_snapshot()
+        except Exception:
+            logging.exception("tltg_klipper_health: sync start figures")
+        trsync._tltg_sync = sync
         return start(trsync, *args, **kwargs)
 
     # Runs on the board's serial thread.
     def handle_report(trsync, params):
         sync = getattr(trsync, "_tltg_sync", None)
         if sync is not None:
-            sync["reports"].append((
-                params.get("#receive_time"), params.get("clock"),
-                params.get("can_trigger"), params.get("trigger_reason")))
+            report = (params.get("#receive_time"), params.get("clock"),
+                      params.get("can_trigger"), params.get("trigger_reason"))
+            sync["reports"].append(report)
+            if len(sync["timing"]) < SYNC_TIMING_REPORTS:
+                sync["timing"].append(report)
         return handle(trsync, params)
 
     def stop_sync(trsync, *args, **kwargs):
@@ -220,6 +262,264 @@ def send_gaps(reports, freq):
                     else ((clock - previous) & 0xffffffff) / freq)
         previous = clock
     return gaps
+
+
+def _start_systime(mcu, print_time):
+    """Host time of a sync's start, when Klipper sets each board's first
+    deadline, or None."""
+    clocksync = getattr(mcu, "_clocksync", None)
+    if print_time is None or clocksync is None:
+        return None
+    return clocksync.estimate_clock_systime(mcu.print_time_to_clock(print_time))
+
+
+def _parse_stats(text):
+    values = {}
+    for item in (text or "").split():
+        name, _, value = item.partition("=")
+        try:
+            values[name] = float(value)
+        except ValueError:
+            pass
+    return values
+
+
+def link_counters(mcu):
+    """A board's retransmit and invalid byte counts, and its serial port's
+    error counts when the port has them, or None."""
+    serial = getattr(mcu, "_serial", None)
+    if serial is None:
+        return None
+    counters = {}
+    try:
+        stats = _parse_stats(serial.stats(time.monotonic()))
+    except Exception:
+        stats = {}
+    for name in LINK_ERRORS:
+        if name in stats:
+            counters[name] = stats[name]
+    try:
+        fd = serial.serial_dev.fileno()
+        raw = fcntl.ioctl(fd, TIOCGICOUNT, bytes(80))
+        values = struct.unpack("20i", raw)
+        for name, value in zip(ICOUNT_FIELDS, values):
+            if name in UART_ERRORS:
+                counters["uart_" + name] = value
+    except Exception:
+        pass
+    return counters
+
+
+def _read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _per_cpu(text, keep):
+    """Per-CPU counts from /proc/interrupts or /proc/softirqs, for each line
+    keep(name, label) names."""
+    counts = {}
+    lines = (text or "").splitlines()
+    if not lines:
+        return counts
+    cpus = len(lines[0].split())
+    for line in lines[1:]:
+        head, _, rest = line.partition(":")
+        fields = rest.split()
+        values = []
+        for field in fields[:cpus]:
+            if not field.isdigit():
+                break
+            values.append(int(field))
+        label = keep(head.strip(), " ".join(fields[cpus:]))
+        if label and len(values) == cpus:
+            counts[label] = values
+    return counts
+
+
+def _irq_label(name, description):
+    for device in description.split():
+        if device.startswith("ttyS") or "hcd:usb" in device:
+            return device
+    return None
+
+
+def _system_snapshot(cache=[None, None]):
+    """How often each Klipper thread has been preempted, and the per-CPU
+    counts of the serial and USB interrupts and of softirqs. A snapshot
+    taken in the last SYSTEM_SNAPSHOT_REUSE seconds is reused."""
+    now = time.monotonic()
+    if cache[0] is not None and now - cache[0] < SYSTEM_SNAPSHOT_REUSE:
+        return cache[1]
+    threads = {}
+    try:
+        tids = os.listdir("/proc/self/task")
+    except OSError:
+        tids = []
+    for tid in tids:
+        for line in (_read("/proc/self/task/%s/status" % (tid,)) or
+                     "").splitlines():
+            if line.startswith("nonvoluntary_ctxt_switches:"):
+                threads[tid] = int(line.split()[1])
+    snapshot = {
+        "threads": threads,
+        "interrupts": _per_cpu(_read("/proc/interrupts"), _irq_label),
+        "softirqs": _per_cpu(_read("/proc/softirqs"),
+                             lambda name, _rest: name),
+    }
+    cache[0], cache[1] = now, snapshot
+    return snapshot
+
+
+def _counter_change(before, after):
+    return {name: after[name] - before[name]
+            for name in after if name in (before or {})}
+
+
+def sync_timing(trsyncs):
+    """Each board's figures for one sync: the least time it had left when
+    Klipper read the report that renews its timeout, whose report that was,
+    the longest a report took from the board to Klipper, and its link
+    counters' change. Klipper renews a board's deadline to the earliest of
+    the other boards' latest report send times plus the timeout, as its C
+    serial code does; a sync on one board renews from its own reports."""
+    boards = []
+    for name, trsync in trsyncs:
+        sync = getattr(trsync, "_tltg_sync", None)
+        mcu = trsync.get_mcu() if trsync is not None else None
+        clocksync = getattr(mcu, "_clocksync", None)
+        if not sync or clocksync is None or sync["start"] is None \
+                or not sync["timeout"]:
+            continue
+        boards.append((name, mcu, clocksync, sync))
+    if not boards:
+        return {}
+    figures = {}
+    events = []
+    for name, mcu, clocksync, sync in boards:
+        figures[name] = {"spare": None, "from": None, "delay": None,
+                         "link": _counter_change(sync["link"],
+                                                 link_counters(mcu) or {})}
+        for receive_time, clock, can_trigger, _reason in sync["timing"]:
+            if receive_time is None or clock is None:
+                continue
+            if not can_trigger:
+                events.append((receive_time, name, None))
+                continue
+            sent = clocksync.estimate_clock_systime(
+                clocksync.clock32_to_clock64(clock))
+            events.append((receive_time, name, sent))
+            delay = receive_time - sent
+            if figures[name]["delay"] is None or delay > figures[name]["delay"]:
+                figures[name]["delay"] = delay
+    events.sort(key=lambda event: event[0])
+    status = {name: sync["start"] for name, _m, _c, sync in boards}
+    timeouts = {name: sync["timeout"] for name, _m, _c, sync in boards}
+    expire = {name: status[name] + timeouts[name] for name in status}
+    for receive_time, sender, sent in events:
+        if sent is None:
+            # A board triggered or timed out; Klipper stops renewing.
+            break
+        status[sender] = sent
+        for name in expire:
+            others = [(status[o], o) for o in status if o != name] \
+                or [(status[name], name)]
+            earliest, source = min(others)
+            renewed = earliest + timeouts[name]
+            if renewed - expire[name] < MIN_EXTEND * timeouts[name]:
+                continue
+            spare = expire[name] - receive_time
+            board = figures[name]
+            if board["spare"] is None or spare < board["spare"]:
+                board["spare"], board["from"] = spare, source
+            expire[name] = renewed
+    return figures
+
+
+def _ms(seconds):
+    return "%.1f" % (seconds * 1000.,)
+
+
+def _timing_summary(figures):
+    """The console sentences for a failed sync's timing."""
+    spares = ["%s ms on %s (from %s's reports)"
+              % (_ms(f["spare"]), name, f["from"])
+              for name, f in sorted(figures.items())
+              if f["spare"] is not None]
+    delays = ["%s ms (%s)" % (_ms(f["delay"]), name)
+              for name, f in sorted(figures.items())
+              if f["delay"] is not None]
+    errors = []
+    for name, f in sorted(figures.items()):
+        found = ", ".join("%d %s" % (value, label.replace("uart_", "serial ")
+                                     .replace("bytes_", "").replace("_", " "))
+                          for label, value in sorted(f["link"].items())
+                          if value)
+        if found:
+            errors.append("%s: %s" % (name, found))
+    text = ""
+    if spares:
+        text += (" Klipper read the reports that renew each board's timeout "
+                 "with as little as %s to spare; below 0 means a renewal came "
+                 "after the deadline." % (" and ".join(spares),))
+    if delays:
+        text += (" Reports took up to %s to reach Klipper."
+                 % (" and ".join(delays),))
+    if errors:
+        text += " Link errors during the sync: %s." % ("; ".join(errors),)
+    return text
+
+
+def _system_detail(trsyncs, eventtime_snapshot):
+    """klippy.log's host figures over a failed sync: thread preemptions and
+    per-CPU interrupt and softirq counts."""
+    before = None
+    for _name, trsync in trsyncs:
+        sync = getattr(trsync, "_tltg_sync", None)
+        if sync and sync["system"]:
+            before = sync["system"]
+            break
+    after = eventtime_snapshot
+    if not before or not after:
+        return ""
+    main = str(threading.main_thread().native_id) \
+        if hasattr(threading.main_thread(), "native_id") else None
+    preempted = {tid: after["threads"][tid] - before["threads"][tid]
+                 for tid in after["threads"] if tid in before["threads"]}
+    others = sorted(((count, tid) for tid, count in preempted.items()
+                     if tid != main), reverse=True)
+    parts = ["Klipper threads preempted: main +%d, others %s"
+             % (preempted.get(main, 0),
+                " ".join("%s:+%d" % (tid, count) for count, tid in others
+                         if count) or "+0")]
+    for key, label in (("interrupts", "interrupts per CPU"),
+                       ("softirqs", "softirqs per CPU")):
+        changes = []
+        for name, values in sorted(after[key].items()):
+            old = before[key].get(name)
+            if old is None or len(old) != len(values):
+                continue
+            change = [b - a for a, b in zip(old, values)]
+            if any(change):
+                changes.append("%s %s" % (name, "/".join(map(str, change))))
+        parts.append("%s: %s" % (label, ", ".join(changes) or "none"))
+    return "; ".join(parts)
+
+
+def _timing_detail(figures):
+    entries = []
+    for name, f in sorted(figures.items()):
+        entry = "%s spare %s ms from %s, delay %s ms" % (
+            name, _ms(f["spare"]) if f["spare"] is not None else "?",
+            f["from"] or "?",
+            _ms(f["delay"]) if f["delay"] is not None else "?")
+        link = " ".join("%s +%d" % (label, value)
+                        for label, value in sorted(f["link"].items()) if value)
+        entries.append(entry + ", " + (link or "no link errors"))
+    return "; ".join(entries)
 
 
 def _sync_detail(trsyncs):
@@ -294,7 +594,7 @@ def _wrap_home_wait(cls, error, failure):
 
     def home_wait(endstop, *args, **kwargs):
         try:
-            return original(endstop, *args, **kwargs)
+            result = original(endstop, *args, **kwargs)
         except Exception as e:
             health = _current[0]
             if health is not None and error in str(e):
@@ -305,6 +605,13 @@ def _wrap_home_wait(cls, error, failure):
                     logging.exception("tltg_klipper_health: homing timeout "
                                       "report failed")
             raise
+        health = _current[0]
+        if health is not None:
+            try:
+                health.note_sync(_endstop_trsyncs(endstop))
+            except Exception:
+                logging.exception("tltg_klipper_health: sync timing failed")
+        return result
     home_wait._tltg_klipper_health = True
     cls.home_wait = home_wait
     return True
@@ -449,6 +756,7 @@ class KlipperHealth:
         self.samples = collections.deque(maxlen=HISTORY)
         self.last_warning = {}
         self.late_commands = {}
+        self.sync_summary = None
         self._next_cleanup = 0.
         self._next_report = None
         self._waketime = None
@@ -523,6 +831,10 @@ class KlipperHealth:
         if eventtime >= self._next_report:
             self._next_report = eventtime + REPORT_INTERVAL
             self._report(eventtime)
+        summary = self.sync_summary
+        if summary is not None \
+                and eventtime - summary["last"] >= SYNC_SUMMARY_IDLE:
+            self.log_sync_summary()
         self._waketime = eventtime + SAMPLE_INTERVAL
         return self._waketime
 
@@ -584,6 +896,13 @@ class KlipperHealth:
         eventtime = self.reactor.monotonic()
         mcus = [name for name, _trsync in trsyncs]
         summary, detail = _sync_detail(trsyncs)
+        figures, system = {}, ""
+        if self._take_syncs(trsyncs):
+            # The passing syncs before this one, in their own line first.
+            self.log_sync_summary()
+            figures = sync_timing(trsyncs)
+            system = _system_detail(trsyncs, _system_snapshot())
+            summary += _timing_summary(figures)
         load, peak, delay = self._window(eventtime, TIMEOUT_CONTEXT)
         if load is None:
             context = "no load figures yet"
@@ -598,7 +917,63 @@ class KlipperHealth:
         logging.warning("tltg_klipper_health: %s", message)
         if detail:
             logging.info("tltg_klipper_health: %s", detail)
+        if figures:
+            logging.info("tltg_klipper_health: endstop sync timing: %s",
+                         _timing_detail(figures))
+        if system:
+            logging.info("tltg_klipper_health: during the sync: %s", system)
         self.gcode.respond_info(message)
+
+    # ---------------------------------------------------- passing syncs
+    @staticmethod
+    def _take_syncs(trsyncs):
+        """Mark a sync's boards as reported; False when a wrapper around
+        the same sync already did."""
+        syncs = [getattr(trsync, "_tltg_sync", None)
+                 for _name, trsync in trsyncs]
+        syncs = [sync for sync in syncs if sync]
+        if not syncs or any(sync["noted"] for sync in syncs):
+            return False
+        for sync in syncs:
+            sync["noted"] = True
+        return True
+
+    def note_sync(self, trsyncs):
+        """Add a passing sync's timing to the summary klippy.log gets once
+        homing or probing pauses."""
+        if not self._take_syncs(trsyncs):
+            return
+        figures = sync_timing(trsyncs)
+        if not figures:
+            return
+        eventtime = self.reactor.monotonic()
+        summary = self.sync_summary
+        if summary is None:
+            summary = self.sync_summary = {
+                "first": time.time(), "count": 0, "boards": {}}
+        summary["last"] = eventtime
+        summary["count"] += 1
+        for name, f in figures.items():
+            board = summary["boards"].setdefault(
+                name, {"spare": None, "from": None, "delay": None,
+                       "link": collections.Counter()})
+            if f["spare"] is not None and (board["spare"] is None
+                                           or f["spare"] < board["spare"]):
+                board["spare"], board["from"] = f["spare"], f["from"]
+            if f["delay"] is not None and (board["delay"] is None
+                                           or f["delay"] > board["delay"]):
+                board["delay"] = f["delay"]
+            board["link"].update(f["link"])
+
+    def log_sync_summary(self):
+        summary, self.sync_summary = self.sync_summary, None
+        if summary is None:
+            return
+        logging.info(
+            "tltg_klipper_health: %d endstop syncs from %s passed; %s",
+            summary["count"],
+            time.strftime("%H:%M:%S", time.localtime(summary["first"])),
+            _timing_detail(summary["boards"]))
 
     # --------------------------------------------------------- late commands
     def note_late_command(self, mcu_name, command, ahead, frame):
