@@ -128,6 +128,10 @@ CLOCK_PARAMS = ("clock", "report_clock")
 # A command less than this ahead of its MCU when sent is reported: the
 # mainboard link's round trip alone is about 1 ms.
 LATE_COMMAND_MARGIN = 0.005
+# An MCU compares times in 32 bits, so a command this many ticks or more
+# ahead looks past to it (3.58 s at the Smart 5 mainboard's 600 MHz) and is
+# reported too.
+MAX_AHEAD_TICKS = 0x80000000
 # Each MCU's command is reported at most this often; the next report counts
 # the ones in between.
 LATE_COMMAND_REPEAT = 10.
@@ -617,14 +621,14 @@ def _wrap_home_wait(cls, error, failure):
     return True
 
 
-def _late_command(mcu, command, ahead):
+def _late_command(mcu, command, ahead, reach):
     health = _current[0]
     if health is None:
         return
     try:
         # The caller of the command's send.
         health.note_late_command(mcu.get_name(), command, ahead,
-                                 sys._getframe(2))
+                                 sys._getframe(2), reach)
     except Exception:
         logging.exception("tltg_klipper_health: late command report failed")
 
@@ -654,14 +658,18 @@ def watch_command(mcu, command, msgformat):
         # Clock 0 stops a command, such as an endstop check, instead.
         if clock:
             now = get_clock(monotonic())
-            # Ticks ahead of the MCU, negative when past, in 32 bits as the
-            # MCU compares them.
-            ahead = (((clock - now + 0x80000000) & 0xffffffff) - 0x80000000)
+            # Ticks ahead of the MCU, negative when past. Klipper's clocks
+            # are full host clocks; one cut to the 32 bits the MCU receives
+            # is compared in 32 bits, as the MCU compares it.
+            ahead = clock - now
+            if clock <= 0xffffffff < now:
+                ahead = ((ahead + 0x80000000) & 0xffffffff) - 0x80000000
             # Klipper holds the command until minclock, a full host clock
             # that can be any time before the command's own.
             ahead -= max(0, minclock - now)
-            if ahead < margin:
-                _late_command(mcu, name, ahead / freq)
+            if ahead < margin or ahead >= MAX_AHEAD_TICKS:
+                _late_command(mcu, name, ahead / freq,
+                              MAX_AHEAD_TICKS / freq)
         return send(data, minclock, reqclock)
     command.send = send_checked
     return True
@@ -976,9 +984,10 @@ class KlipperHealth:
             _timing_detail(summary["boards"]))
 
     # --------------------------------------------------------- late commands
-    def note_late_command(self, mcu_name, command, ahead, frame):
+    def note_late_command(self, mcu_name, command, ahead, frame, reach=None):
         """Log a command sent with its clock past, or nearly, by `ahead`
-        seconds, and the Python calls that sent it from frame."""
+        seconds, or further ahead than the reach of its MCU's 32-bit clock,
+        and the Python calls that sent it from frame."""
         eventtime = self.reactor.monotonic()
         key = (mcu_name, command)
         last, skipped = self.late_commands.get(key, (None, 0))
@@ -989,13 +998,18 @@ class KlipperHealth:
         calls = traceback.StackSummary.extract(
             traceback.walk_stack(frame), limit=LATE_COMMAND_STACK,
             lookup_lines=False)
+        kind = "late MCU command"
         if ahead < 0.:
             timing = "%.1f ms late" % (-ahead * 1000.,)
+        elif reach is not None and ahead >= reach:
+            kind = "MCU command too far ahead"
+            timing = ("%.1f ms ahead, beyond the %.1f ms its clock reaches,"
+                      % (ahead * 1000., reach * 1000.))
         else:
             timing = "only %.1f ms ahead" % (ahead * 1000.,)
         logging.warning(
-            "tltg_klipper_health: late MCU command: %s on '%s' %s when sent"
-            "%s; called from %s", command, mcu_name, timing,
+            "tltg_klipper_health: %s: %s on '%s' %s when sent"
+            "%s; called from %s", kind, command, mcu_name, timing,
             " (%d more since the last report)" % (skipped,) if skipped else "",
             " < ".join("%s:%d %s" % (os.path.basename(call.filename),
                                      call.lineno, call.name)

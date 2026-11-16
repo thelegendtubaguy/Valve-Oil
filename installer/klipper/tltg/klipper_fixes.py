@@ -85,6 +85,21 @@
 #   now runs to the limit and the probe then fails with "Probe samples
 #   exceed samples_tolerance", as upstream does, and the load cell is
 #   re-zeroed for each retry after the nozzle lifts off the bed.
+# - Fan and pin requests (upstream 6ade82ed, cc4ad667, 69e0d866, f323a4fc,
+#   5731d964): M106, M107, SET_FAN_SPEED and SET_PIN sent their MCU command
+#   as soon as Klipper planned the move they follow, however far ahead that
+#   was. An MCU compares times in 32 bits, so it can tell a time ahead from
+#   one past only within 2^31 ticks: 3.58 s on the Smart 5's 600 MHz
+#   mainboard. QIDI's Fast Benchy start G-code turns the chamber fan on after
+#   a 10 s prime line, so the command went out 12 s ahead, and the mainboard
+#   ran it 12 s early; Klipper's own MCU code stops with "Timer too close"
+#   instead. These requests now wait in upstream's request queue, which
+#   sends each one once step generation reaches its time and collapses
+#   requests a later one replaces before they are due. QIDI's toolhead
+#   generates all of a lookahead batch's steps at once, as upstream did
+#   until 2025, so a request also waits until it is REQUEST_AHEAD from
+#   taking effect, and a timer sends it then. QIDI's own fan and pin code
+#   still sets the pin, with its kick start and tachometer check.
 
 import gc
 import hashlib
@@ -99,7 +114,7 @@ import reactor
 import serialhdl
 import toolhead
 import webhooks
-from . import heaters, probe, stepper_enable, tmc
+from . import fan, heaters, output_pin, probe, stepper_enable, tmc
 
 try:
     import msgspec
@@ -127,6 +142,14 @@ SLICE_TIME = 0.020
 MAX_MOVE_TIME = 0.5
 # How far a Box's temperature moves before status updates report it again.
 BOX_TEMP_STEP = 0.1
+# A fan or pin request goes to its MCU no earlier than this before it takes
+# effect: the most Klipper keeps queued while printing, so requests in a
+# print's normal flow go out as before, and inside the 3.58 s the Smart 5
+# mainboard's clock can schedule.
+REQUEST_AHEAD = 3.0
+# Upstream's least time between two changes of a pin; a request whose time
+# has passed goes out for this far ahead of its MCU.
+PIN_MIN_TIME = 0.100
 
 # SHA-256 of each replaced function's source, line endings removed, as
 # shipped in QIDI firmware 01.01.07.01.
@@ -165,6 +188,10 @@ ORIGINALS = {
         "46130d66b0dd45c82d47bb5857bff35c86c92ba7e52007c4ea40fcaab48fa5c9",
     "ProbeSessionHelper.run_probe":
         "db6a8f8c3d8b77127dfbc577406186102c4a076a0e4b768be6f7f55941a7ed8c",
+    "Fan.set_speed_from_command":
+        "15ebf889ab7e1472e8267ef5a9b7f68e2abfc48b6354e441724f47172f13854f",
+    "PrinterOutputPin._set_pin":
+        "98178f5f38d49f2227c8e2cb0ef31af343eff69cd1c1909fc496de1237858a01",
 }
 
 
@@ -507,6 +534,150 @@ def _yield_slice(reactor):
     _slice_start[0] = _clock()
 
 
+# ----------------------------------------------------- fan and pin requests
+class GCodeRequestQueue:
+    """Upstream's queue of G-code pin requests (output_pin.py, October
+    2024), held to REQUEST_AHEAD for QIDI's toolhead. callback(print_time,
+    value) sets the pin and returns None, ("discard", 0.) when the request
+    changes nothing, or (action, min_wait) to keep the next change min_wait
+    away."""
+
+    def __init__(self, printer, mcu, callback):
+        self.printer = printer
+        self.mcu = mcu
+        self.callback = callback
+        self.rqueue = []
+        self.next_min_flush_time = 0.
+        self.toolhead = printer.lookup_object('toolhead')
+        self.reactor = printer.get_reactor()
+        self.timer = self.reactor.register_timer(self._handle_timer)
+        mcu.register_flush_callback(self._flush_notification)
+
+    def _release(self, print_time, est_print_time):
+        """Upstream's _flush_notification: send the requests due by
+        print_time."""
+        rqueue = self.rqueue
+        while rqueue:
+            next_time = max(rqueue[0][0], self.next_min_flush_time)
+            if next_time > print_time:
+                return
+            # Skip requests that have been overridden with a following request
+            pos = 0
+            while pos + 1 < len(rqueue) and rqueue[pos + 1][0] <= next_time:
+                pos += 1
+            req_pt, req_val = rqueue[pos]
+            next_time = max(next_time, est_print_time + PIN_MIN_TIME)
+            # Invoke callback for the request
+            min_wait = 0.
+            ret = self.callback(next_time, req_val)
+            if ret is not None:
+                # Handle special cases
+                action, min_wait = ret
+                if action == "discard":
+                    del rqueue[:pos+1]
+                    continue
+                if action == "delay":
+                    pos -= 1
+            del rqueue[:pos+1]
+            self.next_min_flush_time = next_time + max(min_wait, PIN_MIN_TIME)
+            # Ensure following queue items are flushed
+            self.toolhead.note_mcu_movequeue_activity(self.next_min_flush_time)
+
+    def _next_wake(self, eventtime, est_print_time):
+        if not self.rqueue:
+            return self.reactor.NEVER
+        next_time = max(self.rqueue[0][0], self.next_min_flush_time)
+        return eventtime + max(0., next_time - REQUEST_AHEAD - est_print_time)
+
+    def _flush_notification(self, print_time, clock):
+        eventtime = self.reactor.monotonic()
+        est_print_time = self.mcu.estimated_print_time(eventtime)
+        self._release(min(print_time, est_print_time + REQUEST_AHEAD),
+                      est_print_time)
+        self.reactor.update_timer(
+            self.timer, self._next_wake(eventtime, est_print_time))
+
+    def _handle_timer(self, eventtime):
+        if self.printer.is_shutdown():
+            del self.rqueue[:]
+            return self.reactor.NEVER
+        est_print_time = self.mcu.estimated_print_time(eventtime)
+        self._release(est_print_time + REQUEST_AHEAD, est_print_time)
+        return self._next_wake(eventtime, est_print_time)
+
+    def _queue_request(self, print_time, value):
+        self.rqueue.append((print_time, value))
+        self.toolhead.note_mcu_movequeue_activity(print_time)
+        eventtime = self.reactor.monotonic()
+        self.reactor.update_timer(self.timer, self._next_wake(
+            eventtime, self.mcu.estimated_print_time(eventtime)))
+
+    def queue_gcode_request(self, value):
+        self.toolhead.register_lookahead_callback(
+            (lambda pt: self._queue_request(pt, value)))
+
+
+def _request_queue(owner, pin_mcu, apply):
+    """The request queue of a fan or output pin, made on its first
+    request."""
+    queue = owner.__dict__.get("_tltg_requests")
+    if queue is None:
+        queue = owner._tltg_requests = GCodeRequestQueue(
+            owner.printer, pin_mcu, lambda pt, value: apply(owner, pt, value))
+    return queue
+
+
+def _applied(before, after, print_time):
+    """The queue's answer for a request QIDI's code applied or ignored, from
+    its last change time before and after; the wait covers a kick start."""
+    if after == before:
+        return "discard", 0.
+    return "normal", after - print_time
+
+
+def _fan_apply(owner, print_time, value):
+    sent = owner.last_fan_time
+    owner.set_speed(print_time, value)
+    return _applied(sent, owner.last_fan_time, print_time)
+
+
+def _fan_set_speed_from_command(self, value):
+    _request_queue(self, self.mcu_fan.get_mcu(),
+                   _fan_apply).queue_gcode_request(value)
+
+
+# QIDI's PrinterOutputPin._set_pin, which sets the pin.
+_SET_PIN = [None]
+
+
+def _pin_apply(owner, print_time, value):
+    sent = owner.last_print_time
+    _SET_PIN[0](owner, print_time, value)
+    return _applied(sent, owner.last_print_time, print_time)
+
+
+def _pin_set_pin(self, print_time, value, is_resend=False):
+    # SET_PIN, and QIDI's smart case light, call this from a lookahead
+    # callback; the maximum_mcu_duration resend keeps its own timing.
+    if is_resend:
+        _SET_PIN[0](self, print_time, value, True)
+        return
+    _request_queue(self, self.mcu_pin.get_mcu(),
+                   _pin_apply)._queue_request(print_time, value)
+
+
+def _fix_pin_requests():
+    current = output_pin.PrinterOutputPin.__dict__.get("_set_pin")
+    if source_hash(current) == ORIGINALS["PrinterOutputPin._set_pin"]:
+        _SET_PIN[0] = current
+    return all((
+        _replace(fan.Fan, "set_speed_from_command",
+                 "Fan.set_speed_from_command", _fan_set_speed_from_command),
+        _SET_PIN[0] is not None and _replace(
+            output_pin.PrinterOutputPin, "_set_pin",
+            "PrinterOutputPin._set_pin", _pin_set_pin)))
+
+
 # ------------------------------------------------------------ probe retries
 def _run_probe(self, gcmd):
     if not self.multi_probe_pending:
@@ -709,6 +880,7 @@ class KlipperFixes:
                 probe.ProbeSessionHelper, "run_probe",
                 "ProbeSessionHelper.run_probe", _run_probe)),
             ("G-code time slices", _fix_move_slices),
+            ("fan and pin requests", _fix_pin_requests),
         ]
         if msgspec is None:
             logging.info("tltg_klipper_fixes: msgspec isn't installed for "
