@@ -12,14 +12,20 @@ API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
   POST api/auto-update  {"enabled": true|false}; answers with the status
   POST api/update-now   {}; answers 202 with {"job": ...}, or 409 with {"error", "blocked_by"} when update_now.allowed
                         is false
+  GET  api/support-bundle  a zip of what a support issue needs (see support_bundle), named in Content-Disposition;
+                        409 while another is being made
 POSTs need the X-Valve-Oil: status header and a JSON body, and a same-origin Origin when a browser sends one.
 
-The status: {schema, updated_at, release: {installed}, printer: {id, name, firmware, target_firmware},
+The status: {schema, updated_at, release: {installed, channel, commit}, printer: {id, name, firmware, target_firmware},
 auto_update: {enabled, scheduled}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
 reinstall, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware, build, pinned, bootloader, report,
 detail, checked_at, issue_url, waiting_for_firmware_update}], run: {id, kind, state, step, step_label, started_at,
 finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, state, started_at, finished_at, log,
-message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]}}.
+message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]},
+support: {issue_url}}.
+- release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
+  release (its RELEASE_METADATA.yaml); null when the bundle in ~/valve-oil is for another version or doesn't say. A
+  dev build's update check fails until a release publishes the archive it looks for, so the UIs don't report that.
 - check.next_at: when the timer runs the next check (ISO 8601 UTC), or null when it isn't scheduled or can't be read.
 - pending[].reinstall: true for a release item that installs the installed release again, because its installed state
   is missing or has drifted (as after QIDI's firmware package emptied the config folder); version is then the
@@ -39,19 +45,25 @@ message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [
   heaters_on, printer_state_unknown, recovery_required (its message says what to run), installer_missing.
 - boards[].issue_url: a prefilled link to this project's support form; one too long to pass on is replaced by the bare
   form.
+- support.issue_url: this project's bug report form, with the printer, its details (printer_details), and how Valve
+  Oil was installed filled in, for the support bundle to be attached to.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
 import urllib.request
 import uuid
+import zipfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -71,6 +83,8 @@ AUTO_UPDATE_TIMER = Path("/etc/systemd/system/tltg-optimized-auto-update.timer")
 MACRO_GLOBALS = PRINTER_DATA / "config/tltg-optimized-macros/globals.cfg"
 FIRMWARE_MANIFEST = HOME / "update/firmware_manifest.json"
 BUNDLE = HOME / "valve-oil"
+# scripts/build_installer_bundle.py: the bundle's version, channel ("release" or "dev"), and commit.
+RELEASE_METADATA = BUNDLE / "RELEASE_METADATA.yaml"
 UPDATE_NOW = (sys.executable or "/usr/bin/python3", "-I", "-S", str(BUNDLE / "installer/runtime/bootstrap.py"), "update-now", "--plain")
 # installer/runtime/update_now.py: the run records this job id in the status file's run.
 JOB_ENV = "TLTG_STATUS_JOB"
@@ -106,6 +120,20 @@ MAX_TEXT = 500
 ISSUE_URL_PREFIX = "https://github.com/thelegendtubaguy/valve-oil/issues/new?"
 ISSUE_FORM_URL = ISSUE_URL_PREFIX + "template=printer-support.yml"
 MAX_ISSUE_URL = 8000
+# The support issue: the bug report form (.github/ISSUE_TEMPLATE/bug-report.yml), whose printer choices these are.
+SUPPORT_ISSUE_TEMPLATE = "bug-report.yml"
+SUPPORT_ISSUE_PRINTERS = ("QIDI Max 4", "QIDI Plus 5")
+SUPPORT_ISSUE_LOGS = "Drag in the valve-oil-support zip file that Valve Oil's settings downloaded."
+INSTALL_SOURCES = {"release": "Release install command from the README", "dev": "Dev prerelease"}
+# The support bundle: the newest part of each log, as a long-running printer's klippy.log reaches tens of megabytes.
+SUPPORT_LOG_BYTES = 16 * 1024 * 1024
+LOGS = PRINTER_DATA / "logs"
+BOX_CFG = PRINTER_DATA / "config/box.cfg"
+CACHE = HOME / ".cache/valve-oil"
+FIRMWARE_UPDATE_RESULT = PRINTER_DATA / ".tltg_firmware_update_result.json"
+# Only values of known shape go in printer details: versions, QIDI's file names, and counts.
+PLAIN = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
 # POSTs must carry this header. A web page from another origin can't add it without a CORS preflight, which this
 # server never approves, so it can't make a browser on a trusted address change a setting or start an update.
 ACTION_HEADER = ("X-Valve-Oil", "status")
@@ -283,10 +311,11 @@ def status_body(jobs: Jobs) -> dict:
     pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled)
-    return {
+    channel, commit = release_build(installed)
+    body = {
         "schema": STATUS_SCHEMA,
         "updated_at": _text(data.get("updated_at")),
-        "release": {"installed": installed},
+        "release": {"installed": installed, "channel": channel, "commit": commit},
         "printer": {
             "id": _text(printer.get("id")) or _text(admission.get("printer")),
             "name": _text(printer.get("name")),
@@ -308,6 +337,147 @@ def status_body(jobs: Jobs) -> dict:
         "printer_busy": live is not None and "printing" in live,
         "update_now": _update_now(busy, live),
     }
+    body["support"] = {"issue_url": support_issue_url(body)}
+    return body
+
+
+# ---- support -----------------------------------------------------------------------------------------------------------
+
+
+def release_build(installed: str | None) -> tuple[str | None, str | None]:
+    """The channel and short commit of the bundle that installed `installed`, from its RELEASE_METADATA.yaml."""
+    fields = {}
+    try:
+        with RELEASE_METADATA.open("r", encoding="utf-8") as handle:
+            for line in handle.read(4096).splitlines():
+                key, separator, value = line.partition(":")
+                if separator:
+                    fields[key.strip()] = value.strip().strip('"').strip("'")
+    except (OSError, UnicodeDecodeError):
+        return None, None
+    if not installed or fields.get("package_version") != installed:
+        return None, None
+    channel = fields.get("channel") if fields.get("channel") in INSTALL_SOURCES else None
+    commit = fields.get("git_short_sha") if COMMIT.match(fields.get("git_short_sha", "")) else None
+    return channel, commit
+
+
+def printer_details(status: dict) -> str:
+    """The bug report's "Printer details", as docs/troubleshooting.md's block prints them, from files only. As
+    installer/runtime/board_firmware.py printer_details does, only values of known shape go in: nothing that can carry
+    a hostname, user name, address, or network name."""
+    release = status["release"]
+    if release["installed"]:
+        build = (" (dev build" + (f" {release['commit']}" if release["commit"] else "") + ")") if release["channel"] == "dev" else ""
+        lines = [f"Valve Oil: {release['installed']}{build}"]
+    else:
+        lines = ["Valve Oil: not installed"]
+    manifest = _read_json(FIRMWARE_MANIFEST)
+    if isinstance(manifest, dict):
+        for name, part in manifest.items():
+            fields = (name, *(part.get(key) for key in ("version", "file"))) if isinstance(part, dict) else ()
+            if fields and all(isinstance(field, str) and PLAIN.match(field) for field in fields):
+                lines.append("{}: {} ({})".format(*fields))
+    else:
+        lines.append("Firmware manifest: unreadable")
+    try:
+        box_cfg = BOX_CFG.read_text(encoding="utf-8", errors="replace")
+        lines.append("USB Boxes in box.cfg: " + str(len(re.findall(r"^\[mcu mcu_box", box_cfg, re.M))))
+    except OSError:
+        lines.append("USB Boxes in box.cfg: no box.cfg")
+    kernel = os.uname().release
+    lines.append("Kernel: " + (kernel if re.match(r"^[A-Za-z0-9._+-]{1,80}$", kernel) else "unrecognized"))
+    lines.append("Auto-updates: " + ("on" if status["auto_update"]["enabled"] else "off"))
+    try:
+        lines.append("zram: " + ("on" if "zram" in Path("/proc/swaps").read_text(encoding="utf-8") else "off"))
+    except OSError:
+        lines.append("zram: unknown")
+    return "\n".join(lines)
+
+
+def support_issue_url(status: dict) -> str:
+    """The bug report form with what the printer knows filled in by field ID; printer details are left out of a link
+    that would be too long to pass on."""
+    fields = {"template": SUPPORT_ISSUE_TEMPLATE}
+    if status["printer"]["name"] in SUPPORT_ISSUE_PRINTERS:
+        fields["printer"] = status["printer"]["name"]
+    if status["release"]["channel"] in INSTALL_SOURCES:
+        fields["install_source"] = INSTALL_SOURCES[status["release"]["channel"]]
+    fields["printer_details"] = printer_details(status)
+    fields["logs"] = SUPPORT_ISSUE_LOGS
+    url = ISSUE_URL_PREFIX + urllib.parse.urlencode(fields, quote_via=urllib.parse.quote)
+    if len(url) > MAX_ISSUE_URL:
+        del fields["printer_details"]
+        url = ISSUE_URL_PREFIX + urllib.parse.urlencode(fields, quote_via=urllib.parse.quote)
+    return url
+
+
+def support_files() -> list[tuple[str, Path]]:
+    """What a support issue needs, by its name in the bundle: Klipper's and Moonraker's logs, today's and the last
+    rotated one, Valve Oil's Box link log, and what Valve Oil's own runs wrote."""
+    files = []
+    for name in ("klippy.log", "moonraker.log"):
+        files.append((f"logs/{name}", LOGS / name))
+        rotated = sorted(LOGS.glob(f"{name}.*"), key=_mtime)
+        if rotated:
+            files.append((f"logs/{rotated[-1].name}", rotated[-1]))
+    files.append(("logs/tltg_box_link.log", LOGS / "tltg_box_link.log"))
+    files += [
+        ("valve-oil/update-now.log", JOB_LOG),
+        ("valve-oil/addon-change.log", CACHE / "addons/job.log"),
+        ("valve-oil/firmware-update.log", CACHE / "firmware-update/update.log"),
+        ("valve-oil/qidi-package.log", CACHE / "firmware-update/qidi-package.log"),
+        ("valve-oil/firmware-update-result.json", FIRMWARE_UPDATE_RESULT),
+        ("valve-oil/RELEASE_METADATA.yaml", RELEASE_METADATA),
+        ("firmware_manifest.json", FIRMWARE_MANIFEST),
+    ]
+    return [(name, path) for name, path in files if path.is_file() and not path.is_symlink()]
+
+
+def support_bundle(status: dict):
+    """The support bundle as an unnamed temporary file, read from the start: the status and printer details this
+    service reports, and the newest SUPPORT_LOG_BYTES of each file in support_files."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.TemporaryFile(dir=STATE_DIR)
+    try:
+        with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            archive.writestr("printer-details.txt", printer_details(status) + "\n")
+            archive.writestr("valve-oil-status.json", json.dumps(status, indent=2) + "\n")
+            for name, path in support_files():
+                _add_tail(archive, name, path)
+        handle.seek(0)
+    except BaseException:
+        handle.close()
+        raise
+    return handle
+
+
+def support_bundle_name(status: dict) -> str:
+    printer = status["printer"]["id"] if PLAIN.match(status["printer"]["id"] or "") else "printer"
+    return f"valve-oil-support-{printer}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.zip"
+
+
+def _add_tail(archive: zipfile.ZipFile, name: str, path: Path) -> None:
+    try:
+        with path.open("rb") as source:
+            size = os.fstat(source.fileno()).st_size
+            info = zipfile.ZipInfo(name, time.localtime(os.fstat(source.fileno()).st_mtime)[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with archive.open(info, "w") as target:
+                if size > SUPPORT_LOG_BYTES:
+                    source.seek(size - SUPPORT_LOG_BYTES)
+                    source.readline()  # the rest of a line cut in two
+                    target.write(f"[The start of this {size // (1024 * 1024)} MB file is left out.]\n".encode())
+                shutil.copyfileobj(source, target, 1024 * 1024)
+    except OSError as exc:
+        log(f"Support bundle left out {name}: {exc}")
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 # ---- what the printer is doing now --------------------------------------------------------------------------------
@@ -591,6 +761,8 @@ def _qidi_firmware() -> str | None:
 class Handler(BaseHTTPRequestHandler):
     server_version = "tltg-status"
     jobs: Jobs
+    # One support bundle at a time: each reads tens of megabytes of logs.
+    bundling = threading.Lock()
 
     def log_message(self, format, *args):  # noqa: A002 - BaseHTTPRequestHandler's signature
         pass
@@ -605,6 +777,8 @@ class Handler(BaseHTTPRequestHandler):
         route = self._route()
         if route == "status":
             self._send(HTTPStatus.OK, status_body(self.jobs))
+        elif route == "support-bundle":
+            self._send_support_bundle()
         elif route in ("auto-update", "update-now"):
             self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Use POST."}, allow="POST")
         else:
@@ -633,14 +807,14 @@ class Handler(BaseHTTPRequestHandler):
                     raise Conflict("Update now can't start: " + "; ".join(item["message"] for item in blocked) + ".",
                                    blocked)
                 self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(status)})
-            elif route == "status":
+            elif route in ("status", "support-bundle"):
                 raise RequestError(HTTPStatus.METHOD_NOT_ALLOWED, "Use GET.")
             else:
                 raise RequestError(HTTPStatus.NOT_FOUND, "Not found.")
         except Conflict as exc:
             self._send(HTTPStatus.CONFLICT, {"error": str(exc), "blocked_by": exc.blocked_by})
         except RequestError as exc:
-            allow = {"status": "GET"}.get(self._route(), "POST") if exc.status == HTTPStatus.METHOD_NOT_ALLOWED else None
+            allow = {"status": "GET", "support-bundle": "GET"}.get(self._route(), "POST") if exc.status == HTTPStatus.METHOD_NOT_ALLOWED else None
             self._send(exc.status, {"error": str(exc)}, allow=allow)
 
     def _check_post(self) -> dict:
@@ -672,9 +846,34 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self) -> str | None:
         # nginx strips its /tltg-status/ prefix; the API is exactly api/<name>.
         parts = self.path.split("?", 1)[0].split("/")
-        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now"):
+        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle"):
             return parts[2]
         return None
+
+    def _send_support_bundle(self) -> None:
+        if not self.bundling.acquire(blocking=False):
+            self._send(HTTPStatus.CONFLICT, {"error": "A support bundle is already being made."})
+            return
+        try:
+            status = status_body(self.jobs)
+            try:
+                bundle = support_bundle(status)
+            except (OSError, zipfile.BadZipFile) as exc:
+                log(f"Support bundle failed: {exc}")
+                self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "The support bundle could not be made."})
+                return
+            with bundle:
+                size = os.fstat(bundle.fileno()).st_size
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{support_bundle_name(status)}"')
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                shutil.copyfileobj(bundle, self.wfile, 1024 * 1024)
+            log(f"Sent a support bundle of {size} bytes")
+        finally:
+            self.bundling.release()
 
     def _send(self, status: HTTPStatus, body: dict, *, allow: str | None = None) -> None:
         data = json.dumps(body).encode("utf-8")

@@ -16,10 +16,12 @@ import {
 import {
   autoUpdateDisabled,
   clearAutoUpdateError,
+  clearSupportError,
   clearUpdateNowError,
   dismissUpdate,
   reconnecting,
   reconnectingLongMinutes,
+  reportProblem,
   setAutoUpdate,
   shownUpdate,
   updateNow,
@@ -233,12 +235,10 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         <div className="row-k">
           <span className="k">Valve Oil release</span>
           <span className="v">{view.release || 'Unknown'}</span>
+          {view.devBuild != null && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{view.devBuild ? `Dev build ${view.devBuild}` : 'Dev build'}</span>}
         </div>
         <div className="row-k">
-          <span className="k">
-            {view.printerName || 'Printer'}
-            <span className="block text-[12px] text-ink-3">QIDI firmware</span>
-          </span>
+          <span className="k">QIDI firmware</span>
           <span className="v">{view.firmware || 'Unknown'}</span>
           {view.targetFirmware && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">This Valve Oil release updates it to {view.targetFirmware}</span>}
         </div>
@@ -299,6 +299,29 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         {view.checkFailed != null && <Notice tone="warn">{view.checkFailed ? `The last check for updates failed: ${view.checkFailed}` : 'The last check for updates failed.'}</Notice>}
         {update && <UpdateProgress update={update} recoveryRequired={recoveryRequired} />}
       </div>
+
+      {view.supportIssueUrl && (
+        <>
+          <div className="sep my-2" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-1">
+            <div className="min-w-[180px] flex-1">
+              <div className="font-medium">Report a problem</div>
+              <div className="text-[12.5px] text-ink-3">
+                Opens a bug report on GitHub and downloads a support bundle with Klipper's, Moonraker's, and Valve Oil's logs. Attach the bundle to the issue.
+              </div>
+            </div>
+            <button className="btn btn-sm ml-auto" disabled={s.supportPending} onClick={reportProblem}>
+              {s.supportPending ? <LoaderCircle size={13} className="spin" /> : <ExternalLink size={13} />}
+              Open an issue
+            </button>
+          </div>
+          {s.supportError && (
+            <Notice tone="bad" onClose={clearSupportError}>
+              The support bundle couldn't be downloaded: {s.supportError}
+            </Notice>
+          )}
+        </>
+      )}
 
       {view.checkedAt && <div className="mt-3 border-t border-line pt-2 text-[12px] text-ink-3">Last checked for updates {fmtTime(view.checkedAt)}</div>}
 

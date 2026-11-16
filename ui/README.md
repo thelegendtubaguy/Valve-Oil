@@ -43,9 +43,10 @@ It also stands in for Valve Oil's status service at `/tltg-status/api`, which fe
 | `closed-loop` | After a firmware update that left the Max 4's closed-loop drivers on their firmware |
 | `thr-waiting` | QIDI firmware waiting, with the THR and mainboard updated after it in the same update |
 | `reinstall` | Valve Oil's installed files are missing or changed, so the installed release waits to be installed again |
+| `dev` | A dev prerelease whose update check failed, which the screen leaves out |
 | `absent` | No status service (404), as on a printer without it |
 
-Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update` as the service does, and the printer warnings Klipper would report for it (with **Details** and **Report this board** links).
+Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update`, `release.channel` and `release.commit`, and `support.issue_url` as the service does, answers `GET /tltg-status/api/support-bundle` with an empty zip, and the printer warnings Klipper would report for it (with **Details** and **Report this board** links).
 
 Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/tltg-status` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
 

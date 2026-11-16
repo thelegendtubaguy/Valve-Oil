@@ -9,9 +9,11 @@ import {
   tltgStatusApiBase,
   tltgStatusPollFailure,
   tltgStatusPollInterval,
+  tltgShownUpdate,
   tltgStatusRequest,
   TltgStatusRequestError,
-  tltgStatusView
+  tltgStatusView,
+  tltgSupportBundle
 } from '../tltg-status'
 
 const issue = 'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&board=box1'
@@ -125,7 +127,7 @@ describe('parseTltgStatus', () => {
   it('reads a status whose fields are all missing or null as unknown', () => {
     expect(parseTltgStatus({ schema: 1, release: null, printer: null, auto_update: null, check: null, pending: null, boards: null })).toEqual({
       updated_at: null,
-      release: { installed: null },
+      release: { installed: null, channel: null, commit: null },
       printer: { id: null, name: null, firmware: null, target_firmware: null },
       auto_update: { enabled: null, scheduled: null },
       check: { at: null, result: null, message: '', next_at: null },
@@ -135,7 +137,8 @@ describe('parseTltgStatus', () => {
       job: null,
       busy: false,
       printer_busy: false,
-      update_now: null
+      update_now: null,
+      support_issue_url: null
     })
   })
 
@@ -294,6 +297,20 @@ describe('tltgStatusView', () => {
     expect(view({ check: { at: null, result: 'failed', message: 'The release list could not be reached.' } }).checkFailed)
       .toBe('The release list could not be reached.')
     expect(view({}).checkFailed).toBeNull()
+  })
+
+  it("names a dev build and leaves out its check's failure, which lasts until a release publishes what it looks for", () => {
+    const failed = { at: null, result: 'failed', message: 'Could not fetch latest release checksum.' }
+    const dev = view({ release: { installed: '26.11.15.1', channel: 'dev', commit: 'a8dda52' }, check: failed })
+
+    expect([dev.devBuild, dev.checkFailed]).toEqual(['a8dda52', null])
+    expect(view({ release: { installed: '26.11.15.1', channel: 'release', commit: 'a8dda52' }, check: failed }).devBuild).toBeNull()
+  })
+
+  it('offers the support issue only as a link to this project', () => {
+    expect(view({ support: { issue_url: issue } }).supportIssueUrl).toBe(issue)
+    expect(view({ support: { issue_url: 'https://example.com/issues/new?x=1' } }).supportIssueUrl).toBeNull()
+    expect(view({}).supportIssueUrl).toBeNull()
   })
 })
 
@@ -531,6 +548,48 @@ describe('tltgStatusView update', () => {
 
   it('shows nothing when no update has run', () => {
     expect(view({}).update).toBeNull()
+  })
+})
+
+describe('tltgShownUpdate', () => {
+  const finished = Date.parse('2026-11-11T09:05:00Z')
+  const hours = (count: number) => finished + count * 60 * 60 * 1000
+  const update = (state: string) => view({ run: { ...run, state, finished_at: '2026-11-11T09:05:00Z' } }).update
+
+  it.each([
+    ['a success, for a day', 'succeeded', hours(23), true],
+    ['a success, not after a day', 'succeeded', hours(25), false],
+    ['a failure, until dismissed', 'failed', hours(24 * 30), true],
+    ['an interrupted update, until dismissed', 'interrupted', hours(24 * 30), true]
+  ])('shows %s', (_, state, at, shown) => {
+    expect(tltgShownUpdate(update(state), [], at) != null).toBe(shown)
+    expect(tltgShownUpdate(update(state), ['run-1'], hours(1))).toBeNull()
+  })
+
+  it('shows a running update even when an earlier result with its id was dismissed', () => {
+    expect(tltgShownUpdate(view({ run, busy: true }).update, ['run-1'], hours(48))?.state).toBe('running')
+  })
+})
+
+describe('tltgSupportBundle', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("names the bundle as the printer does, and reports the server's error", async () => {
+    const zip = new Blob(['zip'])
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(zip, { headers: { 'Content-Disposition': 'attachment; filename="valve-oil-support-max4-20261116T150300Z.zip"' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'A support bundle is already being made.' }), { status: 409 }))
+
+    vi.stubGlobal('fetch', fetch)
+
+    const bundle = await tltgSupportBundle('/tltg-status/api', { token: 'abc' })
+
+    expect(bundle.name).toBe('valve-oil-support-max4-20261116T150300Z.zip')
+    expect(fetch.mock.calls[0][0]).toBe('/tltg-status/api/support-bundle')
+    expect(fetch.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer abc' })
+    await expect(tltgSupportBundle('/tltg-status/api')).rejects.toMatchObject({ status: 409, message: 'A support bundle is already being made.' })
   })
 })
 

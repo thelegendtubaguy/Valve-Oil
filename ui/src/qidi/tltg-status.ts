@@ -104,6 +104,10 @@ export interface TltgStatus {
   updated_at: string | null;
   release: {
     installed: string | null;
+    /** The channel of the bundle that installed it, "release" or "dev"; null when the printer doesn't know or say. */
+    channel: string | null;
+    /** That bundle's short commit. */
+    commit: string | null;
   };
   printer: {
     id: string | null;
@@ -131,6 +135,8 @@ export interface TltgStatus {
   printer_busy: boolean;
   /** null from a printer whose service doesn't say; tltgStatusView then works it out from busy and printer_busy. */
   update_now: TltgStatusUpdateNow | null;
+  /** The prefilled support issue, for the support bundle to be attached to; null from a service without the bundle. */
+  support_issue_url: string | null;
 }
 
 /** Why the waiting work hasn't been installed. */
@@ -215,6 +221,8 @@ export interface TltgUpdateView {
 
 export interface TltgStatusView {
   release: string | null;
+  /** A dev build's short commit, or '' for a dev build that doesn't say; null for a release. */
+  devBuild: string | null;
   printerName: string | null;
   firmware: string | null;
   /** The QIDI firmware the installed release brings the printer to, when it isn't on it already. */
@@ -231,12 +239,17 @@ export interface TltgStatusView {
   checkedAt: number | null;
   /** When the next automatic check is due, only while that's still ahead. */
   nextCheckAt: number | null;
-  /** The last check's error, or null when it didn't fail. */
+  /**
+   * The last check's error, or null when it didn't fail. A dev build's check fails until a release publishes what it
+   * looks for, so it isn't reported there.
+   */
   checkFailed: string | null;
   boards: TltgBoardView[];
   updating: boolean;
   update: TltgUpdateView | null;
   updateNow: TltgUpdateNowView;
+  /** The prefilled support issue, offered with the support bundle; null when the printer can't make the bundle. */
+  supportIssueUrl: string | null;
 }
 
 /** What to do after a status request fails. */
@@ -488,12 +501,15 @@ export const parseTltgStatus = (value: unknown): TltgStatus | null => {
   const check = record(value.check)
   const run = parseRun(value.run)
   const job = parseJob(value.job)
+  const support = record(value.support)
   const seen = new Set<string>()
 
   return {
     updated_at: optionalText(value.updated_at),
     release: {
-      installed: optionalText(release.installed)
+      installed: optionalText(release.installed),
+      channel: optionalText(release.channel),
+      commit: optionalText(release.commit)
     },
     printer: {
       id: optionalText(printer.id),
@@ -529,7 +545,8 @@ export const parseTltgStatus = (value: unknown): TltgStatus | null => {
     job,
     busy: value.busy === true || run?.state === 'running' || job?.state === 'running',
     printer_busy: value.printer_busy === true,
-    update_now: parseUpdateNow(value.update_now)
+    update_now: parseUpdateNow(value.update_now),
+    support_issue_url: tltgIssueUrlValid(support.issue_url) ? support.issue_url : null
   }
 }
 
@@ -736,9 +753,11 @@ export const tltgStatusView = (status: TltgStatus, now: number = Date.now()): Tl
   const update = updateView(status)
   const nextCheckAt = time(status.check.next_at)
   const { firmware, target_firmware: target } = status.printer
+  const dev = status.release.channel === 'dev'
 
   return {
     release: status.release.installed,
+    devBuild: dev ? status.release.commit ?? '' : null,
     printerName: status.printer.name,
     firmware,
     targetFirmware: target && target !== firmware ? target : null,
@@ -750,12 +769,31 @@ export const tltgStatusView = (status: TltgStatus, now: number = Date.now()): Tl
     firmwareWaiting: waiting.some(item => item.kind !== 'release'),
     checkedAt: time(status.check.at),
     nextCheckAt: nextCheckAt != null && nextCheckAt > now ? nextCheckAt : null,
-    checkFailed: status.check.result === 'failed' ? status.check.message : null,
+    checkFailed: status.check.result === 'failed' && !dev ? status.check.message : null,
     boards: status.boards.map(board => boardView(board, status)),
     updating,
     update,
-    updateNow: updateNowView(status, update)
+    updateNow: updateNowView(status, update),
+    supportIssueUrl: status.support_issue_url
   }
+}
+
+/** How long a finished update's success is shown; a failed or stopped one is shown until dismissed or replaced. */
+export const TLTG_UPDATE_SUCCESS_SHOWN_MS = 24 * 60 * 60 * 1000
+
+/** The update to show, at `now`: one running, or a result not dismissed, and a success only for a day after it finished. */
+export const tltgShownUpdate = (update: TltgUpdateView | null, dismissed: string[], now: number = Date.now()): TltgUpdateView | null => {
+  if (update == null || update.state === 'running') {
+    return update
+  }
+
+  if (dismissed.includes(update.id)) {
+    return null
+  }
+
+  return update.state === 'succeeded' && update.finishedAt != null && now - update.finishedAt > TLTG_UPDATE_SUCCESS_SHOWN_MS
+    ? null
+    : update
 }
 
 /**
@@ -866,4 +904,45 @@ export const tltgStatusRequest = async (base: string, path: string, options: Tlt
   }
 
   return body
+}
+
+/** The support bundle's file name, as the printer names it, or a name of the same shape. */
+const supportBundleName = (disposition: string | null): string => {
+  const name = /filename="([\w.-]+)"/.exec(disposition ?? '')?.[1]
+
+  return name ?? `valve-oil-support-${new Date().toISOString().replace(/[-:]|\.\d+/g, '')}.zip`
+}
+
+/**
+ * Fetches the support bundle (GET api/support-bundle): the printer's logs and Valve Oil's status, zipped. Throws
+ * TltgStatusRequestError as tltgStatusRequest does.
+ */
+export const tltgSupportBundle = async (base: string, options: { token?: string | null } = {}): Promise<{ blob: Blob, name: string }> => {
+  let response: Response
+
+  try {
+    response = await fetch(`${base}/support-bundle`, {
+      headers: options.token ? { Authorization: `Bearer ${options.token}` } : {},
+      cache: 'no-store',
+      credentials: 'same-origin'
+    })
+  } catch (e) {
+    throw new TltgStatusRequestError(0, e instanceof Error ? e.message : String(e))
+  }
+
+  if (!response.ok) {
+    let error = ''
+
+    try {
+      const body: unknown = await response.json()
+
+      error = isRecord(body) ? text(body.error) : ''
+    } catch {
+      error = ''
+    }
+
+    throw new TltgStatusRequestError(response.status, error || `${response.status} ${response.statusText}`.trim())
+  }
+
+  return { blob: await response.blob(), name: supportBundleName(response.headers.get('Content-Disposition')) }
 }

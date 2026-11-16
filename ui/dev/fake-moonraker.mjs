@@ -3,7 +3,7 @@
 //
 //   node dev/fake-moonraker.mjs [--port 7125] [--scenario printing|idle|box-busy|box-failed|stranded|no-box]
 //                               [--updates none|release-off|firmware-printing|boards|running|failed|interrupted|refused|
-//                                          firmware-failed|firmware-rescue|closed-loop|thr-waiting|reinstall|absent]
+//                                          firmware-failed|firmware-rescue|closed-loop|thr-waiting|reinstall|dev|absent]
 //
 // Serves the Moonraker websocket and file endpoints the UI uses, plus ui/dist at /valve-oil/ (same origin, like the
 // printer's nginx). Run `npm run build` first to use /valve-oil/, or point `npm run dev` at it with
@@ -602,9 +602,14 @@ setInterval(() => {
 // Pick a starting state with --updates, or switch at runtime with `VO_UPDATES NAME=<scenario>`. Update now runs a
 // simulated update; with QIDI or board firmware waiting it takes Moonraker and this API away for a while, as the real
 // one restarts them.
-const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'absent']
+const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'dev', 'absent']
 const ISSUE_URL =
   'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&title=Box+1+bootloader+not+supported&printer=QIDI+Max+4&firmware=01.01.07.01&board=box1'
+// tltg_status.py support_issue_url: the bug report form with what the printer knows filled in.
+const SUPPORT_ISSUE_URL =
+  'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=bug-report.yml&printer=QIDI%20Max%204&install_source=Release%20install%20command%20from%20the%20README&printer_details=Valve%20Oil%3A%2026.11.11.3'
+// An empty zip archive stands in for the support bundle.
+const SUPPORT_BUNDLE = Buffer.concat([Buffer.from('PK\x05\x06'), Buffer.alloc(18)])
 const iso = (secondsAgo = 0) => new Date(Date.now() - secondsAgo * 1000).toISOString().replace(/\.\d+Z$/, 'Z')
 const board = (id, state, firmware, build, extra = {}) => ({ id, state, name: { thr: 'THR', mcu: 'Mainboard', closed_loop: 'Closed-loop drivers' }[id] ?? `Box ${id.slice(3)}`, firmware, build, pinned: firmware, bootloader: null, issue_url: null, report: null, detail: null, checked_at: iso(3600), waiting_for_firmware_update: false, ...extra })
 // installer/runtime/valve_oil_status.py BLOCKERS and installer/system/tltg_status.py UPDATE_NOW_BLOCKERS.
@@ -664,6 +669,8 @@ function applyUpdates(name) {
     absent: name === 'absent',
     auto: true,
     release: '26.11.11.3',
+    channel: 'release',
+    commit: null,
     firmware: '01.01.07.01',
     target: '01.01.07.01',
     check: { at: iso(5400), result: 'ok', message: '' },
@@ -719,6 +726,11 @@ function applyUpdates(name) {
   } else if (name === 'reinstall') {
     // QIDI's firmware package emptied the config folder: the installed release has to be installed again.
     vo.pending = [{ kind: 'release', version: vo.release, current: vo.release, board: null, reinstall: true }]
+  }
+  if (name === 'dev') {
+    // A dev build's check fails until a release publishes the archive it looks for; the UIs leave that out.
+    Object.assign(vo, { channel: 'dev', commit: 'a8dda52' })
+    vo.check = { at: iso(1700), result: 'failed', message: 'Could not fetch latest release checksum.' }
   }
   if (name === 'failed') {
     const log = ['Checking that the printer is idle', 'Downloading QIDI firmware 01.01.07.01', "The download didn't match its checksum, so nothing on the printer was changed."]
@@ -791,7 +803,7 @@ function voStatus() {
   return {
     schema: 1,
     updated_at: iso(60),
-    release: { installed: vo.release },
+    release: { installed: vo.release, channel: vo.channel, commit: vo.commit },
     printer: { id: 'max4', name: 'QIDI Max 4', firmware: vo.firmware, target_firmware: vo.target },
     auto_update: { enabled: vo.auto, scheduled: true },
     check: { ...vo.check, next_at: nextCheck() },
@@ -803,6 +815,7 @@ function voStatus() {
     busy: running,
     printer_busy: voPrinterBusy(),
     update_now: { allowed: refusal.length === 0, blocked_by: refusal.map((code) => ({ code, message: BLOCKERS[code] })) },
+    support: { issue_url: SUPPORT_ISSUE_URL },
   }
 }
 
@@ -896,6 +909,11 @@ async function statusApi(req, res, path) {
   if (outage) return res.writeHead(502, { 'Content-Type': 'text/html' }).end('<html><body>502 Bad Gateway</body></html>')
   if (vo.absent) return res.writeHead(404, { 'Content-Type': 'text/html' }).end('<html><body>404 Not Found</body></html>')
   const route = path.slice('/tltg-status/api/'.length)
+  if (req.method === 'GET' && route === 'support-bundle') {
+    await new Promise((r) => setTimeout(r, 1500))
+    const name = `valve-oil-support-max4-${iso().replace(/[-:]/g, '')}.zip`
+    return res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' }).end(SUPPORT_BUNDLE)
+  }
   if (req.method === 'GET') return route === 'status' ? send(200, voStatus()) : send(404, { error: 'Not found.' })
   if (req.method !== 'POST') return send(405, { error: 'Use GET.' })
   if (req.headers['x-valve-oil'] !== 'status') return send(403, { error: 'Missing X-Valve-Oil header.' })

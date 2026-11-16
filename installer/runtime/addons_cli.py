@@ -4,15 +4,16 @@ import argparse
 import json
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 from . import addons
-from .errors import InstallerError, PrinterStateError
+from .errors import InstallerError
 from .locking import acquire
 from .manifest import load_manifest
 from .models import RuntimePaths
 from .reporter import create_reporter
-from .safety import ensure_no_recovery_sentinel, query_printer_state
+from .safety import ensure_no_recovery_sentinel
 from .sudo import SudoError, authenticate_sudo
 
 SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"
@@ -100,15 +101,21 @@ def main(
     return 0
 
 
-def _ensure_not_printing(moonraker_url: str) -> None:
-    # Building an add-on's environment takes the CPU and memory a print needs. A stopped Moonraker or Klipper can't be
-    # printing, so an unknown state doesn't block.
+def _ensure_not_printing(moonraker_url: str, *, urlopen=urllib.request.urlopen) -> None:
+    """Refuse while a print is running or paused, or Klipper is running G-code, such as a calibration, which
+    idle_timeout reports as "Printing": building an add-on's environment takes the CPU and memory those need. A heater
+    that is on doesn't count. A stopped Moonraker or Klipper can't be printing, so an unknown state doesn't block.
+    installer/system/tltg_addons.py busy_state reads the same answer the same way."""
+    base = moonraker_url.split("?", 1)[0]
     try:
-        state = query_printer_state(moonraker_url)
-    except PrinterStateError:
+        with urlopen(f"{base}?print_stats=state&idle_timeout=state", timeout=5) as response:
+            status = json.load(response)["result"]["status"]
+        print_stats, idle_timeout = (status.get(name) or {} for name in ("print_stats", "idle_timeout"))
+        busy = print_stats.get("state") in {"printing", "paused"} or idle_timeout.get("state") == "Printing"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return
-    if state in {"printing", "paused"}:
-        raise addons.AddonError("Add-ons can be installed, updated, or removed only while the printer is not printing.")
+    if busy:
+        raise addons.AddonError("Add-ons can be installed, updated, or relinked only while the printer isn't printing or calibrating.")
 
 
 def maybe_update_installed_addons(*, paths: RuntimePaths, manifest, reporter, input_stream, environ: dict[str, str], run) -> None:
