@@ -32,6 +32,13 @@
 #   sets any of them is refused instead. Both happen while the test is
 #   prepared, before QIDI's code starts the accelerometer, which it wouldn't
 #   stop after an error.
+# - A printer profile can set a lower limit for a sweeping run,
+#   `resonance_sweep_max_accel` in `_tltg_printer`, fitted and refused the
+#   same way. QIDI's test shakes the toolhead in place at up to about
+#   37 mm/s, but the sweep carries it along at up to about 120 mm/s while it
+#   shakes, where a stepper has less torque: on the Smart 5 a sweeping run at
+#   QIDI's 20000 mm/s^2 skipped steps, though QIDI's full test reaches the
+#   same acceleration.
 # - The moves of a sweeping run are planned with upstream's junction
 #   calculation, for the length of the run only. Each starts no faster than
 #   the previous one was planned to end, as upstream's
@@ -358,6 +365,11 @@ class SweepingTest:
         stock = self.stock
         accel_cap = getattr(self.printer.lookup_object('toolhead'),
                             'max_accel_cap', None)
+        cap_name = "max_accel"
+        profile_cap = self._profile_sweep_limit()
+        if profile_cap is not None and (accel_cap is None
+                                        or profile_cap < accel_cap):
+            accel_cap, cap_name = profile_cap, "this printer's sweeping limit"
         vibrations = vibration_test(stock.freq_start, stock.freq_end,
                                     1., stock.hz_per_sec)
         if accel_cap is None or not vibrations:
@@ -371,14 +383,22 @@ class SweepingTest:
         if fitted < 1. or any(gcmd.get(name, None) is not None
                               for name in ACCEL_PARAMS):
             raise gcmd.error(
-                "The sweeping resonance test needs %.0f mm/s^2, above max_accel"
+                "The sweeping resonance test needs %.0f mm/s^2, above %s"
                 " %.0f. Lower ACCEL_PER_HZ, SWEEPING_ACCEL, or FREQ_END."
-                % (needed, accel_cap))
+                % (needed, cap_name, accel_cap))
         gcmd.respond_info(
             "ACCEL_PER_HZ lowered from %g to %g: the sweeping resonance test"
-            " would need %.0f mm/s^2, above max_accel %.0f"
-            % (self.test_accel_per_hz, fitted, needed, accel_cap))
+            " would need %.0f mm/s^2, above %s %.0f"
+            % (self.test_accel_per_hz, fitted, needed, cap_name, accel_cap))
         self.test_accel_per_hz = float(fitted)
+
+    def _profile_sweep_limit(self):
+        macro = self.printer.lookup_object("gcode_macro _tltg_printer", None)
+        try:
+            limit = float(macro.variables["resonance_sweep_max_accel"])
+        except Exception:
+            return None
+        return limit if limit > 0. else None
 
     def run_test(self, axis, gcmd):
         stock = self.stock

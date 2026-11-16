@@ -252,6 +252,19 @@ class ResonanceSweepTest(unittest.TestCase):
         self.assertTrue(any("ACCEL_PER_HZ=147 " in message for message in gcmd.messages))
         self.assertEqual(tester.test.stock.accel_per_hz, 150.)
 
+    def test_a_printer_profile_limit_lowers_the_sweep_further(self) -> None:
+        # The Smart 5 skipped steps sweeping at QIDI's 20000 mm/s^2.
+        printer = Printer(toolhead=FakeToolHead(max_accel_cap=20000.))
+        printer.objects["gcode_macro _tltg_printer"] = types.SimpleNamespace(
+            variables={"resonance_sweep_max_accel": 13000})
+        tester, gcmd = self.run_test(printer)
+        accel = float(printer.scripts[0].split("ACCEL=")[1].split()[0])
+        self.assertLessEqual(accel, 13000.)
+        self.assertTrue(any("ACCEL_PER_HZ=94 " in message for message in gcmd.messages))
+        tester = printer.connect()
+        with self.assertRaisesRegex(CommandError, "above this printer's sweeping limit 13000"):
+            tester.test.prepare_test(GCmd(ACCEL_PER_HZ=150))
+
     def test_test_beyond_max_accel_is_refused_while_preparing(self) -> None:
         # QIDI's code starts the accelerometer after preparing the test and
         # doesn't stop it after an error.
