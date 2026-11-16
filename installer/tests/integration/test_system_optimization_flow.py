@@ -434,8 +434,27 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         prior_server = remote_screen.SERVER_MARKER.encode() + b"print('earlier screen service')\n"
         screen_server.write_bytes(prior_server)
         reconciled["outcomes"][remote_screen.SERVER_OPERATION]["postflight"]["sha256"] = __import__("hashlib").sha256(prior_server).hexdigest()
+        # An update that rolls back keeps recording the earlier version, so the next update replaces it instead of
+        # preserving it as modified.
+
+        screen_restart_failed = []
+
+        def screen_restart_fails(command, **kwargs):
+            if list(command)[-3:] == ["systemctl", "restart", remote_screen.UNIT] and not screen_restart_failed:
+                screen_restart_failed.append(True)
+                return CompletedProcess(command, 1, stdout="", stderr="restart failed")
+            return host_run(command, **kwargs)
+
+        with self.assertRaises(SystemOptimizationApplyError) as failed:
+            apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+                reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
+                source="auto_update_reconcile", block_qidi_updates=True, run=screen_restart_fails,
+                urlopen=moonraker_urlopen(),
+            )
+        self.assertEqual(screen_server.read_bytes(), prior_server)
         reconciled = apply_system_optimizations(
-            paths=paths, spec=manifest.system_optimizations, ledger=reconciled,
+            paths=paths, spec=manifest.system_optimizations, ledger=failed.exception.ledger,
             reporter=PlainReporter(io.StringIO()), input_stream=None, environ=env,
             source="auto_update_reconcile", block_qidi_updates=True, run=host_run,
             urlopen=moonraker_urlopen(),

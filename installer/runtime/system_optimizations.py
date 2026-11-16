@@ -2390,9 +2390,10 @@ def apply_system_optimizations(
         _discard_unreferenced_backups(binary_created, initial_restore_preimages, paths)
         if isinstance(exc, KeyboardInterrupt):
             raise
+        # The rollback put back what this transaction changed, so its actions don't describe the host.
         partial = _compact_host_ledger(
             ledger,
-            actions=actions,
+            actions=actions[:prior_action_count],
             restore_preimages=initial_restore_preimages,
         )
         raise SystemOptimizationApplyError(getattr(exc, "message", str(exc)), partial) from exc
