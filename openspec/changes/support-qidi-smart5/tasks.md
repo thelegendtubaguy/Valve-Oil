@@ -14,7 +14,7 @@
 
 - [ ] 2.1 Run the collection script from issue 190 on the stock printer, including `MCU_ID.cfg`, Klipper objects, and MCU versions.
 - [x] 2.2 Capture the boot image and `/proc/kallsyms`, and compare the kernel with the builds the zram modules target.
-- [ ] 2.3 Capture `/dev/fb0` on a known screen and read `event0`'s axis ranges; record the rotation and touch frame.
+- [x] 2.3 Capture `/dev/fb0` on a known screen and read `event0`'s axis ranges; record the rotation and touch frame.
 - [x] 2.4 Diff the live `printer.cfg` against stock `01.01.02.01`.
 - [ ] 2.5 Time stock `G28` repeatedly and keep the `klippy.log` lines; check repeatability with and without QIDI's first single touch.
 - [ ] 2.6 Watch stock cut, wipe, chute, scrape, and park moves cold at Z 70 for clearances, and check whether the extruder sits above the cutter.

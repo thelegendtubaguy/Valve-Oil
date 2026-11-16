@@ -226,6 +226,11 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 
 - **Runtime-confirmed:** stock `01.01.02.01`, cold, idle: a full `G28` took 32.0–33.2 s over five timed runs. Each checked second home landed 0.73–0.80 mm (X) and 0.69–0.81 mm (Y) past the first, within QIDI's 2 mm tolerance, and the second Z touch agreed within 2–5 µm. `PROBE_ACCURACY` at X90 Y90 (10 samples) gave a 7.5 µm range and a 2.2 µm standard deviation. QIDI's cut stroke (Y1, X175 to X180 at F60), chute entrance (X100 Y199), and wipe strokes (Y182–Y199, X66 Y189 to X100 Y198) ran at Z70 without errors.
 
+### Display and touch
+
+- **Runtime-confirmed (2026-11-16, `01.01.02.01` with Valve Oil installed):** `/dev/fb0` is 480×800 at 32 bpp, as on the Plus 5, and `event0` is `Goodix Capacitive TouchScreen` with `ABS_X`/`ABS_MT_POSITION_X` 0–479 and `ABS_Y`/`ABS_MT_POSITION_Y` 0–799. Turned 90° clockwise, the framebuffer shows the home screen upright as the operator sees it. Operator taps on the screen reported touch positions in the framebuffer's own coordinates: Settings at (288, 698) and the back arrow at (44, 758), where the turned image has those controls. Taps written to `event0` through the Printer screen service's own mapping, Settings at upright (85, 295) → framebuffer (295, 714) and back at (41, 44) → (44, 758), opened Settings and returned home.
+- **Runtime-confirmed:** udev gives `/dev/fb0` to group `video` partway through boot; the Valve Oil boot animation, starting as `qidi` with group `video`, got `Permission denied` on it on two boots of three before it waited for access.
+
 ### Touchscreen expert mode
 
 - **Static-recovered:** in Smart 5 `qidiclient` `01.01.01.03` and `01.01.02.01`, the Settings page's Expert Mode switch (`general.expert_mode` in QIDI Moonraker's `config` table, default `"0"`) only changes the Control page's XYZ tab: with it on, the jog buttons work before homing and an "Unlock steppers" button sends `M84`. An unhomed jog sends `SET_KINEMATIC_POSITION X=150 Y=150 Z=150`, the relative move, then `M84`, so Klipper's travel limits are checked against that position. The Plus 5 client has the key and the strings but no Settings switch.
@@ -237,7 +242,7 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 
 ### Unresolved
 
-- The Smart 5's UI rotation and touch frame; whether `qidiclient` writes `MCU_ID.cfg` on it (a root-owned one exists that `printer.cfg` doesn't include).
+- Whether `qidiclient` writes `MCU_ID.cfg` on it (a root-owned one exists that `printer.cfg` doesn't include).
 - Whether the toolhead extruder sits above the cutter, which the cold cut depends on.
 - Box load and unload lengths with the Smart 5's `box_stepper.so`, and whether its `do_home` lengths are the Plus 5's.
 - The bed screws' positions and thread.
