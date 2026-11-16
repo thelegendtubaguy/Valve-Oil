@@ -118,6 +118,7 @@ install:
       - "box_filament_guard.cfg"
       - "box_loaded_slot.cfg"
       - "box_slot_jog.cfg"
+      - "box_spool_roll.cfg"
       - "box_rfid.cfg"
       - "box_flow_recovery.cfg"
       - "cold_cut.cfg"
@@ -179,6 +180,9 @@ install:
     - id: box_slot_jog
       source: "klipper/tltg/box_slot_jog.py"
       destination: "klippy/extras/tltg_box_slot_jog.py"
+    - id: box_spool_roll
+      source: "klipper/tltg/box_spool_roll.py"
+      destination: "klippy/extras/tltg_box_spool_roll.py"
     - id: box_rfid
       source: "klipper/tltg/box_rfid.py"
       destination: "klippy/extras/tltg_box_rfid.py"
@@ -693,10 +697,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-27b4daa
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-27b4daa/fluidd.zip
+    version: v1.37.7-tltg-d503f87
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-d503f87/fluidd.zip
     archive: system/fluidd.zip
-    sha256: a5e6edce9f13584d51a8d472cc3b2130f970eaf2a7e471ede62dafcd30f6c4a0
+    sha256: 99197f16840f2e672381b73b2e3bb38914acf8297418047ee6810eb14b3dd0d1
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui
