@@ -1,0 +1,19 @@
+Backport of upstream Klipper commit 6d43f8b3ddbfab679d1a64cb6f9f7adbe851ee82
+(https://github.com/Klipper3d/klipper/commit/6d43f8b3ddbfab679d1a64cb6f9f7adbe851ee82)
+onto Klipper ca815f52c, the chelper sources QIDI ships.
+
+serialqueue: Close pipes FDs on free
+
+diff --git a/klippy/chelper/serialqueue.c b/klippy/chelper/serialqueue.c
+index c207495c..57f67bb4 100644
+--- a/klippy/chelper/serialqueue.c
++++ b/klippy/chelper/serialqueue.c
+@@ -726,6 +726,8 @@ serialqueue_free(struct serialqueue *sq)
+     }
+     pthread_mutex_unlock(&sq->lock);
+     pollreactor_free(sq->pr);
++    close(sq->pipe_fds[0]);
++    close(sq->pipe_fds[1]);
+     free(sq);
+ }
+ 

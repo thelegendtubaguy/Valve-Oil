@@ -22,7 +22,7 @@ from installer.runtime import adb_usb_only
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
 from installer.runtime import box_config as box_monitor
-from installer.runtime import qidiclient_firmware_popup
+from installer.runtime import klipper_chelper, qidiclient_firmware_popup
 from installer.runtime import moonraker_fixes
 from installer.runtime import restart_on_exit
 from installer.runtime import webcam_id
@@ -79,12 +79,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             include_filament_config=True,
             include_klipper_box_config=True,
             include_klipper_print_stats_manager=True,
+            include_klipper_chelper=True,
             include_nginx_site=True,
             include_moonraker_asvc=True,
             include_moonraker_metadata=True,
             include_qidiclient=True,
         )
         host_run = fake_host_run(system_root)
+        chelper = system_root / klipper_chelper.FILE.lstrip("/")
+        chelper_before = chelper.read_bytes()
+        chelper_source = chelper.parent / "kin_extruder.c"
         qidiclient = system_root / qidiclient_firmware_popup.FILE.lstrip("/")
         qidiclient_before, qidiclient_patched, qidiclient_unblocked = fake_qidiclient()
         moonraker = system_root / "home/qidi/moonraker/moonraker/components/file_manager/file_manager.py"
@@ -297,6 +301,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
         self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
         self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
+        # Klipper loads the package's C helper library as it is: it is never older than QIDI's sources, so Klipper never
+        # rebuilds it from them.
+        self.assertIn(klipper_chelper.OPERATION, state.system_ledger["restore_preimages"])
+        self.assertEqual(chelper.read_bytes(), (klipper_chelper.PAYLOAD_DIR / "c_helper.so").read_bytes())
+        self.assertGreaterEqual(chelper.stat().st_mtime, chelper_source.stat().st_mtime)
         # The touchscreen app accepts a board version that starts with QIDI's, no longer announces QIDI's online
         # update or unpacks QIDI packages, and stays executable. Nothing else is installed for the block.
         self.assertIn(qidiclient_firmware_popup.OPERATION, state.system_ledger["restore_preimages"])
@@ -610,6 +619,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(service_worker.read_bytes(), service_worker_before)
         self.assertEqual(box_config.read_bytes(), box_config_before)
         self.assertEqual(stats_manager.read_bytes(), stats_manager_before)
+        self.assertEqual(chelper.read_bytes(), chelper_before)
+        self.assertGreaterEqual(chelper.stat().st_mtime, chelper_source.stat().st_mtime)
         self.assertEqual(qidiclient.read_bytes(), qidiclient_before)
         self.assertEqual(qidiclient.stat().st_mode & 0o777, 0o755)
         self.assertEqual(klippy_apis.read_bytes(), klippy_apis_before)
@@ -739,6 +750,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         printer_root = copy_base_runtime(homing_patched=True)
         root = fake_system_root(
             include_moonraker_cache=True, include_fluidd_bundle=True, include_moonraker_asvc=True, include_qidiclient=True,
+            include_klipper_chelper=True,
         )
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
@@ -756,6 +768,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         original = fluidd.read_bytes()
         asvc = root / moonraker_allowed_services.FILE.lstrip("/")
         asvc.write_text("[allowed]\nklipper_mcu\n", encoding="utf-8")
+        # A C helper library Klipper rebuilt on the printer, the size of QIDI's.
+        chelper = root / klipper_chelper.FILE.lstrip("/")
+        rebuilt = chelper.read_bytes()[:-1] + b"\x01"
+        chelper.write_bytes(rebuilt)
         operator_dropin = root / restart_on_exit.FILES[restart_on_exit.KLIPPER_OPERATION].lstrip("/")
         operator_dropin.parent.mkdir(parents=True)
         operator_dropin.write_text("[Service]\nRemainAfterExit=yes\n", encoding="utf-8")
@@ -776,6 +792,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(ledger["outcomes"][qidiclient_firmware_popup.OPERATION]["status"], "unsupported")
         self.assertNotIn(qidiclient_firmware_popup.OPERATION, ledger["restore_preimages"])
         self.assertNotIn(FLUIDD_BOX_OPERATION, ledger["restore_preimages"])
+        self.assertEqual(chelper.read_bytes(), rebuilt)
+        self.assertEqual(ledger["outcomes"][klipper_chelper.OPERATION]["status"], "unsupported")
+        self.assertNotIn(klipper_chelper.OPERATION, ledger["restore_preimages"])
         self.assertEqual(asvc.read_text(encoding="utf-8"), "[allowed]\nklipper_mcu\n")
         self.assertEqual(ledger["outcomes"][moonraker_allowed_services.OPERATION]["status"], "unsupported")
         self.assertEqual(operator_dropin.read_text(encoding="utf-8"), "[Service]\nRemainAfterExit=yes\n")

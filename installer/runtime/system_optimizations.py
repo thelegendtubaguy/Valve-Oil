@@ -29,6 +29,7 @@ from .fluidd_box_filaments import (
     patch_fluidd_service_worker,
 )
 from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_config
+from . import klipper_chelper
 from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION, patch_print_stats_manager
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
@@ -284,6 +285,15 @@ GUARDED_FILE_PATCHES = {
         missing_message=None,
         skip_unrecognized=True,
         binary=qidiclient_firmware_popup,
+    ),
+    klipper_chelper.OPERATION: _GuardedFilePatch(
+        label="Klipper C helper library",
+        file=lambda spec: klipper_chelper.FILE,
+        patch=None,
+        restart_service=klipper_chelper.RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        binary=klipper_chelper,
     ),
     moonraker_speedups.PATH_OPERATION: _GuardedFilePatch(
         label="Moonraker speedups path file",
@@ -826,7 +836,7 @@ def maybe_emit_system_dry_run(
             spec = manifest.system_optimizations
             prior = prior_ledger or {}
             try:
-                if guarded.binary is not None and block_qidi_updates is None:
+                if operation_id == qidiclient_firmware_popup.OPERATION and block_qidi_updates is None:
                     reporter.line(f"  - {operation_id}: QIDI's package updates stay blocked or allowed as they are now")
                 if _guarded_file_has_drift(operation_id, spec, root, prior.get("restore_preimages", {}), prior.get("outcomes", {})):
                     reporter.line(f"  - would preserve modified {guarded.label}")
@@ -1666,7 +1676,7 @@ def apply_system_optimizations(
         _validate_qidiclient_archive(paths.installer_root / spec.qidiclient_static_gifs.archive, spec.qidiclient_static_gifs.sha256)
     applied_any = False
     current_preimages: dict[str, Any] = {}
-    # Backups of the touchscreen app made in this transaction, and preserved originals it stops owning; each is
+    # Backups of reviewed binaries made in this transaction, and preserved originals it stops owning; each is
     # discarded once nothing in the ledger refers to it.
     binary_created: list[dict[str, Any]] = []
     binary_superseded: list[dict[str, Any]] = []
@@ -1727,7 +1737,7 @@ def apply_system_optimizations(
                 # Newly owned, or a different build adopted: the outcome is recorded even when nothing is patched.
                 binary_adopted = any(item is binary_original for item in binary_created)
                 if binary_original is None and owned_before:
-                    reporter.line("The touchscreen app is not a reviewed QIDI build; it was left as it is, and uninstall no longer restores it.")
+                    reporter.line(guarded.binary.RELEASED)
                     actions.append(
                         _action_record(
                             operation_id=operation_id,
@@ -3147,7 +3157,7 @@ def _binary_original(
     path = guarded.file(spec)
     target = _map_path(root, path)
     owned = restore_preimages.get(operation_id)
-    sha256 = _sha256_file(target) if target.is_file() and target.stat().st_size in {build.size for build in guarded.binary.BUILDS.values()} else None
+    sha256 = _sha256_file(target) if target.is_file() and target.stat().st_size in guarded.binary.reviewed_sizes() else None
     stock = guarded.binary.stock_sha256(sha256) if sha256 is not None else None
     if stock is None:
         if owned is not None:
@@ -3810,6 +3820,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         moonraker_allowed_services.OPERATION,
         KLIPPER_BOX_OPERATION,
         KLIPPER_PRINT_STATS_OPERATION,
+        klipper_chelper.OPERATION,
         qidiclient_firmware_popup.OPERATION,
         restart_on_exit.MOONRAKER_OPERATION,
         restart_on_exit.KLIPPER_OPERATION,
@@ -3911,7 +3922,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         return {"path": zram_swap.DESTINATION, "modules_sha256": [module.sha256 for module in spec.zram_swap.modules]}
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
-        moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, moonraker_speedups.PATH_OPERATION,
+        moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, klipper_chelper.OPERATION,
+        moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
@@ -4365,6 +4377,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             FLUIDD_SERVICE_WORKER_OPERATION,
             KLIPPER_BOX_OPERATION,
             KLIPPER_PRINT_STATS_OPERATION,
+            klipper_chelper.OPERATION,
             qidiclient_firmware_popup.OPERATION,
             restart_on_exit.MOONRAKER_OPERATION,
             restart_on_exit.KLIPPER_OPERATION,

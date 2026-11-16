@@ -59,9 +59,11 @@ ALLOWED_FILES = [
     "scripts/build_zram_modules.py",
     "kernel/qidi_max4_zram_defconfig",
     "kernel/README.md",
+    "scripts/build_klipper_chelper.py",
 ]
 ALLOWED_DIRECTORIES = [
     "LICENSES",
+    "chelper",
     "installer/runtime",
     "installer/klipper/tltg-optimized-macros",
     "installer/klipper/printers",

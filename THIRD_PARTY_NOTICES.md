@@ -17,8 +17,12 @@ The full GPLv3 text is available in [`LICENSE`](LICENSE) and [`LICENSES/GPL-3.0-
   - `installer/klipper/qidi/homing-sync-reset.py`
   - `installer/tests/fixtures/source-patches/01.01.06.04/homing-sync-reset.py`
   - `installer/klipper/tltg/resonance_sweep.py` (adapted portions)
+  - `installer/system/klipper_chelper/*.so`
+  - `chelper/*.patch`
 
 The installer payloads are modified QIDI/Klipper homing sources. `homing.py` was modified for QIDI Max 4 homing behavior and timing on 2026-07-26. `homing-sync-reset.py` carries the same modifications against the alternate QIDI source variant dated 2026-07-28. Copyright and licensing notices in those files remain in effect.
+
+`installer/system/klipper_chelper/qidi_c_helper.so` is Klipper's C helper library built unmodified from commit `ca815f52c8420225f93f90698768a5c4714654a9`, byte for byte the library QIDI ships. `installer/system/klipper_chelper/c_helper.so` is the same code built with the patches in [`chelper/`](chelper/), backports of later upstream Klipper commits. [`scripts/build_klipper_chelper.py`](scripts/build_klipper_chelper.py) and [`chelper/README.md`](chelper/README.md) hold the steps that rebuild both.
 
 `resonance_sweep.py` adapts the sweeping resonance test from Klipper's `klippy/extras/resonance_tester.py` (Copyright (C) 2020-2024 Dmitry Butyugin) and the junction calculation from `klippy/toolhead.py` (Copyright (C) 2016-2024 Kevin O'Connor) on 2026-11-07, as credited in its header.
 

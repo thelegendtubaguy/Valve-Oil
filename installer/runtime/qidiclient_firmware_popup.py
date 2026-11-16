@@ -43,6 +43,7 @@ RETURN_FALSE = bytes.fromhex("00008052c0035fd6")  # mov w0, #0; ret
 DETECTOR_CHANGED = bytes.fromhex("34008052")  # mov w20, #1
 DETECTOR_UNCHANGED = bytes.fromhex("14008052")  # mov w20, #0
 CHUNK = 1 << 20
+RELEASED = "The touchscreen app is not a reviewed QIDI build; it was left as it is, and uninstall no longer restores it."
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,11 @@ def sha256_file(path: Path) -> str:
         while chunk := handle.read(CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def reviewed_sizes() -> frozenset[int]:
+    """Sizes of every reviewed build; the patches keep the size, so other files aren't hashed."""
+    return frozenset(build.size for build in BUILDS.values())
 
 
 def _lookup(sha256: str) -> tuple[str, Build] | None:

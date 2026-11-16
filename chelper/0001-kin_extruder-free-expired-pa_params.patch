@@ -1,0 +1,18 @@
+Backport of upstream Klipper commit af81d23fec795ba64882d2206bc9cbc019e4501b
+(https://github.com/Klipper3d/klipper/commit/af81d23fec795ba64882d2206bc9cbc019e4501b)
+onto Klipper ca815f52c, the chelper sources QIDI ships.
+
+kin_extruder: Free expired pa_params entries
+
+diff --git a/klippy/chelper/kin_extruder.c b/klippy/chelper/kin_extruder.c
+index 0cd6523c..6142e1d7 100644
+--- a/klippy/chelper/kin_extruder.c
++++ b/klippy/chelper/kin_extruder.c
+@@ -152,6 +152,7 @@ extruder_set_pressure_advance(struct stepper_kinematics *sk, double print_time
+         struct pa_params *next_pa = list_next_entry(first_pa, node);
+         if (next_pa->active_print_time >= cleanup_time) break;
+         list_del(&first_pa->node);
++        free(first_pa);
+         first_pa = next_pa;
+     }
+ 
