@@ -62,6 +62,11 @@ class InstallScreenTests(unittest.TestCase):
             watcher = next(command for command in self.host.commands if command[0] == "systemd-run")
             self.assertLess(self.host.commands.index(watcher),
                             self.host.commands.index(["systemctl", "stop", install_screen.TOUCHSCREEN]))
+            # systemd writes the description into the transient unit file unescaped, so a daemon-reload during the
+            # install only reads the file cleanly when it's one line; without one, systemd-run uses the script.
+            descriptions = [arg for arg in watcher if arg.startswith("--description=")]
+            self.assertEqual(len(descriptions), 1)
+            self.assertNotIn("\n", descriptions[0])
             self.assertTrue((self.paths.printer_data_root / install_screen.MARKER).exists())
             # A restart an install step asks for waits for the install's end.
             restarts = system_optimizations._ServiceRestarts(paths=self.paths, root=Path("/"), sudo_password="x",
