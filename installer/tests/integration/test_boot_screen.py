@@ -188,6 +188,26 @@ class BootAnimationTests(unittest.TestCase):
                 (root / owner).unlink()
         self.assertEqual(drew, [])
 
+    def test_the_player_waits_for_the_framebuffer_to_become_its_own(self):
+        now, opened = [0.0], []
+
+        def screen():
+            if now[0] < 2:
+                raise PermissionError("[Errno 13] Permission denied: '/dev/fb0'")
+            opened.append(now[0])
+            return "screen"
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        self.globals.update(Screen=screen)
+        self.assertEqual(self.player.open_screen(sleep=sleep, clock=lambda: now[0]), "screen")
+        self.assertEqual(len(opened), 1)
+        now[0] = 0.0
+        self.globals.update(FRAMEBUFFER_WAIT_SECONDS=1)
+        with self.assertRaises(PermissionError):
+            self.player.open_screen(sleep=sleep, clock=lambda: now[0])
+
 
 if __name__ == "__main__":
     unittest.main()

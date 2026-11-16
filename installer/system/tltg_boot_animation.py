@@ -32,6 +32,9 @@ PRINTER_DATA = "/home/qidi/printer_data"
 SCREEN_OWNERS = (".tltg_firmware_update_pending.json", ".tltg_install_screen")
 APP = b"qidiclient"
 LONGEST_SECONDS = 120
+# udev gives the framebuffer to the video group partway through boot, and until then only root can open it. On the
+# Smart 5 the player got there first on two boots of three.
+FRAMEBUFFER_WAIT_SECONDS = 15
 LOG = PRINTER_DATA + "/logs/tltg_boot_animation.log"
 FBIOGET_VSCREENINFO = 0x4600
 FBIOPUT_VSCREENINFO = 0x4601
@@ -288,6 +291,18 @@ def log(message):
         pass
 
 
+def open_screen(*, sleep=time.sleep, clock=time.monotonic):
+    """The framebuffer, once the player may open it."""
+    deadline = clock() + FRAMEBUFFER_WAIT_SECONDS
+    while True:
+        try:
+            return Screen()
+        except PermissionError:
+            if clock() >= deadline:
+                raise
+            sleep(0.1)
+
+
 def main():
     global _log
     try:
@@ -301,7 +316,7 @@ def main():
         return 0
     animation = decode(base64.b64decode(ANIMATION))
     started = time.monotonic()
-    screen = Screen()
+    screen = open_screen()
     log(f"playing on a {screen.width}x{screen.height} framebuffer")
     why, app = [], []
 
