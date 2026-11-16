@@ -58,12 +58,6 @@ When a board write can't be verified, the board may hold part of an image. Klipp
 
 During a QIDI firmware update, rescue runs only once the update has stopped with that failure. Then run `./install.sh` to finish the update.
 
-### The touchscreen says "Extract failed"
-
-That's expected. While Valve Oil is installed, a QIDI firmware update started from the touchscreen, from a USB drive, or from a `QD_Mandatory_Update.zip` file stops at its first step, before anything on the printer changes. See [QIDI's own firmware updates](install.md#qidis-own-firmware-updates). The touchscreen tries a `QD_Mandatory_Update.zip` again each time it scans the USB drive, so remove the file from the drive. Valve Oil installs QIDI's firmware updates itself once a release supports them.
-
-To get QIDI's own updates back, [uninstall Valve Oil](install.md#uninstall), which puts QIDI's touchscreen app back.
-
 ### The closed-loop motor drivers weren't updated
 
 On the Max 4, a QIDI firmware update only updates the closed-loop motor drivers when both report exactly the firmware and hardware Valve Oil expects. The update's result and the **Valve Oil** section say which driver didn't and what it reported. Update them from the touchscreen's firmware page, and if they should have been updated, use **Report this board** to open a support issue. See [Closed-loop motor drivers](firmware.md#closed-loop-motor-drivers).

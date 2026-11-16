@@ -57,6 +57,7 @@ from installer.tests.helpers import (
     REPO_ROOT,
     build_env,
     copy_base_runtime,
+    earlier_blocked_qidiclient,
     fake_host_run,
     fake_qidiclient,
     fake_system_root,
@@ -692,6 +693,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         for block, expected in ((None, unblocked), (True, blocked), (None, blocked), (False, unblocked), (None, unblocked)):
             ledger = apply(block)
             self.assertEqual(qidiclient.read_bytes(), expected, block)
+        # An app a development build blocked, USB updates included, keeps only the online-update block, so a
+        # QIDI package from a USB drive installs again.
+        for block in (None, True):
+            qidiclient.write_bytes(earlier_blocked_qidiclient(blocked))
+            ledger = apply(block)
+            self.assertEqual(qidiclient.read_bytes(), blocked, block)
         report = io.StringIO()
         system_optimizations.maybe_emit_system_dry_run(
             paths=paths, manifest=manifest, reporter=PlainReporter(report), prior_state=None,

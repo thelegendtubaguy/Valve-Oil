@@ -39,7 +39,7 @@ An install run with `--yes` and an automatic update have nobody to ask, so they 
 
 At the end, without asking, it puts [Valve Oil's board firmware](firmware.md) on each board that doesn't have it yet: the THR, the Max 4's mainboard, and each USB Box. Klipper and the touchscreen stop while it does, about a minute for the mainboard and about a minute for the Boxes, which are flashed at the same time. Keep the printer and every Box powered on until the installer finishes. **After the THR is flashed, run input shaper calibration before bed leveling or printing.** On the Max 4 with firmware older than `01.01.07.01`, the THR and mainboard are flashed once the printer is on `01.01.07.01`.
 
-While Valve Oil is installed, the touchscreen no longer installs QIDI's firmware updates; Valve Oil delivers them instead. See [QIDI's own firmware updates](#qidis-own-firmware-updates).
+While Valve Oil is installed, the touchscreen no longer offers QIDI's online firmware updates; Valve Oil delivers them instead. An update from a USB drive still works. See [QIDI's own firmware updates](#qidis-own-firmware-updates).
 
 It applies the [OS optimizations](#os-optimizations) without asking. The system changes, including restarting Moonraker and the touchscreen, take a little over a minute on a first install; the installer names each one as it goes. When they need a reboot, the installer reboots the printer about 5 seconds after it finishes.
 
@@ -167,9 +167,11 @@ Afterwards, home the printer and run input shaper calibration before bed levelin
 
 ### QIDI's own firmware updates
 
-While Valve Oil is installed, the touchscreen doesn't install QIDI's firmware packages, so a QIDI update can't remove Valve Oil or put the printer on a firmware Valve Oil doesn't support yet. QIDI's **New SOC firmware available** pop-up and the firmware page's online update no longer appear. An update started from a USB drive, or from a `QD_Mandatory_Update.zip` file, stops at its first step with `Extract failed`, before anything on the printer changes. The touchscreen's notices for a single board and its **Update** for the boards, such as the closed-loop motor drivers, still work.
+While Valve Oil is installed, the touchscreen doesn't offer QIDI's online firmware updates, so an update offered by QIDI can't remove Valve Oil or put the printer on a firmware Valve Oil doesn't support yet. QIDI's **New SOC firmware available** pop-up and the firmware page's online update no longer appear. The touchscreen's notices for a single board and its **Update** for the boards, such as the closed-loop motor drivers, still work.
 
-This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen installs QIDI's updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's updates.
+An update you start from a USB drive, or from a `QD_Mandatory_Update.zip` file, still installs QIDI's package. It's the way back onto a printer that can no longer be reached over the network. QIDI's package replaces the touchscreen app, Klipper, Moonraker, Fluidd, and the config folder, so it removes much of Valve Oil, and with the config folder Valve Oil's record of what it changed in the printer's system. Run the install command again afterwards. An [uninstall](#uninstall) after a USB update can't undo every system change Valve Oil made.
+
+This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. On the Max 4's older firmware, and on a touchscreen app that has been replaced or changed, the touchscreen offers QIDI's online updates as it does without Valve Oil. Uninstalling Valve Oil puts QIDI's touchscreen app back, and with it QIDI's online updates.
 
 ### Automatic updates
 

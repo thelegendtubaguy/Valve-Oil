@@ -105,17 +105,24 @@ def fake_qidiclient(variant: int = 0) -> tuple[bytes, bytes, bytes]:
         popup.Site(64, popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER),
         popup.Site(132, popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER),
         popup.Site(196, popup.STORE_NEED_UPDATE, popup.STORE_ZERO, blocking=True),
-        popup.Site(228, popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE, blocking=True),
+        popup.Site(228, popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE, retired=True),
         popup.Site(260, popup.DETECTOR_CHANGED, popup.DETECTOR_UNCHANGED),
     )
     unblocked = stock.replace(popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER).replace(
         popup.DETECTOR_CHANGED, popup.DETECTOR_UNCHANGED)
-    blocked = unblocked.replace(popup.STORE_NEED_UPDATE, popup.STORE_ZERO).replace(popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE)
+    blocked = unblocked.replace(popup.STORE_NEED_UPDATE, popup.STORE_ZERO)
     popup.BUILDS[hashlib.sha256(stock).hexdigest()] = popup.Build(
         size=len(stock), sites=sites,
         patched_sha256=hashlib.sha256(unblocked).hexdigest(), blocked_sha256=hashlib.sha256(blocked).hexdigest(),
+        other_blocked_sha256=(hashlib.sha256(earlier_blocked_qidiclient(blocked)).hexdigest(),),
     )
     return stock, blocked, unblocked
+
+
+def earlier_blocked_qidiclient(blocked: bytes) -> bytes:
+    # The blocked form development builds wrote, which also stopped QIDI's USB and mandatory-file updates.
+    popup = qidiclient_firmware_popup
+    return blocked.replace(popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE)
 
 
 def fake_system_root(

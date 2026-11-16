@@ -1,16 +1,16 @@
 # qidi-firmware-updates Specification
 
 ## Purpose
-Keep QIDI's own firmware packages off a printer running Valve Oil, and deliver each QIDI firmware and its board firmware through a Valve Oil release that supports it.
+Keep QIDI's online firmware updates off a printer running Valve Oil while leaving the operator's USB update as a way back, and deliver each QIDI firmware and its board firmware through a Valve Oil release that supports it.
 
 ## Requirements
 
-### Requirement: QIDI package updates are blocked while Valve Oil is installed
-On a printer whose THR and mainboard are admitted, a normal install or update SHALL patch a reviewed touchscreen executable so that the app cannot install a QIDI firmware package by any of its paths, independently of optional OS optimization policy. Like the other guarded host changes, the patch SHALL change only a recognized reviewed build or this package's patch of it, and SHALL keep QIDI's original for restoration. A USB Box the release does not admit SHALL NOT stop the block.
+### Requirement: QIDI's online updates are blocked while Valve Oil is installed
+On a printer whose THR and mainboard are admitted, a normal install or update SHALL patch a reviewed touchscreen executable so that the app does not announce or start QIDI's online update regardless of OS optimization policy. It SHALL NOT stop a USB or mandatory-file update, the way back onto a printer off the network. The patch SHALL change only a recognized reviewed build or this package's patch of it and SHALL keep QIDI's original; an unadmitted USB Box SHALL NOT stop it.
 
-#### Scenario: A package update is started from the touchscreen
-- **WHEN** a blocked touchscreen app starts an online update, an update from a USB drive, or a mandatory-update file
-- **THEN** no file under QIDI's update folder, no installed QIDI package, no running service, and no board firmware changes
+#### Scenario: A package update is started from a USB drive
+- **WHEN** a blocked touchscreen app starts an update from a USB drive or a mandatory-update file
+- **THEN** the app unpacks and installs QIDI's package as it does without Valve Oil
 
 #### Scenario: The online-update notice is hidden
 - **WHEN** install or update blocks a reviewed touchscreen build
@@ -18,11 +18,11 @@ On a printer whose THR and mainboard are admitted, a normal install or update SH
 
 #### Scenario: The touchscreen executable is not a reviewed build
 - **WHEN** install or update finds a touchscreen executable that is not a reviewed QIDI build
-- **THEN** the executable is left unchanged, and the app installs QIDI packages as it does without Valve Oil
+- **THEN** the executable is left unchanged, and the app offers and installs QIDI packages as it does without Valve Oil
 
 #### Scenario: The block is removed
 - **WHEN** Valve Oil is uninstalled
-- **THEN** QIDI's original touchscreen executable is restored, and the app installs QIDI packages as it did before the install
+- **THEN** QIDI's original touchscreen executable is restored, and the app offers QIDI's online updates as it did before the install
 
 ### Requirement: Each release delivers one target QIDI firmware per printer
 `installer/package.yaml` SHALL name, for each printer, one target firmware, its package's identity on this project's mirror, and the firmware versions it can be updated from. An install or update on one of those versions SHALL bring the printer to the target firmware and install Valve Oil for it in the same run. Packages MUST come only from this project's mirror and MUST match the pinned SHA-256 before anything on the printer changes.
