@@ -14,6 +14,11 @@ from .errors import InstallerError
 # (service_priority.py). The qidi-tuning drop-in replaces QIDI's script with one run that pins the same interrupts, and
 # the irqbalance drop-in tells irqbalance to leave them alone. A pinned interrupt keeps its CPU when Klipper closes and
 # reopens the port.
+#
+# /proc/irq/<n> for the port's interrupt appears only once Klipper first opens the port, after qidi-tuning has started
+# at boot. So the run waits for each interrupt's directory before pinning it, every interrupt on its own, and the unit
+# is Type=simple so that the wait doesn't hold up boot. Pinning once at boot left the port's interrupt on CPU 0 for
+# good, since irqbalance leaves it alone.
 TUNING_OPERATION = "qidi_tuning_replacement"
 IRQBALANCE_OPERATION = "irqbalance_pinned_irqs"
 TUNING_UNIT = "qidi-tuning.service"
@@ -30,13 +35,14 @@ _IRQS = (
 )
 TUNING_CONTENT = MARKER + f"""\
 # Replaces QIDI's tuning.sh, which ran again every 35 s, with one run that pins the toolhead serial and USB
-# interrupts to CPUs 2 and 3. Each service's tltg-priority.conf sets its CPUs and priority. Installed by Valve Oil.
+# interrupts to CPUs 2 and 3, each once it exists: the toolhead's once Klipper opens its port. Each service's
+# tltg-priority.conf sets its CPUs and priority. Installed by Valve Oil.
 [Service]
-Type=oneshot
+Type=simple
 RemainAfterExit=yes
 Restart=no
 ExecStart=
-ExecStart=/bin/sh -c '{_IRQS}while [ $$# -ge 2 ]; do [ -n "$$1" ] && echo $$2 > /proc/irq/$$1/smp_affinity; shift 2; done; exit 0'
+ExecStart=/bin/sh -c '{_IRQS}while [ $$# -ge 2 ]; do [ -n "$$1" ] && (until [ -d /proc/irq/$$1 ]; do sleep 1; done; echo $$2 > /proc/irq/$$1/smp_affinity) & shift 2; done; wait; exit 0'
 """
 # QIDI's ExecStart, with the pinned interrupts banned from balancing.
 IRQBALANCE_CONTENT = MARKER + f"""\

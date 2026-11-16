@@ -805,6 +805,7 @@ Normal install and update SHALL run Klipper at a higher CPU priority than Moonra
 #### Scenario: QIDI's tuning script is replaced
 - **WHEN** install or update applies the CPU tuning drop-ins
 - **THEN** `qidi-tuning.service` runs once per boot, pinning the toolhead serial interrupt to CPU 2 and the USB host controllers' interrupts to CPU 3, instead of rerunning QIDI's script every 35 s
+- **AND** it pins each interrupt once the kernel lists it, including the toolhead serial interrupt that appears only after Klipper first opens the port, without holding up boot
 - **AND** `irqbalance` starts with those interrupts banned, so they keep their CPUs across Klipper restarts
 - **AND** uninstall removes unchanged drop-ins and restarts both services, which brings back QIDI's script
 
