@@ -122,7 +122,7 @@ ISSUE_FORM_URL = ISSUE_URL_PREFIX + "template=printer-support.yml"
 MAX_ISSUE_URL = 8000
 # The support issue: the bug report form (.github/ISSUE_TEMPLATE/bug-report.yml), whose printer choices these are.
 SUPPORT_ISSUE_TEMPLATE = "bug-report.yml"
-SUPPORT_ISSUE_PRINTERS = ("QIDI Max 4", "QIDI Plus 5")
+SUPPORT_ISSUE_PRINTERS = ("QIDI Max 4", "QIDI Plus 5", "QIDI Smart 5")
 SUPPORT_ISSUE_LOGS = "Drag in the valve-oil-support zip file that Valve Oil's settings downloaded."
 INSTALL_SOURCES = {"release": "Release install command from the README", "dev": "Dev prerelease"}
 # The support bundle: the newest part of each log, as a long-running printer's klippy.log reaches tens of megabytes.

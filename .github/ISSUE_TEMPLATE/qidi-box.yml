@@ -24,6 +24,7 @@ body:
       options:
         - QIDI Max 4
         - QIDI Plus 5
+        - QIDI Smart 5
         - Other (say which below)
     validations:
       required: true
