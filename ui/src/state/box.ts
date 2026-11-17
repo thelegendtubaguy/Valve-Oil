@@ -100,6 +100,8 @@ export type BoxState = {
   canCold: boolean
   canJog: boolean
   canCut: boolean
+  /** Valve Oil can write spool tags (VO_BOX_RFID_WRITE). */
+  canWriteTag: boolean
 }
 
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
@@ -170,6 +172,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     canCold: commands.includes('TLTG_CUT_FILAMENT'),
     canJog: commands.includes('TLTG_BOX_SLOT_JOG'),
     canCut: commands.includes('TLTG_CUT_FILAMENT'),
+    canWriteTag: commands.includes('VO_BOX_RFID_WRITE'),
   }
 }
 
@@ -220,7 +223,7 @@ export function useBoxBusy() {
 
 // ---- actions: the commands the Fluidd fork sends ----
 
-export type SlotActions = { load: boolean; unload: boolean; eject: boolean; rfid: boolean; edit: boolean; jog: boolean; cut: boolean; hint: string | null }
+export type SlotActions = { load: boolean; unload: boolean; eject: boolean; rfid: boolean; edit: boolean; writeTag: boolean; jog: boolean; cut: boolean; hint: string | null }
 
 /** Which actions the selected slot allows right now, matching the Fluidd fork's QIDI Box card. */
 export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
@@ -247,6 +250,8 @@ export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
     eject,
     rfid: base,
     edit: !box.busy && slot.present,
+    // A spool on an empty slot's rollers can be tagged before its filament is fed.
+    writeTag: box.canWriteTag && isBox && !box.busy && box.hasController,
     jog: box.canJog && isBox && !box.mappingLocked,
     cut: box.canCut && !box.mappingLocked,
     hint,
@@ -260,6 +265,7 @@ export const boxCommands = {
   eject: (box: BoxState, slot: number) =>
     box.hasController ? `EJECT_FILAMENT_CONTROL SLOT=${slot}${box.canCold && box.printState !== 'paused' ? ' COLD=1' : ''}` : `E_BOX slot=${slot}`,
   rfid: (box: BoxState, slot: number) => (box.hasController ? `READ_RFID SLOT=${slot}` : `RFID_READ SLOT=slot${slot}`),
+  writeTag: (slot: number, filamentId: string, colors: string[]) => `VO_BOX_RFID_WRITE SLOT=${slot} FILAMENT=${filamentId} COLORS=${colors.map((c) => c.replace('#', '').toUpperCase()).join(',')}`,
   cut: () => 'TLTG_CUT_FILAMENT',
   jog: (slot: number, mm: number) => `TLTG_BOX_SLOT_JOG SLOT=${slot} DISTANCE=${mm}`,
   retry: () => 'FLOW_RETRY',

@@ -59,7 +59,7 @@ Before changing anything, the installer reads the printer's boards, which stops 
 - Cut, unload, and eject filament without heating the nozzle.
 - Box heater control from Fluidd, and Box processor temperatures.
 - Edit QIDI's filament list from Fluidd, including brands such as Bambu, Overture, and Polymaker.
-- Read Anycubic, Elegoo, and Bambu Lab spool tags, with every one of their filaments in QIDI's list.
+- Read Anycubic, Elegoo, Bambu Lab, Creality, TigerTag, and OpenTag3D spool tags, with Anycubic's, Elegoo's, Bambu Lab's, and Creality's filaments in QIDI's list, and [write your own spool tags](docs/qidi-box.md#writing-spool-tags).
 
 [QIDI Box →](docs/qidi-box.md)
 

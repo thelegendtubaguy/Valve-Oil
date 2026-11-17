@@ -38,6 +38,36 @@ ELEGOO = bytes.fromhex(
     "000000bd040000ff000500000000000000000000"
 )
 QIDI_BLOCK = bytes.fromhex("41001100ff000000000000000000000a")
+# A Creality Hyper PLA tag (orange), UID c0ffee42: sector 1's key and blocks 4-6 as OpenSSL computes them
+# with Creality's two AES keys (the record is AB124 0276 A2 101001 0FF6600 0330 000001 and 14 zeros).
+CREALITY_KEY = bytes.fromhex("019c0258bc0b")
+CREALITY_BLOCKS = bytes.fromhex("57f25b78076d4c1797b1be35ca26954029b16ee6fe72f9f0b00ebfac8fc87c08"
+                                "fac8f07509292df943d4cdf64cba06a1")
+# TigerTag's own example (Rosa3D red PLA, Basic), pages 4-23 after a blank NTAG's first four pages. The
+# example's brand reads 0x4E19, but Rosa3D's ID is 19961, 0x4DF9.
+TIGERTAG = (bytes.fromhex("04a1b2c3d4e5f60708480000e1101200")
+            + bytes.fromhex("5bf59264" "ffffffff" "954b6800" "8e384df9" "ff0000ff" "0003e815" "00c300e6"
+                            "32053c3c" "2f7a0a5c" "00000000" "00000000" "00e60000") + b"Starter Red".ljust(28, b"\0"))
+
+
+def opentag3d(brand, material, modifier, colors):
+    """An NTAG215 holding an OpenTag3D NDEF record (spec 2.004 memory map)."""
+    payload = bytearray(0x60)
+    payload[0:2] = (2004).to_bytes(2, "big")
+    payload[0x02:0x02 + len(material)] = material.encode()
+    payload[0x07:0x07 + len(modifier)] = modifier.encode()
+    payload[0x0C:0x0C + len(brand)] = brand.encode()
+    for i, color in enumerate(colors):
+        payload[0x3C + 4 * i:0x40 + 4 * i] = bytes.fromhex(color) + b"\xff"
+    mime = b"application/opentag3d"
+    record = bytes([0xD2, len(mime), len(payload)]) + mime + bytes(payload)
+    return (bytes.fromhex("04a1b2c3d4e5f60708480000e1103e00" "0103a00c34")
+            + bytes([0x03, len(record)]) + record + b"\xfe")
+
+
+# A new NTAG213: capability container, lock control and empty NDEF TLVs, AUTH0 = 0xff.
+BLANK_NTAG = (bytes.fromhex("04a1b2c3d4e5f60708480000e1101200" "0103a00c340300fe").ljust(164, b"\0")
+              + bytes.fromhex("040000ff00000000"))
 # Bambu Lab PLA Silk Multi-Color data blocks (layout from the Bambu Lab RFID Tag Guide).
 BAMBU_BLOCKS = {
     1: b"A05-M1\0\0GFA05\0\0\0", 2: b"PLA".ljust(16, b"\0"), 4: b"PLA Silk".ljust(16, b"\0"),
@@ -60,9 +90,11 @@ class Reader:
 
     def __init__(self, tag=None):
         self.tag, self.crypto, self.halted, self.log, self.lost_after = tag, False, False, [], None
+        self.pending = None
 
     def select(self, args):
         self.crypto = self.halted = False
+        self.pending = None
         tag = self.tag
         if tag is None:
             return {"status": 0, "data": bytes(20)}
@@ -91,7 +123,17 @@ class Reader:
                            and frame[8:12] == tag.uid)
             self.halted = not self.crypto
             return reply(ok=self.crypto)
+        ack = {"status": 1, "data": bytes([0, 0x08 if self.crypto else 0, 4, 0, 0x0A])}
+        if self.crypto and self.pending is not None:
+            tag.blocks[self.pending], self.pending = bytearray(frame), None
+            return ack
+        if self.crypto and frame[0] == 0xA0:
+            self.pending = frame[1]
+            return ack
         if tag.kind == "ntag":
+            if frame[0] == 0xA2:
+                tag.memory[frame[1] * 4:frame[1] * 4 + 4] = frame[2:6]
+                return ack
             if frame == b"\x60":
                 return reply(bytes.fromhex("0053040201000f03"))
             if frame[0] == 0x30:
@@ -179,6 +221,11 @@ class Gcmd:
     def __init__(self, **params):
         self.params, self.messages = params, []
 
+    def get(self, name, default=None):
+        if name not in self.params and default is None:
+            raise CommandError("missing " + name)
+        return str(self.params.get(name, default))
+
     def get_int(self, name, default=None, **kwargs):
         return int(self.params.get(name, default))
 
@@ -209,7 +256,13 @@ class Printer:
     def __init__(self, rfid, log_dir):
         self.rfid, self.log_dir, self.reactor, self.handlers, self.commands = rfid, log_dir, Reactor(), {}, {}
         self.shutdown = False
+        self.command_error = CommandError
         self.controller = Controller(self)
+        # Slot 7's spool sits on the rollers with no filament fed, unless a test feeds it.
+        self.save_variables = types.SimpleNamespace(allVariables={"slot7": 0, "filament_slot7": "QFA90",
+                                                                  "color_slot7": ["228332"]})
+        self.slot7 = types.SimpleNamespace(r_endstop_state=1)
+        self.jog = Jog(self)
 
     def is_shutdown(self):
         return self.shutdown
@@ -227,7 +280,8 @@ class Printer:
         self.handlers[event] = handler
 
     def lookup_object(self, name, default=None):
-        return {"gcode": self, "multi_color_controller": self.controller}[name]
+        return {"gcode": self, "multi_color_controller": self.controller, "save_variables": self.save_variables,
+                "box_stepper slot7": self.slot7, "tltg_box_slot_jog": self.jog}.get(name, default)
 
     def register_command(self, name, handler, desc=None):
         previous = self.commands.pop(name, None)
@@ -237,6 +291,28 @@ class Printer:
 
     def lookup_objects(self, module):
         return [("box_rfid card_reader_4", self.rfid)]
+
+
+class Jog:
+    """tltg_box_slot_jog: turns a slot in PIECE mm moves, calling UNTIL after each."""
+
+    def __init__(self, printer):
+        self.printer, self.moves, self.on_turn = printer, [], None
+
+    def blocker(self):
+        return None
+
+    def move(self, slot, distance, speed, until=None, piece=None):
+        moved = 0.
+        while abs(moved) < abs(distance):
+            moved += piece if distance > 0 else -piece
+            self.printer.reactor.now += piece / speed
+            if self.on_turn:
+                self.on_turn()
+            if until():
+                break
+        self.moves.append((slot, moved))
+        return moved, True
 
 
 class Config:
@@ -376,8 +452,8 @@ class BoxRfidTests(unittest.TestCase):
         path, = self.reports()
         report = json.loads(path.read_text())
         self.assertIn("_2D_", path.name)
-        self.assertEqual(report["read"]["decoded"], {"brand": "Anycubic", "material": "PLA High Speed",
-                                                     "colors": ["E10600"]})
+        self.assertEqual(report["read"]["decoded"], {"format": "anycubic", "brand": "Anycubic",
+                                                     "material": "PLA High Speed", "colors": ["E10600"]})
         pages = bytes.fromhex(report["read"]["pages"])
         self.assertEqual(len(pages), 180)
         self.assertEqual(pages[:9], bytes(9))
@@ -388,7 +464,7 @@ class BoxRfidTests(unittest.TestCase):
         self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
         bambu, = set(self.reports()) - {path}
         report = json.loads(bambu.read_text())
-        self.assertEqual(report["read"]["decoded"], {"brand": "Bambu", "material": "PLA Silk",
+        self.assertEqual(report["read"]["decoded"], {"format": "bambu", "brand": "Bambu", "material": "PLA Silk",
                                                      "colors": ["EC008C", "FF4D0A"]})
         sectors = report["read"]["readable_sectors"]
         self.assertEqual(len(sectors), 16)
@@ -403,6 +479,86 @@ class BoxRfidTests(unittest.TestCase):
         self.module()
         with self.assertRaises(CommandError):
             self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7, SECONDS=1))
+
+    def test_test_tool_writes_only_blank_and_qidi_tags_and_reads_them_back(self):
+        test = lambda **params: self.printer.commands["VO_BOX_RFID_TEST"](Gcmd(SLOT=7, **params))
+        # A new NTAG213: the QIDI block and the entry's name, read back, then read by QIDI's poll.
+        ntag = Tag("ntag", BLANK_NTAG)
+        module = self.module(ntag)
+        test(ACTION="SCAN", SECONDS=1)
+        seen, = module.get_status(0)["job"]["tags"]
+        self.assertEqual((seen["type"], seen["layout"], seen["writable"]), ("ntag213", "blank", True))
+        self.assertNotIn(ntag.uid.hex(), json.dumps(module.get_status(0)))
+        test(ACTION="WRITE", FILAMENT="QFX00", COLORS="ff0000,00FF00", NAME=1, TAG=seen["tag"])
+        result = module.get_status(0)["job"]["result"]
+        self.assertTrue(result["verified"])
+        self.assertEqual(bytes(ntag.memory[16:32]), box_rfid.qidi_block("QFX00", ["FF0000", "00FF00"]))
+        self.assertEqual(self.qidi_read()["data"][:2], b"X\x00")
+        # Another printer with that name under another ID gives the slot its own ID.
+        for nozzle in ("0.2", "0.4", "0.6", "0.8"):
+            (self.database / f"filament-{nozzle}.json").write_text(json.dumps({**self.existing, "Mine": entry("QFX07", "Mine")}))
+        module = self.module(ntag)
+        self.assertEqual(self.qidi_read()["data"][:2], b"X\x07")
+        # Rewriting without the name clears it, so the ID on the tag counts again.
+        test(ACTION="WRITE", FILAMENT="QFA90", COLORS="FFFFFF")
+        self.assertEqual(bytes(ntag.memory[16:64]), box_rfid.qidi_block("QFA90", ["FFFFFF"]) + bytes(32))
+        # A blank MIFARE Classic 1K tag: blocks 4-6, which QIDI's own read takes.
+        classic = Tag("classic")
+        self.module(classic)
+        test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", NAME=1)
+        self.assertEqual(bytes(classic.blocks[4]), box_rfid.qidi_block("QFA00", ["0000FF"]))
+        self.assertEqual(self.qidi_read()["data"], bytes(classic.blocks[4]))
+        # Another brand's tag, a Bambu Lab tag, and a locked tag are never written.
+        for tag in (Tag("ntag", ELEGOO), Tag("ntag", ANYCUBIC), Tag("classic", blocks=BAMBU_BLOCKS, bambu=True),
+                    Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]), Tag("classic", key=b"\x12" * 6)):
+            before = (bytes(tag.memory), {b: bytes(v) for b, v in tag.blocks.items()})
+            self.module(tag)
+            with self.assertRaises(CommandError):
+                test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF")
+            self.assertEqual(before, (bytes(tag.memory), {b: bytes(v) for b, v in tag.blocks.items()}))
+        # The operator command writes the slot's own filament with its name, turning an empty slot's
+        # spool backward until the tag comes past, and only by hand once filament is fed.
+        spool = Tag("ntag", BLANK_NTAG)
+        self.module()
+        self.printer.jog.on_turn = lambda: setattr(self.reader, "tag", spool)  # the tag comes past
+        gcmd = Gcmd(SLOT=7)
+        self.printer.commands["VO_BOX_RFID_WRITE"](gcmd)
+        self.assertEqual(bytes(spool.memory[16:64]), box_rfid.qidi_block("QFA90", ["228332"])
+                         + box_rfid.name_field("Generic PLA"))
+        self.assertEqual(self.printer.jog.moves, [(7, -10.)])
+        self.assertIn("Generic PLA", gcmd.messages[-1])
+        self.printer.slot7.r_endstop_state = 0
+        self.printer.commands["VO_BOX_RFID_WRITE"](Gcmd(SLOT=7, FILAMENT="QFX00", COLORS="000000"))
+        self.assertEqual(self.printer.jog.moves, [(7, -10.)])
+        self.assertEqual(bytes(spool.memory[16:22]), box_rfid.qidi_block("QFX00", ["000000"])[:6])
+        # Limited to one tag, a write leaves every other tag alone.
+        other = Tag("ntag", BLANK_NTAG)
+        self.module(other)
+        with self.assertRaises(CommandError):
+            test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", TAG="00000000", SECONDS=1)
+        self.assertEqual(bytes(other.memory), BLANK_NTAG.ljust(180, b"\0"))
+
+    def test_creality_tigertag_and_opentag3d_tags_set_their_filaments(self):
+        # Creality: the key from the UID opens sector 1 (as key B here) and the record names Hyper PLA.
+        self.assertEqual(box_rfid.creality_key(bytes.fromhex("c0ffee42")), CREALITY_KEY)
+        blocks = {4 + i: CREALITY_BLOCKS[16 * i:16 * i + 16] for i in range(3)}
+        creality = Tag("classic", key=CREALITY_KEY, block4=blocks[4], blocks=blocks)
+        module = self.module(creality)
+        hyper = box_rfid.CATALOG["filaments"]["Creality Hyper PLA"]["entry"]["filament_id"]
+        self.assertEqual(self.qidi_read()["data"][:6], hyper[2].encode() + bytes([int(hyper[3:]), 0x11])
+                         + bytes.fromhex("ff6600"))
+        # A Creality tag is never written over.
+        self.printer.commands["VO_BOX_RFID_TEST"](Gcmd(SLOT=7, ACTION="SCAN", SECONDS=1))
+        self.assertEqual(module.get_status(0)["job"]["tags"][0]["layout"], "creality")
+        # TigerTag: Rosa3D, which the database lacks, gives Generic PLA, with the tag's red.
+        self.module(Tag("ntag", TIGERTAG))
+        self.assertEqual(self.qidi_read()["data"][:6], b"A" + bytes([90, 0x11]) + bytes.fromhex("ff0000"))
+        # OpenTag3D: the brand's entry by name, with every color; Bambu Lab is QIDI's Bambu.
+        self.existing["Bambu PLA Silk"] = entry("QFL33", "Bambu")
+        (self.database / "filament-0.4.json").write_text(json.dumps(self.existing))
+        self.module(Tag("ntag", opentag3d("Bambu Lab", "PLA", "Silk", ["112233", "445566"])))
+        self.assertEqual(self.qidi_read()["data"][:9], b"L" + bytes([33, 0x12]) + bytes.fromhex("112233445566"))
+        self.assertEqual(self.reports(), [])
 
 
 if __name__ == "__main__":

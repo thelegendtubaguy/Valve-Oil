@@ -190,6 +190,7 @@ function baseStatus() {
     },
     tltg_printer_warnings: { warnings: [] },
     tltg_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
+    tltg_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, last_report: null, job: { run: 0, running: false } },
     mcu: { last_stats: { mcu_awake: 0.031, mcu_task_avg: 0.00002 } },
     'mcu THR': { last_stats: { mcu_awake: 0.012 } },
     'mcu mcu_box1': { last_stats: { mcu_awake: 0.004 } },
@@ -397,7 +398,9 @@ async function gcode(script) {
     } else if (C === 'READ_RFID') {
       set(`box_stepper slot${p.SLOT}`, { rfid_state: 1 })
       setTimeout(() => set(`box_stepper slot${p.SLOT}`, { rfid_state: 0 }), 3000)
-    } else if (C === 'TLTG_BOX_MOTION') {
+    } else if (C === 'VO_BOX_RFID_TEST') await rfidJob(p, false)
+    else if (C === 'VO_BOX_RFID_WRITE') await rfidJob(p, true)
+    else if (C === 'TLTG_BOX_MOTION') {
       const m = state.status.tltg_box_feed_motion
       if (p.RESET) set('tltg_box_feed_motion', { settings: Object.fromEntries(Object.keys(m.settings).map((k) => [k, null])) })
       else {
@@ -417,6 +420,67 @@ async function gcode(script) {
     else if (C) pushConsole(`// fake: accepted ${C}`)
   }
   return 'ok'
+}
+
+// VO_BOX_RFID_TEST and VO_BOX_RFID_WRITE: each reader's tags, as the spools turn past it. `side` is the slot of the
+// reader's pair the tag's spool sits in (0 for 1A, 1 for 1B). 1B and 1C have no tag; 2A holds Elegoo data; 2D is locked.
+const RFID_TAGS = {
+  1: [{ tag: '3f9c21a0', side: 0, type: 'mifare_classic', layout: 'qidi', writable: true, filament_id: 'QFA01', name: null, colors: ['1D1D1F'], sets_id: 'QFA01', sets_name: 'QIDI PLA Basic', every: 1 }],
+  2: [{ tag: '9b20c4e7', side: 1, type: 'ntag213', layout: 'blank', writable: true, every: 3 }],
+  3: [{ tag: 'b81d07e4', side: 0, type: 'ntag213', layout: 'elegoo', writable: false, reason: 'holds Elegoo data', colors: ['FF0000'], sets_id: 'QFA90', sets_name: 'Generic PLA', every: 2 }],
+  4: [
+    { tag: 'c2e4a915', side: 0, type: 'ntag215', layout: 'blank', writable: true, every: 2 },
+    { tag: '07aa53d2', side: 1, type: 'mifare_classic', layout: 'locked', writable: false, reason: 'locked: the default key doesn’t open it', every: 5 },
+  ],
+}
+async function rfidJob(p, operator) {
+  const action = operator ? 'WRITE' : (p.ACTION ?? 'SCAN').toUpperCase()
+  const slot = Number(p.SLOT)
+  const reader = Math.floor(slot / 2) + 1
+  const label = (i) => `${Math.floor(i / 4) + 1}${'ABCD'[i % 4]}`
+  if (reader > 4) throw rpcError(`Slot ${label(slot)}'s Box does not run the Valve Oil Box firmware, which reading tags needs. See docs/firmware.md.`)
+  const v = vars()
+  const filamentId = p.FILAMENT ?? v[`filament_slot${slot}`]
+  const name = Object.keys(FILAMENTS).find((k) => FILAMENTS[k].filament_id === filamentId)
+  if (action === 'WRITE' && !name) throw rpcError(`${filamentId} isn't in this printer's filament database.`)
+  const empty = state.status[`box_stepper slot${slot}`]?.runout_button === 1
+  const turn = operator ? (empty ? -800 : 0) : Number(p.TURN ?? 0)
+  const seconds = Number(p.SECONDS ?? (operator ? 60 : action === 'SCAN' ? 15 : 30))
+  const only = p.TAG ? p.TAG.toLowerCase() : null
+  const prev = state.status.tltg_box_rfid.job
+  let job = { run: prev.run + 1, action: action.toLowerCase(), test: !operator, slot: label(slot), reader: `card_reader_${reader}`, reader_slots: [label((reader - 1) * 2), label((reader - 1) * 2 + 1)], running: true, seconds, elapsed: 0, polls: 0, empty: 0, tags: [], only, result: null, error: null, lost: 0, turn, turned: 0, filament: name ?? null }
+  pushConsole(`// ${operator ? `Writing ${name} to slot ${label(slot)}'s spool tag. ${turn ? 'The Box turns the spool until its tag comes past the reader.' : `Turn the spool slowly by hand for up to ${seconds} s.`}` : `${action === 'SCAN' ? 'Scanning' : 'Writing'} reader card_reader_${reader}.`}`)
+  const seen = new Map()
+  // The operator's spool is the turned slot's; the test tool sees every tag on the reader.
+  const tags = RFID_TAGS[reader].filter((t) => !operator || t.side === slot % 2)
+  for (let poll = 0; ; poll++) {
+    const elapsed = Math.round(poll * 2) / 10
+    const turned = turn ? Math.min(Math.abs(turn), poll * 10) : undefined
+    const tag = tags.find((t) => poll >= 8 && poll % t.every === 0 && (poll / t.every) % 3 !== 2)
+    if (tag && action === 'WRITE' && (!only || only === tag.tag)) {
+      const ok = tag.writable
+      job.result = { ...tag, written: ok, verified: ok, acked: ok ? 12 : 0, frames: ok ? 12 : 0, acks: ok ? Array.from({ length: 12 }, () => 'error=04 bits=4 data=0a') : [] }
+      if (ok) {
+        const colors = String(p.COLORS ?? v[`color_slot${slot}`]).split(',')
+        const named = operator || p.NAME === '1'
+        Object.assign(tag, { layout: named ? 'qidi+name' : 'qidi', filament_id: filamentId, name: named ? name : null, colors, sets_id: filamentId, sets_name: name, reason: undefined })
+      }
+    } else if (tag) {
+      const s = seen.get(tag.tag) ?? { ...tag, every: undefined, side: undefined, hits: 0, first: elapsed }
+      seen.set(tag.tag, { ...s, hits: s.hits + 1, last: elapsed })
+    }
+    job = { ...job, elapsed, polls: poll + 1, empty: job.empty + (tag ? 0 : 1), tags: [...seen.values()], ...(turned != null ? { turned } : {}) }
+    set('tltg_box_rfid', { job })
+    if (job.result || (turn ? turned >= Math.abs(turn) : elapsed >= seconds)) break
+    await new Promise((r) => setTimeout(r, turn ? 550 : 200))
+  }
+  set('tltg_box_rfid', { job: { ...job, running: false } })
+  if (action === 'WRITE') {
+    const r = job.result
+    if (!r) throw rpcError(`No tag came past slot ${label(slot)}'s reader ${turn ? `while the spool turned ${Math.abs(turn)} mm` : `in ${seconds} s`}. The tag is read on the side of the spool facing the reader; if it's on the other side, turn the spool over.`)
+    if (!r.written) throw rpcError(`Slot ${label(slot)}'s spool tag was not written: ${r.reason}.`)
+    pushConsole(`// Slot ${label(slot)}'s spool tag now holds ${name}, checked by reading it back.`)
+  } else pushConsole(`// Reader card_reader_${reader} saw: ${[...seen.values()].map((t) => `${t.tag} (${t.type}, ${t.layout}, ${t.hits} of ${job.polls} polls)`).join(', ') || 'none'}.`)
 }
 
 function refreshBoxInfo() {
@@ -460,7 +524,7 @@ const handlers = {
   'printer.objects.query': (p) => {
     const out = {}
     for (const k of Object.keys(p.objects)) {
-      if (k === 'gcode') out.gcode = { commands: Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'TLTG_CUT_FILAMENT', 'TLTG_BOX_SLOT_JOG', 'TLTG_BOX_MOTION', 'TLTG_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) }
+      if (k === 'gcode') out.gcode = { commands: Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'TLTG_CUT_FILAMENT', 'TLTG_BOX_SLOT_JOG', 'TLTG_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'TLTG_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) }
       else if (k === 'configfile')
         out.configfile = {
           settings: {

@@ -169,25 +169,49 @@ On Max 4 firmware `01.01.07.01`, the Vendor and Filament lists on the touchscree
 The installer makes this possible by adding a `qidi_filament_config` folder to Fluidd's configuration files, linked to QIDI's filament files. The other nozzle sizes' files are there too, and any of them can be edited by hand: right-click a file and choose **Edit**. Keep it valid JSON, as a missing comma or bracket can break the touchscreen's filament list.
 
 > [!WARNING]
-> These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups. The [spool brands' filaments](#anycubic-elegoo-and-bambu-lab-filaments) come back by themselves.
+> These are QIDI's own files, not copies. Firmware updates replace them and remove your changes, so **Export** the list before updating and **Import** it afterwards. They aren't part of the installer's backups. The [spool brands' filaments](#anycubic-elegoo-bambu-lab-and-creality-filaments) come back by themselves.
 
 If `qidi_filament_config` already exists, the installer leaves it alone. Uninstall removes the link but never your edits.
 
 ## Spool tags
 
-With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the installer puts on every USB Box, the Box reads **Anycubic**, **Elegoo**, and **Bambu Lab** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
+With the [Valve Oil Box firmware](firmware.md#qidi-box-firmware), which the installer puts on every USB Box, the Box reads **Anycubic**, **Elegoo**, **Bambu Lab**, **Creality**, **TigerTag**, and **OpenTag3D** spool tags as well as QIDI's. Reading works as it does for QIDI spools: when you insert filament, or with **Read RFID** on the touchscreen, the Box turns the spool past its reader and sets the slot's filament and color from the tag. The touchscreen and Fluidd show it like any other slot. Boxes on QIDI's own firmware read only QIDI tags, as before.
 
-- A tag sets the slot to that brand's filament in QIDI's list, matched by name, such as **Anycubic PLA High Speed**, **Elegoo Rapid PLA+**, or **Bambu PLA Basic**. Bambu Lab tags are locked with keys made from each tag's serial number. Klipper works the keys out to read the tag, which it never writes. Copies of Bambu Lab tags written to blank tags read the same way. A Bambu Lab tag carries Bambu's filament ID, which picks the filament, and a two-color spool such as PLA Silk Multi-Color sets both colors. If the list has no such filament, the slot gets the brand's plain filament of that type, then Generic's. A filament you added yourself with the same name, such as your own **Elegoo PLA**, is used instead of this project's.
-- Tags the Box can't read, such as Creality's encrypted ones, leave the slot's filament as it was. QIDI's firmware could give such a spool the filament of the last tag that reader read, which might be the spool in the slot next to it; that no longer happens.
+- A tag sets the slot to that brand's filament in QIDI's list, matched by name, such as **Anycubic PLA High Speed**, **Elegoo Rapid PLA+**, **Bambu PLA Basic**, or **Creality Hyper PLA**. Bambu Lab tags are locked with keys made from each tag's serial number. Klipper works the keys out to read the tag, which it never writes. Copies of Bambu Lab tags written to blank tags read the same way. A Bambu Lab tag carries Bambu's filament ID, which picks the filament, and a two-color spool such as PLA Silk Multi-Color sets both colors. If the list has no such filament, the slot gets the brand's plain filament of that type, then Generic's, then QIDI's. Creality tags are encrypted with keys made from each tag's serial number, which Klipper works out as for Bambu Lab's. TigerTag and OpenTag3D tags name their brand, so a TigerTag spool from Polymaker sets the Polymaker filament of that type if the list has one. Creality, TigerTag, and OpenTag3D support follows their published formats and hasn't been tried on real spools yet; if one doesn't read, [send a report](#spools-that-dont-read). A filament you added yourself with the same name, such as your own **Elegoo PLA**, is used instead of this project's.
+- Tags the Box can't read leave the slot's filament as it was. OpenPrintTag tags use a kind of NFC the Box's reader can't talk to. QIDI's firmware could give such a spool the filament of the last tag that reader read, which might be the spool in the slot next to it; that no longer happens.
 - Each reader serves two slots, 1A with 1B and 1C with 1D. The tag has to pass close over the reader, so a spool may need a full turn before it reads.
 
-### Anycubic, Elegoo, and Bambu Lab filaments
+### Anycubic, Elegoo, Bambu Lab, and Creality filaments
 
-Klipper adds 30 Anycubic, 32 Elegoo, and 49 Bambu Lab filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken. After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
+Klipper adds 30 Anycubic, 32 Elegoo, 49 Bambu Lab, and 34 Creality filaments to [QIDI's filament list](#editing-qidis-filament-list) when it starts, if they're missing, so you can pick them on the touchscreen and in Fluidd with or without tags. Their names and nozzle temperatures come from the vendors' slicer profiles (Bambu Studio's for Bambu Lab, OrcaSlicer's for Creality), and their Box heating, chamber, and drying settings from QIDI's filament of the same type. QIDI's own filaments and yours are never changed, and a filament isn't added if its name or ID is already taken. After a firmware update replaces QIDI's list, they're added again once the optimized configuration is reinstalled. The touchscreen lists them after the printer's next restart.
 
 Bambu Lab's are listed under QIDI's **Bambu** vendor, next to QIDI's own Bambu PLA, PETG, and ABS. A Bambu Lab ABS tag sets QIDI's **Bambu ABS**, and Bambu's 2.85 mm TPU 75A is left out.
 
-Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), and `QFZ` (Bambu Lab), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
+Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `QFW` (Creality), letters QIDI doesn't use. Uninstall leaves them in the list, since Box slots may use them.
+
+### Writing spool tags
+
+With the Valve Oil Box firmware, you can write a filament to a spool's RFID tag, so the Box sets the slot from it whenever that spool is loaded, like a QIDI spool. Use it for spools with no tag, or for blank tags you stick on yourself: MIFARE Classic 1K, NTAG213, NTAG215, or NTAG216.
+
+On the QIDI Box screen of [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card in Fluidd, select the slot and use the **Write spool tag** button beside the pencil. Pick the vendor, filament, and up to four colors; they start as the slot's.
+
+- **Spool on an empty slot's rollers, filament not fed:** the Box turns the spool backward until its tag comes past the reader, at most about one and a half turns, and stops once it's written.
+- **Filament fed from the slot:** the Box can't turn the spool without pulling the filament, so turn it slowly backward by hand for up to a minute.
+
+The tag has to be on the side of the spool facing the reader; a tag on the far side is never seen, so turn the spool over. Each write is read back from the tag before it counts. Any filament in the printer's filament list can be written, whatever its vendor, including ones you added. The tag also carries the filament's name, so a printer whose list has that name under a different ID uses its own.
+
+Only blank tags and tags Valve Oil wrote before are written. Tags holding Anycubic, Elegoo, Creality, TigerTag, or OpenTag3D data, Bambu Lab tags, and locked tags are left alone, and the dialog says why. Each reader serves two slots, but a write goes only to the tag of the spool being turned; a parked spool beside it is never written.
+
+The commands behind it, for macros:
+
+```gcode
+VO_BOX_RFID_WRITE SLOT=2
+VO_BOX_RFID_WRITE SLOT=2 FILAMENT=QFY08 COLORS=E5484D
+```
+
+Without `FILAMENT=` and `COLORS=` it writes the slot's saved filament and color. `NAME=0` leaves the name off, and `SECONDS=` (5 to 300, default 60) sets how long it waits when you turn the spool by hand.
+
+`VO_BOX_RFID_TEST SLOT= ACTION=SCAN` lists every tag a slot's reader sees, with its type and contents, while you turn spools by hand or while the Box turns that slot's spool (`TURN=-700`). It's a diagnostic tool; `ACTION=WRITE` writes with every option exposed.
 
 ### Spools that don't read
 

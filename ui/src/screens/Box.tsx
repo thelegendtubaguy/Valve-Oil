@@ -9,6 +9,7 @@ import { attempt, toast } from '../components/toast'
 import { QIDI_BOX_EXTERNAL_SLOT, boxCommands, boxHeaterMax, filamentLists, qidiBoxSlotLabel, slotActions, slotByIndex, useBox, type BoxState, type QidiBoxSlot } from '../state/box'
 import { runGcode, usePrinter } from '../state/printer'
 import { fluiddUrl } from '../lib/links'
+import { TagWriteDialog, WriteTagIcon } from '../components/TagWriteDialog'
 
 export function BoxScreen() {
   const box = useBox()
@@ -74,6 +75,7 @@ export function BoxScreen() {
 export function SlotActionButtons({ box, slot, className = '', withTagButtons = false }: { box: BoxState; slot: QidiBoxSlot; className?: string; withTagButtons?: boolean }) {
   const a = slotActions(box, slot)
   const [editOpen, setEditOpen] = useState(false)
+  const [tagOpen, setTagOpen] = useState(false)
   const lists = useStore(filamentLists, (l) => l)
   const run = (g: string) => attempt(() => runGcode(g))
   const canEdit = a.edit && (box.hasController ? !!lists.database?.length : !!lists.legacy)
@@ -115,6 +117,11 @@ export function SlotActionButtons({ box, slot, className = '', withTagButtons = 
                 <button className="btn btn-sm btn-ghost px-2!" disabled={!canEdit} title="Edit filament" aria-label="Edit filament" onClick={() => setEditOpen(true)}>
                   <Pencil size={13} />
                 </button>
+                {box.canWriteTag && (
+                  <button className="btn btn-sm btn-ghost px-2!" disabled={!a.writeTag || !lists.database?.length} title="Write spool tag" aria-label="Write spool tag" onClick={() => setTagOpen(true)}>
+                    <WriteTagIcon size={14} />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -124,6 +131,7 @@ export function SlotActionButtons({ box, slot, className = '', withTagButtons = 
       )}
       {!isBoxSlot && <div className="text-ink-3">The external spool feeds the toolhead directly. Load it by hand, or use the touchscreen.</div>}
       {editOpen && <FilamentDialog box={box} slot={slot} onClose={() => setEditOpen(false)} />}
+      {tagOpen && <TagWriteDialog box={box} slot={slot} onClose={() => setTagOpen(false)} />}
     </div>
   )
 }
@@ -131,6 +139,7 @@ export function SlotActionButtons({ box, slot, className = '', withTagButtons = 
 function SlotPanel({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
   const a = slotActions(box, slot)
   const [editOpen, setEditOpen] = useState(false)
+  const [tagOpen, setTagOpen] = useState(false)
   const lists = useStore(filamentLists, (l) => l)
   const tools = Object.entries(box.toolMap).filter(([, s]) => s === slot.index).map(([t]) => `T${t}`)
   const group = box.reloadGroups[slot.index]
@@ -168,11 +177,17 @@ function SlotPanel({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
             <button className="iconbtn" disabled={!canEdit} title="Edit filament" onClick={() => setEditOpen(true)}>
               <Pencil size={15} />
             </button>
+            {box.canWriteTag && (
+              <button className="iconbtn" disabled={!a.writeTag || !lists.database?.length} title="Write spool tag" onClick={() => setTagOpen(true)}>
+                <WriteTagIcon size={16} />
+              </button>
+            )}
           </div>
         )}
       </div>
       <SlotActionButtons box={box} slot={slot} className="mt-3.5" />
       {editOpen && <FilamentDialog box={box} slot={slot} onClose={() => setEditOpen(false)} />}
+      {tagOpen && <TagWriteDialog box={box} slot={slot} onClose={() => setTagOpen(false)} />}
     </Card>
   )
 }

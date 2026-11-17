@@ -42,7 +42,7 @@ A board with the earlier build of the fix, which reported QIDI's `02.02.01.08`, 
 
 QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a restart. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box drops too. The Valve Oil Box firmware keeps the Box connected, so Klipper shows what actually happened.
 
-It also lets the Box [read Anycubic, Elegoo, and Bambu Lab spool tags](qidi-box.md#spool-tags), by giving Klipper direct access to the Box's RFID readers in place of four QIDI test commands that nothing on the printer uses. QIDI's own spool tags read as before.
+It also lets the Box [read Anycubic, Elegoo, Bambu Lab, Creality, TigerTag, and OpenTag3D spool tags](qidi-box.md#spool-tags) and [write spool tags](qidi-box.md#writing-spool-tags), by giving Klipper direct access to the Box's RFID readers in place of four QIDI test commands that nothing on the printer uses. QIDI's own spool tags read as before.
 
 **When it's flashed:** after the rest of each install and update. A USB Box connected after the last install is picked up by the next update check: with [automatic updates](install.md#automatic-updates) on, the check flashes it while the printer is idle; with them off, a printer warning says new firmware is waiting for it and to run the installer. A [QIDI firmware update](install.md#qidi-firmware-updates) flashes the USB Boxes connected with the other boards. RS-485 Boxes have no firmware to flash.
 
