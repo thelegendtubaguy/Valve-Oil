@@ -16,15 +16,21 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from .errors import InstallerError
-from .models import AddonSpec, AddonsSpec, SystemWheelSpec
+from .models import AddonSpec, AddonsSpec, SystemKernelModuleSpec, SystemWheelSpec
 from .sudo import run_sudo
 
 
 # Optional add-ons live in their own directories under ROOT, each with a systemd unit. A Python add-on gets its own
 # environment built from wheels the package ships; a program the package doesn't ship is downloaded, and checked
 # against the sha256 the manifest pins, when the operator installs it. Nothing outside ROOT and the unit file changes: no system packages, no
-# configuration under printer_data/config, and no Moonraker update manager entries.
+# configuration under printer_data/config, and no Moonraker update manager entries. The one exception is an add-on
+# that needs a kernel module QIDI's kernel lacks: the package's build of the module and the script that loads it go in a
+# root-owned directory under SYSTEM_ROOT, since root loads them.
 ROOT = "/home/qidi/tltg-addons"
+SYSTEM_ROOT = "/usr/local/lib/tltg-addons"
+MODULE_LOADER = "load-modules.sh"
+OSRELEASE = "/proc/sys/kernel/osrelease"
+KERNEL_VERSION = "/proc/sys/kernel/version"
 UNIT_DIR = "/etc/systemd/system"
 SYSTEM_PYTHON = "/usr/bin/python3"
 # Marks a package-owned add-on directory and records what it was built from.
@@ -85,6 +91,8 @@ class AddonDefinition:
     log_hint: str = "its log in Fluidd"
     # A command run, without waiting long or minding its result, before a removal stops the service.
     before_remove: Callable[["AddonPaths"], list[str]] | None = None
+    # A downloaded Debian package's files the add-on uses: path in the package -> path under app.
+    deb_members: dict[str, str] | None = None
 
     @property
     def unit(self) -> str:
@@ -99,6 +107,8 @@ class AddonDefinition:
 class AddonPaths:
     code: str
     data: str
+    # Root-owned: the add-on's kernel modules and their loader.
+    system: str
 
     @property
     def app(self) -> str:
@@ -114,7 +124,7 @@ class AddonPaths:
 
 
 def addon_paths(addon_id: str) -> AddonPaths:
-    return AddonPaths(code=f"{ROOT}/{addon_id}", data=f"{ROOT}/{addon_id}-data")
+    return AddonPaths(code=f"{ROOT}/{addon_id}", data=f"{ROOT}/{addon_id}-data", system=f"{SYSTEM_ROOT}/{addon_id}")
 
 
 # OctoEverywhere's own installer also installs system packages, replaces NTP, sets the clock, and adds a Moonraker
@@ -311,7 +321,65 @@ TAILSCALE = AddonDefinition(
     before_remove=lambda paths: [f"{paths.app}/tailscale", f"--socket={paths.data}/{TAILSCALE_SOCKET}", "logout"],
 )
 
-DEFINITIONS: dict[str, AddonDefinition] = {OCTOEVERYWHERE.id: OCTOEVERYWHERE, OBICO.id: OBICO, TAILSCALE.id: TAILSCALE}
+# ZeroTier's agent has no userspace network stack: it needs a TUN device, which QIDI's kernel doesn't have, so the
+# package loads its own build of the tun module, made for QIDI's kernel, before ZeroTier starts. zerotier-one then runs
+# as the qidi user with only the capabilities it needs to create and configure its network interface, keeping its
+# identity, networks, and local API token in its data directory. ZeroTier's own package installs system-wide as root.
+ZEROTIER_PORT = 9993
+
+
+def _zerotier_unit(paths: AddonPaths) -> str:
+    return ZEROTIER.unit_marker + f"""\
+# ZeroTier, installed by Valve Oil. Remove it from Fluidd's Settings or with addons.sh remove zerotier.
+[Unit]
+Description=ZeroTier (Valve Oil add-on)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists={paths.code}/{MARKER}
+
+[Service]
+Type=simple
+User=qidi
+WorkingDirectory={paths.data}
+# As root: the tun module, on the kernel builds it is made for only.
+ExecStartPre=+{paths.system}/{MODULE_LOADER}
+# -U: run as this user instead of insisting on root.
+ExecStart={paths.app}/zerotier-one -U -p{ZEROTIER_PORT} {paths.data}
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+Restart=always
+RestartSec=10
+# Off Klipper's CPUs and behind it for CPU time.
+Nice=10
+CPUAffinity=0 3
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+ZEROTIER = AddonDefinition(
+    id="zerotier",
+    name="ZeroTier",
+    description="Reach Fluidd, the camera, and SSH from your own devices anywhere, over your ZeroTier network.",
+    homepage="https://www.zerotier.com",
+    # ZeroTier's own package uses the same unit name, so its install shows as one made outside Valve Oil.
+    service="zerotier-one",
+    foreign_paths=("/usr/sbin/zerotier-one", "/var/lib/zerotier-one"),
+    render_unit=_zerotier_unit,
+    settings={},
+    log_hint="`journalctl -u zerotier-one` over SSH",
+    # zerotier-cli and zerotier-idtool are the same program under other names; it is run as `zerotier-one -q`.
+    deb_members={"usr/sbin/zerotier-one": "zerotier-one"},
+)
+
+DEFINITIONS: dict[str, AddonDefinition] = {
+    OCTOEVERYWHERE.id: OCTOEVERYWHERE,
+    OBICO.id: OBICO,
+    TAILSCALE.id: TAILSCALE,
+    ZEROTIER.id: ZEROTIER,
+}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -356,8 +424,10 @@ def addon_state(definition: AddonDefinition, addon: AddonSpec, marker: dict[str,
 
 def build_id(addon: AddonSpec, definition: AddonDefinition) -> str:
     """Identify the add-on's pinned files and the package's files for it, independently of their order."""
-    digests = sorted([addon.source.sha256, *(item.sha256 for item in (*addon.wheels, *addon.sdists))])
+    digests = sorted([addon.source.sha256, *(item.sha256 for item in (*addon.wheels, *addon.sdists, *addon.kernel_modules))])
     digests += sorted(hashlib.sha256(f"{name}\n".encode("utf-8") + data).hexdigest() for name, data in _package_files(definition).items())
+    if addon.kernel_modules:
+        digests.append(hashlib.sha256(render_module_loader(addon).encode("utf-8")).hexdigest())
     return hashlib.sha256(f"{addon.id}\n{addon.version}\n".encode("utf-8") + "\n".join(digests).encode("ascii")).hexdigest()
 
 
@@ -369,6 +439,42 @@ def _package_files(definition: AddonDefinition) -> dict[str, bytes]:
         except OSError as exc:
             raise AddonError(f"{payload} is missing from the package.") from exc
     return files
+
+
+def render_module_loader(addon: AddonSpec) -> str:
+    """The root-run script that loads the add-on's kernel modules, on the kernel builds they are made for only."""
+    directory = addon_paths(addon.id).system
+    names = " ".join(module.name for module in addon.kernel_modules)
+    builds = " | ".join(f"'{addon.kernel_release} {version}'" for version in addon.kernel_versions)
+    return f"""#!/bin/sh
+# Loads the kernel modules the {addon.id} add-on needs, built for QIDI's kernel. Installed by Valve Oil.
+set -u
+case "$(cat {OSRELEASE}) $(cat {KERNEL_VERSION})" in
+    {builds}) ;;
+    *)
+        echo "Kernel $(cat {OSRELEASE}) $(cat {KERNEL_VERSION}) is not a build Valve Oil's {names} module is made for." >&2
+        exit 1
+        ;;
+esac
+loaded=0
+for module in {names}; do
+    grep -q "^$module " /proc/modules && continue
+    insmod "{directory}/$module.ko" || exit 1
+    loaded=1
+done
+# udev gives a new device its permissions, such as /dev/net/tun's 0666, just after the module loads.
+[ "$loaded" = 0 ] || udevadm settle --timeout=10
+"""
+
+
+def kernel_supported(addon: AddonSpec, *, root: Path) -> bool:
+    """Whether the running kernel is one of the builds the add-on's kernel modules are made for."""
+    try:
+        release = _map(root, OSRELEASE).read_text(encoding="utf-8").strip()
+        version = _map(root, KERNEL_VERSION).read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    return release == addon.kernel_release and version in addon.kernel_versions
 
 
 def read_marker(addon_id: str, *, root: Path) -> dict[str, Any] | None:
@@ -442,7 +548,7 @@ def install_addon(
     if blockers:
         names = " and ".join(other.name for other in blockers)
         raise AddonError(f"Remove {names} first; {definition.name} and {names} can't be installed together.")
-    if state == INSTALLED and _unit_current(definition, root=root):
+    if state == INSTALLED and _current(definition, addon, root=root):
         status(f"{definition.name} {addon.version} is already installed.")
         _ensure_data(definition, root=root)
         _start(definition, root=root, sudo_password=sudo_password, run=run)
@@ -453,10 +559,16 @@ def install_addon(
     staging = _map(root, paths.code + STAGING_SUFFIX)
     previous = _map(root, paths.code + PREVIOUS_SUFFIX)
     _verify_artifacts(spec, addon, installer_root)
+    if addon.kernel_modules and not kernel_supported(addon, root=root):
+        raise AddonError(
+            f"{definition.name} needs a kernel module Valve Oil builds for QIDI's kernel, and this printer's kernel isn't a "
+            "build it is made for; nothing was installed."
+        )
     if state == INSTALLED:
-        # Same build, missing or edited unit: rewrite the unit only.
+        # Same build, missing or edited unit or kernel modules: rewrite those only.
         status(f"Repairing the {definition.name} service")
         _ensure_data(definition, root=root)
+        _install_system_files(addon, installer_root=installer_root, root=root, sudo_password=sudo_password, run=run)
         _install_unit(definition, root=root, sudo_password=sudo_password, run=run)
         _start(definition, root=root, sudo_password=sudo_password, run=run, wait=True, sleep=sleep)
         return INSTALLED
@@ -470,7 +582,10 @@ def install_addon(
         archive = staging / DOWNLOAD_NAME
         try:
             _download(addon.source, archive, urlopen=urlopen)
-            _extract_source(archive, staging / "app")
+            if definition.deb_members:
+                _extract_deb(archive, staging / "app", definition.deb_members)
+            else:
+                _extract_source(archive, staging / "app")
         except AddonError:
             _remove_tree(staging, root=root)
             raise
@@ -516,6 +631,7 @@ def install_addon(
         code.rename(previous)
     staging.rename(code)
     try:
+        _install_system_files(addon, installer_root=installer_root, root=root, sudo_password=sudo_password, run=run)
         _install_unit(definition, root=root, sudo_password=sudo_password, run=run)
         _start(definition, root=root, sudo_password=sudo_password, run=run, wait=True, sleep=sleep)
     except AddonError:
@@ -527,6 +643,7 @@ def install_addon(
             _systemctl(["start", definition.unit], root=root, sudo_password=sudo_password, run=run, check=False)
         else:
             _remove_unit(definition, root=root, sudo_password=sudo_password, run=run)
+            _remove_system_files(definition, root=root, sudo_password=sudo_password, run=run)
         raise
     _remove_tree(previous, root=root)
     status(f"{definition.name} {addon.version} is installed and running.")
@@ -561,6 +678,7 @@ def remove_addon(
     if owned_unit:
         _systemctl(["disable", "--now", definition.unit], root=root, sudo_password=sudo_password, run=run, check=False)
         _remove_unit(definition, root=root, sudo_password=sudo_password, run=run)
+    _remove_system_files(definition, root=root, sudo_password=sudo_password, run=run)
     for path in (paths.code + STAGING_SUFFIX, paths.code + PREVIOUS_SUFFIX):
         _remove_tree(_map(root, path), root=root)
     if marker is not None:
@@ -648,7 +766,7 @@ def update_installed_addons(
         marker = read_marker(addon.id, root=root)
         if definition is None or marker is None:
             continue
-        if addon_state(definition, addon, marker, root=root) == INSTALLED and _unit_current(definition, root=root):
+        if addon_state(definition, addon, marker, root=root) == INSTALLED and _current(definition, addon, root=root):
             continue
         try:
             install_addon(addon.id, spec=spec, installer_root=installer_root, root=root, sudo_password=sudo_password, run=run, status=status, sleep=sleep, urlopen=urlopen)
@@ -692,7 +810,7 @@ def _verify_artifacts(spec: AddonsSpec, addon: AddonSpec, installer_root: Path) 
         bundled.append(spec.pip_wheel)
     if not addon.download:
         bundled.append(addon.source)
-    for artifact in bundled:
+    for artifact in (*bundled, *addon.kernel_modules):
         _verify_artifact(artifact, installer_root)
 
 
@@ -716,7 +834,7 @@ def _download(artifact: SystemWheelSpec, destination: Path, *, urlopen: UrlOpenF
         raise AddonError(f"The downloaded {name} is not the file this Valve Oil release pins; nothing was installed.")
 
 
-def _verify_artifact(artifact: SystemWheelSpec, installer_root: Path) -> None:
+def _verify_artifact(artifact: SystemWheelSpec | SystemKernelModuleSpec, installer_root: Path) -> None:
     path = installer_root / artifact.archive
     digest = hashlib.sha256()
     try:
@@ -771,6 +889,63 @@ def _extract_source(archive: Path, destination: Path) -> None:
         raise AddonError(f"Could not extract the add-on source: {exc}") from exc
 
 
+def _extract_deb(archive: Path, destination: Path, members: dict[str, str]) -> None:
+    """Extract the named files from a Debian package's data archive into destination; each must be a plain file."""
+    destination.mkdir(parents=True)
+    try:
+        data = _deb_data(archive)
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tar:
+            found: set[str] = set()
+            entries = 0
+            for member in tar:
+                entries += 1
+                if entries > MAX_SOURCE_ENTRIES:
+                    raise AddonError("The add-on package is too large.")
+                name = member.name.removeprefix("./")
+                if name not in members:
+                    continue
+                if not member.isfile() or member.size > MAX_SOURCE_BYTES:
+                    raise AddonError(f"{name} in the add-on package is not a plain file.")
+                target = destination / members[name]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = tar.extractfile(member)
+                if source is None:
+                    raise AddonError(f"Unreadable entry in the add-on package: {name}")
+                with source, target.open("wb") as handle:
+                    shutil.copyfileobj(source, handle)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+                found.add(name)
+    except (tarfile.TarError, OSError, EOFError, ValueError) as exc:
+        raise AddonError(f"Could not extract the add-on package: {exc}") from exc
+    missing = sorted(set(members) - found)
+    if missing:
+        raise AddonError(f"The add-on package has no {', '.join(missing)}.")
+
+
+def _deb_data(archive: Path) -> bytes:
+    """A Debian package's data.tar member: the package is an ar archive of 60-byte headers, each followed by its member
+    padded to an even length."""
+    with archive.open("rb") as handle:
+        if handle.read(8) != b"!<arch>\n":
+            raise AddonError("The add-on package is not a Debian package.")
+        while True:
+            header = handle.read(60)
+            if len(header) < 60:
+                raise AddonError("The add-on package has no data archive.")
+            if header[58:60] != b"`\n":
+                raise AddonError("The add-on package is damaged.")
+            name = header[:16].decode("ascii", "replace").strip().rstrip("/")
+            size = int(header[48:58].decode("ascii").strip())
+            if size > MAX_SOURCE_BYTES:
+                raise AddonError("The add-on package is too large.")
+            if name.startswith("data.tar"):
+                data = handle.read(size)
+                if len(data) != size:
+                    raise AddonError("The add-on package is truncated.")
+                return data
+            handle.seek(size + size % 2, io.SEEK_CUR)
+
+
 def _ensure_data(definition: AddonDefinition, *, root: Path) -> None:
     data = _map(root, addon_paths(definition.id).data)
     if data.is_symlink():
@@ -821,6 +996,66 @@ def unit_owned(definition: AddonDefinition, *, root: Path) -> bool:
         return not unit.is_symlink() and unit.is_file() and unit.read_text(encoding="utf-8").startswith(definition.unit_marker)
     except OSError:
         return False
+
+
+def _current(definition: AddonDefinition, addon: AddonSpec, *, root: Path) -> bool:
+    """Whether the installed unit, and any kernel modules and their loader, are the ones this build installs."""
+    return _unit_current(definition, root=root) and _system_current(addon, root=root)
+
+
+def _system_current(addon: AddonSpec, *, root: Path) -> bool:
+    if not addon.kernel_modules:
+        return True
+    directory = _map(root, addon_paths(addon.id).system)
+    try:
+        if (directory / MODULE_LOADER).read_text(encoding="utf-8") != render_module_loader(addon):
+            return False
+        return all(hashlib.sha256((directory / f"{module.name}.ko").read_bytes()).hexdigest() == module.sha256 for module in addon.kernel_modules)
+    except OSError:
+        return False
+
+
+def _install_system_files(addon: AddonSpec, *, installer_root: Path, root: Path, sudo_password: str | None, run: RunFn) -> None:
+    """Install the add-on's kernel modules and their loader, root-owned, where only root can change what root loads."""
+    if not addon.kernel_modules:
+        return
+    paths = addon_paths(addon.id)
+    files = {f"{module.name}.ko": ((installer_root / module.archive).read_bytes(), "0644") for module in addon.kernel_modules}
+    files[MODULE_LOADER] = (render_module_loader(addon).encode("utf-8"), "0755")
+    if _fake(root):
+        directory = _map(root, paths.system)
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, (data, mode) in files.items():
+            (directory / name).write_bytes(data)
+            (directory / name).chmod(int(mode, 8))
+        return
+    staged = _map(root, paths.code) / ".system"
+    staged.mkdir(exist_ok=True)
+    try:
+        _privileged(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", SYSTEM_ROOT, paths.system], "Could not install the add-on's kernel modules.", sudo_password=sudo_password, run=run)
+        for name, (data, mode) in files.items():
+            (staged / name).write_bytes(data)
+            _privileged(["install", "-o", "root", "-g", "root", "-m", mode, str(staged / name), f"{paths.system}/{name}"], "Could not install the add-on's kernel modules.", sudo_password=sudo_password, run=run)
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+
+
+def _remove_system_files(definition: AddonDefinition, *, root: Path, sudo_password: str | None, run: RunFn) -> None:
+    """Unload the add-on's kernel modules when nothing uses them, and delete them with their loader."""
+    paths = addon_paths(definition.id)
+    directory = _map(root, paths.system)
+    if not directory.is_dir() or directory.is_symlink():
+        return
+    modules = sorted(path.stem for path in directory.glob("*.ko"))
+    if _fake(root):
+        shutil.rmtree(directory)
+    else:
+        for name in modules:
+            if re.fullmatch(r"[a-z0-9_]+", name):
+                # Refused while ZeroTier, or anything else, still holds the device; the module then stays until reboot.
+                run_sudo(["rmmod", name], run=run, password=sudo_password or "")
+        _privileged(["rm", "-rf", paths.system], "Could not remove the add-on's kernel modules.", sudo_password=sudo_password, run=run)
+        run_sudo(["rmdir", SYSTEM_ROOT], run=run, password=sudo_password or "")
 
 
 def _unit_current(definition: AddonDefinition, *, root: Path) -> bool:

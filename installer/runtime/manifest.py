@@ -279,6 +279,7 @@ def parse_manifest(raw: Any) -> Manifest:
         ),
     )
 
+    system_optimizations = _parse_system_optimizations(raw)
     return Manifest(
         schema_version=schema_version,
         package=package,
@@ -290,8 +291,8 @@ def parse_manifest(raw: Any) -> Manifest:
         install=install,
         patches=patches,
         postflight=postflight,
-        system_optimizations=_parse_system_optimizations(raw),
-        addons=_parse_addons(raw),
+        system_optimizations=system_optimizations,
+        addons=_parse_addons(raw, zram_swap=system_optimizations.zram_swap if system_optimizations else None),
     )
 
 
@@ -576,7 +577,7 @@ def source_patch_variants_for_firmware(
 _ADDON_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 
 
-def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
+def _parse_addons(raw: dict[str, Any], *, zram_swap: SystemZramSwapSpec | None = None) -> AddonsSpec | None:
     if "addons" not in raw:
         return None
     addons_raw = _require_mapping(raw, "addons")
@@ -598,6 +599,15 @@ def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
             raise ManifestValidationError(f"Expected non-empty list at addons.catalog.{addon_id}.wheels.")
         if "sdists" in item and not wheels:
             raise ManifestValidationError(f"addons.catalog.{addon_id}.sdists needs wheels to build with.")
+        kernel_modules = tuple(
+            _parse_kernel_module(module)
+            for module in (_require_list_of_mapping(item, "kernel_modules") if "kernel_modules" in item else ())
+        )
+        names = [module.name for module in kernel_modules]
+        if len(set(names)) != len(names):
+            raise ManifestValidationError(f"addons.catalog.{addon_id}.kernel_modules must name each module once.")
+        if kernel_modules and zram_swap is None:
+            raise ManifestValidationError(f"addons.catalog.{addon_id}.kernel_modules needs system_optimizations.zram_swap's kernel builds.")
         catalog.append(
             AddonSpec(
                 id=addon_id,
@@ -609,6 +619,9 @@ def _parse_addons(raw: dict[str, Any]) -> AddonsSpec | None:
                     for sdist in (_require_list_of_mapping(item, "sdists") if "sdists" in item else ())
                 ),
                 download=download,
+                kernel_modules=kernel_modules,
+                kernel_release=zram_swap.kernel_release if kernel_modules else "",
+                kernel_versions=zram_swap.kernel_versions if kernel_modules else (),
             )
         )
     return AddonsSpec(
@@ -753,17 +766,10 @@ def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:
         or not all(re.fullmatch(r"[A-Za-z0-9#:._+ -]+", version) for version in kernel_versions)
     ):
         raise ManifestValidationError("zram_swap kernel identity is empty, repeated, or contains unsupported characters.")
-    modules = tuple(
-        SystemKernelModuleSpec(
-            name=_require_str(item, "name"),
-            archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("system",)),
-            sha256=_require_sha256(item, "sha256"),
-        )
-        for item in _require_list_of_mapping(raw, "modules")
-    )
+    modules = tuple(_parse_kernel_module(item) for item in _require_list_of_mapping(raw, "modules"))
     names = [module.name for module in modules]
-    if not modules or len(set(names)) != len(names) or not all(re.fullmatch(r"[a-z0-9_]+", name) for name in names):
-        raise ManifestValidationError("zram_swap.modules must name each module once, in lowercase.")
+    if not modules or len(set(names)) != len(names):
+        raise ManifestValidationError("zram_swap.modules must name each module once.")
     algorithm = _require_str(raw, "algorithm")
     if not re.fullmatch(r"[a-z0-9-]+", algorithm):
         raise ManifestValidationError("zram_swap.algorithm is invalid.")
@@ -780,6 +786,19 @@ def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:
         algorithm=algorithm,
         swappiness=swappiness,
         page_cluster=page_cluster,
+    )
+
+
+def _parse_kernel_module(item: Any) -> SystemKernelModuleSpec:
+    # Module names land in root-run scripts unquoted.
+    _ensure_mapping_entry(item, "kernel module")
+    name = _require_str(item, "name")
+    if not re.fullmatch(r"[a-z0-9_]+", name):
+        raise ManifestValidationError(f"Kernel module names are lowercase letters, digits, and underscores: {name}")
+    return SystemKernelModuleSpec(
+        name=name,
+        archive=_validate_relative_path(_require_str(item, "archive"), allowed_roots=("system",)),
+        sha256=_require_sha256(item, "sha256"),
     )
 
 

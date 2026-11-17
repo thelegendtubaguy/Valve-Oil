@@ -109,8 +109,9 @@ The full GPLv2 text is available in [`LICENSES/GPL-2.0-only.txt`](LICENSES/GPL-2
 - License: GPL-2.0-only
 - Paths:
   - `installer/system/zram/*.ko`
+  - `installer/system/tun/tun.ko`
 
-The `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, and `zram` modules are built unmodified from that source for QIDI's Max 4 kernel. [`scripts/build_zram_modules.py`](scripts/build_zram_modules.py) and [`kernel/`](kernel/) hold the configuration and steps that rebuild them.
+The `lz4_compress`, `lz4_decompress`, `lz4`, `zsmalloc`, `zram`, and `tun` modules are built unmodified from that source for QIDI's Max 4 kernel. [`scripts/build_kernel_modules.py`](scripts/build_kernel_modules.py) and [`kernel/`](kernel/) hold the configuration and steps that rebuild them.
 
 ## Vendored Python dependencies
 
@@ -134,6 +135,8 @@ Release bundles carry unmodified copies of the add-on files pinned under `addons
 - Python wheels from PyPI, including pip: each wheel carries its own license in its `.dist-info` directory.
 
 Tailscale is not carried in release bundles. When the operator installs the Tailscale add-on, the printer downloads Tailscale's own unmodified build for arm64 from <https://pkgs.tailscale.com>, pinned by sha256 under `addons:`. Tailscale is licensed under the BSD 3-Clause License; its source is at <https://github.com/tailscale/tailscale>.
+
+ZeroTier is not carried in release bundles either. When the operator installs the ZeroTier add-on, the printer downloads ZeroTier's own unmodified Debian 11 package for arm64 from <https://download.zerotier.com>, pinned by sha256 under `addons:`, and keeps only its `zerotier-one` program. ZeroTier's agent is licensed under the Mozilla Public License 2.0, and the other components in ZeroTier's build under the ZeroTier Source-Available License for Non-Commercial Use; its source and both licences are at <https://github.com/zerotier/ZeroTierOne>.
 
 ## Valve Oil UI
 

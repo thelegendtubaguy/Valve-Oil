@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Rebuild the zram swap kernel modules for QIDI's Max 4 kernel and check them against the package manifest.
+"""Rebuild the kernel modules the package ships for QIDI's kernel and check them against the package manifest.
 
-The modules are built in Docker from a pinned Rockchip 5.10.160 tree with the exact Arm toolchain QIDI's kernel was
-built with, using kernel/qidi_max4_zram_defconfig. See kernel/README.md.
+The zram swap modules and the tun module ZeroTier needs are built in Docker from a pinned Rockchip 5.10.160 tree with
+the exact Arm toolchain QIDI's kernel was built with, using kernel/qidi_kernel_defconfig. See kernel/README.md.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ TOOLCHAIN_URL = (
 )
 TOOLCHAIN_SHA256 = "1e33d53dea59c8de823bbdfe0798280bdcd138636c7060da9d77a97ded095a84"
 BUILD_IMAGE = "debian:bookworm@sha256:d74df7598108a173a621eda4d58a2adbf850b2d9a9d81bc2cca1a6c21174a880"
-DEFCONFIG = REPO_ROOT / "kernel/qidi_max4_zram_defconfig"
+DEFCONFIG = REPO_ROOT / "kernel/qidi_kernel_defconfig"
 # Where each module is built in the kernel tree.
 TREE_PATHS = {
     "lz4_compress": "lib/lz4/lz4_compress.ko",
@@ -37,6 +37,7 @@ TREE_PATHS = {
     "lz4": "crypto/lz4.ko",
     "zsmalloc": "mm/zsmalloc.ko",
     "zram": "drivers/block/zram/zram.ko",
+    "tun": "drivers/net/tun.ko",
 }
 
 BUILD_SCRIPT = r"""
@@ -57,9 +58,9 @@ git checkout -q FETCH_HEAD
 # Armbian adds this vendor Ethernet driver unconditionally and it fails to build with this toolchain. QIDI's kernel
 # doesn't have it, and nothing else in the build depends on it.
 sed -i 's/^obj-m += yt6801.o/#&/' drivers/net/ethernet/motorcomm/Makefile
-cp /input/qidi_max4_zram_defconfig arch/arm64/configs/
+cp /input/qidi_kernel_defconfig arch/arm64/configs/
 export ARCH=arm64 CROSS_COMPILE=/w/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-
-make -s qidi_max4_zram_defconfig
+make -s qidi_kernel_defconfig
 # vmlinux first, so modpost checks the modules' symbols against it.
 make -s -j"$(nproc)" vmlinux
 make -s -j"$(nproc)" modules
@@ -98,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--install",
         action="store_true",
-        help="Copy the built modules into installer/system/zram after printing their hashes.",
+        help="Copy the built modules to their archive paths under installer/ after printing their hashes.",
     )
     args = parser.parse_args(argv)
     if args.output_dir.exists() or args.output_dir.is_symlink():
@@ -106,13 +107,14 @@ def main(argv: list[str] | None = None) -> int:
     if shutil.which("docker") is None:
         parser.error("docker is required")
 
-    spec = load_manifest(REPO_ROOT / "installer/package.yaml").system_optimizations.zram_swap
-    if [module.name for module in spec.modules] != list(TREE_PATHS):
-        parser.error("installer/package.yaml zram_swap.modules doesn't match the modules this script builds")
+    manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+    modules = [*manifest.system_optimizations.zram_swap.modules, *(module for addon in manifest.addons.catalog for module in addon.kernel_modules)]
+    if sorted(module.name for module in modules) != sorted(TREE_PATHS):
+        parser.error("installer/package.yaml's kernel modules don't match the modules this script builds")
     build(args.output_dir)
 
     mismatched = []
-    for module in spec.modules:
+    for module in modules:
         built = args.output_dir / f"{module.name}.ko"
         actual = sha256(built)
         print(f"{module.name}.ko {actual}")

@@ -57,8 +57,8 @@ ALLOWED_FILES = [
     "firmware/max4-mcu-valve-oil-v1.json",
     "firmware/MAINBOARD_FIRMWARE.md",
     "firmware/FLASHING.md",
-    "scripts/build_zram_modules.py",
-    "kernel/qidi_max4_zram_defconfig",
+    "scripts/build_kernel_modules.py",
+    "kernel/qidi_kernel_defconfig",
     "kernel/README.md",
     "scripts/build_klipper_chelper.py",
 ]

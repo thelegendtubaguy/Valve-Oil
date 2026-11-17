@@ -443,11 +443,104 @@ def tailscale_logout() -> dict:
     return tailscale_status()
 
 
-STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status, "tailscale": tailscale_status}
+ZEROTIER_PROGRAM = ADDONS_ROOT / "zerotier/app/zerotier-one"
+# ZeroTier's home: its identity, networks, and the token for its local API, which zerotier-one -q reads.
+ZEROTIER_HOME = ADDONS_ROOT / "zerotier-data"
+ZEROTIER_UNAVAILABLE = "ZeroTier isn't answering yet. It can take a few seconds after starting."
+ZEROTIER_NETWORK_ID = re.compile(r"^[0-9a-f]{16}$")
+# What zerotier-one reports for a network, as the panel names it.
+ZEROTIER_NETWORK_STATES = {
+    "OK": "ok",
+    "REQUESTING_CONFIGURATION": "requesting_configuration",
+    "ACCESS_DENIED": "access_denied",
+    "NOT_FOUND": "not_found",
+    "PORT_ERROR": "port_error",
+    "CLIENT_TOO_OLD": "client_too_old",
+    "AUTHENTICATION_REQUIRED": "authentication_required",
+}
+
+
+def _zerotier(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(ZEROTIER_PROGRAM), "-q", f"-D{ZEROTIER_HOME}", *args],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=10.0,
+        check=False,
+    )
+
+
+def _zerotier_json(*args: str):
+    try:
+        result = _zerotier("-j", *args)
+        return json.loads(result.stdout) if result.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def zerotier_status() -> dict:
+    info = _zerotier_json("info")
+    networks = _zerotier_json("listnetworks")
+    if not isinstance(info, dict) or not isinstance(networks, list):
+        return {"unavailable": ZEROTIER_UNAVAILABLE}
+    result = {
+        "node_id": str(info.get("address") or ""),
+        "online": info.get("online") is True,
+        "networks": [],
+    }
+    for network in networks:
+        if not isinstance(network, dict) or not ZEROTIER_NETWORK_ID.match(str(network.get("id") or "")):
+            continue
+        result["networks"].append(
+            {
+                "id": network["id"],
+                "name": str(network.get("name") or ""),
+                "status": ZEROTIER_NETWORK_STATES.get(str(network.get("status")), "requesting_configuration"),
+                # Addresses with their network prefix, such as 10.147.17.12/24.
+                "addresses": [address for address in network.get("assignedAddresses") or [] if isinstance(address, str)],
+            }
+        )
+    return result
+
+
+def _zerotier_network(body: dict) -> str:
+    network = body.get("network")
+    network = network.strip().lower() if isinstance(network, str) else ""
+    if not ZEROTIER_NETWORK_ID.match(network):
+        raise RequestError(HTTPStatus.BAD_REQUEST, "A ZeroTier network ID is 16 characters, 0-9 and a-f.")
+    return network
+
+
+def _zerotier_change(action: str, network: str) -> dict:
+    try:
+        result = _zerotier(action, network)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RequestError(HTTPStatus.BAD_GATEWAY, ZEROTIER_UNAVAILABLE) from exc
+    if result.returncode != 0:
+        log(f"zerotier {action} {network} failed: {result.stdout.strip()}")
+        raise RequestError(HTTPStatus.BAD_GATEWAY, ZEROTIER_UNAVAILABLE)
+    return zerotier_status()
+
+
+def zerotier_join(body: dict) -> dict:
+    """Join a network. ZeroTier remembers it, and the printer waits there until the network's admin authorizes it."""
+    return _zerotier_change("join", _zerotier_network(body))
+
+
+def zerotier_leave(body: dict) -> dict:
+    return _zerotier_change("leave", _zerotier_network(body))
+
+
+STATUS_PROBES = {"octoeverywhere": octoeverywhere_status, "obico": obico_status, "tailscale": tailscale_status, "zerotier": zerotier_status}
+# Actions answered here rather than run as add-on changes; each gets the request's JSON body.
 EXTRA_ACTIONS = {
-    ("octoeverywhere", "link-code"): octoeverywhere_link_code,
-    ("tailscale", "login"): tailscale_login,
-    ("tailscale", "logout"): tailscale_logout,
+    ("octoeverywhere", "link-code"): lambda body: octoeverywhere_link_code(),
+    ("tailscale", "login"): lambda body: tailscale_login(),
+    ("tailscale", "logout"): lambda body: tailscale_logout(),
+    ("zerotier", "join"): zerotier_join,
+    ("zerotier", "leave"): zerotier_leave,
 }
 
 
@@ -512,7 +605,7 @@ class Handler(BaseHTTPRequestHandler):
             addon, action = route[1], route[2]
             extra = EXTRA_ACTIONS.get((addon, action))
             if extra is not None:
-                self._send(HTTPStatus.OK, extra())
+                self._send(HTTPStatus.OK, extra(body))
                 return
             if action not in ACTIONS:
                 raise RequestError(HTTPStatus.NOT_FOUND, "Not found.")

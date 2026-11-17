@@ -980,7 +980,7 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 - **THEN** the install fails, Klipper, the touchscreen, and the automatic-update timer stay stopped, and the output names the `rescue` command
 
 ### Requirement: Optional add-ons
-The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/tltg-addons/` and its systemd unit. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
+The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/tltg-addons/`, its systemd unit, and, for an add-on that needs a kernel module QIDI's kernel lacks, its root-owned directory under `/usr/local/lib/tltg-addons/`. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
 
 #### Scenario: An add-on installs offline into its own directories
 - **WHEN** the operator installs an add-on while no print is running or paused and Klipper is not running G-code such as a calibration, whether or not a heater is on
@@ -996,6 +996,14 @@ The package SHALL let the operator install, update, and remove the add-ons pinne
 - **AND** nothing is installed unless the fetched file matches the pinned sha256
 - **AND** an add-on without wheels gets no Python environment
 - **AND** a release whose download fails leaves the installed build running and is reported without failing the install
+- **AND** from a Debian package, only the files the add-on uses are extracted, and an install fails when the package lacks one
+
+#### Scenario: An add-on's kernel modules load only on their kernel builds
+- **WHEN** the operator installs an add-on whose manifest entry pins kernel modules
+- **THEN** the install is refused before anything is written unless the running kernel is one of the builds `system_optimizations.zram_swap` lists
+- **AND** the modules, verified against their pinned sha256, and the script that loads them are installed owned by root, outside the `qidi` user's directories
+- **AND** the add-on's service runs that script as root before the add-on starts, and the script loads nothing on any other kernel build and waits for udev to set the new devices' permissions
+- **AND** a missing or changed module or script is put back without rebuilding the add-on, and removal unloads modules nothing uses and deletes them
 
 #### Scenario: Releases bring installed add-ons to their pinned builds
 - **WHEN** install or update runs with an add-on installed whose build differs from the release's
@@ -1015,7 +1023,7 @@ The package SHALL let the operator install, update, and remove the add-ons pinne
 - **WHEN** the operator installs OctoEverywhere while Obico is installed, by the package or otherwise, or Obico while OctoEverywhere is
 - **THEN** the install is refused before anything is written, and the list names the add-on to remove first
 - **AND** an add-on already installed still updates
-- **AND** Tailscale installs alongside either
+- **AND** Tailscale and ZeroTier install alongside either
 
 #### Scenario: Obico leaves the printer configuration alone
 - **WHEN** Obico is installed and running
@@ -1034,6 +1042,12 @@ The package SHALL let the operator install, update, and remove the add-ons pinne
 - **AND** it needs no TUN device and changes no routes, firewall rules, or DNS settings
 - **AND** an update keeps the printer's tailnet identity
 - **AND** removing it logs the printer out of the tailnet before its identity is deleted
+
+#### Scenario: ZeroTier runs as the qidi user on the package's tun module
+- **WHEN** ZeroTier is installed and running
+- **THEN** the package's `tun` module, built from the zram modules' kernel tree and configuration, provides `/dev/net/tun`
+- **AND** `zerotier-one` runs as the `qidi` user with only `CAP_NET_ADMIN` and `CAP_NET_RAW`, keeping its identity, networks, and local API token in its data directory
+- **AND** an update keeps the printer's ZeroTier identity and networks
 
 ### Requirement: Add-ons in Fluidd
 Normal install and update SHALL provide a package-owned add-ons service and a Fluidd nginx route that Fluidd's **Add-ons** settings use to list add-ons and run one install, update, remove, or relink at a time, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the Printer screen service.
@@ -1067,6 +1081,12 @@ Normal install and update SHALL provide a package-owned add-ons service and a Fl
 - **THEN** its panel shows whether its service runs and whether the printer is on a tailnet
 - **AND** a printer that is not logged in gets a new sign-in address on request, which the panel shows until the printer is signed in
 - **AND** a connected printer shows its tailnet, its name and addresses there, and when its sign-in expires, and can be logged out
+
+#### Scenario: ZeroTier networks are joined from Fluidd
+- **WHEN** ZeroTier is installed
+- **THEN** its panel shows whether its service runs, whether ZeroTier is online, and the printer's node ID
+- **AND** the operator can join a network by its ID, and the service refuses an ID that is not 16 hexadecimal digits before running anything
+- **AND** each network shows its name, whether it waits for authorization naming the node ID to authorize, and the printer's addresses on it once connected, and can be left
 
 ### Requirement: QIDI Plus 5 support
 The installer SHALL admit QIDI Plus 5 firmware `01.01.02.01` as the Plus 5, with its own stock snapshot, guarded-patch variants, source-patch expectations, and macro folder. It SHALL apply Max 4 firmware and host fixes to a Plus 5 only where that Plus 5's hardware, bootloader, or kernel is recognized for them.

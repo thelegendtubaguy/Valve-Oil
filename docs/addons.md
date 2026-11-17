@@ -2,13 +2,13 @@
 
 [← Back to the docs](README.md)
 
-Add-ons are optional programs that Valve Oil installs, updates, and removes for you. Each one runs from its own folder. OctoEverywhere and Obico come with their own copy of the Python packages they need, which ship with Valve Oil. Tailscale is downloaded from Tailscale when you install it. Installing an add-on doesn't install system packages, doesn't change files in `printer_data/config`, and doesn't turn on Moonraker's update manager. QIDI firmware updates leave add-ons and their settings in place.
+Add-ons are optional programs that Valve Oil installs, updates, and removes for you. Each one runs from its own folder. OctoEverywhere and Obico come with their own copy of the Python packages they need, which ship with Valve Oil. Tailscale and ZeroTier are downloaded from Tailscale and ZeroTier when you install them. Installing an add-on doesn't install system packages, doesn't change files in `printer_data/config`, and doesn't turn on Moonraker's update manager. QIDI firmware updates leave add-ons and their settings in place.
 
-The add-ons are [OctoEverywhere](#octoeverywhere), [Obico](#obico), and [Tailscale](#tailscale).
+The add-ons are [OctoEverywhere](#octoeverywhere), [Obico](#obico), [Tailscale](#tailscale), and [ZeroTier](#zerotier).
 
 OctoEverywhere and Obico both give remote access to Fluidd and the camera, print notifications, and AI failure detection, so only one of them can be installed at a time. To switch, remove the one you have first. Fluidd's **Install** for the other says which one to remove.
 
-Tailscale puts the printer on your own private network, so your devices reach it from anywhere as if they were at home. It can be installed alongside OctoEverywhere or Obico.
+Tailscale and ZeroTier each put the printer on your own private network, so your devices reach it from anywhere as if they were at home. Either or both can be installed alongside OctoEverywhere or Obico.
 
 ## Installing from Fluidd
 
@@ -20,7 +20,7 @@ Fluidd's **Add-ons** section talks to the printer it was opened from. Moonraker 
 
 ## Updating
 
-Each Valve Oil release pins the version of every add-on it offers. When you install or update Valve Oil, including through automatic updates, installed add-ons move to that release's version. If an add-on's new version doesn't keep running, or Tailscale's new version can't be downloaded, the version you had stays and the install says so. Valve Oil also says when an add-on update fails, and the rest of the update still goes ahead.
+Each Valve Oil release pins the version of every add-on it offers. When you install or update Valve Oil, including through automatic updates, installed add-ons move to that release's version. If an add-on's new version doesn't keep running, or Tailscale's or ZeroTier's new version can't be downloaded, the version you had stays and the install says so. Valve Oil also says when an add-on update fails, and the rest of the update still goes ahead.
 
 ## From SSH
 
@@ -33,6 +33,7 @@ Each Valve Oil release pins the version of every add-on it offers. When you inst
 ~/valve-oil/addons.sh remove octoeverywhere
 ~/valve-oil/addons.sh relink obico --server http://192.168.1.10:3334
 ~/valve-oil/addons.sh install tailscale
+~/valve-oil/addons.sh install zerotier
 ```
 
 `relink` is for Obico. See [Changing the server or unlinking](#changing-the-server-or-unlinking).
@@ -139,3 +140,54 @@ Its log is in the system journal. Read it with `journalctl -u tailscaled` over S
 ```
 
 Removing Tailscale logs the printer out of your tailnet and deletes its identity, so installing it again later means logging in again, and it joins as a new machine. If you installed Tailscale some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.
+
+## ZeroTier
+
+[ZeroTier](https://www.zerotier.com) joins the printer to a ZeroTier network you create in ZeroTier Central at [my.zerotier.com](https://my.zerotier.com). Any device on that network can then open Fluidd, watch the camera, and use SSH from anywhere, at the printer's address on the network. Nothing is opened to the internet.
+
+You need a ZeroTier account. ZeroTier's licence lets you use the build Valve Oil installs free of charge only for personal, non-commercial use. Use by or for a company, a non-profit, or a government, or for business purposes, needs a paid ZeroTier plan or licence; see ZeroTier's [licence](https://github.com/zerotier/ZeroTierOne/blob/main/nonfree/LICENSE.md).
+
+### Installing
+
+Installing ZeroTier needs the printer to be online. Valve Oil downloads ZeroTier 1.16.2's Debian 11 package for the printer, a 2.8 MB file, from `download.zerotier.com`, and installs it only if it is exactly the file this Valve Oil release names. It takes under a minute.
+
+ZeroTier needs Linux's `tun` driver, which QIDI's kernel doesn't include, so Valve Oil brings its own build of it, made for the kernels of the Max 4, Plus 5, and Smart 5 firmware Valve Oil supports. The install is refused on a printer whose kernel is a build the driver isn't made for, and if a QIDI firmware update later brings a different kernel, ZeroTier doesn't start until a Valve Oil release supports it.
+
+### Joining a network
+
+1. In ZeroTier Central, create a network, or open one you have, and copy its 16-character **Network ID**.
+2. In the ZeroTier panel under **Add-ons**, enter the network ID and click **Join**.
+3. The panel says **Waiting for approval** and shows the printer's **Node ID**. In ZeroTier Central, open the network's **Members**, find that node ID, and tick **Auth**.
+
+Within a few seconds of authorizing it, the panel says **Connected** and shows the printer's addresses on the network. The address is a link that opens the printer's Fluidd over ZeroTier. From another device on the network, open `http://<the printer's ZeroTier address>/`.
+
+The printer can be on more than one network. ZeroTier remembers its networks across restarts and Valve Oil updates. **Leave** takes the printer off a network. It stays in the network's member list in ZeroTier Central until you delete it there.
+
+### What network devices can reach
+
+The printer gets a network connection on each ZeroTier network it joins, as it has on your home network. Devices on the network reach every service the printer offers to your home network, SSH included, and the printer's own programs can reach devices on the network.
+
+Fluidd and Moonraker treat devices on the network as they treat your home network. QIDI's Moonraker trusts the private address ranges `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16` without a login, and ZeroTier Central's automatic address ranges are all in them. On a network you've given addresses outside those ranges, Fluidd can't connect to the printer over ZeroTier.
+
+ZeroTier takes the addresses and routes the network gives it, but not a default route or DNS settings, so the printer's own internet connection doesn't change.
+
+Join the printer only to networks whose devices and people you'd let use it. To narrow who can reach it, use ZeroTier's [flow rules](https://docs.zerotier.com/rules/).
+
+### What it changes
+
+ZeroTier's own package installs system-wide and runs as root. Valve Oil installs:
+
+- ZeroTier's `zerotier-one` program, unmodified, in `~/tltg-addons/zerotier/`;
+- the printer's ZeroTier identity and its networks in `~/tltg-addons/zerotier-data/`;
+- the `tun` driver and the script that loads it in `/usr/local/lib/tltg-addons/zerotier/`, owned by root, since root loads them;
+- the `zerotier-one` service, which loads the `tun` driver as root and then runs ZeroTier as the `qidi` user with only the rights it needs to create and configure its network connection, on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
+
+On the test Plus 5, ZeroTier takes about 12 MB of memory and under 1% of one CPU core while nothing uses it.
+
+Its log is in the system journal. Read it with `journalctl -u zerotier-one` over SSH. To use ZeroTier's command line, name its folder:
+
+```bash
+~/tltg-addons/zerotier/app/zerotier-one -q -D$HOME/tltg-addons/zerotier-data listnetworks
+```
+
+Removing ZeroTier unloads the `tun` driver and deletes the printer's ZeroTier identity, so installing it again later gives the printer a new node ID, which you authorize again. If you installed ZeroTier some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.

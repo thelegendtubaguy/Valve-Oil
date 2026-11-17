@@ -747,7 +747,7 @@ system_optimizations:
         archive: system/moonraker-speedups/uvloop-0.23.0-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
         sha256: 55d6f4135d914305929fe9e9c44d8b5383a9b3fa1bee3bfcf60ee97e01af07ea
   # Compressed swap in RAM for QIDI's kernel, which ships without zram. The modules load only on these exact kernel
-  # builds; scripts/build_zram_modules.py rebuilds them from kernel/ and checks these hashes. The Plus 5's #3 differs
+  # builds; scripts/build_kernel_modules.py rebuilds them from kernel/ and checks these hashes. The Plus 5's #3 differs
   # from the Max 4's #4 only in its build string and the bytes that string shifts, and the Smart 5's #15 from the
   # Plus 5's #3 only in its build string and build ID (kernel/README.md).
   zram_swap:
@@ -988,3 +988,17 @@ addons:
         url: https://pkgs.tailscale.com/stable/tailscale_1.104.6_arm64.tgz
         archive: addons/tailscale/tailscale_1.104.6_arm64.tgz
         sha256: d0e4f297da3c428d02162c6235b9948e4ddc245c64502b7b05647da9b96a0971
+    - id: zerotier
+      version: "1.16.2"
+      # Not in the bundle: the printer downloads ZeroTier's Debian 11 package when the add-on is installed or updated.
+      download: true
+      source:
+        url: https://download.zerotier.com/RELEASES/1.16.2/dist/debian/bullseye/zerotier-one_1.16.2_arm64.deb
+        archive: addons/zerotier/zerotier-one_1.16.2_arm64.deb
+        sha256: 62c1c6ec2c2d66d855d1987c02387e076043165e0e07d85d073f2a68e0573c5c
+      # QIDI's kernel has no TUN device. This module is built from the same kernel tree as zram_swap's and loads only on
+      # its kernel builds; scripts/build_kernel_modules.py rebuilds it and checks this hash.
+      kernel_modules:
+        - name: tun
+          archive: system/tun/tun.ko
+          sha256: 013346a463275f1ef255852aa479d32e2efc4ed26b3728fa1f2e6ef9de14e881

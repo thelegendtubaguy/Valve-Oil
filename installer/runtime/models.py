@@ -456,6 +456,11 @@ class AddonSpec:
     sdists: tuple[SystemWheelSpec, ...] = ()
     # The source isn't in the bundle; the printer downloads it from source.url when the add-on is installed or updated.
     download: bool = False
+    # Kernel modules the add-on needs that QIDI's kernel lacks, in load order. They are built from the same kernel tree as
+    # zram swap's modules and load only on its kernel builds, which the manifest copies here.
+    kernel_modules: tuple["SystemKernelModuleSpec", ...] = ()
+    kernel_release: str = ""
+    kernel_versions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

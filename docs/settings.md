@@ -75,5 +75,5 @@ See [Installing, updating, and uninstalling](install.md) for the dry run and the
 | Command | What it does |
 |---|---|
 | [`~/valve-oil/addons.sh list`](addons.md#from-ssh) | Lists the add-ons and which are installed. |
-| [`~/valve-oil/addons.sh install <id>`, `update <id>`, `remove <id>`](addons.md#from-ssh) | Installs, updates, or removes an add-on, such as `octoeverywhere`, `obico`, or `tailscale`, as Fluidd's **Add-ons** settings do. |
+| [`~/valve-oil/addons.sh install <id>`, `update <id>`, `remove <id>`](addons.md#from-ssh) | Installs, updates, or removes an add-on, such as `octoeverywhere`, `obico`, `tailscale`, or `zerotier`, as Fluidd's **Add-ons** settings do. |
 | [`~/valve-oil/addons.sh relink obico [--server <url>]`](addons.md#changing-the-server-or-unlinking) | Unlinks Obico, optionally moves it to another Obico server, and restarts it so it can be linked again. |

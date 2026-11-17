@@ -12,6 +12,10 @@ over the add-on's entry; the bundle builder downloads and verifies the same file
 An add-on the printer downloads when it is installed has no Python packages; only its file is pinned.
 
     python3 scripts/lock_addon.py tailscale 1.104.6
+    python3 scripts/lock_addon.py zerotier 1.16.2
+
+ZeroTier's entry also needs its kernel_modules block, which this script doesn't print; scripts/build_kernel_modules.py
+builds and checks it.
 """
 from __future__ import annotations
 
@@ -53,6 +57,11 @@ ADDONS = {
     # Tailscale's static build for arm64, downloaded by the printer.
     "tailscale": {
         "source_url": "https://pkgs.tailscale.com/stable/tailscale_{version}_arm64.tgz",
+        "download": True,
+    },
+    # ZeroTier's arm64 package for Debian 11, the release QIDI's printers run, downloaded by the printer.
+    "zerotier": {
+        "source_url": "https://download.zerotier.com/RELEASES/{version}/dist/debian/bullseye/zerotier-one_{version}_arm64.deb",
         "download": True,
     },
 }
@@ -138,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _download(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=120) as response:
+    # download.zerotier.com refuses Python's default User-Agent; this is the one the printer sends.
+    request = urllib.request.Request(url, headers={"User-Agent": "Valve-Oil-addons"})
+    with urllib.request.urlopen(request, timeout=120) as response:
         return response.read()
 
 

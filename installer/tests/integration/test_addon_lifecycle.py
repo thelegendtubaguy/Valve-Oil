@@ -16,11 +16,12 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 from installer.runtime import addons
-from installer.runtime.models import AddonSpec, AddonsSpec, SystemWheelSpec
+from installer.runtime.models import AddonSpec, AddonsSpec, SystemKernelModuleSpec, SystemWheelSpec
 
 ADDON = addons.OCTOEVERYWHERE
 OBICO = addons.OBICO
 TAILSCALE = addons.TAILSCALE
+ZEROTIER = addons.ZEROTIER
 PATHS = addons.addon_paths(ADDON.id)
 UNIT_FILE = f"{addons.UNIT_DIR}/{ADDON.unit}"
 
@@ -303,12 +304,95 @@ class AddonLifecycleTests(unittest.TestCase):
         self.assertEqual(addons.read_marker(TAILSCALE.id, root=self.root)["version"], "1.0")
         self.assertEqual(self.path(f"{paths.app}/tailscaled").read_text(encoding="utf-8"), "1.0")
 
+    def test_a_kernel_module_addon_installs_root_owned_modules_only_on_their_kernels(self) -> None:
+        program = b"zerotier-one 1.0"
+        data = io.BytesIO()
+        with tarfile.open(fileobj=data, mode="w:xz") as tar:
+            for name, content in (("./usr/sbin/zerotier-one", program), ("./etc/init.d/zerotier-one", b"#!/bin/sh\n")):
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(content), 0o755
+                tar.addfile(info, io.BytesIO(content))
+        package = _deb({"debian-binary": b"2.0\n", "control.tar.xz": b"odd", "data.tar.xz": data.getvalue()})
+        module = self.installer_root / "system/tun/tun.ko"
+        module.parent.mkdir(parents=True)
+        module.write_bytes(b"tun module")
+        source = SystemWheelSpec(
+            url="https://example.invalid/zerotier-one_1.0_arm64.deb",
+            archive="addons/zerotier/zerotier-one_1.0_arm64.deb",
+            sha256=hashlib.sha256(package).hexdigest(),
+        )
+        base = _bundle(self.installer_root, "1.0")
+        spec = AddonsSpec(
+            pip_wheel=base.pip_wheel,
+            catalog=(
+                AddonSpec(
+                    id=ZEROTIER.id,
+                    version="1.0",
+                    source=source,
+                    wheels=(),
+                    download=True,
+                    kernel_modules=(SystemKernelModuleSpec(name="tun", archive="system/tun/tun.ko", sha256=hashlib.sha256(b"tun module").hexdigest()),),
+                    kernel_release="5.10.160",
+                    kernel_versions=("#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025",),
+                ),
+            ),
+        )
+        paths = addons.addon_paths(ZEROTIER.id)
+
+        def install() -> str:
+            return addons.install_addon(
+                ZEROTIER.id, spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host,
+                sleep=lambda _: None, urlopen=lambda request, timeout=None: io.BytesIO(package),
+            )
+
+        def kernel(version: str) -> None:
+            for path, value in ((addons.OSRELEASE, "5.10.160\n"), (addons.KERNEL_VERSION, f"{version}\n")):
+                self.path(path).parent.mkdir(parents=True, exist_ok=True)
+                self.path(path).write_text(value, encoding="utf-8")
+
+        # Another kernel build, such as one a QIDI update brings, gets nothing.
+        kernel("#5 SMP PREEMPT Mon Jan 5 10:00:00 CST 2026")
+        with self.assertRaises(addons.AddonError):
+            install()
+        self.assertFalse(self.path(addons.ROOT).exists())
+        self.assertFalse(self.path(addons.SYSTEM_ROOT).exists())
+
+        kernel("#4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025")
+        self.assertEqual(install(), addons.INSTALLED)
+        # Only the package's program is unpacked, and root loads the module from outside the qidi user's directories.
+        self.assertEqual(sorted(path.name for path in self.path(paths.app).iterdir()), ["zerotier-one"])
+        self.assertEqual(self.path(f"{paths.app}/zerotier-one").read_bytes(), program)
+        self.assertEqual(self.path(f"{paths.system}/tun.ko").read_bytes(), b"tun module")
+        loader = self.path(f"{paths.system}/{addons.MODULE_LOADER}").read_text(encoding="utf-8")
+        self.assertIn("'5.10.160 #4 SMP PREEMPT Wed Sep 3 15:21:57 CST 2025')", loader)
+        unit = self.path(f"{addons.UNIT_DIR}/{ZEROTIER.unit}").read_text(encoding="utf-8")
+        self.assertIn(f"ExecStartPre=+{paths.system}/{addons.MODULE_LOADER}\n", unit)
+        self.assertIn("User=qidi\n", unit)
+
+        # A missing module is put back without rebuilding; removal takes the modules too.
+        self.path(f"{paths.system}/tun.ko").unlink()
+        self.assertEqual(addons.update_installed_addons(spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None), [])
+        self.assertTrue(self.path(f"{paths.system}/tun.ko").is_file())
+        self.assertTrue(addons.remove_addon(ZEROTIER.id, root=self.root, sudo_password=None, run=self.host))
+        self.assertFalse(self.path(paths.system).exists())
+        self.assertFalse(self.path(paths.code).exists())
+
     def test_files_that_do_not_match_the_manifest_are_refused(self) -> None:
         spec = _bundle(self.installer_root, "1.0")
         (self.installer_root / spec.catalog[0].wheels[0].archive).write_bytes(b"tampered")
         with self.assertRaises(addons.AddonError):
             self.install(spec)
         self.assertFalse(self.path(addons.ROOT).exists())
+
+
+def _deb(members: dict[str, bytes]) -> bytes:
+    """A Debian package: an ar archive of its members."""
+    out = io.BytesIO()
+    out.write(b"!<arch>\n")
+    for name, data in members.items():
+        out.write(f"{name + '/':<16}{0:<12}{0:<6}{0:<6}{100644:<8}{len(data):<10}`\n".encode("ascii"))
+        out.write(data + (b"\n" if len(data) % 2 else b""))
+    return out.getvalue()
 
 
 def _load_server():
@@ -394,6 +478,11 @@ class AddonServiceRequestTests(unittest.TestCase):
         status, _ = self.request("/api/addons/obico/relink", headers=good, body=b'{"server": "--help http://x"}')
         self.assertEqual(status, 202)
         self.assertEqual(self.started[-1], ("obico", "relink", "--server=--help http://x"))
+        # A ZeroTier network ID reaches zerotier-one's command line, so only 16 hex digits are accepted.
+        for body in (b'{"network": "--help"}', b'{"network": "8056c2e21c00000"}', b'{"network": "8056c2e21c00000g"}', b"{}"):
+            with self.subTest(body=body):
+                self.assertEqual(self.request("/api/addons/zerotier/join", headers=good, body=body)[0], 400)
+                self.assertEqual(self.request("/api/addons/zerotier/leave", headers=good, body=body)[0], 400)
         status, body = self.request("/api/addons", method="GET")
         self.assertEqual((status, body["addons"][0]["id"], body["busy"]), (200, "octoeverywhere", False))
 
