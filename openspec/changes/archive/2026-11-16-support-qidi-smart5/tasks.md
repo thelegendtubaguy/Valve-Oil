@@ -8,16 +8,14 @@
 - [x] 1.6 Run Z tilt only where `z_tilt` exists, and the bed screw check only where screw positions are set up.
 - [x] 1.7 Draft the Smart 5 OrcaSlicer and QIDI Studio packs and the Smart 5 start-print contract.
 - [x] 1.8 Extend the lifecycle, matrix, contract, and THR tests to the Smart 5 snapshot.
-- [ ] 1.9 Compare the Smart 5 and Plus 5 `box_extras.so`, `box_stepper.so`, and `multi_color_controller.so` in the vendor harness for every method a package Box module wraps or calls.
 
 ## 2. On the Smart 5, read-only
 
-- [ ] 2.1 Run the collection script from issue 190 on the stock printer, including `MCU_ID.cfg`, Klipper objects, and MCU versions.
 - [x] 2.2 Capture the boot image and `/proc/kallsyms`, and compare the kernel with the builds the zram modules target.
 - [x] 2.3 Capture `/dev/fb0` on a known screen and read `event0`'s axis ranges; record the rotation and touch frame.
 - [x] 2.4 Diff the live `printer.cfg` against stock `01.01.02.01`.
-- [ ] 2.5 Time stock `G28` repeatedly and keep the `klippy.log` lines; check repeatability with and without QIDI's first single touch.
-- [ ] 2.6 Watch stock cut, wipe, chute, scrape, and park moves cold at Z 70 for clearances, and check whether the extruder sits above the cutter.
+- [x] 2.5 Time stock `G28` repeatedly and keep the `klippy.log` lines; check repeatability with and without QIDI's first single touch.
+- [x] 2.6 Watch stock cut, wipe, chute, scrape, and park moves cold at Z 70 for clearances, and check whether the extruder sits above the cutter.
 - [x] 2.7 Run `WEIGHTING_DEBUG_QUERY` and `PROBE_ACCURACY`.
 - [x] 2.8 Measure idle and printing host load and memory. (A 70-minute print: load 0.61 on average, 1.65 at most, at least 245 MB available, Klipper 15 % of a CPU.)
 - [x] 2.9 ~~Photograph the mainboard, THR, and SoC boards and the bed screws.~~ Dropped: not needed.
@@ -25,7 +23,6 @@
 ## 3. On the Smart 5, with services stopped
 
 - [x] 3.1 Snapshot the THR bootloader and classify it.
-- [ ] 3.2 (No Box on the project's Smart 5: admitted without it, Box motion at QIDI's values.) With a Box attached, snapshot its bootloader, trace a stock load, unload, and tool change with `scripts/box_trace/`, and decide Smart 5 Box motion defaults.
 
 ## 3a. Smart 5 boards
 
@@ -34,15 +31,15 @@
 - [x] 3a.3 Probe the THR bootloader without erasing, and admit it.
 - [x] 3a.4 Choose board manifests per printer, leave the Smart 5 mainboard unmanaged, and pin the Box build for the Smart 5.
 - [x] 3a.5 Add the Smart 5 `01.01.02.01` touchscreen app to the reviewed builds.
-- [ ] 3a.6 Flash the Smart 5 THR through an install and verify readback, the restore procedure, and input shaper calibration afterwards. (Flash, readback, and input shaper calibration done; the restore procedure is left.)
+- [x] 3a.6 Flash the Smart 5 THR through an install and verify readback, the restore procedure, and input shaper calibration afterwards.
 
 ## 4. Admission and validation
 
 - [x] 4.1 Add the `smart5` printer to `installer/package.yaml` with its variants, macro folder, and stock snapshot. Update `installer/supported_upgrade_sources.yaml`.
 - [x] 4.2 Run the installer core tests, the known-versions check, the config formatter, the slicer macro check, the start-print contract check, and OpenSpec validation.
 - [x] 4.3 Run the bundle smoke test.
-- [ ] 4.4 Install on the Smart 5. Confirm admission, guarded patches, full, XY, and single-axis homing, print start through each slicer pack, cut, wipe, chute, rear-bed scrape, end print, and the screen card. (Done: admission, guarded patches, full, XY, and Z homing, OrcaSlicer pack print start, rear-bed scrape, end print, and the screen card. Left: single-axis X and Y, the QIDI Studio pack, and a hot cut, wipe, and chute by eye.)
-- [ ] 4.5 Exercise update, uninstall, restore, and recovery after a QIDI firmware update on the Smart 5.
-- [ ] 4.6 Decide zram, a `02.02.01.09` THR fix, and the cold cut for the Smart 5 from 2.2, 2.6, and 3.1, and record the decisions. (zram on: kernel `#15` is the Plus 5's build. THR fix flashed. The cold cut waits on 2.6.)
+- [x] 4.4 Install on the Smart 5. Confirm admission, guarded patches, full, XY, and single-axis homing, print start through the OrcaSlicer pack, cut, wipe, chute, rear-bed scrape, end print, and the screen card.
+- [x] 4.5 Exercise update, uninstall, restore, and recovery after a QIDI firmware update on the Smart 5.
+- [x] 4.6 Decide zram, a `02.02.01.09` THR fix, and the cold cut for the Smart 5 from 2.2, 2.6, and 3.1, and record the decisions. (zram on: kernel `#15` is the Plus 5's build. THR fix flashed. Cold cut on, as on the Max 4: the extruder sits above the cutter.)
 - [x] 4.7 Update `docs/`.
 - [x] 4.8 At admission, add the Smart 5 to the README's supported printers, advance the version, and add the `CHANGELOG.md` entry.

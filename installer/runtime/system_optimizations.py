@@ -2697,6 +2697,7 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
         # loads every new unit.
         run_sudo_or_raise(["systemctl", "enable", "--no-reload", guarded.service_unit], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
         restarts.reload_units()
+        restarts.unit_installed(guarded.service_unit)
     if guarded.reloads_units:
         restarts.reload_units()
     if guarded.restart_service:
@@ -2898,7 +2899,7 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
 def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], *, paths: RuntimePaths, root: Path, sudo_password: str | None, run, restarts: _ServiceRestarts) -> None:
     if guarded.service_unit:
         run_sudo_ignore_failure(["systemctl", "disable", "--now", "--no-reload", guarded.service_unit], run=run, password=sudo_password or "")
-        restarts.discard(guarded.service_unit)
+        restarts.unit_removed(guarded.service_unit)
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, durable=guarded.binary is not None)
     if guarded.service_unit:
         restarts.reload_units()
@@ -3309,13 +3310,22 @@ class _ServiceRestarts:
         self._run = run
         self._urlopen = urlopen
         self._pending: dict[str, bool] = {}
+        self._removed: set[str] = set()
         self._reload = False
 
     def request(self, service: str, *, required: bool = False) -> None:
+        # A unit removed earlier in this transaction can't be restarted. Restoration follows the ledger's order, so a
+        # file the unit runs, such as the Box monitor script, can be restored after the unit itself.
+        if service in self._removed:
+            return
         self._pending[service] = self._pending.get(service, False) or required
 
-    def discard(self, service: str) -> None:
+    def unit_removed(self, service: str) -> None:
         self._pending.pop(service, None)
+        self._removed.add(service)
+
+    def unit_installed(self, service: str) -> None:
+        self._removed.discard(service)
 
     def reload_units(self) -> None:
         self._reload = True

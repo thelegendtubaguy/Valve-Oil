@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 import threading
 import types
 import unittest
+from unittest import mock
 
 from installer.tests.helpers import REPO_ROOT
 
@@ -257,6 +259,7 @@ class Manager:
 
     FLOW_MAP = {0: [], 3: ["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD"], 4: ["BOX_EJECT"],
                 5: ["BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT"],
+                6: ["EXT_HEAT", "EXT_LOAD", "EXT_WIPE"],
                 7: ["EXT_HEAT", "EXT_CUT", "EXT_UNLOAD"]}
 
     def __init__(self, gcode, unload_failures, unload_errors):
@@ -265,6 +268,7 @@ class Manager:
         self.current_flow_temp = None
         self.unload_failures = unload_failures
         self.unload_errors = unload_errors
+        self.wipe_errors = 0
         run = gcode.run_script_from_command
         self.method_map = {
             "BOX_HEAT": lambda: run("MOVE_TO_TRASH\nM109 S%s" % (self.current_flow_temp,)) or True,
@@ -274,7 +278,18 @@ class Manager:
             "EXT_HEAT": lambda: run("MOVE_TO_TRASH\nM109 S%s" % (self.current_flow_temp,)) or True,
             "EXT_CUT": lambda: run("CUT_FILAMENT_1") or True,
             "EXT_UNLOAD": lambda: run("M83\nG1 E-60 F300") or True,
+            "EXT_LOAD": lambda: True,
+            "EXT_WIPE": self.external_wipe,
         }
+
+    def external_wipe(self):
+        # QIDI's ExternalAdapter.wipe: its script's errors raise, and it
+        # returns False once the script has run.
+        self.gcode.run_script_from_command("MOVE_TO_TRASH\nWIPE_NOZZLE_DROP\nM118 cleaning complete")
+        if self.wipe_errors:
+            self.wipe_errors -= 1
+            raise CommandError("Move out of range")
+        return False
 
     def unload(self):
         run = self.gcode.run_script_from_command
@@ -429,6 +444,51 @@ class ColdBoxFlowTest(unittest.TestCase):
                 with self.assertRaises(CommandError):
                     self.unload(gcode, COLD=1)
                 self.assertEqual((gcode.sent, printer.moves), ([], []))
+
+
+class ExternalLoadTest(unittest.TestCase):
+    """QIDI's external-spool load ends with a wipe that reports failure after
+    it has run."""
+
+    def load(self, reviewed, wipe_errors=0):
+        printer = Printer(25.)
+        gcode = printer.objects["gcode"] = Dispatcher(printer)
+        controller = Controller(gcode, 6)
+        manager = controller.task_queue_manager
+        manager.wipe_errors = wipe_errors
+        printer.objects["multi_color_controller"] = controller
+        config = types.SimpleNamespace(get_printer=lambda: printer)
+        printer.register_event_handler = lambda event, handler: None
+        with open(__file__, "rb") as f:
+            build = hashlib.sha256(f.read()).hexdigest()
+        builds = frozenset((build,)) if reviewed else box_flow_recovery.EXTERNAL_WIPE_FALSE_BUILDS
+        with mock.patch.object(box_flow_recovery, "EXTERNAL_WIPE_FALSE_BUILDS", builds):
+            box_flow_recovery.BoxFlowRecovery(config)._handle_ready()
+            completed = []
+            try:
+                manager.start_flow(6, completed.append)
+            except CommandError:
+                pass
+        return gcode, manager, completed
+
+    def test_load_completes_after_the_wipe_runs(self) -> None:
+        gcode, manager, completed = self.load(reviewed=True)
+        self.assertIn("M118 cleaning complete", gcode.sent)
+        self.assertEqual(len(completed), 1)
+        self.assertIsNone(manager.current_task)
+        self.assertFalse(any("failed" in message for message in gcode.messages))
+
+    def test_wipe_error_still_pauses_the_flow(self) -> None:
+        gcode, manager, completed = self.load(reviewed=True, wipe_errors=1)
+        self.assertEqual(completed, [])
+        self.assertTrue(manager.current_task.is_paused)
+        self.assertIn("Step EXT_WIPE failed. Pausing flow.", gcode.messages)
+
+    def test_other_builds_keep_qidis_result(self) -> None:
+        gcode, manager, completed = self.load(reviewed=False)
+        self.assertEqual(completed, [])
+        self.assertTrue(manager.current_task.is_paused)
+        self.assertIn("Step EXT_WIPE failed. Pausing flow.", gcode.messages)
 
 
 if __name__ == "__main__":

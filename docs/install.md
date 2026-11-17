@@ -131,6 +131,7 @@ Each Valve Oil release brings the printer to one QIDI firmware, the newest it su
 |---|---|---|
 | QIDI Max 4 | `01.01.07.01` | `01.01.06.03`, `01.01.06.04`, `01.01.06.05` |
 | QIDI Plus 5 | `01.01.02.01` | nothing older yet |
+| QIDI Smart 5 | `01.01.02.01` | nothing older yet |
 
 When you install or update Valve Oil on one of the older firmware versions, the installer updates the firmware without asking, so every printer runs the same QIDI firmware. It first says what it does:
 
@@ -143,7 +144,7 @@ The printer can't be used while it runs, usually 10 to 30 minutes. Don't turn th
 
 Interactive installs, `--yes` installs, **Update now**, and automatic updates all update it the same way.
 
-**Before it starts,** the update checks that no print is running or paused, every heater target is 0, the printer has enough free space (about 2.1 GB in `/home/qidi` on the Max 4), the THR and mainboard are boards Valve Oil supports, no earlier installer or board operation needs recovery, and `sudo` accepts QIDI's default password (see below). It downloads QIDI's package only from this project's mirror ([Max 4](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults/releases), [Plus 5](https://github.com/thelegendtubaguy/Qidi-Plus5-Defaults/releases)) and checks it against the size and SHA-256 the release names. A download that stops part way picks up where it stopped next time. If anything fails, it says `The firmware update did not start:` and why, followed by `Nothing was changed; it is tried again at the next install or update check.`, and Valve Oil installs for the current firmware as usual. That includes a mirror that can't be reached.
+**Before it starts,** the update checks that no print is running or paused, every heater target is 0, the printer has enough free space (about 2.1 GB in `/home/qidi` on the Max 4), the THR and mainboard are boards Valve Oil supports, no earlier installer or board operation needs recovery, and `sudo` accepts QIDI's default password (see below). It downloads QIDI's package only from this project's mirror ([Max 4](https://github.com/thelegendtubaguy/Qidi-Max4-Defaults/releases), [Plus 5](https://github.com/thelegendtubaguy/Qidi-Plus5-Defaults/releases), [Smart 5](https://github.com/thelegendtubaguy/Qidi-Smart5-Defaults/releases)) and checks it against the size and SHA-256 the release names. A download that stops part way picks up where it stopped next time. If anything fails, it says `The firmware update did not start:` and why, followed by `Nothing was changed; it is tried again at the next install or update check.`, and Valve Oil installs for the current firmware as usual. That includes a mirror that can't be reached.
 
 **When free space is short,** the update first removes files that aren't yours and that the printer doesn't need, then checks again: the system journal beyond 50 MB, apt's download cache, `~/download/online_update.zip` left by the touchscreen's online update, and rotated logs in `~/printer_data/logs`, such as `klippy.log.2026-11-08`, more than two days old. It says how much it freed. Your prints, timelapses, current logs, and QIDI's `~/update` folder are left alone. If that isn't enough, see [The firmware update didn't start](troubleshooting.md#the-firmware-update-didnt-start).
 

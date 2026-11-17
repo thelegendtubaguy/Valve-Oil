@@ -154,6 +154,10 @@ Stopping a failed Box load with `FLOW_STOP` no longer leaves every later command
 
 Unload and Eject now pull back a slot's filament that a failed load left between the Box hub and the toolhead. See [QIDI Box](qidi-box.md#filament-stopped-between-the-hub-and-the-toolhead).
 
+## External spool loads ending in `Step EXT_WIPE failed`
+
+Loading the external spool from the touchscreen ended with `Step EXT_WIPE failed. Pausing flow.` after the purge and nozzle wipe had run, so QIDI stopped the load instead of finishing it and turned the nozzle heater off. QIDI's wipe step reports a failure every time it runs. Seen on the Smart 5; the Max 4 and Plus 5 have the same QIDI code. The load now finishes. A wipe that hits an error, such as a move out of range, still pauses the load as before.
+
 ## Multi-plate 3MF files
 
 A 3MF file started without a plate number, for example from Fluidd, a reprint, or the job queue, prints the plate it was sliced on instead of plate 1. Before, files exported from a plate other than plate 1 failed with `3MF processing error: [Errno 2] No such file or directory`.
