@@ -7,7 +7,7 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Runtime ca
 | Variable family | Meaning |
 |---|---|
 | `enable_box`, `box_count` | Whether prints use the Box, set per print by whatever starts it (see below), and the detected Box count. |
-| `value_t0` through `value_t15` | Logical tool-to-slot mapping. Missing mappings default to `slot16` in recovered `BOX_PRINT_START`. |
+| `value_t0` through `value_t15` | Logical tool-to-slot mapping. Missing mappings defaulted to `slot16` in `BOX_PRINT_START` recovered before `.07.01`; on `.07.01` they resolve to `slot<tool>` (see `BOX_PRINT_START`). |
 | `slot0` through `slot15` | Physical-slot `BoxState` values. |
 | `last_load_slot` | Last loaded slot according to vendor state. |
 | `slot_sync` | Slot currently trusted/bound to the extruder. |
@@ -132,11 +132,14 @@ Every harnessed call first:
 3. writes `retry_step=None`;
 4. clears `runout_0` through `runout_15`;
 5. writes `extrude_state=-1`;
-6. reads `enable_box` and `value_t<tool>`, defaulting a missing mapping to `slot16`.
+6. reads `enable_box` and `value_t<tool>`, defaulting a missing mapping to `slot16` (before `.07.01`).
 
 Harnessed branch families used `MOVE_TO_TRASH`, `M109`, `M400` where required, and downstream `EXTRUDER_LOAD` / `EXTRUDER_UNLOAD`. The fake harness emitted an unload from `slot-1` in one unsynced case; exact live predicates for same-slot, changed-slot, cut-before-unload, unsynced, and `slot16` handling remain unresolved.
 
 When `enable_box=0`, recovered setup runs and the command returns without feeder motion. Repository code must still distinguish `enable_box` from object existence.
+
+- **Harness-recovered (2026-11-17, `.07.01`, `multi_color_controller.so` sha256 `b7e3bc21…` and `box_extras.so` sha256 `0878b5b9…`, fake objects):** with a USB Box, `BOX_PRINT_START` returns without Box work when `enable_box` is not `1`; otherwise `BoxAdapterV1.box_print_start` calls `BoxExtras.box_print_start(tool, temp)`. That resolves a missing `value_t<tool>` and `'slot<tool>'` alike to `slot<tool>` and reaches `printer.lookup_object('box_stepper slot<N>')` with no default, at `box_extras.py` line 1532 or, after a cut of a loaded Box slot, line 1510. A slot on no configured Box, `slot16` included, raises `Unknown config object`, which Klipper reports as an internal error and shuts down. A mapping to a configured slot, such as `value_t4='slot0'` with one Box, loads that slot. With `enable_box` `0`, `T_MANAGER T=4` returns without calling `box_extras`.
+- **Runtime-confirmed (operator `klippy.log`, 2026-11-17, `.07.01`, one USB Box, package `26.11.15.1`):** three OrcaSlicer prints whose start tool was T4 shut down in `BOX_PRINT_START` with `configparser.Error: Unknown config object 'box_stepper slot4'` from `box_extras.py` line 1532. With print-start Box prep skipped for that tool, the slicer's `T4` raised the same error out of `T_MANAGER` instead of the `QDE_004_027` pause recovered for targets beyond `box_count * 4`; Valve Oil's tool-change guard paused the print.
 
 ## Firmware `01.01.06.05` compiled-module differences
 

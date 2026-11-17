@@ -256,7 +256,7 @@ Forbidden patterns:
 
 Condition: `all optimized starts`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:207-239`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:207-259`
 
 Direct visible macro calls in branch slice:
 
@@ -275,11 +275,39 @@ Forbidden patterns:
 - `BOX_PRINT_START`
 - `_TLTG_RESET_TOOL_MAPPINGS`
 
+### start_tool_without_usb_box_slot
+
+Condition: `USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on`
+
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:232-255`
+
+Direct visible macro calls in branch slice:
+
+- none
+
+Ordered invariants:
+
+- `if 'box_extras' in printer else -1`
+- `{% set tool_on_box = usb_box_slots < 0 or (tool_slot_index >= 0 and tool_slot_index < usb_box_slots) %}`
+- `{% set external_tool = box_on and box_available and not tool_on_box %}`
+- `{% set box_enabled = (box_on or restore_box) and box_available and tool_on_box %}`
+- `{% if external_tool %}`
+- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=0`
+- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=1`
+- `{% elif restore_box %}`
+- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=1`
+- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=0`
+
+Forbidden patterns:
+
+- `BOX_PRINT_START`
+- `SAVE_VARIABLE VARIABLE=enable_box`
+
 ### retained_filament_reuse
 
 Condition: `tltg_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:240-278`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:260-298`
 
 Direct visible macro calls in branch slice:
 
@@ -328,7 +356,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:279-322`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:299-342`
 
 Direct visible macro calls in branch slice:
 
@@ -379,9 +407,9 @@ Forbidden patterns:
 
 ### no_box_external_spool
 
-Condition: `!box_available || !enable_box`
+Condition: `!box_available || !enable_box || start tool on no connected USB Box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:323-359`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:343-379`
 
 Direct visible macro calls in branch slice:
 
@@ -714,7 +742,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:512-558`
+Source: `installer/klipper/tltg-optimized-macros/filament.cfg:536-582`
 
 Direct visible macro calls in branch slice:
 

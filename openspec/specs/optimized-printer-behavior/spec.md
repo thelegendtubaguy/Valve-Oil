@@ -265,6 +265,19 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 - **THEN** current tool mappings are not normalized
 - **AND** manual mapping reset is permitted only while the printer is idle
 
+#### Scenario: A start tool on no connected USB Box prints from the external spool
+- **WHEN** a print starts with the USB Box stack loaded and the Box enabled
+- **AND** the start tool's slot is on no connected USB Box, such as T4 with one Box or a tool mapped to the external spool
+- **THEN** print start turns the Box off, records that print start turned it off, and prepares the external spool without `BOX_PRINT_START`
+- **AND** the start tool change and the rest of the print take their external-spool paths
+- **AND** a tool mapped to a connected Box slot, or any tool on a printer without the USB Box stack, keeps the Box start
+
+#### Scenario: The Box returns after an external-spool tool print
+- **WHEN** print start turned the Box off for a tool on no connected Box
+- **THEN** normal slicer end G-code turns the Box back on
+- **AND** a later print start whose tool is on a connected Box slot turns it back on when an interruption skipped the end
+- **AND** any client that sets whether to use the Box in the meantime keeps its choice
+
 ### Requirement: Safe print transitions and helpers
 Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL preserve caller state, guard optional hardware, and avoid delayed or error-path actions that can affect a later print. Print-start cleaning SHALL keep staged cooldown wiping with mixed-speed pre-scrape motion and fast finishing after the cooled rear-bed scrape, as ordered by `openspec/contracts/gcode-paths/start-print.path.json`. Chute wipes SHALL release waste with package-owned motion, not vendor cleanup commands.
 

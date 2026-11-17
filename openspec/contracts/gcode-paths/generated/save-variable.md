@@ -7,11 +7,33 @@ Contract: `openspec/contracts/gcode-paths/save-variable.path.json`
 
 ## Branches
 
+### box_choice_clears_external_tool_marker
+
+Condition: `a client saves enable_box while print start's external-tool marker is set`
+
+Source: `installer/klipper/tltg-optimized-macros/offset.cfg:39-41`
+
+Direct visible macro calls in branch slice:
+
+- none
+
+Ordered invariants:
+
+- `printer.save_variables.variables.tltg_box_off_for_external_tool|default(0)|int == 1 %}`
+- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=0`
+- `{% endif %}`
+
+Forbidden patterns:
+
+- `VARIABLE=enable_box`
+- `{% else`
+- `action_raise_error`
+
 ### non_blocking_zero_offset_warning
 
 Condition: `all variable saves; warn only for a numeric zero z_offset request`
 
-Source: `installer/klipper/tltg-optimized-macros/offset.cfg:38-49`
+Source: `installer/klipper/tltg-optimized-macros/offset.cfg:42-53`
 
 Direct visible macro calls in branch slice:
 

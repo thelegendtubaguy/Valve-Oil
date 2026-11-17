@@ -10,6 +10,10 @@ This page covers what the optimized configuration changes for the Box.
 
 A normal print end restores the default tool mapping, T0 → 1A, T1 → 1B, and so on. `TLTG_RESET_TOOL_MAPPINGS` restores it while the printer is idle.
 
+### Printing from the external spool by tool number
+
+A print that starts on a tool with no slot on your connected USB Boxes prints from the external spool. With one Box that's T4 and up; a tool mapped to the external spool counts too. Print start turns **Use QIDI Box** off for that print, as QIDI's touchscreen does when you choose the external spool, and the console says `T4 has no QIDI Box slot on this printer; printing from the external spool with the QIDI Box off`. A normal print end turns the Box back on. After a cancelled or failed print, the next print that starts on a Box slot turns it back on, unless you, the touchscreen, Fluidd, or Valve Oil UI set **Use QIDI Box** in between. A tool you've mapped to a Box slot still loads that slot. This is about the tool a print starts on; a tool change during a print to a tool with no Box slot still fails and pauses the print.
+
 ## Tool changes outside a print
 
 `T0` through `T15`, which are also the tool buttons in Fluidd's Tool card, are QIDI's print-time tool change: they cut the loaded filament, unload it, and load the tool's slot without heating the nozzle. Outside a print they ran anyway, with the nozzle cold or cooling, and could leave the Box busy and the printer paused with no print. They now run only while a print is running or paused. Otherwise nothing moves and the console says:

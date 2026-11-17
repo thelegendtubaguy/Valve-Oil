@@ -246,6 +246,31 @@
       ]
     },
     {
+      "name": "start_tool_without_usb_box_slot",
+      "source_macro": "OPTIMIZED_START_PRINT_FILAMENT_PREP",
+      "condition": "USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on",
+      "slice": {
+        "start": "{% set usb_box_slots",
+        "end": "_TLTG_ENSURE_TOOL_MAPPINGS"
+      },
+      "must_include_order": [
+        "if 'box_extras' in printer else -1",
+        "{% set tool_on_box = usb_box_slots < 0 or (tool_slot_index >= 0 and tool_slot_index < usb_box_slots) %}",
+        "{% set external_tool = box_on and box_available and not tool_on_box %}",
+        "{% set box_enabled = (box_on or restore_box) and box_available and tool_on_box %}",
+        "{% if external_tool %}",
+        "_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=0",
+        "_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=1",
+        "{% elif restore_box %}",
+        "_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=1",
+        "_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=0"
+      ],
+      "must_not_include": [
+        "BOX_PRINT_START",
+        "SAVE_VARIABLE VARIABLE=enable_box"
+      ]
+    },
+    {
       "name": "retained_filament_reuse",
       "source_macro": "OPTIMIZED_START_PRINT_FILAMENT_PREP",
       "condition": "tltg_keep_loaded_between_prints == 1 and retained physical state is proven",
@@ -319,7 +344,7 @@
     {
       "name": "no_box_external_spool",
       "source_macro": "OPTIMIZED_START_PRINT_FILAMENT_PREP",
-      "condition": "!box_available || !enable_box",
+      "condition": "!box_available || !enable_box || start tool on no connected USB Box",
       "slice": {
         "start": "{% else %}"
       },
