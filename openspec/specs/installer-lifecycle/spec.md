@@ -760,6 +760,28 @@ Normal install and update SHALL patch reviewed builds of QIDI's touchscreen exec
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged patched executable to QIDI's original and restarts the touchscreen app
 
+### Requirement: Klipper C helper library carries upstream fixes
+Normal install and update SHALL replace a reviewed build of QIDI's Klipper C helper library, `klippy/chelper/c_helper.so`, with the package's build of the same Klipper sources with upstream's later fixes for expired pressure advance entries, trsync timeout extension, step queue appends far in the future, and serial queue pipe descriptors, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
+
+#### Scenario: A reviewed library is replaced
+- **WHEN** install or update finds a C helper library whose SHA-256 is a reviewed QIDI build
+- **THEN** it backs up QIDI's library, renames the package's build into place, keeps its mode and owner, and restarts the Klipper service once
+- **AND** QIDI's C sources are left unchanged and the library is never older than them, so Klipper loads it without rebuilding it
+- **AND** a library that is already the package's build is left unchanged
+
+#### Scenario: Pressure advance changes are freed
+- **WHEN** `SET_PRESSURE_ADVANCE` changes the value repeatedly while step generation advances
+- **THEN** each pressure advance entry step generation no longer needs is freed, so Klipper's memory does not grow with the number of changes
+
+#### Scenario: Other libraries are preserved
+- **WHEN** the library is missing, is not a reviewed build, or was modified after installation
+- **THEN** it is left unchanged and recorded without failing other host patches
+- **AND** uninstall restores an unchanged package library to QIDI's library and restarts the Klipper service
+
+#### Scenario: The libraries are reproducible
+- **WHEN** `scripts/build_klipper_chelper.py` builds upstream Klipper at QIDI's snapshot, unpatched and with the patches in `chelper/`
+- **THEN** the unpatched build is QIDI's library byte for byte and the patched build is the package's
+
 ### Requirement: Klipper and Moonraker come back after exiting outside systemd
 Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 

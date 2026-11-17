@@ -19,6 +19,7 @@ Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts an
 | [`tltg_step_loss_monitor`](tools.md#xy-step-loss-monitor) | `0` | `1` pauses the print and warns when an X or Y motor slips, and cancels it during print start. Max 4 only. |
 | [`tltg_step_loss_recovery`](tools.md#correcting-the-position-after-a-slip) | `0` | With the step-loss monitor on, `1` corrects the toolhead position after a print's first slip and keeps printing instead of pausing. Max 4 only. |
 | [`tltg_resonance_sweep`](tools.md#input-shaper-calibration) | `1` | `0` runs QIDI's resonance test for input shaper calibration instead of the newer sweeping one. |
+| [`vo_box_spool_roll`](qidi-box.md#turning-spools-while-the-box-heats) | `0` | `1` turns the spools of empty QIDI Box slots every 5 minutes while the Box heater is on. |
 | [`vo_box_heater_pwm_cycle_time`](qidi-box.md#box-heater-switching-speed) | `0.1` | Seconds per on-off cycle of each USB QIDI Box heater, from `0.01` to `0.1`. Shorter can stop lights flickering. Takes effect when Klipper next restarts. |
 
 ## Commands
@@ -62,6 +63,10 @@ Fluidd's Settings page has a **Valve Oil** section, and Valve Oil UI an [Updates
 | [`~/valve-oil/mainboard-firmware.sh status`, `install`, `restore`, `rescue`](firmware.md#mainboard-closed-loop-reply-fix) | Shows, flashes, or restores QIDI's firmware on the mainboard. |
 
 See [Installing, updating, and uninstalling](install.md) for the dry run and the OS optimizations.
+
+## QIDI's cloud
+
+**LAN only mode** in the **Valve Oil** section of Fluidd's Settings is QIDI's own setting, the same one as the touchscreen's LAN Only switch. On, the printer disconnects from QIDI's cloud and stops QIDI's remote access, so the Qidi Joy app and signing in to a QIDI account don't work; Fluidd, Valve Oil UI, and your slicers keep working on your network. Off, the printer connects to QIDI's cloud again. A change made on the touchscreen shows in Fluidd the next time the page is opened.
 
 ## Add-ons
 

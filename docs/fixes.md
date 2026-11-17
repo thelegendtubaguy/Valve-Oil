@@ -91,6 +91,17 @@ QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These l
 
 `klippy.log` lists the fixes applied at each start. A fix is skipped, and listed as skipped, if the Klipper code it replaces isn't exactly the version it was written for.
 
+## Fixes in Klipper's C code
+
+Part of Klipper is compiled C code, `klippy/chelper/c_helper.so`. Valve Oil replaces QIDI's copy with the same Klipper code built with these later upstream fixes:
+
+- Every `SET_PRESSURE_ADVANCE` that changed the value kept about 50 bytes of memory that Klipper never freed. OrcaSlicer's adaptive pressure advance changes it many times a layer, so Klipper's memory grew through each print, and through the next, until Klipper restarted. The Max 4 and Plus 5 have about 480 MB of memory for everything they run.
+- During homing and probing that involve more than one board, Klipper could send a board a homing timeout earlier than the one it had already given it, so the board could stop the move with `Communication timeout during homing` sooner than intended.
+- A step far in the future could be written past the end of Klipper's step queue, corrupting Klipper's memory.
+- Each time Klipper closed a board's connection, at `RESTART`, `FIRMWARE_RESTART`, or a failed attempt to connect, it left two files open.
+
+Valve Oil recognizes the library QIDI ships with Max 4 firmware `01.01.06.04` and later and Plus 5 firmware `01.01.02.01`. Any other library, such as one Klipper rebuilt after its source files were edited, is left as it is. QIDI's source files aren't changed. Klipper rebuilds the library at startup only when a source file is newer than it, which Valve Oil's never is, so Klipper uses it as it is. Install restarts Klipper once to load it, and uninstall puts QIDI's back. `sha256sum ~/klipper/klippy/chelper/c_helper.so` prints `f8b7b7bb28dddff1f28a0775d0ace4696cd7ac95094a8e2dbbef16b1a49ac593` for Valve Oil's library and `214d1ab79a78b2aa28ba8cd7ba0d7383afcaaf9d36561112aa7bf73cf6591714` for QIDI's.
+
 ## Probe points retrying forever
 
 When a point's two probe samples disagree by more than `samples_tolerance` (0.02 mm), Klipper probes the point again, up to `samples_tolerance_retries` times (10). QIDI's Klipper restarted that count on every retry, so a point whose samples never agreed was probed forever, and print start hung on it. The point now gets at most that many retries, then the bed mesh, `Z_TILT_ADJUST`, or `PROBE` fails with `Probe samples exceed samples_tolerance`, as in upstream Klipper. During print start that error stops the print.

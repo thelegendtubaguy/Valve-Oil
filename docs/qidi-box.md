@@ -37,6 +37,17 @@ FIRMWARE_RESTART
 
 It takes effect the next time Klipper restarts, a plain `RESTART` included. Values from `0.01` to `0.1` work; anything else, or no setting, keeps `0.1`. If you've shortened `pwm_cycle_time` for the bed or chamber, the same value is a good start. Switching faster doesn't change how much the heater heats. To go back, save `0.1` and restart Klipper. `klippy.log` shows the cycle each Box heater uses, for example `tltg_box_heater_refresh: heater_box1 switches every 0.02 s`. RS-485 Boxes aren't changed.
 
+### Turning spools while the Box heats
+
+With this turned on, while a Box's heater has a target, during a print or not, each of its empty slots turns its spool every 5 minutes, so the spool sits in the heat on a different side. The slot's motor, which also drives the roller under the spool, turns back 25 mm at 20 mm/s, one slot at a time. That's half as far as QIDI's drying turns the spools, and slower. A print doesn't pause or slow for it.
+
+- Only slots that are empty turn: QIDI's saved state for the slot is empty, and the slot's inlet sensor sees no filament. Put the spool on the rollers without feeding its filament. A slot with filament anywhere, parked at the hub or loaded to the toolhead, never turns.
+- The first turn comes 5 minutes after the heater comes on.
+- Nothing turns while the print is paused, while the Box loads, unloads, or changes tools, or while QIDI's own drying runs on that Box, which turns the spools itself.
+- It's off until you turn on **Turn spools while heating** in the QIDI Box card's settings in Fluidd, or run `SAVE_VARIABLE VARIABLE=vo_box_spool_roll VALUE=1`. `VALUE=0` turns it off again. The change applies at the next turn.
+
+`klippy.log` notes each turn, for example `tltg_box_spool_roll: turning 1A's spool 25 mm`.
+
 ## Load and unload speed
 
 A load pushes filament from the spool to the Box hub, then fast toward the toolhead, then slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back, the Box pull it back to the hub, and then back to its parked position.

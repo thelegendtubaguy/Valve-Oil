@@ -1,0 +1,54 @@
+Backport of upstream Klipper commit 56a9c605e121c6560f5c8b6c0e33bdda86de69a1
+(https://github.com/Klipper3d/klipper/commit/56a9c605e121c6560f5c8b6c0e33bdda86de69a1)
+onto Klipper ca815f52c, the chelper sources QIDI ships.
+
+stepcompress: Fix possible out-of-bounds memory write
+
+diff --git a/klippy/chelper/stepcompress.c b/klippy/chelper/stepcompress.c
+index 310f2bf3..1728a1a2 100644
+--- a/klippy/chelper/stepcompress.c
++++ b/klippy/chelper/stepcompress.c
+@@ -426,21 +426,6 @@ set_next_step_dir(struct stepcompress *sc, int sdir)
+     return 0;
+ }
+ 
+-// Slow path for queue_append() - handle next step far in future
+-static int
+-queue_append_far(struct stepcompress *sc)
+-{
+-    uint64_t step_clock = sc->next_step_clock;
+-    sc->next_step_clock = 0;
+-    int ret = queue_flush(sc, step_clock - CLOCK_DIFF_MAX + 1);
+-    if (ret)
+-        return ret;
+-    if (step_clock >= sc->last_step_clock + CLOCK_DIFF_MAX)
+-        return stepcompress_flush_far(sc, step_clock);
+-    *sc->queue_next++ = step_clock;
+-    return 0;
+-}
+-
+ // Slow path for queue_append() - expand the internal queue storage
+ static int
+ queue_append_extend(struct stepcompress *sc)
+@@ -479,6 +464,21 @@ queue_append_extend(struct stepcompress *sc)
+     return 0;
+ }
+ 
++// Slow path for queue_append() - handle next step far in future
++static int
++queue_append_far(struct stepcompress *sc)
++{
++    uint64_t step_clock = sc->next_step_clock;
++    int ret = queue_flush(sc, step_clock - CLOCK_DIFF_MAX + 1);
++    if (ret)
++        return ret;
++    if (step_clock >= sc->last_step_clock + CLOCK_DIFF_MAX) {
++        sc->next_step_clock = 0;
++        return stepcompress_flush_far(sc, step_clock);
++    }
++    return queue_append_extend(sc);
++}
++
+ // Add a step time to the queue (flushing the queue if needed)
+ static int
+ queue_append(struct stepcompress *sc)

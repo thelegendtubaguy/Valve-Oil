@@ -4,6 +4,7 @@ import atexit
 import dataclasses
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -15,7 +16,7 @@ from pathlib import Path
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
 BASE_RUNTIME_FIXTURE = FIXTURES_ROOT / "runtime" / "base"
-from installer.runtime import qidiclient_firmware_popup
+from installer.runtime import klipper_chelper, qidiclient_firmware_popup
 from installer.runtime.manifest import load_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -140,6 +141,7 @@ def fake_system_root(
     include_filament_config: bool = False,
     include_klipper_box_config: bool = False,
     include_klipper_print_stats_manager: bool = False,
+    include_klipper_chelper: bool = False,
     include_nginx_site: bool = False,
     include_moonraker_asvc: bool = False,
     include_moonraker_metadata: bool = False,
@@ -190,6 +192,15 @@ def fake_system_root(
         stats_manager = root / "home/qidi/klipper/klippy/extras/print_stats_manager.py"
         stats_manager.parent.mkdir(parents=True, exist_ok=True)
         stats_manager.write_bytes((REPO_ROOT / "installer/tests/fixtures/klipper_print_stats_manager.py").read_bytes().replace(b"\n", b"\r\n"))
+    if include_klipper_chelper:
+        # QIDI's library beside a source file from the same firmware, which QIDI ships with the library's time.
+        library = root / klipper_chelper.FILE.lstrip("/")
+        library.parent.mkdir(parents=True)
+        shutil.copyfile(klipper_chelper.PAYLOAD_DIR / "qidi_c_helper.so", library)
+        source = library.parent / "kin_extruder.c"
+        source.write_text("// QIDI's source\n", encoding="utf-8")
+        for path in (library, source):
+            os.utime(path, (1_786_959_581, 1_786_959_581))
     if include_nginx_site:
         site = root / "etc/nginx/sites-available/fluidd"
         site.parent.mkdir(parents=True)

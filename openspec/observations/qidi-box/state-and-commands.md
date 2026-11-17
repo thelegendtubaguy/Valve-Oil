@@ -343,6 +343,9 @@ ENABLE_BOX_DRY DISABLE_BOX_DRY DISABLE_BOX_HEATER BOX_TEMP_SET
 MULTI_COLOR_DRY MULTI_COLOR_DISABLE_HEATER MULTI_COLOR_SET_TEMP
 ```
 
+- **Harness-recovered (2026-11-16, `.07.01` `box_extras.so`, fake objects):** drying's timer, `BoxExtras.heating_handler(eventtime, box_num, start_time, end_time)`, reads `get_value_by_key('box_drying_roll_enable', 1)`. When it is truthy, it sends `RUN_STEPPER STEPPER=<slot>` followed by `G4 P5000` through `gcode.run_script_from_command` for each of the Box's four slots (`box_num` 1 gives slots 0–3), then returns `eventtime + 300`. `cmd_RUN_STEPPER` calls the slot's `do_move(-50, 80, 50)`, `dwell(0.5)`, and `disable_stepper()`. `BoxExtruderStepper.do_move` starts its move at `toolhead.get_last_move_time()`, which flushes the toolhead's lookahead, and the `G4 P5000` dwells the toolhead, so the roll is not run during a print.
+- **Runtime-confirmed (Plus 5, 2026-11-16, one USB Box):** a slot motor turns the roller under its spool with no filament fed. Driving an empty slot back 1,350 mm at 80 mm/s turned the spool on its rollers the whole time. `box_extras` status reports each Box's `dry_state` in `boxes[N]`; with a manual heater target it read `0`.
+
 ### Toolhead/extruder motion
 
 ```text

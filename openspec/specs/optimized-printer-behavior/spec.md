@@ -869,6 +869,23 @@ Optimized configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_ti
 - **WHEN** `vo_box_heater_pwm_cycle_time` is missing, not a number, or outside 0.01 s to 0.1 s
 - **THEN** Box heaters keep a 0.1 s cycle and `klippy.log` says why for a value that was set
 
+### Requirement: Turning empty QIDI Box slots' spools while the Box heats
+While a USB QIDI Box heater has a nonzero target and the saved variable `vo_box_spool_roll` is `1`, optimized configuration SHALL turn each empty slot of that Box back 25 mm at 20 mm/s every 300 s, one slot at a time, starting 300 s after the target is set. A slot is empty only when its saved vendor state is `0`, it is neither `slot_sync` nor `last_load_slot`, and its inlet sensor reads no filament. Turns SHALL NOT hold back or reorder toolhead motion.
+
+#### Scenario: Box heat on during a print
+- **WHEN** a print runs from a Box slot with that Box's heater target set, and other slots of the Box hold spools with no filament fed
+- **THEN** each of those slots turns its spool every 300 s, scheduled on the slot motor's own motion queue after every step Klipper has already generated, and the print does not pause or slow
+- **AND** slots with filament at the inlet, parked at the hub, or loaded do not move
+
+#### Scenario: Turning switched off or not due
+- **WHEN** `vo_box_spool_roll` is missing or `0`, the Box heater target is 0, the print is paused, a vendor Box task or tool change is running, or vendor drying runs on the Box
+- **THEN** no slot of that Box starts a turn
+
+#### Scenario: The motor after a turn
+- **WHEN** a turn has run
+- **THEN** the slot motor is handed back to the vendor Box code, disabled again if it was disabled
+- **AND** a motor the vendor Box code took during the turn stays enabled and gets its vendor kinematics back once the vendor's moves have run
+
 ### Requirement: Klipper main-loop health
 Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
 
