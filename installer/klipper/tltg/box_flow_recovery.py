@@ -66,9 +66,19 @@
 # "Communication timeout during homing", escaped T_MANAGER and the print's
 # error handling cancelled the print. It now pauses the flow and the print the
 # same way, unless Klipper has shut down.
+#
+# External spool loads: QIDI's external-spool load flow ends with EXT_WIPE,
+# whose ExternalAdapter.wipe runs its purge and chute wipe and then returns
+# False whatever happened, in every build listed below, while a G-code error
+# in it raises. Every load therefore ended with "Step EXT_WIPE failed. Pausing
+# flow." after the wipe had run, and the touchscreen then stopped the flow
+# instead of completing it. In those builds the step now reports success when
+# its script ran; an error still raises and pauses the flow as above.
 
 import contextlib
+import hashlib
 import logging
+import sys
 
 import greenlet
 
@@ -85,6 +95,14 @@ PARK_DISTANCE = 260. - RETRACT_PIECE
 SLOT_STATE_LOADED = 1
 # Steps a cold flow may run; heat steps only park once M109 is skipped.
 COLD_STEPS = ("BOX_HEAT", "BOX_CUT", "BOX_UNLOAD", "BOX_EJECT")
+# SHA-256 of QIDI's multi_color_controller.so builds whose external wipe
+# returns False after its script runs.
+EXTERNAL_WIPE_FALSE_BUILDS = frozenset((
+    # Max 4 01.01.07.01, Plus 5 01.01.02.01
+    "b7e3bc21156fb9df9f5eea07f2c596a17c7ea5db852a36139ba9773160e43592",
+    # Smart 5 01.01.02.01
+    "caee552ffb7734e7ef3fd3b861ef5bad6f22e2bdacdf34a586de21fdaf316370",
+))
 
 
 def _slot_number(slot):
@@ -150,6 +168,8 @@ class BoxFlowRecovery:
         self._cold_requested = False
         # The flow a cold unload or eject left paused, for FLOW_RETRY.
         self._cold_task = None
+        # QIDI's external wipe was checked, and wrapped if its build needs it.
+        self._external_wipe_fixed = False
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     # ----------------------------------------------------------------- setup
@@ -169,6 +189,7 @@ class BoxFlowRecovery:
             if callable(getattr(manager, name, None)):
                 setattr(manager, name,
                         self._wrap_flow_runner(getattr(manager, name), name))
+        self._fix_external_wipe()
         for name, handler in (
                 ("FLOW_STOP", self.cmd_FLOW_STOP),
                 ("UNLOAD_FILAMENT_CONTROL", self.cmd_UNLOAD_FILAMENT_CONTROL),
@@ -202,8 +223,48 @@ class BoxFlowRecovery:
         return tracker if getattr(tracker, "slots", None) else None
 
     # ------------------------------------------------------- failed steps
+    def _controller_build(self):
+        module = sys.modules.get(type(self.controller).__module__)
+        path = getattr(module, "__file__", None)
+        if not path:
+            return None
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+
+    def _fix_external_wipe(self):
+        # QIDI's adapters fill method_map when Klipper is ready, possibly after
+        # this module, so a flow start tries again.
+        method_map = getattr(self.manager, "method_map", None)
+        wipe = method_map.get("EXT_WIPE") if isinstance(method_map, dict) \
+            else None
+        if self._external_wipe_fixed or not callable(wipe):
+            return
+        self._external_wipe_fixed = True
+        try:
+            build = self._controller_build()
+        except OSError:
+            logging.exception("tltg_box_flow_recovery: reading QIDI's flow "
+                              "controller failed")
+            return
+        if build not in EXTERNAL_WIPE_FALSE_BUILDS:
+            logging.info("tltg_box_flow_recovery: external wipe left as "
+                         "QIDI's (build %s)", build)
+            return
+
+        def external_wipe(*args, **kwargs):
+            result = wipe(*args, **kwargs)
+            return True if result is False else result
+        method_map["EXT_WIPE"] = external_wipe
+        logging.info("tltg_box_flow_recovery: external wipe reports success "
+                     "after its script runs")
+
     def _wrap_flow_runner(self, original, name):
         def run(*args, **kwargs):
+            try:
+                self._fix_external_wipe()
+            except Exception:
+                logging.exception("tltg_box_flow_recovery: fixing the "
+                                  "external wipe failed")
             try:
                 self._absolute_positioning()
             except Exception:
