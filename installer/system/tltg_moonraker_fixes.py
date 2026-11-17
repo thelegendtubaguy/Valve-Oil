@@ -84,13 +84,13 @@ def _handshake(sock, context, host, timeout):
 
 def _is_touchscreen_app(connection):
     # QIDI's touchscreen app identifies as an agent named after the printer
-    # model, such as QD_MAX4 or QD_PLUS5, with the URL "local".
+    # model, with the URL "local": QD_MAX4 or QD_PLUS5, and S5 on the Smart 5.
     data = getattr(connection, "client_data", None)
     if not isinstance(data, dict):
         return False
     name = data.get("name")
     return data.get("url") == "local" and isinstance(name, str) \
-        and name.startswith("QD_")
+        and (name.startswith("QD_") or name == "S5")
 
 
 def _agents(component):

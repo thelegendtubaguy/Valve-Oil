@@ -225,6 +225,7 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 ### Motion
 
 - **Runtime-confirmed:** stock `01.01.02.01`, cold, idle: a full `G28` took 32.0–33.2 s over five timed runs. Each checked second home landed 0.73–0.80 mm (X) and 0.69–0.81 mm (Y) past the first, within QIDI's 2 mm tolerance, and the second Z touch agreed within 2–5 µm. `PROBE_ACCURACY` at X90 Y90 (10 samples) gave a 7.5 µm range and a 2.2 µm standard deviation. QIDI's cut stroke (Y1, X175 to X180 at F60), chute entrance (X100 Y199), and wipe strokes (Y182–Y199, X66 Y189 to X100 Y198) ran at Z70 without errors.
+- **Runtime-confirmed (2026-11-16, `01.01.02.01` with Valve Oil installed, bed at 45 °C):** QIDI's load-cell Z home false-triggers when it runs within seconds of the nozzle reaching 140 °C from 32–45 °C: each touch fires as its move starts, 1.5 mm above the one before (for example Z 20.0, 21.5, 23.0), QIDI logs `WEIGHT:run home_second_genera retry!`, zeroes the load cell again, and the retry homes within 0.05 mm of a cold home. It did so in 2 of 2 print starts, 2 of 2 runs that waited for 140 °C with `M109` and then homed Z, and 1 of 1 such run with the heater turned off just before the Z home. Cold homes (2), homes after 30 s or more at 140 °C (2), a home with the heater just turned off after a long hold (1), and two homes started as the nozzle began heating were clean. Heater duty at the failing touches (14–37 %) matched the clean held homes (11–22 %). The load cell's zero read about −3.37 cold and −3.11 to −3.23 hot.
 
 ### Display and touch
 
@@ -235,6 +236,12 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 
 - **Static-recovered:** in Smart 5 `qidiclient` `01.01.01.03` and `01.01.02.01`, the Settings page's Expert Mode switch (`general.expert_mode` in QIDI Moonraker's `config` table, default `"0"`) only changes the Control page's XYZ tab: with it on, the jog buttons work before homing and an "Unlock steppers" button sends `M84`. An unhomed jog sends `SET_KINEMATIC_POSITION X=150 Y=150 Z=150`, the relative move, then `M84`, so Klipper's travel limits are checked against that position. The Plus 5 client has the key and the strings but no Settings switch.
 - **Runtime-confirmed:** the project's Smart 5 had it on before its update.
+
+### Touchscreen LAN-only mode
+
+- **Runtime-confirmed (2026-11-16, `01.01.02.01`, no account linked):** with `general.lan_mode` `"1"` in QIDI Moonraker's `config` table, the home screen's account tile reads `LAN Only Mode` and the Settings page's Account row is greyed out with the same text. Settings has no other LAN-mode row, so the operator found no way to turn it off on the touchscreen. Writing `"0"` through `POST /server/database/config/update` logged `LAN mode disabled: MQTT reconnected, FRP started` and brought the Account row back.
+- **Runtime-confirmed:** with no `user.token` saved, that write starts QIDI's MQTT reconnect loop, which `8.149.135.149:8883` refused with `Bad user name or password` every 4–8 s; Moonraker's logs from July on show no MQTT connection attempt on this printer before it.
+- **Runtime-confirmed:** the `01.01.02.01` update's database backup (`moonraker-sql.db.bak`, 2026-11-15) has no `general.lan_mode` row. No logged single-key write set it, so it came through QIDI's batch config path, which doesn't log. Its row id places it early after the update, during the night the printer had no network, but about 276 writes since the backup left no log line, so the time isn't certain. Restarting `qidiclient` with it at `"0"` didn't set it again.
 
 ### Slicer profiles
 
@@ -247,6 +254,7 @@ Comparisons in this section are against Plus 5 firmware `01.01.02.01`, released 
 - Box load and unload lengths with the Smart 5's `box_stepper.so`, and whether its `do_home` lengths are the Plus 5's.
 - The bed screws' positions and thread.
 - Whether QIDI's `M84` before homing and its first single touch per axis are needed for that repeatability.
+- What writes `general.lan_mode` `"1"`, and whether the touchscreen can turn LAN-only mode off once it's on.
 
 ## Klipper shutdown reporting
 
@@ -413,6 +421,7 @@ The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batc
 ## Touchscreen Moonraker connection
 
 - **Runtime-confirmed:** on one Max 4 running `01.01.07.01`, `qidiclient` connects to Moonraker directly at `127.0.0.1:7125` (user agent `WebSocket++/0.8.2`, registered as agent `QD_MAX4`), not through nginx.
+- **Runtime-confirmed (2026-11-16, Smart 5 `01.01.02.01`):** the Smart 5 `qidiclient` connects the same way but registers as agent `S5` (`{'name': 'S5', 'version': '01.01.02.01', 'type': 'agent', 'url': 'local'}`), without the `QD_` prefix.
 - **Static-recovered:** in `qidiclient` SHA-256 `b5285d1a52f1180757360d0893f0f8ed619aaaa31d2d621917c0a963bc3fde4e` (`01.01.07.01`), a loop checks the Moonraker connection every 5 seconds and reconnects when it is down. After 10 consecutive failed reconnects it logs `检测到连接断开重连次数达到阈值，报错 MoonrakerError` ("reconnect attempts reached the threshold, reporting MoonrakerError") and sets its `moonrakererror` key; a successful connection resets the count. Ten failed subscription attempts instead report `KlipperError`.
 - **Static-recovered:** the `QDC_400_005_015_001` handler subscribes to `moonrakererror`; its show predicate is always true and its clear predicate always false. `resource/qidi_client_error/QDC_400_005_015_001/0.json` titles it `Printer service failed to start` with `Please reinstall or contact customer support`.
 - **Runtime-confirmed:** on that printer, `moonraker.service` has `Type=simple`, `Restart=always`, `RestartSec=10`, and `RemainAfterExit=yes`. A transient unit with the same settings whose process was sent SIGTERM stayed `active (exited)` with `NRestarts=0`, so a clean Moonraker exit outside systemd leaves Moonraker down while systemd reports the unit active. `klipper.service` also has `Restart=always` with `RemainAfterExit=yes`; `qidi-client.service` has `Restart=always` without it.

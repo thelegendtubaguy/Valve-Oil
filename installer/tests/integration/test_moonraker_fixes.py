@@ -164,25 +164,28 @@ class MoonrakerMqttHandshakeTests(unittest.TestCase):
 
     def test_first_connect_waits_for_the_touchscreen_app_and_decrypts_through_it(self):
         self.fixes.APP_POLL_INTERVAL = 0.01
-        component = self.component_class(self.address, tls=False)
-        agents = component.server.extensions.agents
-        agents["OrcaSlicer"] = Agent("OrcaSlicer", "https://github.com/SoftFever/OrcaSlicer")
+        # The Max 4 and Plus 5 apps register as QD_<model>; the Smart 5's as S5.
+        for app in ("QD_PLUS5", "S5"):
+            with self.subTest(app=app):
+                component = self.component_class(self.address, tls=False)
+                agents = component.server.extensions.agents
+                agents["OrcaSlicer"] = Agent("OrcaSlicer", "https://github.com/SoftFever/OrcaSlicer")
 
-        async def run():
-            component.component_init()
-            await asyncio.sleep(0.05)
-            self.assertEqual(component.decrypted_by, [])
-            agents["QD_PLUS5"] = Agent("QD_PLUS5", "local")
-            await asyncio.wait_for(component.connect_task, 1)
-            # Only the first connect after Moonraker starts waits.
-            del agents["QD_PLUS5"]
-            component.component_init()
-            await asyncio.wait_for(component.connect_task, 1)
-            agents["QD_PLUS5"] = Agent("QD_PLUS5", "local")
-            await component._do_reconnect()
-        asyncio.run(run())
-        self.assertEqual(component.decrypted_by, ["QD_PLUS5", "OrcaSlicer", "QD_PLUS5"])
-        component.client.sock.close()
+                async def run():
+                    component.component_init()
+                    await asyncio.sleep(0.05)
+                    self.assertEqual(component.decrypted_by, [])
+                    agents[app] = Agent(app, "local")
+                    await asyncio.wait_for(component.connect_task, 1)
+                    # Only the first connect after Moonraker starts waits.
+                    del agents[app]
+                    component.component_init()
+                    await asyncio.wait_for(component.connect_task, 1)
+                    agents[app] = Agent(app, "local")
+                    await component._do_reconnect()
+                asyncio.run(run())
+                self.assertEqual(component.decrypted_by, [app, "OrcaSlicer", app])
+                component.client.sock.close()
 
     def test_first_connect_goes_ahead_without_the_touchscreen_app_and_can_be_cancelled(self):
         self.fixes.APP_POLL_INTERVAL = 0.01
