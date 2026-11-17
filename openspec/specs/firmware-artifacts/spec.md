@@ -18,7 +18,7 @@ The generator SHALL accept only the supported vendor archive and THR image, pres
 - **THEN** generation fails without overwriting existing data or emitting a firmware package
 
 ### Requirement: THR changes are limited to the FIFO correction and its version
-The generated THR SHALL request another task when the LIS2DW FIFO holds samples and rearm polling when it is empty, preserving scheduler wake semantics. Its dictionary SHALL differ from stock only in the version `02.02.01.08-valve-oil.1`, with matching `identify` lengths. The package MUST keep every other payload, the firmware manifest, and internal filenames. Generation MUST NOT flash hardware or invoke the installer.
+The generated THR SHALL request another task when the LIS2DW FIFO holds samples and rearm polling when it is empty, preserving scheduler wake semantics. Its dictionary SHALL differ from stock only in the version, with matching `identify` lengths. The package MUST keep every other payload, the firmware manifest, and internal filenames. Generation MUST NOT flash hardware or invoke the installer.
 
 #### Scenario: FIFO handling changes without replacing vendor components
 - **WHEN** a recognized package is patched and verified
@@ -26,6 +26,13 @@ The generated THR SHALL request another task when the LIS2DW FIFO holds samples 
 - **AND** sample reporting and overflow accounting remain intact
 - **AND** the dictionary the THR serves through `identify` is identical to stock apart from the version
 - **AND** all other archive members are byte-identical to the input
+
+### Requirement: Each THR image has its own patch manifest
+The THR fix SHALL be generated from one of QIDI's THR images with that image's own patch manifest: `02.02.01.08` for the Max 4 and Plus 5, versioned `02.02.01.08-valve-oil.1`, or `02.02.01.09` for the Smart 5, versioned `02.02.01.09-valve-oil.1`.
+
+#### Scenario: Smart 5 THR image
+- **WHEN** QIDI's Smart 5 `02.02.01.09` THR image is patched with the Smart 5 manifest
+- **THEN** the result reports `02.02.01.09-valve-oil.1` and differs from QIDI's image only in the FIFO correction and the version
 
 ### Requirement: Box changes are limited to the shutdown fix and RFID commands
 The Box image SHALL be generated only from the pinned stock `02.03.01.21` application. It SHALL differ from it only in skipping QIDI's faulty Box feeder shutdown block, in the RFID commands' handlers, command-table entries, and response encoders, and in its data dictionary. The bundle MUST NOT contain a QIDI Box image; the installer generates the patched image on the printer.

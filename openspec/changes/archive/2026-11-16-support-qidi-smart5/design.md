@@ -45,7 +45,7 @@ Evidence lives in `openspec/observations/qidi-platform.md` under QIDI Smart 5: Q
 
 Homing speeds, retract distances, Z retract, and speed limits stay QIDI's until measured. The board fan needs no change: every Smart 5 motor shares one enable pin.
 
-**D4. Smart 5 homing is QIDI's sequence without its staging moves.** Each axis gets QIDI's single touch at QIDI's homing current (its `_BEFORE_HOME_*` and `_AFTER_HOME_*` macros), then QIDI's checked second homing, then QIDI's 20 mm backoff. X homes before Y, as in QIDI's macros. As on the other printers, a full home only lowers the bed 5 mm before homing; QIDI's X+5 and Y+5 moves and its `M84` before homing are left out. `G28 X`, `G28 Y`, and `G28 Z` home one axis, and homing clears the bed mesh. The `homing.py` source patch shortens only the 1 s dwell before each X/Y home to 0.25 s, as on the Max 4 and Plus 5. Whether the first single touch and the dwell are needed is checked on hardware.
+**D4. Smart 5 homing is QIDI's sequence without its staging moves.** Each axis gets QIDI's single touch at QIDI's homing current (its `_BEFORE_HOME_*` and `_AFTER_HOME_*` macros), then QIDI's checked second homing, then QIDI's 20 mm backoff. X homes before Y, as in QIDI's macros. As on the other printers, a full home only lowers the bed 5 mm before homing; QIDI's X+5 and Y+5 moves and its `M84` before homing are left out. `G28 X`, `G28 Y`, and `G28 Z` home one axis, and homing clears the bed mesh. The `homing.py` source patch shortens only the 1 s dwell before each X/Y home to 0.25 s, as on the Max 4 and Plus 5. On the project's Smart 5, homing without the first single touch was no more repeatable and no faster, so the single touch stays.
 
 **D5. Smart 5 nozzle moves keep QIDI's Smart 5 positions.**
 - The cut is QIDI's: Y 1, X 175, a slow press to X 180 at F60, a 4 mm retract, the 2 s hold, and X 160. The optimized cut homes X/Y if needed where QIDI's undefined `_CG28` did nothing.
@@ -91,7 +91,6 @@ All read-only unless noted. Results go into the Smart 5 observations.
 | Load cell and probe | `WEIGHTING_DEBUG_QUERY`, `PROBE_ACCURACY` | probe diagnostics |
 | Idle and printing host load, memory | main-thread and memory measurements | zram need |
 | Klipper objects | `printer/objects/list` | cooling and exhaust guard |
-| Box load, unload, and tool change | Box tracer, then a load and unload | Box motion defaults |
 | Bed screws | photos and positions | bed screw check |
 | Board revisions | photos of board silkscreen | observations only |
 
@@ -101,9 +100,3 @@ All read-only unless noted. Results go into the Smart 5 observations.
 - **[Motor-stall homing on new drivers]** → QIDI's currents, speeds, touches, and retract distances are kept (D4); only the staging moves and the dwell change, and both are checked on hardware before admission.
 - **[Positions copied from QIDI's macros, not measured]** → Every Smart 5 move uses a position QIDI's own macros use, and the rear-window test keeps rear moves inside QIDI's range.
 - **[Common macros with Smart 5 guards]** → The guards test for the Klipper object, so the Max 4 and Plus 5 run the same commands as before; the start-print contracts still require `Z_TILT_ADJUST` on those printers.
-
-## Open Questions
-
-- Does the Smart 5's toolhead put the extruder above the cutter, as the cold cut assumes?
-- Does the Smart 5's UI rotation and touch frame match the Plus 5's? Its framebuffer is the same 480×800.
-- Does QIDI's first single touch per axis matter for repeatability, or can the checked second homing stand alone?

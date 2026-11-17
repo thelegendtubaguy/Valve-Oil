@@ -111,7 +111,7 @@ A firmware update SHALL run independently of the session that started it, SHALL 
 - **THEN** the update ends, every service is started again, and the installer's own recovery and the next install or automatic update apply
 
 ### Requirement: Boards receive this project's firmware
-A firmware update, an install, and an automatic update SHALL bring the THR and every USB Box on both printers, and the mainboard on the Max 4, to this project's build for the target firmware, without a question and without a per-run option. A board with no build of this project SHALL receive QIDI's image for the target firmware when its version changes. A board already on its pinned image MUST NOT be flashed.
+A firmware update, an install, and an automatic update SHALL bring the THR and every USB Box on every printer, and the mainboard on the Max 4, to this project's build for the target firmware, without a question and without a per-run option. A board with no build of this project SHALL receive QIDI's image for the target firmware when its version changes. A board already on its pinned image MUST NOT be flashed.
 
 #### Scenario: Board on QIDI's firmware or an earlier build
 - **WHEN** a run finds an admitted board on QIDI's firmware or an earlier build of this project
@@ -148,8 +148,20 @@ A firmware update, an install, and an automatic update SHALL bring the THR and e
 - **THEN** the status lists the closed-loop drivers with the version Klipper reports, up to date on the target package's version and otherwise to be updated from the touchscreen's firmware page
 - **AND** the check sends the drivers nothing
 
+#### Scenario: Smart 5 boards
+- **WHEN** an install runs on a Smart 5 on its target firmware
+- **THEN** its THR is read and brought to the build made from QIDI's `02.02.01.09` image, and each USB Box to the same Box build as on the other printers
+- **AND** its i.MX RT mainboard is not read, flashed, or listed among the boards, and the mainboard firmware tool stops on it without touching it
+
+### Requirement: Board images follow the printer's board manifests
+Each board's image SHALL come from the one board manifest that pins it for the printer's target firmware, so a printer whose THR image differs gets the build made from its own image. A board that no manifest pins for the printer's target firmware SHALL NOT be read or flashed.
+
+#### Scenario: A board with no manifest for the printer
+- **WHEN** a run finds a printer whose target firmware has no manifest for one of its boards
+- **THEN** that board is neither read nor flashed, and the other boards are handled as usual
+
 ### Requirement: New installs require admitted boards
-A new installation SHALL read the THR, the mainboard, and every configured USB Box without erasing, and SHALL be refused before any change when a bootloader or firmware is not admitted by the release, or when a board can't be read.
+A new installation SHALL read the THR, the mainboard where the release manages it, and every configured USB Box without erasing, and SHALL be refused before any change when a bootloader or firmware is not admitted by the release, or when a board can't be read.
 
 #### Scenario: A board is not admitted on a new install
 - **WHEN** a new install finds a board whose bootloader or firmware the release does not admit
