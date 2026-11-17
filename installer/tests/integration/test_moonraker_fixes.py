@@ -203,3 +203,124 @@ class MoonrakerMqttHandshakeTests(unittest.TestCase):
         self.assertEqual(cancelled.decrypted_by, [])
         self.assertIsNone(cancelled.client.sock)
         waited.client.sock.close()
+
+
+class WebRequest:
+    """moonraker.common.WebRequest, as QIDI's handlers read it."""
+
+    def __init__(self, endpoint, args):
+        self.endpoint, self.args = endpoint, args
+
+    def get(self, key, default=None):
+        return self.args.get(key, default)
+
+
+class CloudServer:
+    """Moonraker's server with QIDI's MQTT component, its warning, and its failed-component list."""
+
+    def __init__(self, connected):
+        self.mqtt = types.SimpleNamespace(
+            connected=connected, retrying=not connected, disconnect_requests=0, closes=0)
+        self.mqtt.is_connected = lambda: self.mqtt.connected
+
+        async def close():
+            self.mqtt.closes += 1
+            self.mqtt.connected = False
+
+        async def handle_disconnect_request(web_request):
+            # QIDI's /server/mqtt/disconnect: closes the client and ends its reconnect loop. An attempt already
+            # sent still gets its refusal, which sets the warning and failed component again.
+            self.mqtt.disconnect_requests += 1
+            self.mqtt.connected = self.mqtt.retrying = False
+            asyncio.get_running_loop().call_later(0.02, self.refuse)
+            return {"mqtt_status": "offline"}
+        self.mqtt.close, self.mqtt._handle_disconnect_request = close, handle_disconnect_request
+        self.warnings = {} if connected else {"mqtt_disconnect_reson": "MQTT Connection Failed: Bad user name or password"}
+        self.failed_components = [] if connected else ["mqtt"]
+
+    def refuse(self):
+        self.warnings["mqtt_disconnect_reson"] = "MQTT Connection Failed: Bad user name or password"
+        if "mqtt" not in self.failed_components:
+            self.failed_components.append("mqtt")
+
+    def lookup_component(self, name, default=None):
+        return self.mqtt if name == "mqtt" else default
+
+    def remove_warning(self, warn_id):
+        self.warnings.pop(warn_id, None)
+
+    def remove_failed_component(self, name):
+        if name in self.failed_components:
+            self.failed_components.remove(name)
+
+
+def database_class():
+    class MoonrakerDatabase:
+        def __init__(self, server):
+            self.server = server
+            self.config_items = {}
+
+        async def _handle_config_update_request(self, web_request):
+            # QIDI's: stores the value, and for general.lan_mode "1" closes MQTT only when it is connected.
+            section, key, value = (web_request.get(name) for name in ("section", "key", "value"))
+            self.config_items[f"{section}.{key}"] = value
+            mqtt = self.server.lookup_component("mqtt")
+            if f"{section}.{key}" == "general.lan_mode" and value == "1" and mqtt.is_connected():
+                await mqtt.close()
+            return {"status": "success", "result": {f"{section}.{key}": value}}
+    return MoonrakerDatabase
+
+
+class MoonrakerLanModeTests(unittest.TestCase):
+    def setUp(self):
+        self.fixes = load_payload()
+        self.fixes.LAN_MODE_SETTLE = 0.05
+        self.database_class = database_class()
+        self.assertTrue(self.fixes.apply_database(types.SimpleNamespace(MoonrakerDatabase=self.database_class)))
+        common = types.ModuleType("moonraker.common")
+        common.WebRequest = WebRequest
+        modules = {"moonraker": types.ModuleType("moonraker"), "moonraker.common": common}
+        saved = {name: sys.modules.get(name) for name in modules}
+        sys.modules.update(modules)
+        self.addCleanup(lambda: [sys.modules.pop(name) if module is None else sys.modules.__setitem__(name, module)
+                                 for name, module in saved.items()])
+
+    def update(self, server, section, key, value):
+        database = self.database_class(server)
+
+        async def run():
+            result = await database._handle_config_update_request(
+                WebRequest("server.database.config.update", {"section": section, "key": key, "value": value}))
+            await asyncio.sleep(0.15)
+            return result
+        result = asyncio.run(run())
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(database.config_items, {f"{section}.{key}": value})
+
+    def test_lan_only_on_stops_retries_that_never_connected_and_clears_their_warning(self):
+        server = CloudServer(connected=False)
+        self.update(server, "general", "lan_mode", "1")
+        self.assertFalse(server.mqtt.retrying)
+        self.assertEqual(server.mqtt.disconnect_requests, 1)
+        self.assertEqual(server.warnings, {})
+        self.assertEqual(server.failed_components, [])
+
+    def test_lan_only_on_while_connected_is_left_to_qidi(self):
+        server = CloudServer(connected=True)
+        self.update(server, "general", "lan_mode", "1")
+        self.assertEqual((server.mqtt.closes, server.mqtt.disconnect_requests), (1, 0))
+
+    def test_other_writes_leave_the_retries_alone(self):
+        for section, key, value in (("general", "lan_mode", "0"), ("general", "sound", "1"), ("user", "lan_mode", "1")):
+            with self.subTest(key=f"{section}.{key}", value=value):
+                server = CloudServer(connected=False)
+                self.update(server, section, key, value)
+                self.assertTrue(server.mqtt.retrying)
+                self.assertEqual(server.failed_components, ["mqtt"])
+
+    def test_unrecognized_database_code_is_left_alone(self):
+        self.assertFalse(self.fixes.apply_database(types.SimpleNamespace()))
+        # Patching twice wraps QIDI's handler once.
+        handler = self.database_class._handle_config_update_request
+        self.assertTrue(self.fixes.apply_database(types.SimpleNamespace(MoonrakerDatabase=self.database_class)))
+        self.assertIs(self.database_class._handle_config_update_request, handler)

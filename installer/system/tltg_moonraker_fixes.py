@@ -27,14 +27,28 @@
 # APP_WAIT_TIMEOUT, and every decrypt goes to the touchscreen app when it is
 # connected.
 #
+# Turning on QIDI's LAN-only mode (general.lan_mode "1" in QIDI's config
+# table, from the touchscreen or Fluidd) closes QIDI's MQTT connection only
+# when it is connected. A reconnect loop that never connected, as on a printer
+# with no QIDI account after LAN-only mode was turned off, keeps retrying, and
+# each refusal shows an MQTT error on the touchscreen until Moonraker
+# restarts. Here, when that write turns LAN-only mode on while MQTT isn't
+# connected, QIDI's own MQTT disconnect request runs after QIDI's handler, and
+# the MQTT warning and failed component are cleared, then cleared again once
+# an attempt already under way has had its answer.
+#
 # The .pth file imports this module in every Python started from Moonraker's
-# virtualenv, so importing it only registers an import hook for
-# moonraker.components.mqtt, and the modules the fix uses are imported when
-# Moonraker loads that component.
+# virtualenv, so importing it only registers import hooks for
+# moonraker.components.mqtt and moonraker.components.database, and the
+# modules the fixes use are imported when Moonraker loads those components.
 
 import sys
 
 MQTT_MODULE = "moonraker.components.mqtt"
+DATABASE_MODULE = "moonraker.components.database"
+LAN_MODE = ("general", "lan_mode")
+MQTT_WARNING = "mqtt_disconnect_reson"
+LAN_MODE_SETTLE = 5.
 HANDSHAKE_TIMEOUT = 10.
 APP_WAIT_TIMEOUT = 120.
 APP_POLL_INTERVAL = 0.5
@@ -241,8 +255,7 @@ class _EventLoopAttribute:
             raise AttributeError("eventloop") from None
 
 
-def apply(module):
-    """Patch QIDI's moonraker.components.mqtt after it is imported."""
+def _imports():
     global asyncio, inspect, logging, socket, ssl, time
     import asyncio
     import inspect
@@ -250,6 +263,105 @@ def apply(module):
     import socket
     import ssl
     import time
+
+
+def _turns_lan_mode_on(web_request):
+    try:
+        section = web_request.get("section", None)
+        key = web_request.get("key", None)
+        value = web_request.get("value", None)
+    except Exception:
+        return False
+    return (section, key) == LAN_MODE and str(value) == "1"
+
+
+def _mqtt_connected(mqtt):
+    is_connected = getattr(mqtt, "is_connected", None)
+    if not callable(is_connected):
+        return True
+    try:
+        return bool(is_connected())
+    except Exception:
+        return True
+
+
+def _clear_mqtt_failure(server):
+    for name, arg in (("remove_warning", MQTT_WARNING),
+                      ("remove_failed_component", "mqtt")):
+        remove = getattr(server, name, None)
+        if callable(remove):
+            remove(arg)
+
+
+async def _clear_after_last_attempt(database, server, mqtt):
+    # An attempt already sent when the disconnect ran still gets its refusal,
+    # within QIDI's 2 s CONNACK wait, and that sets the warning again.
+    await asyncio.sleep(LAN_MODE_SETTLE)
+    items = getattr(database, "config_items", None)
+    lan_mode = items.get("general.lan_mode") if isinstance(items, dict) \
+        else "1"
+    if str(lan_mode) == "1" and not _mqtt_connected(mqtt):
+        _clear_mqtt_failure(server)
+
+
+async def _stop_mqtt_retries(database, server, mqtt):
+    from moonraker.common import WebRequest
+    try:
+        # As database.py builds its MQTT connect request.
+        await mqtt._handle_disconnect_request(WebRequest("", {}))
+    except Exception:
+        logging.exception("tltg_moonraker_fixes: stopping QIDI's MQTT "
+                          "retries for LAN-only mode failed")
+        return
+    _clear_mqtt_failure(server)
+    asyncio.ensure_future(_clear_after_last_attempt(database, server, mqtt))
+    logging.info("tltg_moonraker_fixes: LAN-only mode on; QIDI's MQTT "
+                 "retries stopped")
+
+
+def _lan_mode_stops_mqtt(handler):
+    async def _handle_config_update_request(self, web_request, *args,
+                                            **kwargs):
+        mqtt = None
+        if _turns_lan_mode_on(web_request):
+            server = getattr(self, "server", None)
+            lookup = getattr(server, "lookup_component", None)
+            mqtt = lookup("mqtt", None) if callable(lookup) else None
+            if mqtt is not None and (
+                    _mqtt_connected(mqtt) or not callable(
+                        getattr(mqtt, "_handle_disconnect_request", None))):
+                # Connected: QIDI's handler closes it.
+                mqtt = None
+        result = await handler(self, web_request, *args, **kwargs)
+        if mqtt is not None and isinstance(result, dict) \
+                and result.get("status") == "success":
+            await _stop_mqtt_retries(self, self.server, mqtt)
+        return result
+    _handle_config_update_request._tltg_config_update = handler
+    return _handle_config_update_request
+
+
+def apply_database(module):
+    """Patch QIDI's moonraker.components.database after it is imported."""
+    _imports()
+    for component_class in vars(module).values():
+        handler = vars(component_class).get("_handle_config_update_request") \
+            if isinstance(component_class, type) else None
+        if callable(getattr(handler, "_tltg_config_update", None)):
+            return True
+        if inspect.iscoroutinefunction(handler):
+            component_class._handle_config_update_request = \
+                _lan_mode_stops_mqtt(handler)
+            return True
+    logging.info("tltg_moonraker_fixes: LAN-only mode MQTT fix not applied; "
+                 "Moonraker's database code differs from the version this "
+                 "fix is for")
+    return False
+
+
+def apply(module):
+    """Patch QIDI's moonraker.components.mqtt after it is imported."""
+    _imports()
     component_class = getattr(module, "MQTTClient", None)
     if not isinstance(component_class, type) \
             or "eventloop" in vars(component_class) \
@@ -267,10 +379,15 @@ def apply(module):
 
 
 class _Finder:
-    """Patches moonraker.components.mqtt once, when Moonraker imports it."""
+    """Patches one of QIDI's Moonraker modules once, when Moonraker imports
+    it."""
+
+    def __init__(self, module_name, patch):
+        self.module_name = module_name
+        self.patch = patch
 
     def find_spec(self, name, path=None, target=None):
-        if name != MQTT_MODULE:
+        if name != self.module_name:
             return None
         sys.meta_path.remove(self)
         import importlib.util
@@ -283,10 +400,11 @@ class _Finder:
         def patched_exec_module(module):
             exec_module(module)
             try:
-                apply(module)
+                self.patch(module)
             except Exception:
                 import logging
-                logging.exception("tltg_moonraker_fixes: MQTT fix failed")
+                logging.exception("tltg_moonraker_fixes: fix for %s failed",
+                                  name)
         try:
             loader.exec_module = patched_exec_module
         except Exception:
@@ -295,8 +413,12 @@ class _Finder:
 
 
 def install():
-    if not any(isinstance(finder, _Finder) for finder in sys.meta_path):
-        sys.meta_path.insert(0, _Finder())
+    installed = {finder.module_name for finder in sys.meta_path
+                 if isinstance(finder, _Finder)}
+    for module_name, patch in ((MQTT_MODULE, apply),
+                               (DATABASE_MODULE, apply_database)):
+        if module_name not in installed:
+            sys.meta_path.insert(0, _Finder(module_name, patch))
 
 
 install()

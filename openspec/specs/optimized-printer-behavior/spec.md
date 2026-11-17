@@ -960,6 +960,25 @@ The package's Moonraker fixes module SHALL run the TLS handshake of the vendor M
 - **WHEN** the vendor MQTT component lacks the attributes the module was written for
 - **THEN** the module changes nothing and Moonraker's log says the fix was not applied
 
+### Requirement: LAN-only mode stops the cloud MQTT retries
+When a vendor config update turns LAN-only mode on (`general.lan_mode` `"1"`) while the vendor MQTT component is not connected, the package's Moonraker fixes module SHALL, after the vendor handler succeeds, send that component its own disconnect request and clear Moonraker's MQTT warning and failed `mqtt` component.
+
+#### Scenario: Retries that never connected
+- **WHEN** LAN-only mode is turned on while the vendor MQTT component is retrying a connection that the broker refuses
+- **THEN** the retries stop, and Moonraker reports no MQTT warning or failed `mqtt` component
+
+#### Scenario: Connected printer
+- **WHEN** LAN-only mode is turned on while the vendor MQTT component is connected
+- **THEN** only the vendor handler closes the connection
+
+#### Scenario: LAN-only mode turned off
+- **WHEN** a config update turns LAN-only mode off or changes another setting
+- **THEN** the vendor MQTT component's connection and retries are as the vendor handler leaves them
+
+#### Scenario: Unrecognized vendor database code
+- **WHEN** the vendor database component has no config update handler the module was written for
+- **THEN** the module leaves it unpatched and Moonraker's log says the fix was not applied
+
 ### Requirement: Upstream Klipper fixes
 Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
 

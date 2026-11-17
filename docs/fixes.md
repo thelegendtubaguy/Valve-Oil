@@ -69,6 +69,12 @@ Now, on a printer linked to a QIDI account, Moonraker waits for the touchscreen 
 
 The warning still appears when QIDI's server refuses the printer's account, or answers too late. QIDI's code waits 2 seconds for the server to accept the account, then starts again, and keeps trying. Moonraker drops the warning as soon as the printer connects. Fluidd used to keep showing it until the page was reloaded; now, while Fluidd shows a Moonraker warning or failed plugin, it checks Moonraker again every 10 seconds, so the warning goes away within 10 seconds of the printer connecting. When `moonraker.log` has `MQTT connection successful` after the last `Not authorized`, the printer is connected to QIDI's cloud.
 
+## MQTT errors after turning LAN only mode on
+
+QIDI's LAN only mode, on the touchscreen or in Fluidd's [Valve Oil settings](settings.md#qidis-cloud), disconnects the printer from QIDI's cloud. QIDI's code only closed the connection when it was connected, though. On a printer with no QIDI account, turning LAN only mode off makes it try to connect, QIDI's cloud refuses it every few seconds with `Bad user name or password`, and turning LAN only mode back on left those tries running. The touchscreen kept showing an MQTT connection error, and Fluidd showed **Moonraker has failed plugins** with `mqtt` and `MQTT Connection Failed: Bad user name or password`, until Moonraker restarted.
+
+Now, turning LAN only mode on also stops QIDI's tries to connect and clears that warning. A printer that is connected to QIDI's cloud is disconnected by QIDI's own code, as before.
+
 ## Touchscreen offering firmware you already have
 
 With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or [mainboard](firmware.md#mainboard-closed-loop-reply-fix) firmware, QIDI's touchscreen app showed **New MCU or THR firmware has been detected. Please go to the firmware page to update.** The firmware page then had nothing to update. The pop-up treats any board version that isn't exactly QIDI's as out of date, and this project's firmware reports QIDI's version followed by `-valve-oil.` and a revision number. The firmware page compares versions another way and sees them as current.
