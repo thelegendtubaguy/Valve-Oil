@@ -6,7 +6,7 @@
     ui.update(header_step="Step 4 of 10 · 1:53")  # redraws only what changed
     ui.close()
 
-The screens are those of openspec/changes/add-usb-touchscreen-installer/screens.html, laid out as it lays them out at
+The screens are those of openspec/changes/archive/2026-11-17-add-usb-touchscreen-installer/screens.html, laid out as it lays them out at
 800x480, and drawn turned on the Plus 5's and Smart 5's portrait panels (update_screen.Geometry). compose() is the pure
 part: a screen and its fields to an RGB canvas and its buttons' rectangles. A screen that can't be composed is drawn as
 update_screen's text instead, and show() then returns no buttons. Nothing is drawn while the screen waits for a tap;

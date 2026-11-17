@@ -4,7 +4,7 @@ stopped or not yet running, the boot animation, and the touchscreen front end's 
 
 Text is set in Montserrat (scripts/fonts/Montserrat-VF.ttf, SIL Open Font License 1.1). HarfBuzz's hb-view rasterizes
 each glyph of every text style touch_canvas.STYLES names, and hb-shape measures advances and kerning. The logo mark
-and the icons of the front end's screens (openspec/changes/add-usb-touchscreen-installer/screens.html) are drawn as SVG
+and the icons of the front end's screens (openspec/changes/archive/2026-11-17-add-usb-touchscreen-installer/screens.html) are drawn as SVG
 and rasterized with rsvg-convert. All of it is saved as touch-ui.bin (installer/runtime/touch_canvas.py).
 
 Each still image is drawn as SVG around the Valve Oil logo, rasterized with rsvg-convert, flattened with ImageMagick,

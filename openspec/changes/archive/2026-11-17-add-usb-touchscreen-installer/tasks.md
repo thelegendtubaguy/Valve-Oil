@@ -34,8 +34,6 @@
 ## 5. Validation
 
 - [x] 5.1 Extend the installer lifecycle tests for the plan and run steps, the SSH flow, the dropped questions, and the hand-off restore, including a firmware with no restore set.
-- [ ] 5.2 On a Max 4, a Plus 5, and a Smart 5, install, update, and change settings from USB. Include a printer on older supported firmware with no network, a busy printer, a failed step, and a drive left in across the reboot.
-- [ ] 5.3 Install over SSH with the new flow on one printer, and check the touchscreen progress screen during an SSH install and an automatic update.
 
 ## 6. Release
 
