@@ -160,7 +160,7 @@ class ProgressScreenTests(unittest.TestCase):
         self.addCleanup(progress.end)
         self.addCleanup(screen.stop)
         progress.begin([progress.CHECK, progress.BACKUP, progress.FINISH], origin=progress.ORIGIN_AUTOMATIC,
-                       from_version="26.1.1.1", to_version="26.11.17.1")
+                       from_version="26.1.1.1", to_version="26.11.16.1")
         progress.step(progress.BACKUP)
         name, fields = ui.shown[-1]
         self.assertEqual((name, fields["step"], fields["index"]), ("installing", progress.BACKUP, 2))
