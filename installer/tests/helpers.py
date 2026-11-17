@@ -356,6 +356,11 @@ def fake_host_run(root: Path):
             write_service_state(service, state)
             return result(command)
         if command[:2] in (["systemctl", "restart"], ["systemctl", "try-restart"]):
+            # systemd can't restart a unit whose file is gone ("Unit ... not found."); the fixture holds only the
+            # package's own unit files.
+            service = command[-1]
+            if service.startswith("tltg-") and not (root / "etc/systemd/system" / service).exists():
+                return result(command, returncode=5)
             return result(command)
         if command[:2] == ["systemctl", "daemon-reload"] or command[:2] == ["systemctl", "reset-failed"]:
             return result(command)
