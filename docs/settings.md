@@ -64,6 +64,10 @@ Fluidd's Settings page has a **Valve Oil** section, and Valve Oil UI an [Updates
 
 See [Installing, updating, and uninstalling](install.md) for the dry run and the OS optimizations.
 
+## QIDI's cloud
+
+**LAN only mode** in the **Valve Oil** section of Fluidd's Settings is QIDI's own setting, the same one as the touchscreen's LAN Only switch. On, the printer disconnects from QIDI's cloud and stops QIDI's remote access, so the Qidi Joy app and signing in to a QIDI account don't work; Fluidd, Valve Oil UI, and your slicers keep working on your network. Off, the printer connects to QIDI's cloud again. A change made on the touchscreen shows in Fluidd the next time the page is opened.
+
 ## Add-ons
 
 | Command | What it does |

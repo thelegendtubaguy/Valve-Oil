@@ -697,10 +697,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-d503f87
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-d503f87/fluidd.zip
+    version: v1.37.7-tltg-f4f1ba3
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-f4f1ba3/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 99197f16840f2e672381b73b2e3bb38914acf8297418047ee6810eb14b3dd0d1
+    sha256: a5189474c650aa76b89aed0f004e5f7e01d80f6532c451c9532845152142a7d7
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui
