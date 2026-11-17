@@ -6,7 +6,7 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Runtime ca
 
 | Variable family | Meaning |
 |---|---|
-| `enable_box`, `box_count` | Vendor Box enablement and detected count. |
+| `enable_box`, `box_count` | Whether prints use the Box, set per print by whatever starts it (see below), and the detected Box count. |
 | `value_t0` through `value_t15` | Logical tool-to-slot mapping. Missing mappings default to `slot16` in recovered `BOX_PRINT_START`. |
 | `slot0` through `slot15` | Physical-slot `BoxState` values. |
 | `last_load_slot` | Last loaded slot according to vendor state. |
@@ -19,6 +19,13 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. Runtime ca
 | `is_tool_change`, `was_interrupted` | Vendor operation context. |
 
 `slot16` is direct-feed/external-spool metadata and is not a physical slot state. `slot-1` is the observed unsynced/no-active-target sentinel.
+
+### Who writes `enable_box`
+
+- **Static-recovered (Max 4 `qidiclient` SHA-256 `b5285d1a…`, `01.01.07.01`):** the app's only `enable_box` writer (`0x6785d0`, `SAVE_VARIABLE VARIABLE=enable_box VALUE=`) is called only from the Print button of its filament-matching page (`match_filament`, `access/ams/`; handler `0x4d3484`, logging `[AMS] 点击打印按钮，开始打印流程`, "print button tapped, starting the print flow"). When a state check on the app's printer data passes (an int at offset `0x40` above 2 and a flag at `0x98` clear; what they hold is **Unresolved**), it saves `enable_box` 1, then for each of the file's filaments saves `value_t<tool>` to its chosen slot. A filament mapped to slot 16, the external spool, saves `enable_box` 0 instead, or, when the external spool has no filament detected, shows `prepare_to_print_warning` and stops the print (`[AMS] 外置耗材未检测到，弹出警告并中止打印`, "external filament not detected, show a warning and stop the print"). Box detection writes `box.cfg` and `box_count` (see `topology-and-control.md`) and never `enable_box`.
+- **Config-confirmed (Max 4 `01.01.07.01` Moonraker `components/klippy_apis.py`):** `/printer/print/start` with a `fileurl` (a cloud print) saves `enable_box` as `int(bool(consumable))` from the request's `consumable` list, and `value_t<index>` as `slot<n>` for each entry that isn't `-1`, before it downloads and starts the file. Without a `fileurl` it saves neither.
+- **Config-confirmed:** QIDI's `save_variables.py` defaults `enable_box` to 0, and stock macros read it in print start (`BOX_PRINT_START`), `T0`–`T15`, runout reload, and pause/resume. A print started without any of these writers, such as an upload from Fluidd or OrcaSlicer, runs with the value the last print left.
+- **Static-recovered (same app):** the print preview page's polar cooler checkbox (`draw_page_preview.cpp`, `Checkbox polar_cool 新状态`) saves `enable_polar_cooler` (`0x678734`), so the choice persists across prints.
 
 ## State values
 

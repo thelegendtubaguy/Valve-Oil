@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Valve Oil touchscreen: concept mockups</title>
+<style>
+  @font-face { font-family: "Montserrat"; src: url("../fonts/Montserrat-VF.ttf") format("truetype"); font-weight: 100 900; }
+  :root {
+    --bg: #0D1117; --rail: #090C11; --surface: #161C25; --surface-2: #1D2530; --line: #2B3440; --line-2: #3A4553;
+    --ink: #F0F0F0; --ink-2: #A3ADBA; --ink-3: #6F7A88;
+    --amber: #F2B05A; --amber-2: #E39A3E; --amber-tint: rgba(242,176,90,.14);
+    --crimson: #C84A5A; --rose: #F08A97; --green: #62C28E; --blue: #6FB3F2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #05070A; color: var(--ink);
+    font-family: "Montserrat", -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  .gallery { padding: 32px 40px 60px; max-width: 1760px; margin: 0 auto; }
+  .gallery h1 { font-size: 26px; margin: 0 0 6px; }
+  .gallery p.lead { color: var(--ink-2); margin: 0 0 8px; max-width: 980px; line-height: 1.45; }
+  .gallery h2 { font-size: 18px; margin: 38px 0 14px; color: var(--amber); letter-spacing: .02em; }
+  .grid { display: grid; grid-template-columns: repeat(2, 800px); gap: 34px 40px; }
+  figure { margin: 0; }
+  figcaption { color: var(--ink-2); font-size: 14px; margin-top: 10px; line-height: 1.4; max-width: 800px; }
+  figcaption b { color: var(--ink); }
+  body.single { background: var(--bg); overflow: hidden; }
+  body.single .gallery { padding: 0; max-width: none; }
+
+  .screen { width: 800px; height: 480px; background: var(--bg); position: relative; overflow: hidden; border-radius: 6px;
+    outline: 1px solid #222a35; display: flex; font-variant-numeric: tabular-nums; }
+  body.single .screen { border-radius: 0; outline: none; }
+  svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* rail */
+  .rail { width: 80px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+  .rail .mark { width: 24px; height: 46px; margin-bottom: 6px; }
+  .nav { width: 66px; height: 66px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--ink-3); font-size: 11.5px; font-weight: 600; margin-top: 4px; }
+  .nav svg.i { width: 26px; height: 26px; }
+  .nav.on { color: var(--amber); background: var(--amber-tint); }
+
+  /* main */
+  .main { flex: 1; padding: 12px 20px 16px 20px; position: relative; min-width: 0; }
+  .top { height: 40px; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .top h3 { margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 11px; height: 11px; border-radius: 6px; background: var(--green); flex: none; }
+  .dot.amber { background: var(--amber); } .dot.red { background: var(--crimson); }
+  .grow { flex: 1; }
+  .mini { display: flex; align-items: center; gap: 5px; color: var(--ink-2); font-size: 14.5px; font-weight: 600; }
+  .mini svg.i { width: 17px; height: 17px; color: var(--ink-3); }
+  .mini.hot { color: var(--amber); } .mini.hot svg.i { color: var(--amber); }
+  .clock { color: var(--ink-2); font-size: 15px; font-weight: 600; margin-left: 6px; }
+  .muted { color: var(--ink-2); } .dim { color: var(--ink-3); } .amber { color: var(--amber); } .green { color: var(--green); } .rose { color: var(--rose); }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .rowf { display: flex; gap: 12px; }
+  .btn { height: 58px; border-radius: 13px; flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; text-align: center;
+    font-size: 17.5px; font-weight: 650; background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink); padding: 0 12px; line-height: 1.15; }
+  .btn.primary { background: var(--amber); border-color: var(--amber); color: #14100A; }
+  .btn.danger { background: transparent; border-color: var(--crimson); color: var(--rose); }
+  .btn.small { flex: 0 0 132px; } .btn.tall { height: 64px; }
+  .bottom { position: absolute; left: 20px; right: 20px; bottom: 16px; }
+  .chip { height: 42px; padding: 0 16px; border-radius: 21px; background: var(--surface-2); border: 1px solid var(--line-2); display: inline-flex; align-items: center; gap: 8px;
+    font-size: 15.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .chip.on { background: var(--amber-tint); border-color: var(--amber); color: var(--amber); }
+  .chips { display: flex; gap: 8px; flex-wrap: nowrap; }
+  .sw { width: 22px; height: 22px; border-radius: 11px; flex: none; border: 2px solid rgba(255,255,255,.22); }
+  .bar { height: 12px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--amber-2), var(--amber)); }
+
+  /* temps */
+  .temp { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .temp .lab { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: 14.5px; font-weight: 600; }
+  .temp .lab svg.i { width: 19px; height: 19px; }
+  .temp .val { font-size: 38px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .temp .val small { font-size: 18px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
+  .temp .tgt { font-size: 14.5px; color: var(--ink-3); font-weight: 600; }
+  .temp.hot { border-color: rgba(242,176,90,.55); } .temp.hot .tgt { color: var(--amber); }
+
+  .thumb { border-radius: 12px; background: radial-gradient(120% 90% at 50% 20%, #232C39, #121820); flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); }
+  .file { display: flex; align-items: center; gap: 14px; padding: 9px 12px; }
+  .file + .file { border-top: 1px solid var(--line); }
+  .file .nm { font-size: 17.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file .meta { color: var(--ink-2); font-size: 14.5px; margin-top: 3px; display: flex; align-items: center; gap: 7px; }
+  .kv { display: flex; align-items: center; gap: 12px; padding: 9px 0; font-size: 16.5px; }
+  .kv + .kv { border-top: 1px solid var(--line); }
+  .kv .k { color: var(--ink-2); width: 108px; flex: none; }
+  .steps { display: grid; grid-auto-flow: column; grid-template-rows: repeat(4, auto); grid-template-columns: 1fr 1fr; gap: 7px 22px; font-size: 16.5px; }
+  .steps div { display: flex; gap: 10px; align-items: center; color: var(--ink-3); white-space: nowrap; }
+  .steps div.done { color: var(--ink-2); } .steps div.now { color: var(--ink); font-weight: 650; }
+  .steps .d { width: 18px; text-align: center; flex: none; }
+  .steps .done .d { color: var(--green); } .steps .now .d { color: var(--amber); }
+  .pm { width: 54px; height: 54px; border-radius: 13px; background: var(--surface-2); border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 26px; font-weight: 500; flex: none; }
+  .tile { padding: 12px 14px; flex: 1; }
+  .tile .lab { color: var(--ink-2); font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+  .tile .lab svg.i { width: 18px; height: 18px; }
+  .tile .big { font-size: 30px; font-weight: 700; letter-spacing: -.01em; }
+  .slot { flex: 1; padding: 12px 10px 12px; display: flex; flex-direction: column; align-items: center; gap: 5px; position: relative; }
+  .slot.on { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+  .slot .n { position: absolute; left: 11px; top: 9px; font-size: 14px; font-weight: 700; color: var(--ink-3); }
+  .slot .tg { position: absolute; right: 10px; top: 8px; color: var(--ink-3); } .slot .tg svg.i { width: 17px; height: 17px; }
+  .slot .mat { font-size: 19px; font-weight: 700; margin-top: 2px; }
+  .slot .br { font-size: 13.5px; color: var(--ink-2); }
+  .slot .st { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); margin-top: 2px; }
+  .slot.on .st { color: var(--amber); }
+  .seg { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg span { height: 36px; padding: 0 16px; border-radius: 9px; display: flex; align-items: center; font-size: 15px; font-weight: 650; color: var(--ink-2); white-space: nowrap; }
+  .seg span.on { background: var(--surface-2); color: var(--ink); box-shadow: 0 0 0 1px var(--line-2); }
+  .jog { width: 236px; height: 236px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); position: relative; flex: none; }
+  .jog .a { position: absolute; width: 60px; height: 60px; display: grid; place-items: center; color: var(--ink); }
+  .jog .a svg.i { width: 30px; height: 30px; }
+  .jog .c { position: absolute; left: 78px; top: 78px; width: 80px; height: 80px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--amber); }
+  .jog .l { position: absolute; font-size: 12.5px; font-weight: 700; color: var(--ink-3); line-height: 1; transform: translate(-50%, -50%); }
+  .set { display: flex; align-items: center; gap: 12px; padding: 11px 14px; flex: 1; min-width: 0; }
+  .set .ic { width: 40px; height: 40px; border-radius: 11px; background: var(--surface-2); display: grid; place-items: center; color: var(--amber); flex: none; }
+  .set .t { font-size: 16.5px; font-weight: 650; white-space: nowrap; } .set .s { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qr { width: 96px; height: 96px; border-radius: 8px; flex: none; display: grid; place-items: center; color: #0D1117; font-size: 11px; font-weight: 700; background-color: #F0F0F0;
+    background-image: linear-gradient(45deg, #0D1117 25%, transparent 25%, transparent 75%, #0D1117 75%), linear-gradient(45deg, #0D1117 25%, transparent 25%, transparent 75%, #0D1117 75%);
+    background-size: 12px 12px; background-position: 0 0, 6px 6px; }
+  .qr span { background: #F0F0F0; padding: 2px 6px; border-radius: 4px; }
+  .opt { display: flex; align-items: center; gap: 14px; padding: 13px 16px; }
+  .opt .t { font-size: 17.5px; font-weight: 650; } .opt .s { font-size: 14.5px; color: var(--ink-2); margin-top: 2px; }
+  .opt.pick { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+</style>
+</head>
+<body>
+<div class="gallery" id="root"></div>
+<script>
+const LOGO = `<rect x="50" y="150" width="200" height="190" fill="#F0F0F0"/><ellipse cx="150" cy="340" rx="100" ry="32" fill="#F0F0F0"/><path d="M50,190 Q150,220 250,190" stroke="#F2B05A" stroke-width="7" fill="none" opacity="0.95"/><path d="M50,300 Q150,330 250,300" stroke="#F2B05A" stroke-width="7" fill="none" opacity="0.95"/><ellipse cx="150" cy="150" rx="100" ry="32" fill="#F2B05A" stroke="#0D1117" stroke-width="6"/><ellipse cx="150" cy="150" rx="34" ry="11" fill="#E39A3E"/><rect x="136" y="70" width="28" height="82" fill="#F0F0F0" stroke="#0D1117" stroke-width="5"/><rect x="88" y="34" width="124" height="38" fill="#A93C4B"/><ellipse cx="150" cy="72" rx="62" ry="19" fill="#A93C4B"/><ellipse cx="150" cy="34" rx="62" ry="19" fill="#C84A5A" stroke="#0D1117" stroke-width="5"/><path d="M150,392 C164,412 180,428 180,444 A30,28 0 0 1 120,444 C120,428 136,412 150,392 Z" fill="#F2B05A" stroke="#0D1117" stroke-width="5"/><g transform="translate(370,15)"><polygon points="0,0 68,0 105.0,128 142,0 210,0 145.0,200 65.0,200" fill="#F0F0F0" /><polygon points="297.0,0 385.0,0 448,200 234,200" fill="#F0F0F0" /><polygon points="341.0,72 381.0,170 301.0,170" fill="#C84A5A" /><polygon points="472,0 538,0 538,140 642,140 642,200 472,200" fill="#F0F0F0" /><polygon points="666,0 734,0 771.0,128 808,0 876,0 811.0,200 731.0,200" fill="#F0F0F0" /><polygon points="900,0 1070,0 1070,50 966,50 966,77 1056,77 1056,123 966,123 966,150 1070,150 1070,200 900,200" fill="#F0F0F0" /></g><g transform="translate(370,255)"><path d="M88.0,0 C128.0,50 176,98 176,132 A88.0,74.0 0 0 1 0,132 C0,98 48.0,50 88.0,0 Z" fill="#F0F0F0"/><path d="M88.0,78 C104.0,100 126,118 126,136 A38.0,34.0 0 0 1 50,136 C50,118 72.0,100 88.0,78 Z" fill="#F2B05A"/><rect x="200" y="0" width="66" height="200" fill="#F0F0F0"/><polygon points="290,0 356,0 356,140 460,140 460,200 290,200" fill="#F0F0F0" /></g>`;
+const mark = `<svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="40 8 220 470">${LOGO}</svg>`;
+const fullLogo = (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 0 1440 490" style="height:${h}px">${LOGO}</svg>`;
+const P = {
+  home: `<path d="M3 11.5l9-8 9 8"/><path d="M5 10v9.5a.5.5 0 0 0 .5.5H10v-6h4v6h4.5a.5.5 0 0 0 .5-.5V10"/>`,
+  files: `<path d="M3 6.5a1 1 0 0 1 1-1h5l2 2.5h9a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>`,
+  box: `<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>`,
+  move: `<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>`,
+  gear: `<path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/>`,
+  nozzle: `<path d="M7.5 3.5h9v6.5l-3 4h-3l-3-4z"/><path d="M12 17.5v3"/>`,
+  bed: `<path d="M3 16.5h18M6 16.5v3M18 16.5v3"/><path d="M7.5 12.5c0-2 1.5-2 1.5-4s-1.5-2-1.5-4M12 12.5c0-2 1.5-2 1.5-4s-1.5-2-1.5-4M16.5 12.5c0-2 1.5-2 1.5-4s-1.5-2-1.5-4"/>`,
+  chamber: `<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M9 16c0-2 1.5-2 1.5-4S9 10 9 8M14 16c0-2 1.5-2 1.5-4S14 10 14 8"/>`,
+  fan: `<circle cx="12" cy="12" r="2"/><path d="M12 10c-1-3 .5-6.5 3.5-6.5 2 0 2.5 2.5 1 4-1 1-2.5 1.5-4.5 2.5zM14 12c3-1 6.5.5 6.5 3.5 0 2-2.5 2.5-4 1-1-1-1.5-2.5-2.5-4.5zM12 14c1 3-.5 6.5-3.5 6.5-2 0-2.5-2.5-1-4 1-1 2.5-1.5 4.5-2.5zM10 12c-3 1-6.5-.5-6.5-3.5 0-2 2.5-2.5 4-1 1 1 1.5 2.5 2.5 4.5z"/>`,
+  light: `<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.800 1-2.5A6 6 0 0 0 12 3z"/>`,
+  pause: `<path d="M8.5 5v14M15.5 5v14"/>`, play: `<path d="M7 4.5v15l12-7.5z"/>`, stop: `<rect x="5.5" y="5.5" width="13" height="13" rx="2"/>`,
+  wifi: `<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><path d="M12 19.5v.01"/>`,
+  chev: `<path d="M9 5l7 7-7 7"/>`, up: `<path d="M5 15l7-7 7 7"/>`, down: `<path d="M5 9l7 7 7-7"/>`, left: `<path d="M15 5l-7 7 7 7"/>`,
+  tag: `<path d="M3 11.5V4h7.5L21 14.5 13.5 22z"/><path d="M7.5 8v.01"/>`,
+  drop: `<path d="M12 3c3.5 4.5 6 7.5 6 10.5a6 6 0 0 1-12 0C6 10.5 8.5 7.5 12 3z"/>`,
+  check: `<path d="M4 12.5l5 5L20 6.5"/>`, warn: `<circle cx="12" cy="12" r="9.5"/><path d="M12 7v6M12 16.600v.01"/>`,
+  usb: `<path d="M12 21V6M12 6l-3 3M12 6l3 3M7 11v3l5 3M17 9v4l-5 3"/><rect x="15.5" y="6" width="3" height="3"/><circle cx="7" cy="10" r="1.5"/>`,
+  clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l3.5 2"/>`,
+  tune: `<path d="M5 4v6M5 14v6M12 4v2M12 10v10M19 4v9M19 17v3"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="8" r="2"/><circle cx="19" cy="15" r="2"/>`,
+  mesh: `<path d="M3 8l9-4 9 4-9 4zM3 12l9 4 9-4M3 16l9 4 9-4"/>`,
+  wave: `<path d="M2 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0"/>`,
+  scale: `<path d="M12 4v16M5 20h14M4 8h16M4 8l-2 6a3 3 0 0 0 6 0zM20 8l-2 6a3 3 0 0 0 6 0"/>`,
+  sun: `<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.300 5.300l1.400 1.400M17.300 17.300l1.400 1.400M5.300 18.700l1.400-1.400M17.300 6.700l1.400-1.400"/>`,
+  info: `<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.400v.01"/>`,
+  refresh: `<path d="M20 5v5h-5M4 19v-5h5"/><path d="M19 10a7.5 7.5 0 0 0-13.5-2.5M5 14a7.5 7.5 0 0 0 13.5 2.5"/>`,
+  cam: `<rect x="3" y="6.5" width="13" height="11" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/>`,
+};
+const I = (n, st = "") => `<svg class="i" viewBox="0 0 24 24" style="${st}">${P[n]}</svg>`;
+
+const NAV = [["home", "Home"], ["files", "Files"], ["box", "Box"], ["move", "Control"], ["gear", "Settings"]];
+const rail = (on) => `<div class="rail">${mark}${NAV.map(([k, l]) => `<div class="nav ${k === on ? "on" : ""}">${I(k)}${l}</div>`).join("")}</div>`;
+const mini = (n, v, hot) => `<span class="mini ${hot ? "hot" : ""}">${I(n)}${v}</span>`;
+const temps = (a, b, c, hot = [1, 1, 1]) => `${mini("nozzle", a, hot[0])}${mini("bed", b, hot[1])}${mini("chamber", c, hot[2])}`;
+const topbar = (title, o = {}) => `<div class="top">${o.back ? `<span class="pm" style="width:42px;height:42px;border-radius:11px">${I("left")}</span>` : ""}<h3>${title}</h3><span class="grow"></span>${o.right ?? ""}<span class="mini">${I("wifi")}</span><span class="clock">${o.time ?? "14:32"}</span></div>`;
+const frame = (on, inner) => `${rail(on)}<div class="main">${inner}</div>`;
+const sw = (c, s = 22) => `<span class="sw" style="background:${c};width:${s}px;height:${s}px;border-radius:${s / 2}px"></span>`;
+const shade = (c, f) => `<polygon points="${f}" fill="${c}"/>`;
+// small isometric part previews
+function thumb(size, color, kind = 0) {
+  const top_ = "50,20 84,37 50,54 16,37", left = "16,37 50,54 50,84 16,67", right = "84,37 50,54 50,84 84,67";
+  const cube = (dx, dy, s, col) => `<g transform="translate(${dx},${dy}) scale(${s})">${shade(col, top_)}${shade(col, left)}${shade(col, right)}<polygon points="${top_}" fill="#fff" opacity=".22"/><polygon points="${right}" fill="#000" opacity=".28"/></g>`;
+  const parts = [
+    cube(0, 6, 1, color),
+    cube(-8, 22, .78, color) + cube(26, 4, .78, color),
+    cube(0, 24, .9, color) + cube(14, -4, .62, "#E8E8E8"),
+    cube(-10, 30, .7, color) + cube(20, 30, .7, color) + cube(5, 6, .7, color),
+  ][kind % 4];
+  return `<div class="thumb" style="width:${size}px;height:${size}px"><svg viewBox="0 0 100 100" width="${size * .86}" height="${size * .86}"><ellipse cx="50" cy="78" rx="40" ry="12" fill="#000" opacity=".28"/>${parts}</svg></div>`;
+}
+const spool = (c, s = 78, empty = false) => `<svg viewBox="0 0 100 100" width="${s}" height="${s}"><circle cx="50" cy="50" r="46" fill="${empty ? "none" : c}" stroke="${empty ? "#3A4553" : "rgba(255,255,255,.25)"}" stroke-width="2" ${empty ? 'stroke-dasharray="6 6"' : ""}/>${empty ? "" : `<circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-opacity=".18" stroke-width="10"/><circle cx="50" cy="50" r="33" fill="none" stroke="#000" stroke-opacity=".12" stroke-width="2"/>`}<circle cx="50" cy="50" r="20" fill="#161C25" stroke="#3A4553" stroke-width="2"/><circle cx="50" cy="50" r="6" fill="#0D1117"/></svg>`;
+const ring = (pct, s, inner) => { const r = 44, c = 2 * Math.PI * r; return `<div style="position:relative;width:${s}px;height:${s}px;flex:none"><svg viewBox="0 0 100 100" width="${s}" height="${s}" style="transform:rotate(-90deg)"><circle cx="50" cy="50" r="${r}" fill="none" stroke="#1D2530" stroke-width="7"/><circle cx="50" cy="50" r="${r}" fill="none" stroke="#F2B05A" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c * pct / 100} ${c}"/></svg><div style="position:absolute;inset:0;display:grid;place-items:center">${inner}</div></div>`; };
+const tempCard = (ic, lab, cur, tgt, hot) => `<div class="card temp ${hot ? "hot" : ""}"><div class="lab">${I(ic)}${lab}</div><div class="val">${cur}<small>°C</small></div><div class="tgt">${tgt}</div></div>`;
+const steps = (list, now) => `<div class="steps">${list.map((s, i) => `<div class="${i < now ? "done" : i === now ? "now" : ""}"><span class="d">${i < now ? "✓" : i === now ? "›" : "•"}</span>${s}</div>`).join("")}</div>`;
+const PETG = "#2F7FD8", BLK = "#23272E", WHT = "#ECECEC", ORG = "#F2803A", GRN = "#3FA66B";
+
+const groups = [
+  ["Idle", [
+    { id: "01-home", cap: "<b>Home.</b> Temperatures you can tap to set, what's loaded, the last print one tap from printing again, and the four things people do most.",
+      html: frame("home", `${topbar("", { right: `<span class="mini" style="margin-right:6px">192.168.1.50</span>` })}
+        <div class="rowf">${tempCard("nozzle", "Nozzle", 24, "Off")}${tempCard("bed", "Bed", 23, "Off")}${tempCard("chamber", "Chamber", 26, "Off")}</div>
+        <div class="rowf" style="margin-top:12px">
+          <div class="card" style="flex:1;padding:12px 14px;display:flex;align-items:center;gap:12px">${spool(PETG, 62)}<div><div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em">LOADED</div><div style="font-size:19px;font-weight:700">PETG <span class="muted" style="font-weight:500">Blue</span></div><div class="muted" style="font-size:14.5px">Box 1 · Slot 2</div></div></div>
+          <div class="card" style="flex:1.25;padding:10px 12px;display:flex;align-items:center;gap:12px">${thumb(66, PETG, 1)}<div style="min-width:0;flex:1"><div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em">LAST PRINT</div><div style="font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">cable_clip_x8.gcode</div><div class="muted" style="font-size:14.5px">1h 12m · 38 g</div></div><span class="pm amber" style="background:var(--amber-tint);border-color:var(--amber)">${I("refresh")}</span></div>
+        </div>
+        <div class="card" style="margin-top:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;font-size:16px"><span class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em">BOX 1</span>${[BLK, PETG, ORG].map((c) => sw(c, 24)).join("")}<span style="width:24px;height:24px;border-radius:12px;border:2px dashed var(--line-2)"></span><span class="muted" style="margin-left:6px">31 °C · 14% humidity</span><span class="grow"></span><span class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em">BOX 2</span>${[WHT, GRN, "#D8433F", "#8A9099"].map((c) => sw(c, 24)).join("")}</div>
+        <div class="rowf bottom"><div class="btn">${I("bed")}Preheat</div><div class="btn">${I("drop")}Load</div><div class="btn">${I("home")}Home all</div><div class="btn">${I("light")}Light</div></div>`) },
+    { id: "02-sleep", cap: "<b>Asleep.</b> After a few idle minutes the screen dims to the clock and one line, and the logo drifts around and bounces off the edges, changing color at each bounce. A tap wakes it. On the printer it moves a few pixels at a few frames a second and redraws only where the logo was and is.",
+      html: `<div data-bounce style="position:absolute;left:0;top:0;opacity:.9">${fullLogo(84)}</div><div style="position:absolute;left:0;right:0;bottom:30px;text-align:center;opacity:.75"><div style="font-size:44px;font-weight:700;letter-spacing:-.02em">14:32</div><div class="muted" style="font-size:17px;margin-top:2px">Bed 23 °C · PETG Blue loaded</div></div>` },
+  ]],
+  ["Printing", [
+    { id: "03-files", cap: "<b>Files.</b> Big rows with the slicer's preview, time, weight, and the filaments the file wants.",
+      html: frame("files", `${topbar("Files", { right: `<div class="seg" style="margin-right:8px"><span class="on">Printer</span><span>${I("usb", "width:17px;height:17px;margin-right:6px")}USB</span></div>` })}
+        <div class="card" style="overflow:hidden">${[
+          ["cable_clip_x8.gcode", "1h 12m · 38 g", [PETG], "Today 09:20", 1], ["headphone_stand.3mf", "4h 51m · 212 g", [BLK, ORG], "Yesterday", 2],
+          ["drawer_organizer_3x2.gcode", "2h 38m · 96 g", [WHT], "10 Nov", 3], ["benchy_calibration.gcode", "38m · 12 g", [GRN], "8 Nov", 0],
+        ].map(([n, m, cols, d, k]) => `<div class="file">${thumb(72, cols[0], k)}<div style="flex:1;min-width:0"><div class="nm">${n}</div><div class="meta">${m}<span class="dim">·</span>${cols.map((c) => sw(c, 16)).join("")}</div></div><span class="dim" style="font-size:14px;white-space:nowrap">${d}</span><span class="dim">${I("chev")}</span></div>`).join("")}</div>
+        <div style="position:absolute;right:8px;top:74px;width:4px;height:120px;border-radius:2px;background:var(--line-2)"></div>`) },
+    { id: "04-print-setup", cap: "<b>Before a print.</b> The file's filaments matched to Box slots, the bed mesh (adaptive, full bed, or any saved mesh by name), and timelapse and the polar cooler (on printers that have one) for this print, before anything heats.",
+      html: frame("files", `${topbar("headphone_stand.3mf", { back: 1 })}
+        <div class="rowf" style="gap:16px">${thumb(170, BLK, 2)}
+          <div style="flex:1;min-width:0">
+            <div class="muted" style="font-size:16px;display:flex;gap:14px;align-items:center;margin-bottom:8px"><span style="display:flex;gap:6px;align-items:center">${I("clock", "width:18px;height:18px")}4h 51m</span><span>212 g</span><span>0.2 mm</span></div>
+            <div class="card" style="padding:2px 14px">
+              <div class="kv"><span class="k">Filament 1</span>${sw(BLK)}<span style="flex:1">PETG Black</span><span class="green" style="font-size:14.5px;font-weight:650">Slot 1 ✓</span></div>
+              <div class="kv"><span class="k">Filament 2</span>${sw(ORG)}<span style="flex:1">PETG Orange</span><span class="green" style="font-size:14.5px;font-weight:650">Slot 3 ✓</span></div>
+            </div>
+            <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin:12px 0 6px">BED MESH</div>
+            <div class="chips"><span class="chip">Adaptive</span><span class="chip">Full bed</span><span class="chip on">Saved: textured PEI ${I("down", "width:16px;height:16px")}</span></div>
+            <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin:12px 0 6px">THIS PRINT</div>
+            <div class="chips"><span class="chip">${I("cam", "width:18px;height:18px")}Timelapse <span class="dim">off</span></span><span class="chip on">${I("fan", "width:18px;height:18px")}Polar cooler <span>on</span></span></div>
+          </div></div>
+        <div class="rowf bottom"><div class="btn small">Delete</div><div class="btn primary tall" style="height:58px">${I("play")}Start print</div></div>`) },
+    { id: "04b-mesh-pick", cap: "<b>Pick a bed mesh.</b> Every mesh saved in Klipper by name, with when it was saved and how much it varies. Picking one goes back to the print.",
+      html: frame("files", `${topbar("Bed mesh for this print", { back: 1 })}
+        <div class="rowf" style="gap:10px"><div class="card opt" style="flex:1">${I("mesh")}<div><div class="t">Adaptive</div><div class="s">Probes where this print goes</div></div></div><div class="card opt" style="flex:1">${I("mesh")}<div><div class="t">Full bed</div><div class="s">Probes the whole bed first</div></div></div></div>
+        <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin:14px 0 6px">SAVED MESHES</div>
+        <div class="card" style="padding:2px 14px">${[["textured PEI", "Saved 12 Nov 09:02 · 0.11 mm range", 1], ["smooth PEI", "Saved 3 Nov 18:40 · 0.14 mm range", 0], ["default", "Saved 28 Oct 11:15 · 0.09 mm range", 0]].map(([n, d, on]) => `<div class="kv" style="padding:11px 0"><span style="width:22px;height:22px;border-radius:11px;flex:none;border:2px solid ${on ? "var(--amber)" : "var(--line-2)"};display:grid;place-items:center">${on ? '<span style="width:10px;height:10px;border-radius:5px;background:var(--amber)"></span>' : ""}</span><span style="font-size:17.5px;font-weight:650;width:150px">${n}</span><span class="muted" style="font-size:15px">${d}</span></div>`).join("")}</div>`) },
+    { id: "05-starting", cap: "<b>Starting.</b> The print start as named steps, the same way the installer shows its run, so a long chamber warm-up never looks stuck.",
+      html: frame("home", `${topbar("Starting headphone_stand.3mf", { right: temps("140°", "60°", "38°") })}
+        <div style="font-size:18px;margin:2px 0 10px">Warming the chamber <span class="muted">· 38 of 45 °C, about 3 min</span></div><div class="bar"><i style="width:34%"></i></div>
+        <div style="margin-top:20px">${steps(["Home", "Warm the bed to 60 °C", "Warm the chamber to 45 °C", "Bed mesh, adaptive", "Heat the nozzle to 250 °C", "Load slot 1", "Purge and wipe", "Prime line"], 2)}</div>
+        <div class="rowf bottom"><span class="grow"></span><div class="btn danger small" style="flex:0 0 190px">${I("stop")}Cancel</div></div>`) },
+    { id: "06-printing", cap: "<b>Printing.</b> Progress, time left and when it's done, which slot is feeding, and three big controls.",
+      html: frame("home", `${topbar("headphone_stand.3mf", { right: temps("250°", "60°", "45°") })}
+        <div class="rowf" style="gap:20px;align-items:center;margin-top:4px">${ring(47, 208, thumb(150, BLK, 2).replace('class="thumb"', 'class="thumb" data-r').replace("border-radius", "x").replace('style="', 'style="border-radius:50%;'))}
+          <div style="flex:1"><div style="font-size:66px;font-weight:750;letter-spacing:-.03em;line-height:1">47<span style="font-size:30px;color:var(--ink-3);margin-left:3px">%</span></div>
+            <div style="font-size:19px;margin-top:8px">2h 34m left <span class="muted">· done at 17:06</span></div>
+            <div class="muted" style="font-size:16px;margin-top:4px">Layer 128 of 272 · 100% speed</div>
+            <div class="chip" style="margin-top:12px">${sw(BLK, 18)}PETG Black · Slot 1</div></div></div>
+        <div class="rowf bottom"><div class="btn">${I("pause")}Pause</div><div class="btn">${I("tune")}Tune</div><div class="btn danger">${I("stop")}Cancel<span style="font-size:12.5px;font-weight:500;opacity:.8;margin-left:2px">hold</span></div></div>`) },
+    { id: "07-tune", cap: "<b>Tune.</b> Heater targets first, with the chamber only on printers that have one, then speed, flow, and Z offset, then the part, aux, and exhaust fans. Each a pair of thumb-sized buttons.",
+      html: frame("home", `${topbar("Tune", { back: 1 })}
+        ${[[["nozzle", "Nozzle", "250", "°", "248°"], ["bed", "Bed", "60", "°", "60°"], ["chamber", "Chamber", "45", "°", "44°"]],
+           [["tune", "Speed", "100", "%"], ["drop", "Flow", "98", "%"], ["down", "Z offset", "+0.020", ""]],
+           [["fan", "Part fan", "80", "%"], ["fan", "Aux fan", "40", "%"], ["fan", "Exhaust fan", "60", "%"]]].map((r, ri) => `<div class="rowf" style="margin-bottom:10px;gap:10px">${r.map(([ic, l, v, u, cur]) => `<div class="card tile" style="padding:8px 10px;${ri === 0 ? "border-color:rgba(242,176,90,.55)" : ""}"><div class="lab">${I(ic)}${l}<span class="grow"></span>${cur ? `<span class="dim" style="font-weight:600">now ${cur}</span>` : ""}</div><div style="display:flex;align-items:center;gap:6px;margin-top:6px"><span class="pm" style="width:46px;height:46px;font-size:24px">−</span><div style="flex:1;text-align:center;font-size:26px;font-weight:700;${ri === 0 ? "color:var(--amber)" : ""}">${v}<span style="font-size:15px;color:var(--ink-3);margin-left:2px">${u}</span></div><span class="pm" style="width:46px;height:46px;font-size:24px">+</span></div></div>`).join("")}</div>`).join("")}
+        <div class="rowf bottom" style="align-items:center"><span class="muted" style="font-size:15px">Z offset step</span><div class="chips"><span class="chip on">0.005</span><span class="chip">0.01</span><span class="chip">0.05</span></div><span class="grow"></span><span class="muted" style="font-size:15px">Temperature step</span><div class="chips"><span class="chip on">5°</span><span class="chip">1°</span></div></div>`) },
+    { id: "08-runout", cap: "<b>Paused, slot ran out.</b> Says what happened, suggests the slot with the same filament, and lets you pick any other slot or load a new spool into the empty one.",
+      html: frame("home", `${topbar("Paused: slot 1 ran out", { right: temps("250°", "60°", "45°") })}
+        <div class="muted" style="font-size:16px;margin-bottom:10px">Paused at 47%, layer 128. The nozzle is parked and stays hot.</div>
+        <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin-bottom:6px">CONTINUE FROM</div>
+        ${[["BOX 1", [[1, "", "Empty", "ran out"], [2, PETG, "PETG", "Blue"], [3, ORG, "PETG", "Orange"], [4, BLK, "PETG", "Black · same", 1]]], ["BOX 2", [[1, WHT, "PLA", "White"], [2, GRN, "PLA", "Green"], [3, "#D8433F", "PLA", "Red"], [4, "#8A9099", "PLA", "Gray"]]]].map(([bx, slots]) => `<div class="rowf" style="gap:8px;margin-bottom:8px;align-items:center"><span class="dim" style="width:46px;font-size:12.5px;font-weight:700;letter-spacing:.04em;flex:none">${bx}</span>${slots.map(([n, c, m, d, on]) => `<div class="card" style="flex:1;min-width:0;height:56px;padding:0 10px;display:flex;align-items:center;gap:9px;${on ? "border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset" : ""}${c ? "" : "opacity:.45"}">${c ? sw(c, 26) : '<span style="width:26px;height:26px;border-radius:13px;border:2px dashed var(--line-2);flex:none"></span>'}<div style="min-width:0"><div style="font-size:15px;font-weight:650;white-space:nowrap">${n} · ${m}</div><div class="${on ? "amber" : "muted"}" style="font-size:13px;white-space:nowrap">${d}</div></div></div>`).join("")}</div>`).join("")}
+        <div class="card opt" style="margin-top:4px;padding:9px 14px">${spool("#000", 40, true)}<div style="flex:1"><div class="t" style="font-size:16.5px">Load a new spool into Box 1 slot 1</div><div class="s">Put the spool in, then continue</div></div><span class="dim">${I("chev")}</span></div>
+        <div class="rowf bottom"><div class="btn danger small" style="flex:0 0 170px">${I("stop")}Cancel print</div><span class="grow"></span><div class="btn primary" style="flex:0 0 330px">${I("play")}Continue from Box 1 slot 4</div></div>`) },
+    { id: "09-done", cap: "<b>Finished.</b> What it used from each slot, and when the bed is cool enough to take the part off.",
+      html: frame("home", `${topbar("Finished", { time: "17:06", right: temps("96°", "52°", "41°", [0, 1, 0]) })}
+        <div class="rowf" style="gap:18px">${thumb(190, BLK, 2)}
+          <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">headphone_stand.3mf</div>
+            <div class="card" style="padding:2px 14px;margin-top:10px">
+              <div class="kv"><span class="k">Took</span><span>4h 48m</span></div>
+              <div class="kv"><span class="k">Slot 1</span>${sw(BLK, 18)}<span style="flex:1">PETG Black</span><span class="muted">171 g</span></div>
+              <div class="kv"><span class="k">Slot 3</span>${sw(ORG, 18)}<span style="flex:1">PETG Orange</span><span class="muted">41 g</span></div>
+            </div>
+            <div class="amber" style="font-size:15.5px;margin-top:10px;display:flex;gap:8px;align-items:center">${I("bed", "width:19px;height:19px")}Bed is 52 °C. Parts release below 40 °C, about 6 min.</div></div></div>
+        <div class="rowf bottom"><div class="btn">${I("refresh")}Print again</div><div class="btn primary">${I("check")}Bed is clear</div></div>`) },
+  ]],
+  ["QIDI Box and filament", [
+    { id: "10-box", cap: "<b>QIDI Box.</b> Each slot as a spool in its real color, with a tag mark when the Box read it from RFID, and the Box's air underneath.",
+      html: frame("box", `${topbar("QIDI Box", { right: `<div class="seg" style="margin-right:8px"><span class="on">Box 1</span><span>Box 2</span><span>External</span></div>` })}
+        <div class="rowf" style="gap:10px">${[[1, BLK, "PETG", "QIDI", "Ready", 1, 0], [2, PETG, "PETG", "Polymaker", "Loaded", 1, 1], [3, ORG, "PETG", "Overture", "Ready", 0, 0], [4, "", "", "", "Empty", 0, 0]].map(([n, c, m, b, s, tg, on]) => `<div class="card slot ${on ? "on" : ""}"><span class="n">${n}</span>${tg ? `<span class="tg">${I("tag")}</span>` : ""}<div style="margin-top:14px">${spool(c || "#000", 84, !c)}</div><div class="mat">${m || "&nbsp;"}</div><div class="br">${b || "Tap to set"}</div><div class="st">${s}</div></div>`).join("")}</div>
+        <div class="card" style="margin-top:12px;padding:10px 14px;display:flex;align-items:center;gap:18px;font-size:16px"><span style="display:flex;gap:7px;align-items:center">${I("chamber", "width:19px;height:19px;color:var(--ink-3)")}31 °C</span><span style="display:flex;gap:7px;align-items:center">${I("drop", "width:19px;height:19px;color:var(--ink-3)")}14% humidity</span><span class="muted">Dryer off</span><span class="grow"></span><span class="chip" style="height:38px">${I("sun", "width:18px;height:18px")}Dry</span></div>
+        <div class="rowf bottom"><div class="btn">Unload</div><div class="btn primary">Load slot 1</div></div>`) },
+    { id: "11-slot", cap: "<b>Set a slot.</b> Material, brand, and color in three taps, or read it from the spool's tag. The material and brand lists are edited in Valve Oil UI.",
+      html: frame("box", `${topbar("Box 1 · Slot 3", { back: 1 })}
+        <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin-bottom:6px">MATERIAL</div>
+        <div class="chips">${["PLA", "PETG", "ABS", "ASA", "TPU", "PA", "PC", "More"].map((m) => `<span class="chip ${m === "PETG" ? "on" : ""}">${m}</span>`).join("")}</div>
+        <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin:12px 0 6px">BRAND</div>
+        <div class="chips">${["QIDI", "Polymaker", "Overture", "Bambu", "Elegoo", "More"].map((m) => `<span class="chip ${m === "Overture" ? "on" : ""}">${m}</span>`).join("")}</div>
+        <div class="dim" style="font-size:13.5px;font-weight:700;letter-spacing:.04em;margin:12px 0 8px">COLOR</div>
+        ${[["#FFFFFF", "#ECECEC", "#BFC3C9", "#8A9099", "#5B6169", "#23272E", "#000000", "#8B5A3C", "#C49A6C", "#E8D8B0", "#F5E6C8", "#D4AF37", "#B87333"],
+           ["#D8433F", "#F2803A", "#F2C94C", "#C6D94A", "#3FA66B", "#1E7F5C", "#2BB3A3", "#4FC3F7", "#2F7FD8", "#2B3A8C", "#7A5AD8", "#B04FC7", "#E06FA8"],
+           ["#7A1E2A", "#F4A7A0", "#FFD6A5", "#FFF3B0", "#CDEAC0", "#A8E6CF", "#B9E5F2", "#A0C4FF", "#BDB2FF", "#E4C1F9", "#FFC6E0", "#556B2F", "add"]].map((row) => `<div style="display:flex;gap:9px;margin-bottom:8px">${row.map((c) => c === "add" ? `<span style="width:40px;height:40px;border-radius:20px;border:2px dashed var(--line-2);display:grid;place-items:center;color:var(--ink-2);font-size:22px">+</span>` : `<span style="width:40px;height:40px;border-radius:20px;background:${c};border:2px solid rgba(255,255,255,.22);${c === "#F2803A" ? "box-shadow:0 0 0 3px #0D1117,0 0 0 6px #F2B05A" : ""}"></span>`).join("")}</div>`).join("")}
+        <div class="rowf bottom"><div class="btn">${I("tag")}Read the spool's tag</div><div class="btn primary">Save</div></div>`) },
+    { id: "12-temps", cap: "<b>Temperatures.</b> One tap for a material, or set each heater by hand.",
+      html: frame("move", `${topbar("Temperatures", { right: `<div class="seg" style="margin-right:8px"><span>Move</span><span class="on">Heat</span><span>Fans</span></div>` })}
+        <div class="chips" style="margin-bottom:12px">${["PLA", "PETG", "ABS", "ASA", "PA-CF"].map((m) => `<span class="chip ${m === "PETG" ? "on" : ""}">${m}</span>`).join("")}<span class="grow"></span><span class="chip" style="color:var(--blue);border-color:rgba(111,179,242,.5)">Cool down</span></div>
+        <div class="card" style="padding:2px 14px">${[["nozzle", "Nozzle", "212", "250"], ["bed", "Bed", "58", "80"], ["chamber", "Chamber", "34", "45"]].map(([ic, l, c, t]) => `<div class="kv" style="padding:10px 0"><span class="amber">${I(ic)}</span><span style="width:98px;font-size:17.5px;font-weight:650">${l}</span><span style="font-size:27px;font-weight:700;width:86px">${c}°</span><span class="muted" style="flex:1;font-size:15px">heating</span><span class="pm">−</span><span style="width:74px;text-align:center;font-size:23px;font-weight:700" class="amber">${t}°</span><span class="pm">+</span></div>`).join("")}</div>`) },
+    { id: "13-move", cap: "<b>Move.</b> Jog pad for X and Y with Z beside it. Home each axis on its own or all at once; Home Z homes X and Y first when they aren't. Z up means the bed moves toward the nozzle: the Z arrows and the two Z buttons send the bed up near the nozzle or all the way down, 10 mm short of max Z.",
+      html: frame("move", `${topbar("Move", { right: `<div class="seg" style="margin-right:8px"><span class="on">Move</span><span>Heat</span><span>Fans</span></div>` })}
+        <div class="rowf" style="gap:18px;align-items:flex-start">
+          <div class="jog"><span class="a" style="left:88px;top:8px">${I("up")}</span><span class="a" style="left:88px;bottom:8px">${I("down")}</span><span class="a" style="left:8px;top:88px">${I("left")}</span><span class="a" style="right:8px;top:88px">${I("chev")}</span><span class="c">${I("home", "width:30px;height:30px")}</span><span class="l" style="left:118px;top:66px">Y</span><span class="l" style="left:170px;top:118px">X</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px;align-items:center"><span class="pm" style="width:66px;height:74px">${I("up")}</span><span class="dim" style="font-size:13px;font-weight:700">Z</span><span class="pm" style="width:66px;height:74px">${I("down")}</span></div>
+          <div style="flex:1;min-width:0"><div class="card" style="padding:2px 14px">${[["X", "195.0", 1], ["Y", "", 0], ["Z", "", 0]].map(([a, v, h]) => `<div class="kv" style="padding:7px 0"><span class="k" style="width:28px;font-weight:700">${a}</span><span style="flex:1;text-align:right;font-size:${h ? 19 : 15}px;font-weight:650" class="${h ? "" : "dim"}">${h ? `${v}<span class="dim" style="font-size:14px;margin-left:4px">mm</span>` : "not homed"}</span></div>`).join("")}</div>
+            <div class="rowf" style="margin-top:10px;gap:8px">${[["Home X"], ["Home Y"], ["Home Z"], ["Home all"]].map(([t, sub, off]) => `<div class="btn" style="height:50px;font-size:15px;padding:0 4px;flex-direction:column;gap:1px;${off ? "opacity:.45" : ""}">${t}${sub ? `<span style="font-size:11.5px;font-weight:500" class="muted">${sub}</span>` : ""}</div>`).join("")}</div>
+            <div class="rowf" style="margin-top:8px;gap:8px">${[["Z all the way up", "bed to Z 10 mm"], ["Z all the way down", "bed to max Z − 10 mm"]].map(([t, sub]) => `<div class="btn" style="height:54px;font-size:15px;padding:0 6px;flex-direction:column;gap:1px">${t}<span style="font-size:12px;font-weight:500" class="muted">${sub}</span></div>`).join("")}</div></div></div>
+        <div class="rowf bottom" style="align-items:center"><span class="muted" style="font-size:15px">Step</span><div class="chips">${["0.1", "1", "10", "50"].map((s) => `<span class="chip ${s === "10" ? "on" : ""}">${s} mm</span>`).join("")}</div><span class="grow"></span><span class="chip">Motors off</span></div>`) },
+  ]],
+  ["Trouble and settings", [
+    { id: "14-error", cap: "<b>Klipper stopped.</b> The real reason in plain sight, what state the printer is in, and the one button that gets it back.",
+      html: frame("home", `${topbar("Klipper stopped", { right: temps("118°", "57°", "41°", [0, 0, 0]) })}
+        <div class="card" style="padding:14px 16px;border-color:rgba(200,74,90,.6)"><div class="rose" style="font-size:19px;font-weight:700">Heater extruder not heating at expected rate</div><div class="muted" style="font-size:15.5px;margin-top:6px;line-height:1.4">The nozzle was set to 250 °C and stayed near 212 °C for 40 seconds. All heaters are off. headphone_stand.3mf stopped at layer 128.</div></div>
+        <div class="rowf" style="margin-top:14px;gap:16px;align-items:center"><div class="qr"><span>HELP</span></div><div class="muted" style="font-size:15.5px;line-height:1.45">Usually a loose heater or thermistor connector at the toolhead, or a failed heater.<br>Scan for what to check, or open the log.</div></div>
+        <div class="rowf bottom"><div class="btn small">View log</div><div class="btn primary">${I("refresh")}Restart firmware</div></div>`) },
+    { id: "15-settings", cap: "<b>Settings.</b> Network, Valve Oil's version and updates, the screen, and the calibration tools, as large tiles.",
+      html: frame("gear", `${topbar("Settings")}
+        ${[[["wifi", "Wi-Fi", "Workshop · 192.168.1.50"], ["drop", "Valve Oil 26.11.12.1", "Up to date · updates automatically"]],
+           [["sun", "Screen", "Brightness 70% · sleeps after 5 min"], ["mesh", "Bed mesh", "Saved today 09:02 · 0.11 mm range"]],
+           [["wave", "Input shaper", "MZV 58 Hz · EI 46 Hz"], ["scale", "Nozzle load cell", "Check, probe accuracy, bed screws"]],
+           [["cam", "Camera and AI", "QIDI AI detection off"], ["info", "About", "QIDI Max 4 · firmware 01.01.07.01"]]]
+          .map((r) => `<div class="rowf" style="margin-bottom:10px">${r.map(([ic, t, s]) => `<div class="card set"><span class="ic">${I(ic)}</span><div style="min-width:0;flex:1"><div class="t">${t}</div><div class="s">${s}</div></div><span class="dim">${I("chev")}</span></div>`).join("")}</div>`).join("")}`) },
+  ]],
+];
+
+const root = document.getElementById("root");
+const want = new URLSearchParams(location.search).get("s");
+const all = groups.flatMap((g) => g[1]);
+if (want) {
+  document.body.classList.add("single");
+  root.innerHTML = `<div class="screen">${all.find((x) => x.id === want).html}</div>`;
+} else {
+  root.innerHTML = `<h1>Valve Oil touchscreen: concept mockups</h1><p class="lead">A concept for a touchscreen app in place of QIDI's, at the real 800×480 size of the Max 4 and Plus 5 screens. File names, temperatures, times, and addresses are placeholders, and nothing here is built.</p>` +
+    groups.map(([name, list]) => `<h2>${name}</h2><div class="grid">${list.map((s) => `<figure><div class="screen">${s.html}</div><figcaption>${s.cap}</figcaption></figure>`).join("")}</div>`).join("");
+}
+// The sleep screen's logo bounces around the screen, changing the wordmark's color at each bounce.
+for (const el of document.querySelectorAll("[data-bounce]")) {
+  const scr = el.closest(".screen"), ink = [...el.querySelectorAll('g [fill="#F0F0F0"]')];
+  const colors = ["#F0F0F0", "#F2B05A", "#62C28E", "#6FB3F2", "#F08A97"];
+  let x = 150, y = 70, dx = 1.4, dy = 1.1, c = 0;
+  const step = () => {
+    const W = scr.clientWidth - el.offsetWidth, H = scr.clientHeight - 120 - el.offsetHeight;
+    x += dx; y += dy; let hit = false;
+    if (x <= 0 || x >= W) { dx = -dx; x = Math.max(0, Math.min(W, x)); hit = true; }
+    if (y <= 0 || y >= H) { dy = -dy; y = Math.max(0, Math.min(H, y)); hit = true; }
+    if (hit) { c = (c + 1) % colors.length; ink.forEach((p) => p.setAttribute("fill", colors[c])); }
+    el.style.transform = `translate(${x}px, ${y}px)`;
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+</script>
+</body>
+</html>
