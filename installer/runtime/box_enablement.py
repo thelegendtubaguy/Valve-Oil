@@ -14,11 +14,9 @@ from . import klipper_cfg, messages, safety
 from .errors import ActivePrintError, InstallerError, PrinterStateError
 from .fs_atomic import atomic_delete, atomic_write_text
 from .firmware import detect_firmware, supported_printer
-from .interaction import confirm_yes
 from .manifest import load_manifest
 from .models import RuntimePaths
 from .process_restart import ProcessRestartError, read_printer_info
-from .reporter import DetailGroup
 
 VALUE_T_RE = re.compile(r"^value_t(?P<tool>\d+)$")
 SAVED_VARIABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -84,14 +82,6 @@ class BoxEnablementOpportunity:
 
 
 @dataclass(frozen=True)
-class ToolSlotMismatch:
-    tool: int
-    variable: str
-    current: str
-    expected: str
-
-
-@dataclass(frozen=True)
 class RequiredToolSlotGap:
     tool: int
     variable: str
@@ -104,12 +94,6 @@ class RequiredToolSlotOpportunity:
     saved_variables_path: Path
     box_count: int
     gaps: tuple[RequiredToolSlotGap, ...]
-
-
-@dataclass(frozen=True)
-class ToolSlotAlignmentOpportunity:
-    saved_variables_path: Path
-    mismatches: tuple[ToolSlotMismatch, ...]
 
 
 def maybe_initialize_filament_retention(
@@ -243,15 +227,21 @@ def _update_previous_box_motion_defaults(*, paths, printer, reporter, written, u
     return True
 
 
-def maybe_prompt_enable_box(
+def maybe_enable_box(
     *,
     paths: RuntimePaths,
     reporter,
-    input_stream,
+    new_install: bool,
     journal=None,
     written: dict[str, str] | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
+    """A new install that finds QIDI Boxes turns Box support on without asking; later runs leave it as the operator
+    set it. enable_box is QIDI's per-print "use the Box" flag, which every print start rewrites, so setting it on every
+    run would undo an external-spool choice made for prints started from Fluidd or a slicer."""
+    if not new_install:
+        reporter.debug(event="box_enablement.skipped", reason="existing_install")
+        return False
     opportunity = detect_box_enablement_opportunity(paths, urlopen=urlopen)
     if opportunity is None:
         reporter.debug(event="box_enablement.skipped")
@@ -262,20 +252,11 @@ def maybe_prompt_enable_box(
         enable_box=opportunity.enable_box,
         saved_variables_path=opportunity.saved_variables_path,
     )
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.ENABLE_QIDI_BOX_PROMPT.format(box_count=opportunity.box_count),
-        instruction=messages.ENABLE_QIDI_BOX_PROMPT_INSTRUCTION,
-        cancel_message=messages.ENABLE_QIDI_BOX_DECLINED,
-    ):
-        return False
     saved = save_live_variables(paths, {"enable_box": "1"}, urlopen=urlopen)
     if written is not None:
         written.update(saved)
     reporter.line(messages.ENABLE_QIDI_BOX_ENABLED)
     return True
-
 
 def maybe_write_required_tool_slot_variables(
     *,
@@ -378,59 +359,6 @@ def maybe_reconcile_tool_slots_after_box_count_change(
     return bool(gaps)
 
 
-def maybe_prompt_align_tool_slots(
-    *,
-    paths: RuntimePaths,
-    reporter,
-    input_stream,
-    journal=None,
-    written: dict[str, str] | None = None,
-    urlopen: UrlOpenFn = urllib.request.urlopen,
-) -> bool:
-    if input_stream is None:
-        reporter.debug(event="tool_slot_alignment.skipped", reason="noninteractive")
-        return False
-    opportunity = detect_tool_slot_alignment_opportunity(paths, urlopen=urlopen)
-    if opportunity is None:
-        reporter.debug(event="tool_slot_alignment.skipped")
-        return False
-    reporter.debug(
-        event="tool_slot_alignment.detected",
-        mismatches=len(opportunity.mismatches),
-        saved_variables_path=opportunity.saved_variables_path,
-    )
-    rows = tuple(
-        f"{mismatch.variable}: {mismatch.current} -> {mismatch.expected}"
-        for mismatch in opportunity.mismatches
-    )
-    if hasattr(reporter, "emit_detail_groups"):
-        reporter.emit_detail_groups(
-            (DetailGroup(messages.TOOL_SLOT_MAPPING_MISMATCH_HEADER, rows),)
-        )
-    else:
-        reporter.prepare_for_prompt()
-        reporter.line(messages.TOOL_SLOT_MAPPING_MISMATCH_HEADER)
-        for row in rows:
-            reporter.line(f"  - {row}")
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.TOOL_SLOT_MAPPING_PROMPT,
-        instruction=messages.TOOL_SLOT_MAPPING_PROMPT_INSTRUCTION,
-        cancel_message=messages.TOOL_SLOT_MAPPING_DECLINED,
-    ):
-        return False
-    saved = save_live_variables(
-        paths,
-        {mismatch.variable: _quote_saved_string(mismatch.expected) for mismatch in opportunity.mismatches},
-        urlopen=urlopen,
-    )
-    if written is not None:
-        written.update(saved)
-    reporter.line(messages.TOOL_SLOT_MAPPING_CORRECTED)
-    return True
-
-
 def detect_box_enablement_opportunity(
     paths: RuntimePaths, *, urlopen: UrlOpenFn = urllib.request.urlopen
 ) -> BoxEnablementOpportunity | None:
@@ -462,19 +390,6 @@ def detect_required_tool_slot_opportunity(
         saved_variables_path=paths.config_root / "saved_variables.cfg",
         box_count=box_count,
         gaps=gaps,
-    )
-
-
-def detect_tool_slot_alignment_opportunity(
-    paths: RuntimePaths, *, urlopen: UrlOpenFn = urllib.request.urlopen
-) -> ToolSlotAlignmentOpportunity | None:
-    variables = read_live_saved_variables(paths, urlopen=urlopen)
-    mismatches = collect_tool_slot_mismatches_from_variables(variables)
-    if not mismatches:
-        return None
-    return ToolSlotAlignmentOpportunity(
-        saved_variables_path=paths.config_root / "saved_variables.cfg",
-        mismatches=mismatches,
     )
 
 
@@ -621,31 +536,11 @@ def collect_required_tool_slot_gaps_from_variables(
     return tuple(gaps)
 
 
-def collect_tool_slot_mismatches_from_variables(
-    variables: Mapping[str, str],
-) -> tuple[ToolSlotMismatch, ...]:
-    mismatches = []
-    for variable, value in variables.items():
-        match = VALUE_T_RE.match(variable)
-        if match is None:
-            continue
-        tool = int(match.group("tool"))
-        current = _normalize_saved_string(value)
-        expected = f"slot{tool}"
-        if current != expected:
-            mismatches.append(ToolSlotMismatch(tool, variable, current or "<empty>", expected))
-    return tuple(sorted(mismatches, key=lambda mismatch: mismatch.tool))
-
-
 # Text helpers remain for offline configuration analysis and legacy tests; live
 # installer paths intentionally use the Moonraker helpers above.
 def collect_required_tool_slot_gaps(text: str) -> tuple[RequiredToolSlotGap, ...]:
     variables = _variables_from_text(text)
     return collect_required_tool_slot_gaps_from_variables(variables)
-
-
-def collect_tool_slot_mismatches(text: str) -> tuple[ToolSlotMismatch, ...]:
-    return collect_tool_slot_mismatches_from_variables(_variables_from_text(text))
 
 
 def _variables_from_text(text: str) -> dict[str, str]:

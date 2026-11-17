@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import pty
@@ -25,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 from installer.runtime import static_build
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import (
+    ARCHIVE_NAME,
     BUNDLE_ROOT_NAME,
     INSTALL_BACKUP_LABEL_PREFIX,
     UNINSTALL_BACKUP_LABEL_PREFIX,
@@ -36,10 +38,15 @@ FIXTURE_ROOT = REPO_ROOT / "installer/tests/fixtures/runtime/base"
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", required=True)
+    parser.add_argument("--usb-image", help="the USB drive image built from the archive")
+    parser.add_argument("--usb-stub-qidi", action="store_true",
+                        help="the USB drive image stands in for QIDI's target packages")
     args = parser.parse_args(argv)
 
     archive_path = Path(args.archive).resolve()
     validate_bundle_archive(archive_path)
+    if args.usb_image:
+        check_usb_image(Path(args.usb_image).resolve(), archive_path, stub_qidi=args.usb_stub_qidi)
 
     workspace = Path(tempfile.mkdtemp(prefix="installer-smoke-"))
     extract_root = workspace / "extract"
@@ -357,6 +364,118 @@ def main(argv: list[str] | None = None) -> int:
 
     print("bundle smoke test passed")
     return 0
+
+
+def check_usb_image(image: Path, bundle_archive: Path, *, stub_qidi: bool) -> None:
+    """The drive image's layout, the printers' zips and their hand-off package, QIDI's files against their pins, and
+    the built postinst and launcher on a fake printer of each model."""
+    from installer.tests.usb_harness import FakePrinter, moonraker
+    from scripts import usb_drive_image as usb
+
+    manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+    bundle = bundle_archive.read_bytes()
+    bundle_sha256 = hashlib.sha256(bundle).hexdigest()
+    with zipfile.ZipFile(image) as drive:
+        names = drive.namelist()
+        zips = sorted(name for name in names if name.startswith(f"{usb.QD_UPDATE}/"))
+        expected = {usb.BUNDLE_ON_DRIVE, *zips,
+                    *(f"{usb.DRIVE_FOLDER}/{printer.target_firmware.archive}" for printer in manifest.printers)}
+        if len(names) != len(set(names)) or set(names) != expected or len(zips) != len(manifest.printers):
+            raise SystemExit(f"USB image layout is unexpected: {names}")
+        if drive.read(usb.BUNDLE_ON_DRIVE) != bundle:
+            raise SystemExit("USB image does not carry the bundle archive")
+        for printer in manifest.printers:
+            # QIDI's app lists the zips under QD_Update/ that start with the printer's prefix: exactly one.
+            own = [name for name in zips if Path(name).name.startswith(usb.zip_prefix(printer))]
+            if len(own) != 1 or not re.fullmatch(rf"{re.escape(usb.zip_prefix(printer))}ValveOil_[^/]+\.zip",
+                                                 Path(own[0]).name):
+                raise SystemExit(f"USB image does not hold exactly one {usb.zip_prefix(printer)} zip: {zips}")
+            check_usb_printer_zip(printer, Path(own[0]).name, drive.read(own[0]), bundle_sha256)
+            target = printer.target_firmware
+            data = drive.read(f"{usb.DRIVE_FOLDER}/{target.archive}")
+            carried = data.startswith(usb.STUB_PREFIX) if stub_qidi else (
+                len(data) == target.size and hashlib.sha256(data).hexdigest() == target.sha256)
+            if not carried:
+                raise SystemExit(f"USB image's {target.archive} does not match its pin")
+            del data
+
+        workspace = Path(tempfile.mkdtemp(prefix="usb-image-smoke-"))
+        try:
+            for index, printer in enumerate(manifest.printers):
+                own = next(name for name in zips if Path(name).name.startswith(usb.zip_prefix(printer)))
+                fake = FakePrinter(workspace / printer.id, printer_id=printer.id, system_package=printer.soc_package,
+                                   qidi_version=printer.target_firmware.soc_version)
+                fake.put_on_drive(Path(own).name, drive.read(own), bundle_archive)
+                result = fake.offline_update(Path(own).name)
+                if result.returncode != 0 or fake.status.get("result") != "restored":
+                    raise SystemExit(f"USB hand-off did not restore {printer.id}: {fake.log.read_text()}")
+                restore_set = [item for item in printer.restore_sets
+                               if item.qidi_version == printer.target_firmware.soc_version][-1]
+                left = {path.name: path.read_bytes() for path in fake.update.iterdir()}
+                pinned = dict(restore_set.files)
+                if set(left) != {"qidi.deb", *pinned} or any(
+                        hashlib.sha256(left[name]).hexdigest() != pin.sha256 for name, pin in pinned.items()):
+                    raise SystemExit(f"USB hand-off left {printer.id}'s update folder unlike set {restore_set.name}")
+                if index:
+                    continue
+                with moonraker("ready") as url:
+                    launched = fake.launch(moonraker_url=url)
+                bootstrap = fake.home / "valve-oil/installer/runtime/bootstrap.py"
+                if launched.returncode != 0 or fake.exec_arguments() != [
+                        "-I", "-S", str(bootstrap), "usb", "--drive", str(fake.drive)] or not bootstrap.is_file():
+                    raise SystemExit(f"USB launcher did not start the installer: {fake.log.read_text()}")
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
+
+def check_usb_printer_zip(printer, zip_name: str, data: bytes, bundle_sha256: str) -> None:
+    from scripts import usb_drive_image as usb
+
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        names = archive.namelist()
+        manifest = json.loads(archive.read("firmware_manifest.json"))
+        deb_file = manifest.get("SOC", {}).get("file", "")
+        if manifest != {"SOC": {"file": deb_file, "version": usb.SOC_VERSION, "region": "NA"}} or \
+                not re.fullmatch(rf"{usb.HANDOFF_PACKAGE}_[^_/]+_all\.deb", deb_file):
+            raise SystemExit(f"{zip_name} firmware_manifest.json is not the {usb.SOC_VERSION} SOC manifest: {manifest}")
+        folder = usb.HANDOFF_FOLDER
+        expected = {"firmware_manifest.json", deb_file, f"{folder}/printer", f"{folder}/zip", f"{folder}/launch.sh",
+                    f"{folder}/{ARCHIVE_NAME}.sha256"}
+        for restore_set in printer.restore_sets:
+            expected |= {f"{folder}/{restore_set.name}/{name}" for name, _ in restore_set.files}
+            expected.add(f"{folder}/{restore_set.name}/SHA256SUMS")
+            sums = archive.read(f"{folder}/{restore_set.name}/SHA256SUMS").decode()
+            if sums != "".join(f"{pin.sha256}  {name}\n" for name, pin in restore_set.files):
+                raise SystemExit(f"{zip_name} set {restore_set.name} SHA256SUMS does not match its pins")
+            for name, pin in restore_set.files:
+                file_data = archive.read(f"{folder}/{restore_set.name}/{name}")
+                if len(file_data) != pin.size or hashlib.sha256(file_data).hexdigest() != pin.sha256:
+                    raise SystemExit(f"{zip_name} {restore_set.name}/{name} does not match its pin")
+        if set(names) != expected or any(Path(name).name.startswith(printer.soc_file_prefix) for name in names):
+            raise SystemExit(f"{zip_name} holds unexpected files: {sorted(set(names) ^ expected)}")
+        if archive.read(f"{folder}/printer").decode() != f"{printer.id}\n" or \
+                archive.read(f"{folder}/zip").decode() != f"{zip_name}\n":
+            raise SystemExit(f"{zip_name} does not name its printer and itself")
+        if archive.read(f"{folder}/{ARCHIVE_NAME}.sha256").decode() != f"{bundle_sha256}  {ARCHIVE_NAME}\n":
+            raise SystemExit(f"{zip_name} does not pin the bundle on the drive")
+        if archive.read(f"{folder}/launch.sh") != (REPO_ROOT / "installer/usb/launch.sh").read_bytes():
+            raise SystemExit(f"{zip_name} does not carry installer/usb/launch.sh")
+        members = usb.read_deb(archive.read(deb_file))
+    if list(members) != ["debian-binary", "control.tar.gz", "data.tar.gz"] or members["debian-binary"] != b"2.0\n":
+        raise SystemExit(f"{deb_file} is not a Debian package: {list(members)}")
+    with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"])) as data_tar:
+        if data_tar.getmembers():
+            raise SystemExit(f"{deb_file} installs files")
+    with tarfile.open(fileobj=io.BytesIO(members["control.tar.gz"])) as control_tar:
+        control = control_tar.extractfile("./control").read().decode()
+        postinst = control_tar.getmember("./postinst")
+        script = control_tar.extractfile(postinst).read()
+    fields = dict(line.split(": ", 1) for line in control.splitlines() if ": " in line and not line.startswith(" "))
+    if fields.get("Package") != usb.HANDOFF_PACKAGE or fields.get("Architecture") != "all" or \
+            f"_{fields.get('Version')}_" not in deb_file:
+        raise SystemExit(f"{deb_file} control is unexpected: {control}")
+    if postinst.mode != 0o755 or script != (REPO_ROOT / "installer/usb/postinst").read_bytes():
+        raise SystemExit(f"{deb_file} does not carry installer/usb/postinst as its postinst")
 
 
 @contextmanager

@@ -422,30 +422,23 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 restarts.append(request)
             return fake(request, timeout=timeout)
 
-        def install(*, attended):
-            # An attended run here answers no to every question, including the offer to restart Klipper.
-            run_install(
-                paths, self.manifest, PlainReporter(io.StringIO()), urlopen=urlopen,
-                input_stream=io.StringIO("") if attended else None,
-            )
+        def install():
+            run_install(paths, self.manifest, PlainReporter(io.StringIO()), urlopen=urlopen)
 
-        install(attended=True)
+        # Every install ends with Klipper restarted, without asking.
+        install()
         self.assertEqual(len(restarts), 1)
-        install(attended=True)
-        self.assertEqual(len(restarts), 1)
+        install()
+        self.assertEqual(len(restarts), 2)
 
         # Klipper keeps an imported module until its process ends, so its own RESTART isn't enough.
         module = self.manifest.install.extra_modules[0]
         installed = paths.managed_klipper_root / module.destination
         installed.write_bytes(b"# an earlier release's module\n")
-        install(attended=True)
-        self.assertEqual(len(restarts), 2)
+        install()
+        self.assertEqual(len(restarts), 3)
         self.assertEqual(installed.read_bytes(), (REPO_ROOT / "installer" / module.source).read_bytes())
         self.assertFalse(paths.restart_marker_path.exists())
-
-        # Nobody restarts Klipper after a --yes run or an automatic update.
-        install(attended=False)
-        self.assertEqual(len(restarts), 3)
 
     def test_install_initializes_absent_release_defaults_and_preserves_operator_values(self):
         # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice.
@@ -570,6 +563,31 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             paths=paths, reporter=reporter, urlopen=urlopen
         ))
         self.assertEqual(saved_variables_path.read_text(encoding="utf-8"), reconciled)
+
+    def test_a_new_install_turns_box_support_on_and_later_installs_leave_it_and_mappings_as_set(self):
+        printer_root, paths, _ = self._fixture("01.01.06.03")
+        saved_variables_path = printer_root / "config/saved_variables.cfg"
+        saved_variables_path.write_text(
+            "[Variables]\nbox_count = 1\nenable_box = 0\nvalue_t1 = 'slot2'\n", encoding="utf-8"
+        )
+
+        def option(name):
+            return klipper_cfg.resolve_unique_option(
+                saved_variables_path.read_text(encoding="utf-8"), "Variables", name
+            ).value
+
+        self._run_install(paths)
+        self.assertEqual(option("enable_box"), "1")
+        self.assertEqual(option("value_t1"), "'slot2'")  # a mapping that doesn't line up isn't touched or asked about
+
+        # The operator turns it off for external spools; the next install leaves it so.
+        saved_variables_path.write_text(
+            saved_variables_path.read_text(encoding="utf-8").replace("enable_box = 1", "enable_box = 0"),
+            encoding="utf-8",
+        )
+        self._run_install(paths)
+        self.assertEqual(option("enable_box"), "0")
+        self.assertEqual(option("value_t1"), "'slot2'")
 
     def test_flow_controller_box_detection_does_not_require_box_extras(self):
         printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")

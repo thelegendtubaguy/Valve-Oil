@@ -1,12 +1,12 @@
 """Valve Oil's QIDI firmware update (design D4): take a printer on an older supported QIDI firmware to its target
 firmware, its boards to their pinned images, and Valve Oil to an install for the new firmware, in one run.
 
-Starting it (start_firmware_update) checks the printer, downloads and verifies QIDI's package from this project's
-mirror, writes the pending record, and starts tltg-firmware-update.service, which runs the update detached from the
-session that asked for it: QIDI's package restarts the network, which ends an SSH session. An install follows the
-unit's log until it finishes; the update check starts it and leaves it running. The unit is enabled, so a printer that
-lost power with the record in place resumes at its next boot; while the record exists no other installer operation
-runs (safety.FIRMWARE_UPDATE_MARKER).
+Starting it (start_firmware_update) checks the printer, copies QIDI's package from the USB drive an install was
+started from or downloads it from this project's mirror, verifies it, writes the pending record, and starts
+tltg-firmware-update.service, which runs the update detached from the session that asked for it: QIDI's package
+restarts the network, which ends an SSH session. An install follows the unit's log until it finishes; the update
+check starts it and leaves it running. The unit is enabled, so a printer that lost power with the record in place
+resumes at its next boot; while the record exists no other installer operation runs (safety.FIRMWARE_UPDATE_MARKER).
 
 Steps, each safe to repeat; a resumed run starts at the first one the record doesn't mark done:
   check          printer idle, every heater target 0, THR and mainboard admitted and deliverable, no operation
@@ -116,7 +116,8 @@ class FirmwareUpdatePlan:
     blockers: tuple[Blocker, ...] = ()
     boards: tuple[str, ...] = ()  # the boards the run would flash, by label
     closed_loop: bool = False  # QIDI's package changes the closed-loop drivers, which the run updates first
-    download_bytes: int = 0
+    download_bytes: int = 0  # what is still to be fetched into the cache
+    from_drive: bool = False  # fetched from the USB drive the install was started from, if its copy matches the pin
     free_bytes_needed: int = 0
     pending: dict | None = None  # a firmware update already recorded and not finished
 
@@ -278,11 +279,13 @@ def _start_units(units, *, run, password, reporter) -> None:
 
 
 def firmware_update_plan(paths, *, manifest=None, admission=None, urlopen=urllib.request.urlopen,
-                         disk_usage=shutil.disk_usage) -> FirmwareUpdatePlan:
+                         disk_usage=shutil.disk_usage, environ=None) -> FirmwareUpdatePlan:
     """Whether a firmware update is waiting for this printer, what it would do, and what blocks it.
 
-    Changes nothing and fetches nothing: it reads the firmware manifest, the boards' last admission, the cache, free
-    space, and Moonraker. A firmware update already recorded is returned as `pending` and blocks a new one.
+    Changes nothing and fetches nothing: it reads the firmware manifest, the boards' last admission, the cache, the
+    USB drive environ names (qidi_package.USB_DRIVE_ENV), free space, and Moonraker. A firmware update already
+    recorded is returned as `pending` and blocks a new one. Copying from the drive needs the same free space as a
+    download.
     """
     manifest = manifest or load_manifest(paths.installer_root / "package.yaml")
     pending = load_record(paths)
@@ -321,7 +324,9 @@ def firmware_update_plan(paths, *, manifest=None, admission=None, urlopen=urllib
     return FirmwareUpdatePlan(
         printer=printer, installed=installed_key, target=target.version, needed=needed, blockers=tuple(blockers),
         boards=boards, closed_loop=needed and target.changes_board("closed_loop", installed_key),
-        download_bytes=target.size - downloaded, free_bytes_needed=needed_bytes, pending=pending)
+        download_bytes=target.size - downloaded,
+        from_drive=downloaded < target.size and qidi_package.drive_copy_present(target, environ),
+        free_bytes_needed=needed_bytes, pending=pending)
 
 
 def printer_blockers(paths, *, urlopen, wait_seconds: float = 0.0) -> tuple[Blocker, ...]:
@@ -399,8 +404,12 @@ def recovery_blocker(paths) -> Blocker | None:
 def describe_plan(plan: FirmwareUpdatePlan) -> list[str]:
     printer = plan.printer
     lines = [f"QIDI firmware {plan.target} is available for this {printer.display_name}, which runs {plan.installed}."]
-    download = (f"downloads QIDI's package ({plan.download_bytes / 1e6:.0f} MB) from this project's mirror, "
-                if plan.download_bytes else "uses QIDI's package it already downloaded, ")
+    if not plan.download_bytes:
+        download = "uses QIDI's package it already downloaded, "
+    elif plan.from_drive:
+        download = f"copies QIDI's package ({plan.printer.target_firmware.size / 1e6:.0f} MB) from the USB drive, "
+    else:
+        download = f"downloads QIDI's package ({plan.download_bytes / 1e6:.0f} MB) from this project's mirror, "
     boards = ", ".join(plan.boards) if plan.boards else "none"
     lines.append(f"Valve Oil {download}installs it, updates the board firmware that needs it ({boards}), and installs "
                  f"Valve Oil for firmware {plan.target}.")
@@ -434,7 +443,8 @@ def start_firmware_update(*, paths, reporter, manifest, kind, environ, admission
         if result.state != NOT_NEEDED:
             return result
         # Another release's record, dropped as nothing of it was installed: plan this release's update.
-    plan = firmware_update_plan(paths, manifest=manifest, admission=admission, urlopen=urlopen, disk_usage=disk_usage)
+    plan = firmware_update_plan(paths, manifest=manifest, admission=admission, urlopen=urlopen, disk_usage=disk_usage,
+                                environ=environ)
     if not plan.needed:
         return FirmwareUpdateResult(NOT_NEEDED)
     for line in describe_plan(plan):
@@ -468,13 +478,13 @@ def start_firmware_update(*, paths, reporter, manifest, kind, environ, admission
         qidi_package.free_up_space(paths, reporter=reporter, disk_usage=disk_usage,
                                    sudo=lambda command: run_sudo(command, run=run, password=password, timeout=300))
         plan = firmware_update_plan(paths, manifest=manifest, admission=admission, urlopen=urlopen,
-                                    disk_usage=disk_usage)
+                                    disk_usage=disk_usage, environ=environ)
         if plan.blockers:
             return _not_started(paths, reporter, plan, plan.blockers)
     printer = plan.printer
     try:
-        reporter.line(f"Downloading QIDI firmware {plan.target} from {printer.target_firmware.url}")
-        qidi_package.download(paths, printer.target_firmware, reporter=reporter, urlopen=mirror_urlopen)
+        # From the USB drive when its copy matches the pin, which the unit then finds in the cache with the drive out.
+        qidi_package.fetch(paths, printer.target_firmware, reporter=reporter, environ=environ, urlopen=mirror_urlopen)
     except (OSError, InstallerError) as exc:
         message = getattr(exc, "message", None) or f"the download failed: {exc}"
         reporter.line(message)
@@ -1166,8 +1176,9 @@ def _stage(ctx: _Run):
         if staged is None:
             if not qidi_package.cached(ctx.paths, ctx.target):
                 # Gone since the update started, as after a lost cache: fetch and verify it again.
-                ctx.reporter.line(f"Downloading QIDI firmware {ctx.target.version} again...")
-                qidi_package.download(ctx.paths, ctx.target, reporter=ctx.reporter, urlopen=ctx.mirror_urlopen)
+                ctx.reporter.line(f"QIDI firmware {ctx.target.version}'s package is no longer in the cache.")
+                qidi_package.fetch(ctx.paths, ctx.target, reporter=ctx.reporter, environ=ctx.environ,
+                                   urlopen=ctx.mirror_urlopen)
             staged = qidi_package.stage(ctx.paths, ctx.target, ctx.printer, archive=archive,
                                         remove_tree=ctx.remove_tree)
         fields = qidi_package.deb_fields(staged.soc, run=ctx.run)

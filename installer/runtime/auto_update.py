@@ -257,22 +257,18 @@ def retire_legacy_bundle(home: Path) -> None:
 # ---- the switch -------------------------------------------------------------------------------------------------------
 
 
-def maybe_prompt_enable_auto_updates(*, paths: RuntimePaths, reporter, input_stream, environ=None) -> bool:
-    """At the end of an interactive install on a printer that isn't enrolled, offer to turn automatic updates on."""
-    from .interaction import confirm_yes
-
-    if input_stream is None or auto_update_enrolled(paths):
-        return False
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.AUTO_UPDATE_PROMPT,
-        instruction=messages.AUTO_UPDATE_PROMPT_INSTRUCTION,
-        cancel_message=messages.AUTO_UPDATE_NOT_ENABLED,
-    ):
-        return False
-    enable_auto_updates(paths=paths, reporter=reporter, environ=environ)
-    return True
+def apply_auto_update_answer(*, paths: RuntimePaths, reporter, answer: bool | None, environ=None) -> None:
+    """Turn automatic updates on or off as the operator answered before the run (install_flow.py); None leaves them as
+    they are."""
+    if answer is None:
+        return
+    enrolled = auto_update_enrolled(paths)
+    if answer and not enrolled:
+        enable_auto_updates(paths=paths, reporter=reporter, environ=environ)
+    elif not answer and enrolled:
+        disable_auto_updates(paths=paths, reporter=reporter, environ=environ)
+    elif not answer:
+        reporter.line(messages.AUTO_UPDATE_NOT_ENABLED)
 
 
 def enable_auto_updates(*, paths: RuntimePaths, reporter, environ: dict[str, str] | None = None) -> None:

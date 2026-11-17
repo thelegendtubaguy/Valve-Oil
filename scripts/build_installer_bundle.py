@@ -24,6 +24,7 @@ from installer.runtime import moonraker_speedups
 from installer.runtime.compatibility import load_supported_upgrade_sources, validate_manifest_compatibility
 from installer.runtime.manifest import load_manifest
 from installer.runtime.mirror import managed_tree_source_files
+from scripts import usb_drive_image
 from installer.runtime.naming import (
     ARCHIVE_NAME,
     ARCHIVE_NAME_PREFIX,
@@ -81,12 +82,22 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 def main(argv: list[str] | None = None) -> int:
+    global DOWNLOAD_CACHE
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--channel", choices=["release", "dev"], required=True)
     parser.add_argument("--build-id")
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--cache-dir", help=f"where downloads are cached by checksum (default: {DOWNLOAD_CACHE})")
+    parser.add_argument("--usb-image", action="store_true",
+                        help="also build the USB drive image (scripts/usb_drive_image.py)")
+    parser.add_argument("--usb-stub-qidi", action="store_true",
+                        help="in the USB drive image, stand in for QIDI's target packages instead of downloading them")
     args = parser.parse_args(argv)
+    if args.usb_stub_qidi and not args.usb_image:
+        parser.error("--usb-stub-qidi needs --usb-image")
+    if args.cache_dir:
+        DOWNLOAD_CACHE = Path(args.cache_dir).resolve()
 
     manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
     compatibility = load_supported_upgrade_sources(
@@ -164,14 +175,26 @@ def main(argv: list[str] | None = None) -> int:
         write_sha256(archive)
         validate_archive(archive, root_name=root_name)
 
+    usb_image = None
+    if args.usb_image:
+        label = manifest.package.version if args.channel == "release" else (
+            f"{manifest.package.version}-dev-{args.build_id or git_short_sha()}")
+        usb_image = usb_drive_image.build_image(
+            manifest, bundle_archive=stable_archive, image=output_dir / usb_drive_image.image_name(
+                args.channel, manifest.package.version), label=label, cache=DOWNLOAD_CACHE,
+            stub_qidi=args.usb_stub_qidi)
+
     if args.smoke_test:
-        subprocess.run(
-            [sys.executable, str(REPO_ROOT / "scripts/smoke_test_installer_bundle.py"), "--archive", str(stable_archive)],
-            check=True,
-        )
+        command = [sys.executable, str(REPO_ROOT / "scripts/smoke_test_installer_bundle.py"), "--archive",
+                   str(stable_archive)]
+        if usb_image is not None:
+            command += ["--usb-image", str(usb_image), *(["--usb-stub-qidi"] if args.usb_stub_qidi else [])]
+        subprocess.run(command, check=True)
 
     for archive in archives:
         print(archive)
+    if usb_image is not None:
+        print(usb_image)
     return 0
 
 

@@ -154,6 +154,18 @@ def _heater_on(url: str, *, timeout: int, urlopen: UrlOpenFn) -> bool:
         raise PrinterStateError() from exc
 
 
+def heater_targets(url: str, *, timeout: int = 5, urlopen: UrlOpenFn = urllib.request.urlopen) -> dict[str, float]:
+    """Each heater's target, for saying which one keeps the printer busy; empty when Klipper can't say."""
+    try:
+        heaters = _query_objects(url, ("heaters",), timeout=timeout, urlopen=urlopen)["heaters"]["available_heaters"]
+        if not isinstance(heaters, list) or not heaters:
+            return {}
+        status = _query_objects(url, tuple(heaters), timeout=timeout, urlopen=urlopen)
+        return {name: _finite(status[name]["target"]) for name in heaters}
+    except (InstallerError, KeyError, TypeError, ValueError):
+        return {}
+
+
 def ensure_klipper_idle(
     url: str,
     *,

@@ -125,7 +125,7 @@ The installer runtime gains a plan step and a run step. The plan step detects th
 
 ### Drawing
 
-The touchscreen front end extends `update_screen.py` rather than adding Pillow. `scripts/render_touchscreen_images.py` renders each screen's fixed parts and a glyph sheet of Montserrat at build time. The printer composes them with the text that changes (versions, step names, elapsed time) and decodes them with zlib. The front end reads the Goodix touch device directly and draws nothing while idle. A screen that can't be drawn falls back to `update_screen.py`'s text, as the install screen does.
+The touchscreen front end extends `update_screen.py` rather than adding Pillow. `scripts/render_touchscreen_images.py` renders each screen's fixed parts and a glyph sheet of Montserrat at build time. The printer composes them with the text that changes (versions, step names, elapsed time) and decodes them with zlib. The front end reads the Goodix touch device and draws nothing while idle. The device is `root:input` `0660` and `qidi` isn't in `input`, so when the installer can't open it, a small root process started with `sudo` passes its events through a pipe. A screen that can't be drawn falls back to `update_screen.py`'s text, as the install screen does.
 
 The font is Montserrat (SIL Open Font License 1.1). The font file and its license are committed for the build. The license ships with the bundle and is listed in `THIRD_PARTY_NOTICES.md`. The still images that `scripts/render_touchscreen_images.py` already draws (installing, updating, boot logo) move to Montserrat too, so every Valve Oil screen uses one typeface.
 

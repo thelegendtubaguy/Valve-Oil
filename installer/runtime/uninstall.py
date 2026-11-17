@@ -40,6 +40,7 @@ from .firmware import detect_firmware_key_best_effort
 from .interaction import (
     confirm_yes,
     maybe_restart_klipper,
+    prompt_yes,
     maybe_restart_pending_service_if_idle,
 )
 from .fs_atomic import atomic_delete
@@ -70,6 +71,7 @@ from .preflight import run_uninstall_preflight
 from .rollback import RollbackJournal
 from .state_file import StateValidationError, delete_state_file, load_installed_state
 from .system_optimizations import (
+    ROCKCHIP_ROOT_SYNC_OPERATION,
     finalize_legacy_system_ledger_migration,
     maybe_prompt_restore_system_optimizations,
     migrate_legacy_system_ledger,
@@ -221,6 +223,7 @@ def run_uninstall(
     ):
         reporter.debug(event="uninstall.cancelled", dry_run=False)
         raise OperationCancelled(messages.UNINSTALL_CANCELLED)
+    reboot_authorized = system_options.reboot_host
     if not dry_run:
         restore_system = maybe_prompt_restore_system_optimizations(
             state=state,
@@ -228,6 +231,15 @@ def run_uninstall(
             input_stream=input_stream,
             cli_options=system_options,
         )
+        # Asked now, with the other questions, so nothing waits for an answer once the uninstall changes the printer.
+        if (restore_system and not reboot_authorized and input_stream is not None
+                and ROCKCHIP_ROOT_SYNC_OPERATION in ((state.system_ledger or {}).get("restore_preimages") or {})):
+            reboot_authorized = prompt_yes(
+                reporter=reporter,
+                input_stream=input_stream,
+                question=messages.UNINSTALL_REBOOT_PROMPT,
+                instruction=messages.UNINSTALL_REBOOT_PROMPT_INSTRUCTION,
+            )
 
     reporter.status(messages.CREATING_BACKUP)
     started_at = utc_now()
@@ -333,7 +345,7 @@ def run_uninstall(
         run=run,
     )
     finalize_legacy_system_ledger_migration(paths)
-    return result
+    return dataclasses.replace(result, reboot_authorized=reboot_authorized)
 
 
 
@@ -525,16 +537,11 @@ def _execute_uninstall(
             paths=paths,
             allowed_entries=restart_entries(manifest),
             reporter=reporter,
-            input_stream=input_stream,
+            input_stream=None,
             urlopen=urlopen,
         )
     else:
-        maybe_restart_klipper(
-            paths=paths,
-            reporter=reporter,
-            input_stream=input_stream,
-            urlopen=urlopen,
-        )
+        maybe_restart_klipper(paths=paths, reporter=reporter, urlopen=urlopen)
     reporter.debug(
         event="uninstall.complete",
         dry_run=False,

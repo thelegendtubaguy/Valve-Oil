@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Callable, TextIO
 
@@ -67,20 +65,12 @@ def maybe_restart_pending_service(
     reporter,
     input_stream: TextIO | None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
-    prompt: bool = True,
 ) -> bool:
+    """Restart the Klipper service so changed sources run, without asking: a run that changed them restarts it.
+
+    A restart that fails raises in a run with no terminal (input_stream None), where nobody reads the line."""
     from .process_restart import ProcessRestartError, restart_pending
 
-    if prompt and input_stream is not None and not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.KLIPPER_SERVICE_RESTART_PROMPT,
-        instruction=messages.KLIPPER_SERVICE_RESTART_PROMPT_INSTRUCTION,
-        cancel_message=messages.KLIPPER_SERVICE_RESTART_PENDING,
-    ):
-        if hasattr(reporter, "debug"):
-            reporter.debug(event="klipper.process_restart.declined")
-        return False
     reporter.line(messages.KLIPPER_SERVICE_RESTARTING)
     try:
         restart_pending(paths, allowed_entries=allowed_entries, urlopen=urlopen)
@@ -122,7 +112,6 @@ def maybe_restart_pending_service_if_idle(
         reporter=reporter,
         input_stream=input_stream,
         urlopen=urlopen,
-        prompt=False,
     )
 
 
@@ -165,41 +154,8 @@ def maybe_restart_klipper(
     *,
     paths,
     reporter,
-    input_stream: TextIO | None,
+    input_stream: TextIO | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
-    moonraker_query_url = paths.moonraker_url
-    if input_stream is None:
-        return restart_klipper_unattended(paths=paths, reporter=reporter, urlopen=urlopen)
-    if not confirm_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.RESTART_KLIPPER_PROMPT,
-        instruction=messages.RESTART_KLIPPER_PROMPT_INSTRUCTION,
-        cancel_message=messages.RESTART_KLIPPER_TO_APPLY,
-    ):
-        return False
-    reporter.line(messages.RESTARTING_KLIPPER)
-    request = urllib.request.Request(
-        moonraker_restart_url(moonraker_query_url),
-        data=b"",
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=10) as response:
-            response.read()
-    except (OSError, urllib.error.URLError, ValueError):
-        reporter.line(messages.COULD_NOT_RESTART_KLIPPER)
-        return False
-    reporter.line(messages.KLIPPER_RESTARTED)
-    return True
-
-
-
-def moonraker_restart_url(moonraker_query_url: str) -> str:
-    parts = urllib.parse.urlsplit(moonraker_query_url)
-    prefix = ""
-    if parts.path.endswith("/printer/objects/query"):
-        prefix = parts.path[: -len("/printer/objects/query")]
-    restart_path = f"{prefix}/printer/restart" if prefix else "/printer/restart"
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, restart_path, "", ""))
+    """End a run that changed the configuration with Klipper running it: restarted without asking, once idle."""
+    return restart_klipper_unattended(paths=paths, reporter=reporter, urlopen=urlopen)

@@ -18,12 +18,49 @@ Before it changes anything, it reads the bootloader and firmware of the toolhead
 
 On a printer with an older QIDI firmware this release updates from, it updates the QIDI firmware first, without asking, and that update installs Valve Oil itself, as a `--yes` install does, without the questions below. See [QIDI firmware updates](#qidi-firmware-updates).
 
-Along the way it asks about:
+Before it changes anything, it asks every question that applies, shows a summary of your answers and of what it will do, and asks `Install now?`. Answer `N` and nothing is changed. After `Y`, it needs nothing from you until it finishes. It asks about:
 
-- **Disable QIDI AI detection**, only while it's on: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
-- **QIDI Box setup**, when Box support is off or tool numbers don't match slot numbers.
-- **Restarting Klipper** to apply the changes.
-- **Automatic updates**, while they're off: `Would you like to turn on automatic updates?` See [Automatic updates](#automatic-updates).
+- **Automatic updates**, while they're off. See [Automatic updates](#automatic-updates).
+- **Turning off QIDI AI detection**, only while it's on: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
+
+It doesn't ask about anything else:
+
+- **QIDI Box support:** a new install that finds QIDI Boxes turns Box support on. Later installs and updates leave it as you set it, so switching to the external spool for prints started from Fluidd or a slicer stays your choice.
+- **Tool-to-slot mappings:** a tool with no slot gets the slot with its number, and mappings you've set are left as they are.
+- **Restarting Klipper:** every install ends by restarting Klipper once the printer is idle.
+- **Rebooting:** when the [OS optimizations](#os-optimizations) need a reboot, the printer reboots about 5 seconds after the install finishes.
+
+The summary also lists the board firmware it will flash, whether it updates the QIDI firmware first, and, on a printer with configs copied in by hand from before the installer existed, that those are backed up and reset to QIDI's first.
+
+### Install from a USB drive
+
+You can install Valve Oil without SSH or a computer at the printer, from the touchscreen, with a USB drive:
+
+1. Download `valve-oil-usb-<version>.zip` from the [latest release](https://github.com/thelegendtubaguy/valve-oil/releases/latest).
+2. Extract it to the top folder of a USB drive formatted FAT32. The drive then has a `QD_Update` folder and a `valve-oil` folder. The same drive works on the Max 4, the Plus 5, and the Smart 5.
+3. Plug the drive into the printer. On the touchscreen, open **Firmware → Offline Update** and choose the Valve Oil package. Each printer lists only its own.
+4. QIDI's app installs the package and restarts. About a minute later the touchscreen shows Valve Oil's installer, which checks the printer and shows what it found.
+5. Answer its questions, check the summary, and tap **Install**. Nothing changes before that tap, and **Quit** on any screen before it gives the touchscreen back to QIDI's app.
+6. The install runs by itself and shows each step and the time so far. Keep the printer, and every QIDI Box, on.
+7. When it's done, take the drive out. The printer restarts by itself. **Restart now** restarts it with the drive left in, which is harmless: the drive's package runs only when someone chooses it on the Offline Update page.
+
+The installer saves its log on the drive as `valve-oil-install.log` before the finish screen or a failure screen shows, and on the printer in `~/printer_data/logs`. **Log** on any screen shows its last lines.
+
+QIDI's Offline Update empties QIDI's update folder, `/home/qidi/update`, before it runs a package. The Valve Oil package puts QIDI's firmware manifest and board images back first, from copies on the drive for each QIDI firmware the release supports, checked by SHA-256, and the installer then puts back QIDI's system package from the drive, so the folder ends as QIDI left it whether you install or quit. On a QIDI firmware the drive has no copies for, the touchscreen says the folder was emptied and how to get QIDI's files back; nothing else changes.
+
+On a printer with an older QIDI firmware this release updates from, the [QIDI firmware update](#qidi-firmware-updates) runs first, from QIDI's package on the drive, with no network needed. The drive carries each printer's QIDI package, which is why the download is about 600 MB.
+
+Run on a printer that already has Valve Oil, the same drive offers:
+
+- **Update**, with the install's current settings, when the drive has a newer release.
+- **Change settings**, to answer the questions again.
+- **Install again**, and **Restore a backup** of your configuration, when Valve Oil is up to date.
+
+Uninstalling isn't on the drive; see [Uninstall](#uninstall).
+
+### Logs
+
+Every install, update, and uninstall saves a log in `~/printer_data/logs`, named for the run and when it started, such as `valve-oil-install-20261117-091402.log`, which you can download from Fluidd's **Logs**. It has what the installer found, decided, and did, in more detail than the installer shows. When a run fails, the installer names its log. The newest 10 logs are kept.
 
 ### The touchscreen at boot
 
@@ -31,11 +68,11 @@ From the moment the printer is switched on, the touchscreen shows the Valve Oil 
 
 ### The touchscreen during an install
 
-From the moment an install or update reads the boards' firmware, which stops Klipper, until it ends, the touchscreen shows **Installing Valve Oil** and `Don't turn the printer off.`, and can't be used. QIDI's touchscreen app starts again when the install ends, whether it worked or not. It isn't shown for `--dry-run`, while a print is running or paused or a heater is on, or when the touchscreen app isn't running. If the installer stops partway, for example because the SSH session closed, the touchscreen app still starts again. If a board's firmware write can't be verified, the touchscreen stays off and says the install didn't finish, until you run the rescue command the installer printed. A QIDI firmware update the install starts shows its own screen from when it stops the touchscreen, and starts the touchscreen app when it ends.
+From the moment an install or update reads the boards' firmware, which stops Klipper, until it ends, the touchscreen shows Valve Oil's install screen and can't be used. Once the install starts, it shows the step it's on, such as **System changes** or **QIDI Box 1 firmware**, its place among the install's steps, the time so far, and whether the install was started over SSH, from a USB drive, or by automatic updates, with `Don't turn the printer off.` QIDI's touchscreen app starts again when the install ends, whether it worked or not. It isn't shown for `--dry-run`, while a print is running or paused or a heater is on, or when the touchscreen app isn't running. If the installer stops partway, for example because the SSH session closed, the touchscreen app still starts again. If a board's firmware write can't be verified, the touchscreen stays off and says the install didn't finish, until you run the rescue command the installer printed. A QIDI firmware update the install starts shows its own screen from when it stops the touchscreen, and starts the touchscreen app when it ends.
 
 When an install or update changes Klipper's Python code, which is QIDI's `homing.py` and this project's own `klippy/extras/tltg_*.py` modules, it restarts the Klipper service itself once the printer is idle, without asking, and waits for Klipper to be ready again. Klipper keeps Python code it has loaded until its process ends, so the Restart button and `RESTART` reload the configuration but not that code.
 
-An install run with `--yes` and an automatic update have nobody to ask, so they always end by restarting the Klipper service once the printer is idle. If a print or a heater has started by then, they leave Klipper alone and say it was not restarted.
+Every install and automatic update ends by restarting the Klipper service once the printer is idle, without asking. If a print or a heater has started by then, it leaves Klipper alone and says it was not restarted.
 
 At the end, without asking, it puts [Valve Oil's board firmware](firmware.md) on each board that doesn't have it yet: the THR, the Max 4's mainboard, and each USB Box. Klipper and the touchscreen stop while it does, about a minute for the mainboard and about a minute for the Boxes, which are flashed at the same time. Keep the printer and every Box powered on until the installer finishes. **After the THR is flashed, run input shaper calibration before bed leveling or printing.** On the Max 4 with firmware older than `01.01.07.01`, the THR and mainboard are flashed once the printer is on `01.01.07.01`.
 
@@ -210,6 +247,6 @@ Or fetch the latest installer and uninstall with it:
 /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/install-latest.sh)" -- --uninstall
 ```
 
-Uninstall always puts back everything an install changes in QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service is removed, QIDI's Moonraker and Klipper files are restored, and QIDI's touchscreen app is put back, so the touchscreen offers and installs QIDI's firmware updates again. It removes the update check and turns automatic updates off. It then asks whether to also undo the [OS optimizations](#os-optimizations); `--keep-system-optimizations` keeps them without asking. Files you changed after installing are left alone and listed.
+Uninstall always puts back everything an install changes in QIDI's own files: Fluidd goes back to QIDI's Fluidd, the Printer screen service is removed, QIDI's Moonraker and Klipper files are restored, and QIDI's touchscreen app is put back, so the touchscreen offers and installs QIDI's firmware updates again. It removes the update check and turns automatic updates off. It asks whether to also undo the [OS optimizations](#os-optimizations); `--keep-system-optimizations` keeps them without asking. When undoing them needs a reboot, it also asks, with the other questions, whether to restart the printer at the end; `--reboot-host` answers yes. Every question comes before anything is removed. Files you changed after installing are left alone and listed.
 
 Uninstall can't run while a [QIDI firmware update](#qidi-firmware-updates) is unfinished. It doesn't change firmware: the QIDI firmware and the board firmware stay as they are. To put QIDI's board firmware back, see [Board firmware](firmware.md). Installing again after an uninstall counts as a new install, which reads every board first.

@@ -21,5 +21,12 @@ jobs:
           node-version-file: ui/.nvmrc
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: Build and smoke-test installer bundle
-        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
+      - name: Restore download cache
+        uses: actions/cache@v4
+        with:
+          path: build/downloads
+          key: installer-downloads-${{ hashFiles('installer/package.yaml') }}
+          restore-keys: installer-downloads-
+      - name: Build and smoke-test installer bundle and USB drive image
+        # QIDI's target packages are stood in for; their pins are checked when a release builds the image.
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test --usb-image --usb-stub-qidi

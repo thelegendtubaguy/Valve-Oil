@@ -1089,6 +1089,38 @@ class BoardAdmissionTests(unittest.TestCase):
         code, block, _, _ = install()
         self.assertEqual((code, block), (0, None))
 
+    def test_an_attended_install_asks_everything_first_then_runs_without_input(self):
+        paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock")})
+        env = build_env(paths.printer_data_root, moonraker_url=paths.moonraker_url)
+        preflight = lambda **kwargs: board_firmware.board_preflight(**kwargs, **self.seams(printer))
+
+        def install(answers):
+            output = io.StringIO()
+            with patch("installer.runtime.cli.board_preflight", side_effect=preflight), \
+                    patch("installer.runtime.cli.run_install") as run_install, \
+                    patch("installer.runtime.cli.deliver_board_firmware") as deliver, \
+                    patch("installer.runtime.cli.repair_installer_ownership"), \
+                    patch("installer.runtime.system_optimizations.ai_detection_running", return_value=False), \
+                    patch("installer.runtime.cli.maybe_schedule_recommended_reboot"):
+                code = main(["install", "--plain"], bundle_root=REPO_ROOT, environ=env, stream=output,
+                            input_stream=io.StringIO(answers))
+            return code, run_install, deliver, output.getvalue()
+
+        logs = paths.printer_data_root / "logs"
+        # Quitting at the summary changes nothing; the run's log says what it found.
+        code, run_install, deliver, output = install("yes\nno\n")
+        self.assertEqual(code, 0)
+        self.assertFalse(run_install.called or deliver.called)
+        self.assertIn("Automatic updates: On", output)
+        log = max(logs.glob("valve-oil-install-*.log"))
+        self.assertIn("install.summary.declined", log.read_text(encoding="utf-8"))
+        # Confirmed: the run gets the answers and nothing to read input from.
+        code, run_install, deliver, _ = install("no\nyes\n")
+        self.assertEqual(code, 0)
+        self.assertIs(run_install.call_args.kwargs["input_stream"], None)
+        self.assertIs(run_install.call_args.kwargs["auto_updates"], False)
+        self.assertIs(deliver.call_args.kwargs["input_stream"], None)
+
     def update_check(self, paths, printer, reporter, *, enrolled, box_outcome=("flashed", "")):
         """One update check's board part: what it finds and publishes, and on an enrolled printer what it does, with
         the Box flow replaced by a record of the Boxes it was asked to flash."""

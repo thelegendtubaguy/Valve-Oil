@@ -28,8 +28,14 @@ jobs:
           node-version-file: ui/.nvmrc
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: Build dev installer bundle
-        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id '${{ steps.sha.outputs.short_sha }}'
+      - name: Restore download cache
+        uses: actions/cache@v4
+        with:
+          path: build/downloads
+          key: installer-downloads-${{ hashFiles('installer/package.yaml') }}
+          restore-keys: installer-downloads-
+      - name: Build dev installer bundle and USB drive image
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id '${{ steps.sha.outputs.short_sha }}' --usb-image
       - name: Update prerelease tag
         run: |
           git tag --force prerelease "${GITHUB_SHA}"
@@ -45,3 +51,5 @@ jobs:
           files: |
             dist/valve-oil-dev.tar.gz
             dist/valve-oil-dev.tar.gz.sha256
+            dist/valve-oil-usb-dev.zip
+            dist/valve-oil-usb-dev.zip.sha256

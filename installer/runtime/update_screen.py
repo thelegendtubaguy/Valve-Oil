@@ -207,32 +207,57 @@ def _key(color) -> int:
     return (color[0] << 16) | (color[1] << 8) | color[2]
 
 
+@dataclass(frozen=True)
+class Geometry:
+    """A framebuffer's size, pixel format, and where its visible screen starts. QIDI's app draws a landscape UI
+    turned 90 degrees counterclockwise into a portrait framebuffer: upright (x, y) shows at framebuffer
+    (y, height - 1 - x)."""
+
+    width: int
+    height: int
+    pixel_bytes: int
+    channels: tuple  # (offset, length) of R, G, B
+    stride: int
+    start: int
+
+    @property
+    def turned(self) -> bool:
+        return self.height > self.width
+
+    @property
+    def upright(self) -> tuple[int, int]:
+        return (self.height, self.width) if self.turned else (self.width, self.height)
+
+
+def geometry(fd: int) -> Geometry:
+    """The geometry of the framebuffer open as `fd`; ValueError for a pixel format it can't draw."""
+    info = struct.unpack_from("17I", fcntl.ioctl(fd, FBIOGET_VSCREENINFO, bytes(160)))
+    width, height, xoffset, yoffset, bits = info[0], info[1], info[4], info[5], info[6]
+    channels = ((info[8], info[9]), (info[11], info[12]), (info[14], info[15]))
+    if bits not in (16, 24, 32) or not width or not height or any(not 0 < length <= 8 for _, length in channels):
+        raise ValueError(f"unsupported framebuffer format: {bits} bpp, RGB {channels}")
+    pixel_bytes = bits // 8
+    try:
+        stride = FIX_SCREENINFO.unpack_from(fcntl.ioctl(fd, FBIOGET_FSCREENINFO, bytes(FIX_SCREENINFO.size)))[9]
+    except OSError:
+        stride = 0
+    stride = stride or info[2] * pixel_bytes
+    return Geometry(width, height, pixel_bytes, channels, stride, yoffset * stride + xoffset * pixel_bytes)
+
+
 def _draw(rows_for, device: str) -> None:
     fd = os.open(device, os.O_RDWR | os.O_CLOEXEC)
     try:
-        info = struct.unpack_from("17I", fcntl.ioctl(fd, FBIOGET_VSCREENINFO, bytes(160)))
-        width, height, xoffset, yoffset, bits = info[0], info[1], info[4], info[5], info[6]
-        channels = ((info[8], info[9]), (info[11], info[12]), (info[14], info[15]))  # (offset, length) of R, G, B
-        if bits not in (16, 24, 32) or not width or not height or any(not 0 < length <= 8 for _, length in channels):
-            raise ValueError(f"unsupported framebuffer format: {bits} bpp, RGB {channels}")
-        pixel_bytes = bits // 8
-        try:
-            stride = FIX_SCREENINFO.unpack_from(fcntl.ioctl(fd, FBIOGET_FSCREENINFO, bytes(FIX_SCREENINFO.size)))[9]
-        except OSError:
-            stride = 0
-        stride = stride or info[2] * pixel_bytes
-        # QIDI's app draws a landscape UI turned 90 degrees counterclockwise into a portrait framebuffer.
-        turned = height > width
-        upright_width, upright_height = (height, width) if turned else (width, height)
-        upright = rows_for(upright_width, upright_height)
+        screen = geometry(fd)
+        width, height, turned = screen.width, screen.height, screen.turned
+        upright = rows_for(*screen.upright)
         pixels: dict[int, bytes] = {}
-        start = yoffset * stride + xoffset * pixel_bytes
         for y in range(height):
             # Upright (x, y) shows at framebuffer (y, height - 1 - x) when turned.
             row = upright[y] if not turned else [upright[x][height - 1 - y] for x in range(width)]
-            data = b"".join(_cached_pixel(pixels, key, channels, pixel_bytes) * len(tuple(run))
+            data = b"".join(_cached_pixel(pixels, key, screen.channels, screen.pixel_bytes) * len(tuple(run))
                             for key, run in itertools.groupby(row))
-            os.pwrite(fd, data, start + y * stride)
+            os.pwrite(fd, data, screen.start + y * screen.stride)
     finally:
         os.close(fd)
 

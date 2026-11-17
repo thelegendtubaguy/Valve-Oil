@@ -109,6 +109,42 @@ class InstallerCompatibilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             spec.changes_board("mcu", "09.09.09.09")
 
+    def test_restore_sets_pin_qidi_update_folder_for_every_firmware(self) -> None:
+        # The USB hand-off restores QIDI's update folder from these, so every listed firmware needs pinned files from
+        # its own mirror package, without the system package.
+        raw = yaml.safe_load((REPO_ROOT / "installer/package.yaml").read_text(encoding="utf-8"))
+        sets = raw["printers"][0]["restore_sets"]
+        pin = {"size": 1, "sha256": "0" * 64}
+        twice = {name: entry for name, entry in sets.items() if name.startswith("01.01.06.04_")}
+        invalid = {
+            "firmware left out": {k: v for k, v in sets.items() if k != "01.01.06.05"},
+            "unlisted firmware": {**sets, "09.09.09.09": sets["01.01.06.05"]},
+            "file without a size": {**sets, "01.01.06.05": {**sets["01.01.06.05"], "files": {
+                **sets["01.01.06.05"]["files"], "QD_MAX4_MCU.bin": {"sha256": "0" * 64}}}},
+            "system package": {**sets, "01.01.06.05": {**sets["01.01.06.05"], "files": {
+                **sets["01.01.06.05"]["files"], "QD_MAX4_SOC_01.01.06.05_20260804_Release_NA": pin}}},
+            "path in a file name": {**sets, "01.01.06.05": {**sets["01.01.06.05"], "files": {
+                **sets["01.01.06.05"]["files"], "../MCU.bin": pin}}},
+            "another firmware's archive": {**sets, "01.01.06.05": {**sets["01.01.06.05"],
+                                                                   "archive": "QD_MAX4_01.01.06.03_20260507_Release.zip"}},
+            "another printer's release": {**sets, "01.01.06.05": {**sets["01.01.06.05"],
+                                                                  "release": "qidi-plus5-firmware-01.01.06.05"}},
+            "a twice-published firmware without its date": {
+                **{k: v for k, v in sets.items() if k not in twice}, "01.01.06.04": next(iter(twice.values())),
+                **dict(list(twice.items())[1:])},
+            "target set from another archive": {**sets, "01.01.07.01": {
+                **sets["01.01.07.01"], "archive": "QD_MAX4_01.01.07.01_20261017_Release.zip"}},
+        }
+        for case, change in invalid.items():
+            with self.subTest(case=case):
+                printers = copy.deepcopy(raw["printers"])
+                printers[0]["restore_sets"] = change
+                with self.assertRaises(ManifestValidationError):
+                    parse_manifest({**raw, "printers": printers})
+        max4 = self.manifest.printers[0]
+        self.assertEqual([item.name for item in max4.restore_sets if item.firmware == "01.01.06.04"],
+                         ["01.01.06.04_20260609", "01.01.06.04_20260612"])
+
     def test_board_images_are_pinned_for_each_target_firmware(self) -> None:
         validate_board_targets(self.manifest, REPO_ROOT)
         # THR and Box get this project's build everywhere; the mainboard build only with closed-loop drivers, and the

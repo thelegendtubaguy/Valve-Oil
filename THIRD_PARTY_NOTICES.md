@@ -138,6 +138,16 @@ Tailscale is not carried in release bundles. When the operator installs the Tail
 
 ZeroTier is not carried in release bundles either. When the operator installs the ZeroTier add-on, the printer downloads ZeroTier's own unmodified Debian 11 package for arm64 from <https://download.zerotier.com>, pinned by sha256 under `addons:`, and keeps only its `zerotier-one` program. ZeroTier's agent is licensed under the Mozilla Public License 2.0, and the other components in ZeroTier's build under the ZeroTier Source-Available License for Non-Commercial Use; its source and both licences are at <https://github.com/zerotier/ZeroTierOne>.
 
+## Montserrat
+
+- Source: <https://github.com/google/fonts/tree/main/ofl/montserrat> (`Montserrat[wght].ttf` at commit `76fca9fd0bb4ea46583f92e978660f3984ab9442`, font version 9.000), from <https://github.com/JulietaUla/Montserrat>
+- Copyright 2024 The Montserrat.Git Project Authors
+- License: SIL Open Font License 1.1
+- License text: [`LICENSES/Montserrat-OFL-1.1.txt`](LICENSES/Montserrat-OFL-1.1.txt), also beside the font as `scripts/fonts/OFL.txt`
+- Paths:
+  - `scripts/fonts/Montserrat-VF.ttf` (unmodified, renamed; used to build, not shipped)
+  - `installer/system/touchscreen/touch-ui.bin`, `installer/system/touchscreen/installing.png`, and `installer/system/touchscreen/updating.png`, which carry glyphs that [`scripts/render_touchscreen_images.py`](scripts/render_touchscreen_images.py) rasterizes from it
+
 ## Valve Oil UI
 
 `ui/` is repository-authored and covered by the repository license, except as follows.

@@ -64,10 +64,11 @@ def hand_over(paths) -> None:
 
 
 class Hold:
-    """The install's hold of the touchscreen app, for retake."""
+    """The install's hold of the touchscreen app, for retake; password is sudo's while the hold has the app."""
 
-    def __init__(self, retake):
+    def __init__(self, retake, password: str | None = None):
         self.retake = retake
+        self.password = password
 
 
 def recovery_records(paths) -> tuple[Path, ...]:
@@ -79,8 +80,12 @@ def recovery_records(paths) -> tuple[Path, ...]:
 
 @contextmanager
 def held(*, paths, reporter, environ, input_stream=None, run=subprocess.run, urlopen=urllib.request.urlopen,
-         draw=update_screen.draw):
-    """Hold the touchscreen app stopped, with Valve Oil's install screen showing, for the block, which gets a Hold."""
+         draw=update_screen.draw, require_idle: bool = True, progress_screen: bool = True):
+    """Hold the touchscreen app stopped, with Valve Oil's install screen showing, for the block, which gets a Hold.
+
+    require_idle False takes the screen while the printer is busy too: the USB installer (usb_install.py) draws its
+    own screens from the first one, including the one that says the printer is busy. progress_screen False leaves the
+    drawing to the caller."""
     global _held, _marker
     if environ.get(safety.FIRMWARE_UPDATE_RUN_ENV):
         # The firmware update stopped the app and shows its own screen; it starts the app when it ends.
@@ -93,7 +98,7 @@ def held(*, paths, reporter, environ, input_stream=None, run=subprocess.run, url
 
     def take():
         return _take(paths=paths, reporter=reporter, environ=environ, input_stream=input_stream, run=run,
-                     urlopen=urlopen, draw=draw)
+                     urlopen=urlopen, draw=draw if progress_screen else _no_draw, require_idle=require_idle)
 
     marker = paths.printer_data_root / MARKER
     password = take()
@@ -104,15 +109,46 @@ def held(*, paths, reporter, environ, input_stream=None, run=subprocess.run, url
             password = take()  # a firmware update had the app, and ended without changing anything
 
     _held, _marker = password is not None, marker
+    hold = Hold(retake, password)
+    screen = _progress_screen(paths, reporter, marker) if progress_screen and password is not None else None
     try:
-        yield Hold(retake)
+        yield hold
     finally:
         _held, _marker = False, None
+        if screen is not None:
+            screen.stop()
+            screen.ui.close()
         if password is not None and marker.exists():
             _give_back(paths=paths, reporter=reporter, run=run, password=password, draw=draw)
 
 
-def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw) -> str | None:
+def _progress_screen(paths, reporter, marker):
+    """The live progress screen over the still install image, for an SSH install or an automatic update; None where
+    it can't be drawn, which leaves the still image. It draws only while this install has the app: not while a
+    firmware update it started has the screen (hand_over)."""
+    from .firmware import detect_firmware_version_best_effort
+    from .progress_screen import ProgressScreen
+
+    try:
+        from . import touch_ui
+
+        ui = touch_ui.open(reporter, touch=False)
+    except Exception as exc:  # no drawing toolkit or framebuffer: the still image stays
+        reporter.debug(event="install_screen.progress_unavailable", error=f"{type(exc).__name__}: {exc}")
+        return None
+    if ui is None:
+        return None
+    screen = ProgressScreen(ui, reporter=reporter, firmware=detect_firmware_version_best_effort(
+        paths.firmware_manifest_path) if hasattr(paths, "firmware_manifest_path") else None, active=marker.exists)
+    screen.start()
+    return screen
+
+
+def _no_draw(*args, **kwargs) -> bool:
+    return True
+
+
+def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw, require_idle=True) -> str | None:
     """Stop the app and show the screen; the sudo password, or None when the app was left as it was."""
     try:
         active = run(["systemctl", "is-active", TOUCHSCREEN], capture_output=True, text=True, timeout=10)
@@ -121,7 +157,8 @@ def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw) -> str 
     if (active.stdout or "").strip() != "active":
         return None
     try:
-        safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+        if require_idle:
+            safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
         password = authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
     except (InstallerError, SudoError):
         return None  # the install's own checks say why

@@ -31,11 +31,13 @@ If you want to help support content like this, consider subscribing on YouTube o
    ```bash
    /bin/bash -c "$(curl -fsSL https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/install-latest.sh)"
    ```
-3. Follow the prompts.
+3. Answer the questions. The installer asks them all, shows a summary, and changes nothing until you confirm it; then it runs by itself.
 4. In OrcaSlicer 2.4.0 or later, subscribe to the [OrcaCloud bundle](https://cloud.orcaslicer.com/b/49f26b9c2101). For QIDI Studio or older Orca, [copy the start G-code by hand](docs/install.md#slicer-start-g-code).
 5. Slice using your printer's Valve Oil profile, such as `Qidi X-Max 4 0.4 nozzle - Valve Oil`. Optionally, make a copy and customize it.
 
 Before changing anything, the installer reads the printer's boards, which stops Klipper and the touchscreen for a few minutes, and refuses a new install on a board it doesn't support yet. At the end, without asking, it flashes [Valve Oil's board firmware](docs/firmware.md) to the toolhead board, the Max 4's mainboard, and each USB QIDI Box. **After the toolhead board is flashed, run input shaper calibration before bed leveling or printing.** On an older QIDI firmware, it offers to [update the QIDI firmware](docs/install.md#qidi-firmware-updates) first. While Valve Oil is installed, the touchscreen no longer installs QIDI's firmware updates; Valve Oil delivers them.
+
+No computer handy? [Install from a USB drive](docs/install.md#install-from-a-usb-drive) on the printer's touchscreen instead.
 
 [Dry run, QIDI firmware updates, automatic updates, and uninstalling →](docs/install.md)
 

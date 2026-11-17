@@ -1,0 +1,212 @@
+#!/bin/sh
+# Valve Oil USB hand-off (docs/under-the-hood.md, "USB installer").
+#
+# QIDI's touchscreen app runs this as root under `dpkg -i --force-overwrite`, with Klipper and Moonraker stopped, after
+# its offline update emptied QIDI's update folder and unzipped the drive's QD_Update/<printer>_ValveOil_<version>.zip
+# into it. The app restarts Klipper, Moonraker, and itself right after dpkg returns, so this does no install work:
+#   1. puts QIDI's firmware manifest and board images back into the update folder, from the set the zip carries for
+#      the installed system package's version, checked by SHA-256 before and after the copy;
+#   2. copies the Valve Oil bundle from the drive into the printer user's cache, checked against the zip's pin;
+#   3. starts launch.sh as its own transient systemd unit, outside the app's cgroup, and exits 0.
+# It never exits non-zero: a failed postinst leaves dpkg's state broken and the app shows an error.
+#
+# Paths can be overridden for tests: VO_USB_UPDATE_DIR, VO_USB_PRINTER_DATA, VO_USB_MOUNTS, VO_USB_RUN_DIR.
+
+UPDATE=${VO_USB_UPDATE_DIR:-/home/qidi/update}
+PRINTER_DATA=${VO_USB_PRINTER_DATA:-/home/qidi/printer_data}
+MOUNTS=${VO_USB_MOUNTS:-/proc/mounts}
+RUN_DIR=${VO_USB_RUN_DIR:-/run/valve-oil-usb}
+HANDOFF=$UPDATE/valve-oil-restore
+HOME_DIR=${PRINTER_DATA%/*}
+CACHE=$HOME_DIR/.cache/valve-oil/usb
+LOG=$PRINTER_DATA/logs/valve-oil-usb-handoff.log
+STATUS=$CACHE/restore
+NO_RESTORE_MARKER=.valve-oil-no-restore-set
+BUNDLE=valve-oil.tar.gz
+UNIT_PREFIX=valve-oil-usb-install
+# systemd writes a transient unit's description into its unit file; without one it uses the command line.
+UNIT_DESCRIPTION="Valve Oil USB installer"
+
+log() {
+  printf '%s postinst: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+# The SHA256SUMS of a set, as "<hash> <name>" lines, when every line names a plain file; nothing otherwise.
+plain_sums() {
+  awk 'NF == 2 && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 && $2 !~ /\// && $2 !~ /^\./ && $2 != "SHA256SUMS" { print $1, $2; next } { bad = 1 } END { exit bad }' "$1"
+}
+
+# Exit 0 when every file the sums name is in $2 with its hash.
+check_sums() {
+  sums=$(plain_sums "$1") || return 1
+  [ -n "$sums" ] || return 1
+  while read -r hash name; do
+    [ -f "$2/$name" ] && [ ! -L "$2/$name" ] || return 1
+    [ "$(sha256 "$2/$name")" = "$hash" ] || return 1
+  done <<EOF
+$sums
+EOF
+}
+
+sha256() {
+  sha256sum < "$1" | cut -d' ' -f1
+}
+
+# chown to the printer's user, when it is known.
+own() {
+  [ -n "$OWNER" ] && chown "$OWNER" "$@"
+}
+
+# Remove everything QIDI's unzip put in the update folder except qidi.deb, which the app removes itself, and the
+# hand-off folder, which goes last.
+clear_update_folder() {
+  for entry in "$UPDATE"/* "$UPDATE"/.[!.]* "$UPDATE"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case ${entry##*/} in qidi.deb|valve-oil-restore) ;; *) rm -rf "$entry" ;; esac
+  done
+}
+
+restore_update_folder() {
+  case $PRINTER in
+    max4) SYSTEM_PACKAGE=qd-max4-system ;;
+    plus5) SYSTEM_PACKAGE=qd-plus5-system ;;
+    smart5) SYSTEM_PACKAGE=s5-system ;;
+    *) RESULT=unknown-printer; log "the zip names no known printer ('$PRINTER')"; clear_update_folder; return ;;
+  esac
+  VERSION=$(dpkg-query -W -f '${Version}' "$SYSTEM_PACKAGE" 2>/dev/null)
+  case $VERSION in
+    ''|*[!0-9.]*) RESULT=no-set; log "no QIDI version for $SYSTEM_PACKAGE ('$VERSION')"; clear_update_folder; return ;;
+  esac
+  # The set for the version; of a version QIDI published twice, the latest package (the glob sorts by date).
+  SET=
+  for candidate in "$HANDOFF/$VERSION" "$HANDOFF/$VERSION"_*; do
+    [ -d "$candidate" ] && SET=$candidate
+  done
+  if [ -z "$SET" ]; then
+    RESULT=no-set
+    log "the drive carries no files for $SYSTEM_PACKAGE $VERSION; QIDI's update folder stays empty"
+    clear_update_folder
+    return
+  fi
+  SET_NAME=${SET##*/}
+  if ! check_sums "$SET/SHA256SUMS" "$SET"; then
+    RESULT=bad-set
+    log "set $SET_NAME does not match its SHA256SUMS; nothing restored"
+    clear_update_folder
+    return
+  fi
+  clear_update_folder
+  while read -r _hash name; do
+    cp "$SET/$name" "$UPDATE/$name"
+    chown 0:0 "$UPDATE/$name" 2>/dev/null
+    chmod 0644 "$UPDATE/$name"
+  done <<EOF
+$(plain_sums "$SET/SHA256SUMS")
+EOF
+  if check_sums "$SET/SHA256SUMS" "$UPDATE"; then
+    RESULT=restored
+    log "restored QIDI's update folder from set $SET_NAME"
+  else
+    RESULT=check-failed
+    log "the restored files from set $SET_NAME do not match its SHA256SUMS; removed them"
+    clear_update_folder
+  fi
+}
+
+# The mount point of the drive holding this zip, from the mount table (octal escapes undone); empty when none.
+find_drive() {
+  [ -n "$ZIP_NAME" ] || return 0
+  while read -r _device mount_point _rest; do
+    mount_point=$(printf '%b' "$(printf '%s' "$mount_point" | sed 's/\\\([0-7][0-7][0-7]\)/\\0\1/g')")
+    if [ -f "$mount_point/QD_Update/$ZIP_NAME" ]; then
+      printf '%s\n' "$mount_point"
+      return 0
+    fi
+  done < "$MOUNTS"
+}
+
+copy_bundle() {
+  rm -f "$CACHE/$BUNDLE" "$CACHE/$BUNDLE.part"
+  if [ -z "$DRIVE" ]; then
+    log "no mounted drive holds QD_Update/$ZIP_NAME"
+    return 1
+  fi
+  if [ ! -f "$DRIVE/valve-oil/$BUNDLE" ]; then
+    log "the drive has no valve-oil/$BUNDLE"
+    return 1
+  fi
+  cp "$DRIVE/valve-oil/$BUNDLE" "$CACHE/$BUNDLE.part" || { log "copying the bundle failed"; return 1; }
+  if [ -z "$BUNDLE_SHA256" ] || [ "$(sha256 "$CACHE/$BUNDLE.part")" != "$BUNDLE_SHA256" ]; then
+    rm -f "$CACHE/$BUNDLE.part"
+    log "the drive's valve-oil/$BUNDLE does not match the zip's pin"
+    return 1
+  fi
+  own "$CACHE/$BUNDLE.part"
+  chmod 0644 "$CACHE/$BUNDLE.part"
+  mv "$CACHE/$BUNDLE.part" "$CACHE/$BUNDLE"
+  log "copied the bundle from $DRIVE/valve-oil/$BUNDLE"
+}
+
+main() {
+  log "Valve Oil USB hand-off ($*)"
+  # The printer's user owns printer_data; its home holds printer_data.
+  # shellcheck disable=SC2046 # ls's fields
+  set -- $(ls -ldn "$PRINTER_DATA" 2>/dev/null)
+  OWNER=
+  [ -n "$4" ] && OWNER="$3:$4"
+  PRINTER=$(head -n 1 "$HANDOFF/printer" 2>/dev/null)
+  ZIP_NAME=$(head -n 1 "$HANDOFF/zip" 2>/dev/null)
+  BUNDLE_SHA256=$(head -n 1 "$HANDOFF/$BUNDLE.sha256" 2>/dev/null | cut -d' ' -f1)
+  case $ZIP_NAME in */*|.*) ZIP_NAME= ;; esac
+  for directory in "$HOME_DIR/.cache" "$HOME_DIR/.cache/valve-oil" "$CACHE"; do
+    [ -d "$directory" ] || { mkdir -p "$directory" && own "$directory"; }
+  done
+  rm -f "$STATUS"
+  mkdir -p "$RUN_DIR" && chmod 0700 "$RUN_DIR"
+  LAUNCHER=$RUN_DIR/launch.sh
+  rm -f "$LAUNCHER"
+  cp "$HANDOFF/launch.sh" "$LAUNCHER" 2>/dev/null && chmod 0700 "$LAUNCHER"
+
+  RESULT=
+  SET_NAME=
+  VERSION=
+  restore_update_folder
+  rm -rf "$HANDOFF"
+
+  DRIVE=$(find_drive)
+  copy_bundle
+  {
+    echo "result=$RESULT"
+    echo "printer=$PRINTER"
+    echo "qidi_version=$VERSION"
+    echo "set=$SET_NAME"
+    echo "drive=$DRIVE"
+  } > "$STATUS.part" && chmod 0644 "$STATUS.part" && mv "$STATUS.part" "$STATUS"
+  own "$STATUS"
+  # While QIDI's update folder is empty, it holds this marker, which the installer's unsupported-firmware screen reads;
+  # anything that fills the folder again, such as a QIDI firmware update, removes it.
+  if [ "$RESULT" != restored ]; then
+    echo "result=$RESULT" > "$UPDATE/$NO_RESTORE_MARKER" && chmod 0644 "$UPDATE/$NO_RESTORE_MARKER"
+  fi
+
+  if [ ! -f "$LAUNCHER" ]; then
+    log "the zip has no launch.sh; the installer is not started"
+    return
+  fi
+  # The launcher waits for this invocation of the app to end, and the next to start.
+  CLIENT=$(systemctl show -p InvocationID --value qidi-client.service 2>/dev/null)
+  UNIT="$UNIT_PREFIX-$(date +%s)-$$"
+  if systemd-run --unit="$UNIT" --description="$UNIT_DESCRIPTION" --collect --quiet \
+      --property="ExecStopPost=/bin/sh $LAUNCHER cleanup" \
+      /bin/sh "$LAUNCHER" launch "$PRINTER_DATA" "$DRIVE" "$BUNDLE_SHA256" "$CLIENT"; then
+    log "started $UNIT"
+  else
+    log "systemd-run could not start $UNIT"
+  fi
+}
+
+umask 022
+mkdir -p "$PRINTER_DATA/logs" 2>/dev/null
+main "$@" >> "$LOG" 2>&1
+own "$LOG" 2>/dev/null
+exit 0

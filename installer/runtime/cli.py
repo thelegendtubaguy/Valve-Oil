@@ -7,7 +7,7 @@ import traceback
 from contextlib import nullcontext
 from pathlib import Path
 
-from . import addons_cli, firmware_update, install_screen, messages, safety, valve_oil_status
+from . import addons_cli, firmware_update, install_flow, install_screen, messages, progress, safety, valve_oil_status
 from .auto_update import (
     KIND_ENV,
     LOCK_HELD_ENV,
@@ -37,6 +37,7 @@ from .manifest import ManifestValidationError, load_manifest
 from .models import RuntimePaths, SystemOptimizationCliOptions
 from .ownership import repair_installer_ownership
 from .reporter import create_reporter
+from .run_log import LoggingReporter, open_run_log
 from .restore_helper import RestoreHelperError, run_restore_helper
 from .rollback import clear_recovery_sentinel
 from .runner import block_qidi_package_updates, run_install
@@ -53,10 +54,13 @@ from .box_firmware import run_box_firmware
 from .mainboard_firmware import run_mainboard_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
+USB_ORIGIN_ENV = "TLTG_USB_INSTALL"  # set by the USB installer for the runs it starts (usb_install.py)
 DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
 DEFAULT_MOONRAKER_URL = "http://127.0.0.1:7125/printer/objects/query?print_stats"
 FIRMWARE_MODES = {"box-firmware", "mainboard-firmware"}
 AUTO_UPDATE_SWITCH_MODES = {"enable-auto-updates", "disable-auto-updates", "auto-update-status"}
+# Runs that keep a log in printer_data/logs (run_log.py).
+LOGGED_MODES = {"install", "uninstall", "restore-backup", "usb"}
 
 
 def main(
@@ -105,7 +109,27 @@ def main(
         bundle_root=bundle_root,
     )
 
+    run_log = None
+    if args.mode in LOGGED_MODES and not args.demo_tui and not args.dry_run:
+        run_log = open_run_log(paths, args.mode)
+        reporter = LoggingReporter(reporter, run_log)
+        reporter.debug(event="cli.log", path=run_log.path,
+                       argv=" ".join(argv if argv is not None else sys.argv[1:]))
     try:
+        return _dispatch(args, env=env, bundle_root=bundle_root, reporter=reporter, paths=paths,
+                         input_stream=input_stream)
+    finally:
+        if run_log is not None:
+            run_log.close()
+
+
+def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_end=None) -> int:
+    """Run args.mode. front_end, for an install the touchscreen drives (usb_install.py), holds the screen, asks the
+    questions, and hears how the run ended; the terminal does all three otherwise."""
+    try:
+        if args.mode == "usb":
+            return _usb(args, env=env, bundle_root=bundle_root, reporter=reporter, paths=paths)
+
         if args.demo_tui:
             delay_seconds = resolve_demo_tui_delay_seconds(environ=env)
             reporter.debug(
@@ -407,6 +431,7 @@ def main(
 
         lock_inherited = _lock_inherited(args.mode, env)
         firmware = None
+        reboot_authorized = False
         with nullcontext() if lock_inherited else acquire(paths.lock_path):
             reporter.debug(
                 event="cli.lock.inherited" if lock_inherited else "cli.lock.acquired",
@@ -433,45 +458,11 @@ def main(
                     environ=env,
                 )
             if args.mode == "install":
-                # The touchscreen shows Valve Oil installing from the first board read, which stops Klipper and the
-                # app, until the install is done; a firmware update started here takes it over (install_screen.py).
-                with nullcontext() if args.dry_run else install_screen.held(
-                        paths=paths, reporter=reporter, environ=env, input_stream=input_stream) as hold:
-                    # Every board is read before anything changes; a new install with a board this release doesn't
-                    # admit stops here.
-                    printer, admission = board_preflight(
-                        paths=paths, reporter=reporter, manifest=manifest, dry_run=args.dry_run,
-                        input_stream=input_stream, environ=env,
-                    )
-                    if not in_firmware_update:
-                        # On a firmware this release updates from, the detached firmware update does the rest of the
-                        # install; when it can't start, Valve Oil installs for the current firmware below.
-                        firmware = firmware_update.start_firmware_update(
-                            paths=paths, reporter=reporter, manifest=manifest, admission=admission,
-                            kind=env.get(KIND_ENV) or "install", environ=env, input_stream=input_stream,
-                            dry_run=args.dry_run,
-                        )
-                    if firmware is None or not firmware.handled:
-                        if hold is not None:
-                            hold.retake()
-                        run_install(
-                            paths,
-                            manifest,
-                            reporter,
-                            dry_run=args.dry_run,
-                            input_stream=input_stream,
-                            environ=env,
-                            system_options=_system_options_from_args(args),
-                            block_qidi_updates=block_qidi_package_updates(admission),
-                        )
-                        deliver_board_firmware(
-                            paths=paths, reporter=reporter, manifest=manifest, printer=printer, admission=admission,
-                            dry_run=args.dry_run, input_stream=input_stream, environ=env,
-                        )
-                if not args.dry_run and (firmware is None or not firmware.handled):
-                    _settle_waiting_release(paths, manifest.package.version)
+                firmware = _install(args, paths=paths, manifest=manifest, reporter=reporter, env=env,
+                                    input_stream=input_stream, in_firmware_update=in_firmware_update,
+                                    front_end=front_end)
             else:
-                run_uninstall(
+                uninstall_result = run_uninstall(
                     paths,
                     manifest,
                     compatibility,
@@ -481,6 +472,7 @@ def main(
                     environ=env,
                     system_options=_system_options_from_args(args),
                 )
+                reboot_authorized = args.reboot_host or getattr(uninstall_result, "reboot_authorized", False)
         if firmware is not None and firmware.state == firmware_update.FAILED:
             reporter.debug(event="cli.complete", mode=args.mode, return_code=1, action="firmware-update")
             return 1
@@ -491,6 +483,8 @@ def main(
                 reporter.line("Host reboot dry-run: would schedule a delayed reboot after successful completion.")
         elif firmware is not None and firmware.handled:
             pass  # the firmware update schedules the reboot its install needs when it ends
+        elif front_end is not None:
+            pass  # the USB installer restarts the printer when its drive comes out (usb_install.py)
         elif (
             not lock_inherited
             and read_host_reboot_marker(paths) is not None
@@ -500,12 +494,13 @@ def main(
                 environ=env,
             )
         ):
+            # Every question was asked before the run: an uninstall asked about this reboot with its other questions.
             maybe_schedule_host_reboot(
                 paths,
                 reporter=reporter,
-                input_stream=input_stream,
+                input_stream=None,
                 environ=env,
-                explicit=args.reboot_host,
+                explicit=args.mode == "uninstall" and reboot_authorized,
                 automatic=args.mode == "install",
             )
         elif not lock_inherited and args.mode == "install" and read_host_reboot_marker(paths) is None:
@@ -513,7 +508,7 @@ def main(
             maybe_schedule_recommended_reboot(
                 paths,
                 reporter=reporter,
-                input_stream=input_stream,
+                input_stream=None,
                 environ=env,
             )
         reporter.debug(event="cli.complete", mode=args.mode, return_code=0)
@@ -549,6 +544,7 @@ def main(
             message=getattr(exc, "message", str(exc)),
         )
         reporter.emit_error(exc)
+        _name_log(reporter)
         if args.debug:
             traceback.print_exc(file=reporter.stream)
         return 1
@@ -560,6 +556,7 @@ def main(
             message=getattr(exc, "message", str(exc)),
         )
         reporter.emit_error(exc)
+        _name_log(reporter)
         if args.debug:
             traceback.print_exc(file=reporter.stream)
         return 1
@@ -571,10 +568,138 @@ def main(
             message=str(exc),
         )
         reporter.emit_error(exc)
+        _name_log(reporter)
         if args.debug:
             traceback.print_exc(file=reporter.stream)
         return 1
 
+
+
+def _install(args, *, paths, manifest, reporter, env, input_stream, in_firmware_update, front_end=None):
+    """Ask every question, then install without input. Returns the firmware update the install started, or None.
+
+    The touchscreen shows Valve Oil installing from the first board read, which stops Klipper and the app, until the
+    install is done; a firmware update started here takes it over (install_screen.py). A front end that holds the
+    screen itself (usb_install.py) has it from its first screen."""
+    firmware = None
+    if front_end is not None:
+        screen = nullcontext(front_end.hold)
+    elif args.dry_run:
+        screen = nullcontext()
+    else:
+        screen = install_screen.held(paths=paths, reporter=reporter, environ=env, input_stream=input_stream)
+    try:
+        with screen as hold:
+            firmware = _install_held(args, hold, paths=paths, manifest=manifest, reporter=reporter, env=env,
+                                     input_stream=input_stream, in_firmware_update=in_firmware_update,
+                                     front_end=front_end)
+    finally:
+        progress.end()
+    if not args.dry_run and (firmware is None or not firmware.handled):
+        _settle_waiting_release(paths, manifest.package.version)
+    return firmware
+
+
+def _install_held(args, hold, *, paths, manifest, reporter, env, input_stream, in_firmware_update, front_end):
+    firmware = None
+    # Every board is read before anything changes; a new install with a board this release doesn't admit stops
+    # here.
+    printer, admission = board_preflight(
+        paths=paths, reporter=reporter, manifest=manifest, dry_run=args.dry_run,
+        input_stream=input_stream, environ=env,
+    )
+    options = _system_options_from_args(args)
+    overview = None
+    if in_firmware_update:
+        # The session that started the firmware update asked the questions.
+        answers = install_flow.load_pending_answers(paths)
+    else:
+        overview = install_flow.plan_install(paths, manifest, environ=env, system_options=options,
+                                             admission=admission)
+        reporter.debug(event="install.overview", printer=overview.printer_id, firmware=overview.firmware,
+                       installed=overview.installed_version, firmware_update=overview.firmware_update,
+                       questions=",".join(question.id for question in overview.questions))
+        answers = install_flow.Answers()
+        if front_end is not None:
+            answers = front_end.ask(overview)
+        elif input_stream is not None and not args.dry_run:
+            answers = install_flow.ask_in_terminal(overview, reporter=reporter, input_stream=input_stream)
+    options = install_flow.system_options_for(answers, options)
+    if not args.dry_run:
+        progress.begin(install_flow.install_steps(overview), origin=_progress_origin(env), reporter=reporter,
+                       from_version=overview.installed_version if overview else None,
+                       to_version=manifest.package.version)
+    if not in_firmware_update:
+        if not args.dry_run:
+            install_flow.save_pending_answers(paths, answers)
+        # On a firmware this release updates from, the detached firmware update does the rest of the install;
+        # when it can't start, Valve Oil installs for the current firmware below.
+        firmware = firmware_update.start_firmware_update(
+            paths=paths, reporter=reporter, manifest=manifest, admission=admission,
+            kind=env.get(KIND_ENV) or "install", environ=env, input_stream=None,
+            dry_run=args.dry_run,
+        )
+        if front_end is not None:
+            front_end.firmware_update(firmware)
+    if firmware is None or not firmware.handled:
+        if overview is not None and overview.firmware_update:
+            progress.skip(progress.QIDI_FIRMWARE.format(target=overview.target_firmware))
+        if hold is not None:
+            hold.retake()
+        run_install(
+            paths,
+            manifest,
+            reporter,
+            dry_run=args.dry_run,
+            input_stream=None,
+            environ=env,
+            system_options=options,
+            block_qidi_updates=block_qidi_package_updates(admission),
+            auto_updates=answers.auto_updates,
+        )
+        deliver_board_firmware(
+            paths=paths, reporter=reporter, manifest=manifest, printer=printer, admission=admission,
+            dry_run=args.dry_run, input_stream=None, environ=env,
+        )
+        if not args.dry_run:
+            install_flow.clear_pending_answers(paths)
+            progress.step(progress.FINISH, reporter)
+    return firmware
+
+
+def _usb(args, *, env, bundle_root, reporter, paths) -> int:
+    """The USB installer's session on the touchscreen (usb_install.py), which runs install and restore-backup here."""
+    from . import qidi_package, usb_install
+
+    drive = Path(args.drive)
+    env[qidi_package.USB_DRIVE_ENV] = str(drive)
+    env[USB_ORIGIN_ENV] = "1"
+    manifest = load_manifest(paths.installer_root / "package.yaml")
+
+    def dispatch(argv, *, front_end=None, input_stream=None, errors_to=None):
+        """errors_to: who hears the error a run stops on, when it isn't front_end."""
+        inner = parse_args(argv)
+        listener = front_end or errors_to
+        wrapped = listener.wrap(reporter) if listener is not None else reporter
+        return _dispatch(inner, env=env, bundle_root=bundle_root, reporter=wrapped, paths=paths,
+                         input_stream=input_stream, front_end=front_end)
+
+    return usb_install.run(paths=paths, manifest=manifest, env=env, reporter=reporter, drive=drive,
+                           dispatch=dispatch)
+
+
+def _progress_origin(env) -> str:
+    if env.get(safety.FIRMWARE_UPDATE_RUN_ENV):
+        return progress.ORIGIN_FIRMWARE_UPDATE
+    if env.get(LOCK_HELD_ENV) == "1":
+        return progress.ORIGIN_AUTOMATIC
+    return env.get(USB_ORIGIN_ENV) and progress.ORIGIN_USB or progress.ORIGIN_SSH
+
+
+def _name_log(reporter) -> None:
+    path = getattr(getattr(reporter, "log", None), "path", None)
+    if path is not None:
+        reporter.line(f"The log of this run is {path}; download it from Fluidd's Logs to report this.")
 
 
 def _verify_completed_host_reboot(
@@ -653,6 +778,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "complete-host-reboot",
             "box-firmware",
             "mainboard-firmware",
+            "usb",
         ],
     )
     parser.add_argument("box_action", nargs="?", choices=["status", "install", "restore", "rescue"], help="box-firmware or mainboard-firmware action: status, install, restore, or rescue.")
@@ -663,6 +789,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Preview install or uninstall actions without writing changes.")
     parser.add_argument("--demo-tui", action="store_true", help="Render a demo of the install/uninstall TUI without writing changes.")
     parser.add_argument("--backup", help="Backup label or path to restore with restore-backup mode.")
+    parser.add_argument("--drive", help=argparse.SUPPRESS)  # usb: the USB drive's mount point
     parser.add_argument("--yes", action="store_true", help="Run non-interactively using default yes-mode choices.")
     # Every install now brings the THR to Valve Oil's firmware; the old opt-in is accepted and does nothing.
     parser.add_argument("--flash-thr-fifo", action="store_true", help=argparse.SUPPRESS)
@@ -710,6 +837,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--demo-tui is only supported with install and uninstall.")
     if args.demo_tui and args.dry_run:
         parser.error("--demo-tui cannot be combined with --dry-run.")
+    if (args.mode == "usb") != (args.drive is not None):
+        parser.error("usb needs --drive, which only usb takes.")
     if args.backup and args.mode != "restore-backup":
         parser.error("--backup is only supported with restore-backup.")
     if args.yes and args.mode not in {"install", "uninstall", "auto-update-check"}:

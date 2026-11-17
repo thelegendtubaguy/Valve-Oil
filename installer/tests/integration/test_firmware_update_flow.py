@@ -902,6 +902,51 @@ class FirmwareUpdateTests(unittest.TestCase):
                 if after is lose_working_files:
                     self.assertEqual(printer.mirror_requests, requests + 1)
 
+    def test_an_install_from_a_usb_drive_updates_from_the_drives_package_when_it_matches_the_pin(self):
+        def drive(printer, data):
+            """The USB drive an install was started from, with `data` as its copy of the target package."""
+            root = printer.home.parent / "usb"
+            (root / qidi_package.DRIVE_FOLDER).mkdir(parents=True)
+            if data is not None:
+                (root / qidi_package.DRIVE_FOLDER / printer.printer.target_firmware.archive).write_bytes(data)
+            return root, {qidi_package.USB_DRIVE_ENV: str(root)}
+
+        # No network: the update copies the drive's package, and finishes with the drive taken out after the copy.
+        printer = Printer(mirror="down")
+        root, environ = drive(printer, printer.archive)
+        self.assertTrue(firmware_update.firmware_update_plan(
+            printer.paths, manifest=printer.manifest, urlopen=printer.moonraker, disk_usage=printer.disk_usage,
+            environ=environ).from_drive)
+        printer.hooks["unit"] = lambda: shutil.rmtree(root)
+        result = printer.start(environ=environ)
+        self.assertEqual(result.state, firmware_update.SUCCEEDED, printer.output.getvalue())
+        self.assert_updated(printer)
+        self.assertEqual(printer.mirror_requests, 0)
+
+        # A copy that is missing or doesn't match its pin is not used: the update downloads the package from the
+        # mirror instead, and without the mirror it doesn't start and changes nothing.
+        for case, data, mirror in (("missing", None, "ok"), ("altered", "zeros", "ok"), ("short", "short", "down")):
+            with self.subTest(case=case):
+                printer = Printer(mirror=mirror)
+                data = {"zeros": bytes(len(printer.archive)), "short": printer.archive[:-1]}.get(data, data)
+                root, environ = drive(printer, data)
+                self.assertEqual(firmware_update.firmware_update_plan(
+                    printer.paths, manifest=printer.manifest, urlopen=printer.moonraker,
+                    disk_usage=printer.disk_usage, environ=environ).from_drive, case == "altered")
+                before = printer.snapshot()
+                result = printer.start(environ=environ)
+                self.assertGreater(printer.mirror_requests, 0)
+                if mirror == "ok":
+                    self.assertEqual(result.state, firmware_update.SUCCEEDED, printer.output.getvalue())
+                    self.assert_updated(printer)
+                else:
+                    self.assertEqual((result.state, [blocker.code for blocker in result.blockers]),
+                                     (firmware_update.NOT_STARTED, [qidi_package.UNREACHABLE]))
+                    self.assertEqual(printer.snapshot(), before)
+                    self.assertEqual(list(qidi_package.cache_dir(printer.paths).iterdir()), [])
+                self.assertEqual(sorted(path.name for path in root.rglob("*") if path.is_file()),
+                                 [] if data is None else [printer.printer.target_firmware.archive])
+
     def test_power_loss_while_qidi_update_folder_is_replaced_leaves_a_readable_manifest(self):
         printer = Printer()
         renames = []
@@ -1241,6 +1286,83 @@ class FirmwareUpdateTests(unittest.TestCase):
                     _write_json(firmware_update.record_path(printer.paths), {**foreign, "state": "running"})
                     self.assertEqual(printer.boot(), 1)
                     self.assertIn("27.1.1.1", firmware_update.load_result(printer.paths)["message"])
+
+
+
+class UsbSystemPackageRestoreTests(unittest.TestCase):
+    """On the target firmware, a USB run puts QIDI's system package file, which the hand-off doesn't restore, back in
+    QIDI's update folder from the drive's package, so the folder ends as QIDI's unzip of that package leaves it."""
+
+    def test_the_system_package_file_comes_back_only_from_a_drive_package_that_matches(self):
+        def after_handoff(*, firmware=TARGET, archive=None, drive="pinned", fail=None):
+            """A printer whose update folder holds the target package's manifest and board images, as the hand-off
+            restores them, and a drive whose valve-oil/ folder holds `drive`."""
+            printer = Printer(firmware=firmware, archive=archive)
+            if firmware == TARGET:
+                for path in printer.update.iterdir():
+                    path.unlink()
+                with zipfile.ZipFile(io.BytesIO(package())) as qidi:
+                    for name in qidi.namelist():
+                        if name != SOC:
+                            (printer.update / name).write_bytes(qidi.read(name))
+            root = printer.home.parent / "usb"
+            (root / qidi_package.DRIVE_FOLDER).mkdir(parents=True)
+            data = {"pinned": printer.archive, "altered": bytes(len(printer.archive))}.get(drive)
+            if data is not None:
+                (root / qidi_package.DRIVE_FOLDER / printer.printer.target_firmware.archive).write_bytes(data)
+            commands = []
+
+            def sudo(command):
+                commands.append(command)
+                if command[0] == fail:
+                    return subprocess.CompletedProcess(command, 1)
+                if command[0] == "chmod":
+                    os.chmod(command[2], int(command[1], 8))
+                elif command[0] == "mv":
+                    os.replace(command[2], command[3])
+                elif command[0] == "rm":
+                    Path(command[-1]).unlink(missing_ok=True)
+                return subprocess.CompletedProcess(command, 0)  # chown and sync: root's, not the test's
+
+            def restore(environ=None):
+                return qidi_package.restore_soc_package_from_drive(
+                    printer.paths, printer.manifest, sudo=sudo, reporter=printer.reporter,
+                    environ={qidi_package.USB_DRIVE_ENV: str(root)} if environ is None else environ)
+
+            return printer, restore, commands
+
+        def folder(printer):
+            return {path.name: path.read_bytes() for path in printer.update.iterdir()}
+
+        printer, restore, commands = after_handoff()
+        self.assertEqual(restore().result, qidi_package.RESTORED)
+        # The folder now holds exactly the target package's files, the system package file owned by root, mode 0644.
+        with zipfile.ZipFile(io.BytesIO(package())) as qidi:
+            self.assertEqual(folder(printer), {name: qidi.read(name) for name in qidi.namelist()})
+        self.assertEqual(stat.S_IMODE((printer.update / SOC).stat().st_mode), 0o644)
+        self.assertIn(["chown", "root:root"], [command[:2] for command in commands])
+        self.assertEqual(list(qidi_package.cache_dir(printer.paths).iterdir()), [])
+        commands.clear()
+        self.assertEqual(restore().result, qidi_package.ALREADY_PRESENT)
+        self.assertEqual(commands, [])
+
+        other = package(manifest={"SOC": {"file": SOC.replace("20261016", "20261017"), "version": TARGET}})
+        cases = {
+            "no drive named": (qidi_package.NO_DRIVE_COPY, {}, {"environ": {}}),
+            "not on the drive": (qidi_package.NO_DRIVE_COPY, {"drive": None}, {}),
+            "altered": (qidi_package.MISMATCH, {"drive": "altered"}, {}),
+            "another system package file": (qidi_package.MISMATCH, {"archive": other}, {}),
+            "older firmware": (qidi_package.NOT_TARGET, {"firmware": "01.01.06.05"}, {}),
+            "a write that fails": (qidi_package.FAILED, {"fail": "mv"}, {}),
+        }
+        for case, (expected, setup, call) in cases.items():
+            with self.subTest(case=case):
+                printer, restore, _ = after_handoff(**setup)
+                before = folder(printer)
+                self.assertEqual(restore(**call).result, expected)
+                self.assertEqual(folder(printer), before)
+                cache = qidi_package.cache_dir(printer.paths)
+                self.assertEqual(list(cache.iterdir()) if cache.exists() else [], [])
 
 
 if __name__ == "__main__":

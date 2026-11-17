@@ -4,7 +4,7 @@
 
 ## The installer stopped
 
-Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why.
+Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why. Each run also saves a log in `~/printer_data/logs`, such as `valve-oil-install-20261117-091402.log`, which the installer names when it stops; attach it when you [report a problem](#reporting-a-problem). See [Logs](install.md#logs).
 
 **`[Errno 13] Permission denied: '/home/qidi/printer_data/.tltg_optimized_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
 
@@ -13,6 +13,16 @@ Read the installer's output first. It stops before writing anything when firmwar
 **A new install was refused because of a board,** with `This release of Valve Oil doesn't support a board on this printer yet, so nothing was installed.`: open the prefilled support issue link the installer printed above that line, and submit it. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet). If it says a Box `is listed in box.cfg but is not connected`, connect that Box, or remove it in the touchscreen's Box setup, and run the installer again.
 
 **`A QIDI firmware update is in progress or did not finish; run ./install.sh to follow or finish it before anything else`:** run `~/valve-oil/install.sh`. See [A QIDI firmware update stopped part way](#a-qidi-firmware-update-stopped-part-way).
+
+## The USB installer
+
+**The Valve Oil package isn't listed under Firmware → Offline Update:** the drive needs the `QD_Update` folder at its top level, as the zip has it, and must be formatted FAT32. Each printer lists only its own package, named `QD_MAX4_…` on the Max 4, `QD_PLUS5_…` on the Plus 5, and `S5_…` on the Smart 5.
+
+**QIDI's app showed its own screen again after the package installed, and Valve Oil's installer never appeared:** the installer waits for the touchscreen app to restart and Klipper to be ready, for up to several minutes. If it doesn't appear, the drive has a log of why in `valve-oil/logs`, and the printer in `~/printer_data/logs`. QIDI's update folder was already put back before the installer started.
+
+**The touchscreen says QIDI's update files are missing:** QIDI's Offline Update empties `/home/qidi/update` before it runs any package, and the drive had no copy of QIDI's files for this printer's firmware, so they couldn't be put back. Nothing else was changed. Download the QIDI firmware for your printer and version from QIDI and extract its files into `/home/qidi/update`, or run the Offline Update with QIDI's own package.
+
+**Install stopped:** the screen names the step that didn't finish and why, and says what state the printer was left in. The log is on the drive as `valve-oil-install.log`. **Try again** runs the install again; **Quit** gives the touchscreen back to QIDI's app.
 
 ## QIDI firmware updates
 
@@ -192,7 +202,8 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 ### Logs
 
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
-- **Installer output:** copy everything the installer printed, from the command to the end. To get more detail, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
+- **Installer log:** each install, update, and uninstall saves `valve-oil-<run>-<date>.log` in `~/printer_data/logs`, in the same **logs** list as `klippy.log`. The USB installer also saves it on the drive as `valve-oil-install.log`.
+- **Installer output:** copy everything the installer printed, from the command to the end. To see the log's detail as it runs, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
 - **Automatic update output:** `journalctl -u tltg-optimized-auto-update.service --since "2 days ago"`.
 - **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u tltg-firmware-update.service --since "2 days ago"`.
 - **Update now output:** `~/.cache/valve-oil/status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.

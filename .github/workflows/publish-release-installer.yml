@@ -71,8 +71,14 @@ jobs:
           node-version-file: ui/.nvmrc
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: Build release installer bundle
-        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test
+      - name: Restore download cache
+        uses: actions/cache@v4
+        with:
+          path: build/downloads
+          key: installer-downloads-${{ hashFiles('installer/package.yaml') }}
+          restore-keys: installer-downloads-
+      - name: Build release installer bundle and USB drive image
+        run: python3 scripts/build_installer_bundle.py --output-dir dist --channel release --smoke-test --usb-image
       - name: Create draft release and upload assets
         id: create_release
         uses: actions/github-script@v9
@@ -108,6 +114,8 @@ jobs:
               'dist/valve-oil-${{ steps.version.outputs.package_version }}.tar.gz.sha256',
               'dist/tltg-optimized-macros.tar.gz',
               'dist/tltg-optimized-macros.tar.gz.sha256',
+              'dist/valve-oil-usb-${{ steps.version.outputs.package_version }}.zip',
+              'dist/valve-oil-usb-${{ steps.version.outputs.package_version }}.zip.sha256',
               'installer/release/install-latest.sh',
           ]
           for raw_path in files:
@@ -116,9 +124,9 @@ jobs:
               request = urllib.request.Request(url, method='POST')
               request.add_header('Authorization', f'Bearer {token}')
               request.add_header('Content-Type', 'application/octet-stream')
-              with path.open('rb') as handle:
-                  data = handle.read()
-              with urllib.request.urlopen(request, data=data) as response:
+              # Streamed: the USB drive image is several hundred MB.
+              request.add_header('Content-Length', str(path.stat().st_size))
+              with path.open('rb') as handle, urllib.request.urlopen(request, data=handle, timeout=1800) as response:
                   response.read()
           PY
       - name: Publish release

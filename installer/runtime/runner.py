@@ -6,19 +6,18 @@ import urllib.request
 from dataclasses import replace
 
 from .addons_cli import maybe_update_installed_addons
-from . import boot_logo, klipper_cfg, messages, patches, safety
+from . import boot_logo, klipper_cfg, messages, patches, progress, safety
 from .auto_update import (
     LOCK_HELD_ENV,
     adopt_legacy_enrollment,
-    maybe_prompt_enable_auto_updates,
+    apply_auto_update_answer,
     settle_installed_bundle,
 )
 from .board_firmware import UNADMITTED_STATES
 from .box_enablement import (
     maybe_initialize_box_motion,
+    maybe_enable_box,
     maybe_initialize_filament_retention,
-    maybe_prompt_align_tool_slots,
-    maybe_prompt_enable_box,
     maybe_write_required_tool_slot_variables,
     saved_variable_verify_marker_path,
     verify_pending_saved_variable_expectations,
@@ -138,9 +137,15 @@ def run_install(
     environ: dict[str, str] | None = None,
     system_options: SystemOptimizationCliOptions | None = None,
     block_qidi_updates: bool | None = True,
+    auto_updates: bool | None = None,
     run=None,
 ) -> InstallResult:
-    """block_qidi_updates: the caller's block_qidi_package_updates() decision for this printer's boards."""
+    """block_qidi_updates: the caller's block_qidi_package_updates() decision for this printer's boards. auto_updates:
+    the operator's answer about automatic updates (install_flow.py), applied once the install is done; None leaves them
+    as they are.
+
+    Nothing here asks a question: the caller asked them all before the run (install_flow.py). input_stream is kept for
+    the legacy manual-install reset and sudo, which take it from the terminal only when the run has one."""
     run = subprocess.run if run is None else run
     env = {} if environ is None else environ
     system_options = system_options or SystemOptimizationCliOptions()
@@ -150,6 +155,7 @@ def run_install(
         package_version=manifest.package.version,
     )
 
+    progress.step(progress.CHECK, reporter)
     reporter.status(messages.CHECKING_FIRMWARE_VERSION)
     printer, detected_firmware = detect_supported_firmware(paths.firmware_manifest_path, manifest)
     reporter.debug(
@@ -265,6 +271,7 @@ def run_install(
     reporter.status(messages.CREATING_BACKUP)
     backup_zip_path = None
     if not dry_run:
+        progress.step(progress.BACKUP, reporter)
         existing_backups = list_installer_backups(
             paths.printer_data_root,
             install_label_prefix=manifest.backup.label_prefix,
@@ -342,6 +349,7 @@ def run_install(
         source_results=source_results,
         config_changes=config_changes,
         block_qidi_updates=block_qidi_updates,
+        auto_updates=auto_updates,
         run=run,
     )
     return result
@@ -413,8 +421,10 @@ def _execute_install(
     source_results=(),
     config_changes=(),
     block_qidi_updates: bool | None = True,
+    auto_updates: bool | None = None,
     run=subprocess.run,
 ) -> InstallResult:
+    progress.step(progress.CONFIGURATION, reporter)
     state_path = paths.printer_data_root / manifest.state_file
     journal = RollbackJournal(
         paths.recovery_sentinel_path,
@@ -464,7 +474,7 @@ def _execute_install(
             _update_saved_variables(
                 paths=paths,
                 reporter=reporter,
-                input_stream=input_stream,
+                new_install=prior_state is None,
                 journal=journal,
                 written=saved_variables_written,
                 urlopen=urlopen,
@@ -582,13 +592,14 @@ def _execute_install(
 
         # Units an earlier release wrote only for automatic updates mean they are on, before this install replaces them.
         adopt_legacy_enrollment(paths, environ)
+        progress.step(progress.SYSTEM_CHANGES, reporter)
         state = maybe_apply_system_optimizations(
             paths=paths,
             manifest=manifest,
             reporter=reporter,
             state=state,
             state_path=state_path,
-            input_stream=input_stream,
+            input_stream=None,  # the AI detection answer is in system_options (install_flow.py)
             cli_options=system_options,
             environ=environ,
             auto_update_child=environ.get(LOCK_HELD_ENV) == "1",
@@ -633,18 +644,14 @@ def _execute_install(
     )
     # The update check runs the bundle in the printer user's home; it is this one from now on.
     settle_installed_bundle(paths, environ)
-    maybe_prompt_enable_auto_updates(
-        paths=paths,
-        reporter=reporter,
-        input_stream=input_stream,
-        environ=environ,
-    )
+    apply_auto_update_answer(paths=paths, reporter=reporter, answer=auto_updates, environ=environ)
+    progress.step(progress.RESTART_KLIPPER, reporter)
     if klipper_halted:
         _restart_halted_klipper_and_update_saved_variables(
             paths=paths,
             manifest=manifest,
             reporter=reporter,
-            input_stream=input_stream,
+            new_install=prior_state is None,
             urlopen=urlopen,
         )
     elif paths.restart_marker_path.exists():
@@ -693,28 +700,24 @@ def _execute_install(
 
 
 
-def _update_saved_variables(*, paths, reporter, input_stream, journal, written, urlopen) -> None:
+def _update_saved_variables(*, paths, reporter, new_install, journal, written, urlopen) -> None:
     maybe_initialize_filament_retention(
         paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
     )
     maybe_initialize_box_motion(
         paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
     )
-    maybe_prompt_enable_box(
-        paths=paths, reporter=reporter, input_stream=input_stream, journal=journal,
+    maybe_enable_box(
+        paths=paths, reporter=reporter, new_install=new_install, journal=journal,
         written=written, urlopen=urlopen,
     )
     maybe_write_required_tool_slot_variables(
         paths=paths, reporter=reporter, journal=journal, written=written, urlopen=urlopen
     )
-    maybe_prompt_align_tool_slots(
-        paths=paths, reporter=reporter, input_stream=input_stream, journal=journal,
-        written=written, urlopen=urlopen,
-    )
 
 
 def _restart_halted_klipper_and_update_saved_variables(
-    *, paths, manifest: Manifest, reporter, input_stream, urlopen
+    *, paths, manifest: Manifest, reporter, new_install, urlopen
 ) -> None:
     """Restart a Klipper that was halted before the install, then update saved variables."""
     reporter.line(messages.RESTARTING_HALTED_KLIPPER)
@@ -736,7 +739,7 @@ def _restart_halted_klipper_and_update_saved_variables(
     _update_saved_variables(
         paths=paths,
         reporter=reporter,
-        input_stream=input_stream,
+        new_install=new_install,
         journal=None,
         written=None,
         urlopen=urlopen,

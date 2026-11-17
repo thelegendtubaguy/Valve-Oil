@@ -36,6 +36,7 @@ from .box_firmware import (
     held_boxes,
     usb_path_for_serial,
 )
+from . import progress
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text
 from .mainboard_firmware import BACKUP_DIRECTORY as MAINBOARD_BACKUP_DIRECTORY, mainboard_serial, run_mainboard_firmware
@@ -675,8 +676,10 @@ def refuse_unadmitted_new_install(admission: BoardAdmission, reporter) -> None:
     for status in unread:
         reporter.line(describe(status))
     if admission.unadmitted:
-        raise BoardAdmissionError("This release of Valve Oil doesn't support a board on this printer yet, so nothing "
-                                  "was installed.")
+        error = BoardAdmissionError("This release of Valve Oil doesn't support a board on this printer yet, so "
+                                    "nothing was installed.")
+        error.admission = admission  # the touchscreen names the board and shows its issue link (usb_install.py)
+        raise error
     if any(status.detail == NOT_CONNECTED.format(status.label) for status in unread):
         raise BoardAdmissionError("A USB Box listed in box.cfg is not connected, so nothing was installed. Connect it, "
                                   "or remove it in the touchscreen's Box setup, then run the installer again.")
@@ -879,6 +882,7 @@ def deliver_board_firmware(
             reporter.line(f"{status.label}: {detail}. Its firmware is not changed now.")
             results.append(BoardResult(board, "waiting", detail))
             continue
+        progress.step(progress.BOARDS, reporter)
         try:
             if board == "thr":
                 outcome = flash_thr_firmware(paths=paths, reporter=reporter, input_stream=input_stream, environ=env,
@@ -916,6 +920,7 @@ def deliver_board_firmware(
                                        "" if status.state in (HELD, CURRENT) else
                                        waiting_detail(printer) if status.state == NEEDS_IMAGE else describe(status)))
     if boxes:
+        progress.step(progress.box_firmware(int(name[3:]) for name in boxes), reporter)
         outcomes = {}
         # Stops before any write are reported there and leave the install successful; an unverified write raises.
         flash_box_firmware_after_install(

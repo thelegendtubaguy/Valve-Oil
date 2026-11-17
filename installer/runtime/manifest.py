@@ -30,6 +30,7 @@ from .models import (
     PostflightSpec,
     PreflightSpec,
     PrinterSpec,
+    RestoreSet,
     SectionSpec,
     SourcePatchSpec,
     SourcePatchVariantSpec,
@@ -325,6 +326,7 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
             raise ManifestValidationError(
                 f"Firmware {sorted(shared)[0]} is listed for more than one printer."
             )
+        target_firmware = _parse_target_firmware(item, printer_id, soc_file_prefix, firmware, key_prefix)
         printer = PrinterSpec(
             id=printer_id,
             display_name=_require_str(item, "display_name"),
@@ -334,8 +336,10 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
                 _require_str(item, "stock_snapshots"), allowed_roots=("stock",)
             ),
             macros=_validate_relative_path(_require_str(item, "macros"), allowed_roots=("klipper",)),
-            target_firmware=_parse_target_firmware(item, printer_id, soc_file_prefix, firmware, key_prefix),
+            target_firmware=target_firmware,
             firmware_key_prefix=key_prefix,
+            restore_sets=_parse_restore_sets(item, printer_id, soc_file_prefix, firmware, key_prefix,
+                                             target_firmware),
         )
         ids.add(printer.id)
         prefixes.add(printer.soc_file_prefix)
@@ -438,6 +442,81 @@ def _parse_target_firmware(
         closed_loop_image=image,
         qidi_version=qidi_version if key_prefix else "",
     )
+
+
+_RESTORE_SET_NAME = re.compile(r"^(\d{2}\.\d{2}\.\d{2}\.\d{2})(?:_(\d{8}))?$")
+_RESTORE_RELEASE_SUFFIX = re.compile(r"^(?:-[0-9a-f]{64})?$")
+RESTORE_MANIFEST_NAME = "firmware_manifest.json"
+# Names the USB hand-off keeps for itself in a restore set's folder.
+_RESTORE_RESERVED_NAMES = frozenset({"SHA256SUMS"})
+
+
+# The USB hand-off restores QIDI's update folder from these sets, and the drive image carries them, so every listed
+# firmware needs one, each comes from the printer's mirror, and none carries the system package, which the drive carries
+# only for the target firmware, as the target package itself. The target firmware's set comes from the target archive.
+def _parse_restore_sets(
+    item: dict[str, Any], printer_id: str, soc_file_prefix: str, firmware: tuple[str, ...], key_prefix: str,
+    target: TargetFirmwareSpec,
+) -> tuple[RestoreSet, ...]:
+    key = f"printers.{printer_id}.restore_sets"
+    raw = item.get("restore_sets")
+    if not isinstance(raw, dict) or not raw:
+        raise ManifestValidationError(f"{key} must map each package of every listed firmware to its files.")
+    package_prefix = soc_file_prefix[: -len("SOC_")] if soc_file_prefix.endswith("SOC_") else soc_file_prefix
+    sets: list[RestoreSet] = []
+    for name in sorted(raw):
+        match = _RESTORE_SET_NAME.match(str(name))
+        entry = raw[name]
+        if match is None or not isinstance(entry, dict) or set(entry) != {"release", "archive", "files"}:
+            raise ManifestValidationError(f"{key}.{name} must be named by a QIDI version, with _<date> where QIDI "
+                                          "published it twice, and give release, archive, and files.")
+        version, date = match.groups()
+        firmware_key = key_prefix + version
+        if firmware_key not in firmware:
+            raise ManifestValidationError(f"{key}.{name} is not a listed firmware of printer {printer_id}.")
+        release = _require_str(entry, "release")
+        tag = f"qidi-{printer_id}-firmware-{version}"
+        if not release.startswith(tag) or not _RESTORE_RELEASE_SUFFIX.match(release[len(tag):]):
+            raise ManifestValidationError(f"{key}.{name} release must be the mirror's release of {version}.")
+        archive = _require_str(entry, "archive")
+        stem = f"{package_prefix}{version}_{date}_" if date else f"{package_prefix}{version}_"
+        if not (archive.startswith(stem) and archive.endswith(".zip")) or "/" in archive:
+            raise ManifestValidationError(f"{key}.{name} archive is not QIDI's {stem[:-1]} package.")
+        files_raw = entry["files"]
+        if not isinstance(files_raw, dict) or RESTORE_MANIFEST_NAME not in files_raw:
+            raise ManifestValidationError(f"{key}.{name}.files must pin {RESTORE_MANIFEST_NAME} and its board images.")
+        files: list[tuple[str, ImagePin]] = []
+        for file_name in sorted(files_raw):
+            pin = files_raw[file_name]
+            size = pin.get("size") if isinstance(pin, dict) else None
+            if (
+                not isinstance(file_name, str)
+                or not file_name
+                or "/" in file_name
+                or "\\" in file_name
+                or file_name.startswith(".")
+                or file_name in _RESTORE_RESERVED_NAMES
+                or file_name.startswith(soc_file_prefix)
+                or set(pin) != {"size", "sha256"}
+                or isinstance(size, bool)
+                or not isinstance(size, int)
+                or size <= 0
+            ):
+                raise ManifestValidationError(f"{key}.{name}.files.{file_name} must be a plain file name other than "
+                                              "the system package, with its size and sha256.")
+            files.append((file_name, ImagePin(size=size, sha256=_require_sha256(pin, "sha256"))))
+        sets.append(RestoreSet(name=name, firmware=firmware_key, mirror=target.mirror, release=release,
+                               archive=archive, files=tuple(files)))
+    for listed in firmware:
+        named = [restore_set for restore_set in sets if restore_set.firmware == listed]
+        if not named:
+            raise ManifestValidationError(f"{key} has no set for firmware {listed}.")
+        if len(named) > 1 and any("_" not in restore_set.name for restore_set in named):
+            raise ManifestValidationError(f"{key}: every set of firmware {listed}, published more than once, must be "
+                                          "named with its package's date.")
+    if not any(restore_set.archive == target.archive and restore_set.release == target.release for restore_set in sets):
+        raise ManifestValidationError(f"{key} must have a set from the target firmware's archive.")
+    return tuple(sets)
 
 
 def _parse_package_boards(raw: Any, key: str, *, single: bool) -> PackageBoards:

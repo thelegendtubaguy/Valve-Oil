@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
-from installer.runtime import messages, system_optimizations
+from installer.runtime import install_flow, messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services, moonraker_used_extruders
 from installer.runtime import moonraker_speedups
@@ -158,7 +158,6 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # QIDI's metadata.py takes the used-filaments patch once the plate-selection patch before it has run.
         self.assertIn(f"would apply {moonraker_used_extruders.OPERATION} and restart Moonraker", stream.getvalue())
 
-        install_responses = io.StringIO("yes\nno\nunused\n")
         base_urlopen = moonraker_urlopen(
             saved_variables_path=paths.config_root / "saved_variables.cfg"
         )
@@ -190,9 +189,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             paths,
             manifest,
             PlainReporter(io.StringIO()),
-            input_stream=install_responses,
             urlopen=install_urlopen,
             environ=env,
+            system_options=SystemOptimizationCliOptions(disable_ai_detection=True),
+            auto_updates=False,
             run=install_run,
         )
         self.assertEqual(install_idle_checks, 2)
@@ -251,7 +251,6 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         # They run already, and the installer recommends a reboot to confirm they start on their own.
         self.assertTrue(paths.reboot_recommended_path.exists())
         paths.reboot_recommended_path.unlink()
-        self.assertEqual(install_responses.readline(), "unused\n")
         self.assertTrue((system_root / "etc/resolv.conf").is_symlink())
         self.assertIn(
             "deb http://deb.debian.org/debian bullseye",
@@ -697,12 +696,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(paths.reboot_recommended_path.exists())
         self.assertEqual(json.loads((root / "systemd/algo_app.service.json").read_text(encoding="utf-8"))["enabled"], "enabled")
 
-        # With AI detection already off, an install asks nothing about the OS optimizations.
+        # The install asks about AI detection while it runs, and not once it is off.
+        def questions():
+            overview = install_flow.plan_install(paths, manifest, environ=env, run=host_run, urlopen=urlopen)
+            return [question.id for question in overview.questions]
+
+        self.assertIn(install_flow.AI_DETECTION, questions())
         algo_app = root / "systemd/algo_app.service.json"
         algo_app.write_text(json.dumps({"exists": True, "service": "algo_app.service", "enabled": "disabled", "active": "inactive"}), encoding="utf-8")
-        report = io.StringIO()
-        run_install(paths, manifest, PlainReporter(report), input_stream=io.StringIO("no\nno\nno\n"), urlopen=urlopen, environ=env, run=host_run)
-        self.assertNotIn(messages.AI_DETECTION_PROMPT, report.getvalue())
+        self.assertNotIn(install_flow.AI_DETECTION, questions())
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=urlopen, environ=env, run=host_run)
         self.assertEqual(load_installed_state(state_path).system_ledger["policy"]["system_optimizations"], "enabled")
 
     def test_touchscreen_app_keeps_its_form_without_a_decision_and_is_released_when_replaced(self):

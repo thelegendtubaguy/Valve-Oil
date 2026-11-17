@@ -216,6 +216,26 @@ class TargetFirmwareSpec:
 
 
 @dataclass(frozen=True)
+class RestoreSet:
+    """QIDI's update folder for one package of a supported firmware, without the system package: its
+    firmware_manifest.json and the board images it names, each pinned, from the mirror release's archive."""
+    name: str  # QIDI's version, or <version>_<date> where QIDI published the version twice
+    firmware: str  # the firmware key (PrinterSpec.firmware_key)
+    mirror: str  # GitHub owner/repository
+    release: str
+    archive: str
+    files: tuple[tuple[str, ImagePin], ...]
+
+    @property
+    def qidi_version(self) -> str:
+        return self.name.split("_", 1)[0]
+
+    @property
+    def url(self) -> str:
+        return f"https://github.com/{self.mirror}/releases/download/{self.release}/{self.archive}"
+
+
+@dataclass(frozen=True)
 class PrinterSpec:
     id: str
     display_name: str
@@ -228,6 +248,8 @@ class PrinterSpec:
     # whose versions repeat another's names its firmware with this prefix wherever the installer matches or
     # records a firmware version.
     firmware_key_prefix: str = ""
+    # QIDI's update folder for each package of each listed firmware, in name order (installer/usb/).
+    restore_sets: tuple[RestoreSet, ...] = ()
 
     def firmware_key(self, soc_version: str) -> str:
         return self.firmware_key_prefix + soc_version
@@ -721,3 +743,5 @@ class UninstallResult:
     backup_label: Optional[str]
     backup_zip_path: Optional[Path]
     dry_run: bool = False
+    # The operator agreed, with the uninstall's other questions, to restart the printer when restored changes need it.
+    reboot_authorized: bool = False

@@ -14,8 +14,9 @@ BUNDLE_ROOT_NAME = "valve-oil"
 LEGACY_BUNDLE_ROOT_NAME = BUNDLE_NAME_PREFIX
 LEGACY_ARCHIVE_NAME = f"{BUNDLE_NAME_PREFIX}.tar.gz"
 # Valve Oil's working files in the printer user's home: a folder each for the update check's downloads
-# (auto-update), a QIDI firmware update's package and logs (firmware-update), and the jobs of the status and add-ons
-# services (status, addons), whose scripts in installer/system name these paths themselves.
+# (auto-update), a QIDI firmware update's package and logs (firmware-update), the jobs of the status and add-ons
+# services (status, addons), whose scripts in installer/system name these paths themselves, and the USB hand-off's
+# bundle copy and update-folder result (usb), which installer/usb/ names itself.
 CACHE_DIRECTORY = ".cache/valve-oil"
 # The same folders under their earlier names, which an install removes (auto_update.retire_legacy_bundle).
 LEGACY_CACHE_DIRECTORIES = (".cache/tltg-auto-update", ".cache/tltg-firmware-update", ".cache/tltg-status",

@@ -126,6 +126,9 @@ class PlainReporter:
         self.stream.write(f"{message}\n")
         self.stream.flush()
 
+    def emit_step(self, *, step: str, index: int, total: int) -> None:
+        self.line(f"[{index}/{total}] {step}")
+
     def prepare_for_prompt(self) -> None:
         return
 
@@ -224,6 +227,9 @@ class RichReporter:
 
     def line(self, message: str = "") -> None:
         self._print_line(message)
+
+    def emit_step(self, *, step: str, index: int, total: int) -> None:
+        self._print_line(f"[{index}/{total}] {step}")
 
     def status(self, message: str) -> None:
         previous_stage = self.state.stage_index

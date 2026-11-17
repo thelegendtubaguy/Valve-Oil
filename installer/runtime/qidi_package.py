@@ -1,4 +1,5 @@
-"""QIDI's firmware package for the target firmware: downloaded only from this project's mirror, verified, and unpacked.
+"""QIDI's firmware package for the target firmware: copied from the USB drive an install was started from or downloaded
+only from this project's mirror, verified, and unpacked.
 
 The archive goes to a cache folder in the printer user's home, never /tmp, which the package's preinst empties. A
 partial download is resumed. Nothing on the printer changes until the archive has the pinned size and SHA-256, and
@@ -26,7 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import naming
-from .errors import InstallerError, PathSafetyError
+from .errors import FirmwareDetectionError, InstallerError, PathSafetyError
+from .firmware import detect_firmware, supported_printer
 from .fs_atomic import atomic_write_text, fsync_directory
 from .path_safety import ensure_external_path_has_no_symlink_components
 
@@ -48,6 +50,11 @@ ALLOWED_HOST_SUFFIXES = (".githubusercontent.com",)
 
 # Why a package can't be used, as status-file blocker codes (valve_oil_status.BLOCKERS).
 UNREACHABLE, UNVERIFIED, FREE_SPACE = "mirror_unreachable", "package_unverified", "free_space"
+
+# The USB installer names the drive it was started from by its mount point, normally printer_data/gcodes/USB. The
+# drive's valve-oil/ folder holds each printer's target package under the archive name package.yaml pins.
+USB_DRIVE_ENV = "TLTG_USB_DRIVE_ROOT"
+DRIVE_FOLDER = "valve-oil"
 
 
 class PackageError(InstallerError):
@@ -182,6 +189,124 @@ def free_up_space(paths, *, sudo, reporter, disk_usage=shutil.disk_usage, clock=
     return freed
 
 
+def drive_archive(target, environ) -> Path | None:
+    """Where the USB drive the installer was started from keeps the target firmware's archive; None when no drive was
+    named."""
+    root = (environ or {}).get(USB_DRIVE_ENV)
+    return Path(root) / DRIVE_FOLDER / target.archive if root else None
+
+
+def drive_copy_present(target, environ) -> bool:
+    """The drive holds a regular file of the archive's pinned size under its name (its hash is checked when copied)."""
+    path = drive_archive(target, environ)
+    try:
+        info = path.lstat() if path is not None else None
+    except OSError:
+        return False
+    return info is not None and stat.S_ISREG(info.st_mode) and info.st_size == target.size
+
+
+def fetch(paths, target, *, reporter, environ=None, urlopen=mirror_urlopen) -> Path:
+    """The target firmware's verified archive in the cache: the one cached already, else the USB drive's copy, else a
+    download from the mirror. Raises PackageError as download() does."""
+    final = _verified_cache(paths, target)
+    if final is not None:
+        return final
+    final = copy_from_drive(paths, target, environ=environ, reporter=reporter)
+    if final is not None:
+        return final
+    reporter.line(f"Downloading QIDI firmware {target.version} from {target.url}")
+    return download(paths, target, reporter=reporter, urlopen=urlopen)
+
+
+def copy_from_drive(paths, target, *, environ, reporter) -> Path | None:
+    """Copy the target firmware's archive from the USB drive into the cache, checked against its pinned size and
+    SHA-256 as a download is; the cached archive, or None when no drive was named, or its copy is missing or doesn't
+    match, which is reported for the caller to download instead.
+
+    The copy is written to the partial download's name, replacing any partial download, and renamed into place once
+    what reached the cache matches the pin, so a cut copy leaves no archive and the next attempt copies it again. A
+    copy that doesn't match is removed, so the download starts afresh rather than resuming from the drive's bytes.
+    """
+    source = drive_archive(target, environ)
+    if source is None:
+        return None
+    cache = _cache(paths)
+    _prune(cache, keep={target.archive, target.archive + ".part"})
+    part = _part(paths, target)
+    where = f"{DRIVE_FOLDER}/{target.archive}"
+    try:
+        problem = _copy(source, part, target, reporter=reporter)
+        if problem is None:
+            verify(part, target)  # what reached the cache
+    except (OSError, PackageError) as exc:
+        part.unlink(missing_ok=True)  # a download must not resume from the drive's bytes
+        problem = _MISMATCH if isinstance(exc, PackageError) else \
+            f"couldn't be copied ({exc.strerror or type(exc).__name__})"
+    if problem is not None:
+        if problem == _MISSING:
+            reporter.line(f"QIDI firmware {target.version}'s package isn't on the USB drive ({where}); downloading it "
+                          "from this project's mirror instead.")
+        else:
+            reporter.line(f"The USB drive's copy of QIDI firmware {target.version} ({where}) {problem}; downloading it "
+                          "from this project's mirror instead.")
+        _debug(reporter, "firmware_package_drive_copy", result="fallback", source=str(source), reason=problem)
+        return None
+    final = cache / target.archive
+    os.replace(part, final)
+    fsync_directory(cache)
+    _debug(reporter, "firmware_package_drive_copy", result="copied", source=str(source))
+    return final
+
+
+_MISSING, _MISMATCH = "isn't on the drive", "doesn't match its pinned size and SHA-256"
+
+
+def _copy(source: Path, part: Path, target, *, reporter) -> str | None:
+    """Copy and hash the drive's file in one read; what's wrong with it, or None."""
+    try:
+        fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except (FileNotFoundError, NotADirectoryError):
+        return _MISSING
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size != target.size:
+            return _MISMATCH
+        reporter.line(f"Copying QIDI firmware {target.version} ({target.size // 2 ** 20} MiB) from the USB drive")
+        digest = hashlib.sha256()
+        copied = 0
+        with part.open("wb") as out:
+            while copied < target.size and (chunk := handle.read(min(CHUNK, target.size - copied))):
+                digest.update(chunk)
+                out.write(chunk)
+                copied += len(chunk)
+            out.flush()
+            os.fsync(out.fileno())
+        if copied != target.size or handle.read(1) or digest.hexdigest() != target.sha256:
+            part.unlink()
+            return _MISMATCH
+    return None
+
+
+def _verified_cache(paths, target) -> Path | None:
+    """The cached archive when it matches its pin; a cached archive that doesn't is removed."""
+    final = archive_path(paths, target)
+    if not cached(paths, target):
+        return None
+    try:
+        verify(final, target)
+        return final
+    except PackageError:
+        final.unlink()
+        return None
+
+
+def _debug(reporter, event: str, **fields) -> None:
+    debug = getattr(reporter, "debug", None)
+    if debug is not None:
+        debug(event=event, **fields)
+
+
 def download(paths, target, *, reporter, urlopen=mirror_urlopen, attempts: int = 3) -> Path:
     """Download the target firmware's archive from the mirror, resuming a partial download, and verify it.
 
@@ -192,13 +317,10 @@ def download(paths, target, *, reporter, urlopen=mirror_urlopen, attempts: int =
         raise PackageError("The firmware package URL is not on this project's mirror.", code=UNVERIFIED)
     cache = _cache(paths)
     _prune(cache, keep={target.archive, target.archive + ".part"})
+    final = _verified_cache(paths, target)
+    if final is not None:
+        return final
     final = cache / target.archive
-    if cached(paths, target):
-        try:
-            verify(final, target)
-            return final
-        except PackageError:
-            final.unlink()
     part = _part(paths, target)
     if part.is_file() and part.stat().st_size > target.size:
         part.unlink()  # not the pinned archive: start again
@@ -411,7 +533,13 @@ def _checked_manifest(package: zipfile.ZipFile, members, target, printer) -> dic
 
 
 def _extract(package: zipfile.ZipFile, info: zipfile.ZipInfo, root: Path) -> None:
-    fd = os.open(root / info.filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    _extract_to(package, info, root / info.filename, algorithms=())
+
+
+def _extract_to(package: zipfile.ZipFile, info: zipfile.ZipInfo, path: Path, *, algorithms) -> dict[str, str]:
+    """Write one member to a new file, its CRC-32 checked by zipfile; the hex digests of `algorithms` over it."""
+    hashes = {name: hashlib.new(name) for name in algorithms}
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
     written = 0
     with os.fdopen(fd, "wb") as out, package.open(info) as source:
         while chunk := source.read(CHUNK):
@@ -419,9 +547,12 @@ def _extract(package: zipfile.ZipFile, info: zipfile.ZipInfo, root: Path) -> Non
             if written > info.file_size:
                 raise PackageError(f"The firmware package entry {info.filename!r} is longer than it says.",
                                    code=UNVERIFIED)
+            for digest in hashes.values():
+                digest.update(chunk)
             out.write(chunk)
         out.flush()
         os.fsync(out.fileno())
+    return {name: digest.hexdigest() for name, digest in hashes.items()}
 
 
 # ---- QIDI's update folder -------------------------------------------------------------------------------------------
@@ -499,6 +630,148 @@ def exchange_paths(first: Path, second: Path) -> bool:
     if error in (errno.ENOSYS, errno.EINVAL, getattr(errno, "ENOTSUP", errno.EINVAL)):
         return False
     raise OSError(error, os.strerror(error), str(first))
+
+
+# ---- QIDI's system package file, put back from the USB drive -------------------------------------------------------
+
+# What restore_soc_package_from_drive found or did.
+RESTORED = "restored"  # the file is back in QIDI's update folder
+ALREADY_PRESENT = "already_present"  # the folder holds it already
+NO_DRIVE_COPY = "no_drive_copy"  # no drive was named, or it has no copy of the target package
+MISMATCH = "mismatch"  # the drive's package doesn't match its pin, or doesn't hold the file the folder's manifest names
+NOT_TARGET = "not_target"  # the printer doesn't run the target firmware, so the drive's package isn't its own
+FAILED = "failed"  # the file couldn't be written; the folder is as it was
+RESTORE_PART = ".tltg-soc-restore"  # the file in QIDI's update folder before its rename to the manifest's name
+RESTORE_MODE = "0644"  # what QIDI's own unzip gives it: QIDI's archives record every file as 0644
+
+
+@dataclass(frozen=True)
+class SocRestore:
+    result: str
+    message: str = ""
+    file: str | None = None  # the system package file the folder's manifest names
+
+
+def restore_soc_package_from_drive(paths, manifest, *, environ, sudo, reporter,
+                                   disk_usage=shutil.disk_usage) -> SocRestore:
+    """Put QIDI's system package file back in QIDI's update folder from the target package on the USB drive.
+
+    A USB run's hand-off restores QIDI's manifest and board images but not the system package file the manifest names.
+    On the target firmware, this extracts that file, and only it, from the drive's package once the package matches
+    its pinned size and SHA-256 and its manifest names the same file, and moves it into the folder owned by root with
+    mode 0644, as QIDI's unzip leaves it. sudo(command) runs a command as root and returns its CompletedProcess.
+    Never raises for a missing drive or a write that fails: the result says what happened, and leaves the folder as
+    it was unless it is RESTORED.
+    """
+    try:
+        return _restore_soc(paths, manifest, environ=environ, sudo=sudo, reporter=reporter, disk_usage=disk_usage)
+    except (OSError, InstallerError, subprocess.SubprocessError, zipfile.BadZipFile, zipfile.LargeZipFile,
+            EOFError, RuntimeError) as exc:
+        message = getattr(exc, "message", None) or str(exc) or type(exc).__name__
+        reporter.line(f"QIDI's system package file wasn't put back in QIDI's update folder: {message}")
+        _debug(reporter, "soc_restore", result=FAILED, error=message)
+        return SocRestore(FAILED, message)
+
+
+def _restore_soc(paths, manifest, *, environ, sudo, reporter, disk_usage) -> SocRestore:
+    try:
+        detected = detect_firmware(paths.firmware_manifest_path)
+    except FirmwareDetectionError:
+        return _restore_result(reporter, NOT_TARGET, "QIDI's update folder has no readable firmware manifest")
+    printer = supported_printer(manifest, detected)
+    target = printer.target_firmware if printer is not None else None
+    if target is None or printer.firmware_key(detected.version) != target.version:
+        return _restore_result(reporter, NOT_TARGET, f"the printer runs QIDI firmware {detected.version}, not the "
+                                                     "target firmware the drive carries")
+    name = detected.soc_file
+    if not isinstance(name, str) or not _plain_name(name) or not name.startswith(printer.soc_file_prefix):
+        return _restore_result(reporter, MISMATCH, "QIDI's firmware manifest names no plain system package file",
+                               shown=True)
+    update = update_dir(paths)
+    final, part = update / name, update / RESTORE_PART
+    for path in (final, part):
+        ensure_external_path_has_no_symlink_components(root=update.parent, target=path)
+    if final.is_file():
+        return _restore_result(reporter, ALREADY_PRESENT, f"QIDI's update folder holds {name}", file=name)
+    source = drive_archive(target, environ)
+    where = f"{DRIVE_FOLDER}/{target.archive}"
+    try:
+        info = source.lstat() if source is not None else None
+    except OSError:
+        info = None
+    if info is None:
+        return _restore_result(reporter, NO_DRIVE_COPY, f"QIDI's system package file {name} wasn't put back in QIDI's "
+                               f"update folder: the USB drive has no {where}", file=name, shown=source is not None)
+    try:
+        if not stat.S_ISREG(info.st_mode):
+            raise PackageError("not a file", code=UNVERIFIED)
+        verify(source, target)
+    except PackageError:
+        return _restore_result(reporter, MISMATCH, f"QIDI's system package file {name} wasn't put back in QIDI's "
+                               f"update folder: the USB drive's {where} doesn't match its pinned size and SHA-256",
+                               file=name, shown=True)
+    scratch = _cache(paths) / RESTORE_PART.lstrip(".")
+    _remove_root_file(scratch, sudo)
+    _remove_root_file(part, sudo)
+    with zipfile.ZipFile(source) as package:
+        try:
+            entry = _checked_manifest(package, members := _checked_members(package, target), target, printer)["SOC"]
+        except PackageError as exc:
+            return _restore_result(reporter, MISMATCH, f"QIDI's system package file {name} wasn't put back in QIDI's "
+                                   f"update folder: the USB drive's {where} isn't QIDI's package ({exc.message})",
+                                   file=name, shown=True)
+        if entry["file"] != name or entry["version"] != detected.version:
+            return _restore_result(reporter, MISMATCH, f"QIDI's system package file {name} wasn't put back in QIDI's "
+                                   f"update folder: the USB drive's {where} carries {entry['file']}", file=name,
+                                   shown=True)
+        member = members[name]
+        if _free(home(paths), disk_usage) < member.file_size + MARGIN_BYTES:
+            raise PackageError(f"it needs {(member.file_size + MARGIN_BYTES) // 2 ** 20} MiB free in {home(paths)}",
+                               code=FREE_SPACE)
+        reporter.line(f"Putting QIDI's system package file {name} back in QIDI's update folder from the USB drive")
+        try:
+            # QIDI's manifests carry no hash; one that did would be checked too.
+            digests = _extract_to(package, member, scratch, algorithms=[key for key in ("sha256", "md5")
+                                                                         if isinstance(entry.get(key), str)])
+        except BaseException:
+            scratch.unlink(missing_ok=True)
+            raise
+    if any(digests[key] != str(entry[key]).lower() for key in digests):
+        scratch.unlink(missing_ok=True)
+        return _restore_result(reporter, MISMATCH, f"QIDI's system package file {name} wasn't put back in QIDI's "
+                               f"update folder: it doesn't match its hash in the package's manifest", file=name,
+                               shown=True)
+    # Owned by root and moved, not copied, into the folder: first under a name QIDI's app doesn't read, then renamed in
+    # one step, so the folder never holds part of the file under the manifest's name.
+    for command in (["chown", "root:root", str(scratch)], ["chmod", RESTORE_MODE, str(scratch)],
+                    ["mv", "-f", str(scratch), str(part)], ["mv", "-f", str(part), str(final)]):
+        if sudo(command).returncode:
+            _remove_root_file(scratch, sudo)
+            _remove_root_file(part, sudo)
+            raise InstallerError(f"{' '.join(command[:2])} failed")
+    sudo(["sync", str(update)])  # the rename, to disk
+    written = final.lstat()
+    if not stat.S_ISREG(written.st_mode) or written.st_size != member.file_size:
+        raise InstallerError(f"{final} is not the file the package holds")
+    return _restore_result(reporter, RESTORED, f"Put QIDI's system package file {name} back in QIDI's update folder "
+                           "from the USB drive.", file=name, shown=True)
+
+
+def _restore_result(reporter, result: str, message: str, *, file: str | None = None, shown=False) -> SocRestore:
+    if shown:
+        reporter.line(message if message.endswith(".") else message + ".")
+    _debug(reporter, "soc_restore", result=result, file=file, detail=message)
+    return SocRestore(result, message, file)
+
+
+def _remove_root_file(path: Path, sudo) -> None:
+    """Remove a file the restore left, which may be root's already."""
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except PermissionError:
+        sudo(["rm", "-f", str(path)])
 
 
 def deb_fields(deb: Path, *, run=subprocess.run) -> dict[str, str]:

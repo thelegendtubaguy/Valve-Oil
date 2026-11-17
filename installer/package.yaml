@@ -6,11 +6,16 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.16.1"
+  version: "26.11.17.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 # target_firmware is the QIDI firmware this release brings the printer to: its newest listed firmware, downloaded only
 # from this project's mirror release and checked against the archive's size and SHA-256. Every other listed firmware
 # updates to it. Board versions come from each package's firmware_manifest.json, as listed in the mirror releases.
+# restore_sets pin QIDI's update folder for each package of each listed firmware, without the system package: its
+# firmware_manifest.json and the board images it names, read from the mirror release's archive. The USB drive image
+# carries them, and the USB hand-off puts back the set for the installed firmware after QIDI's offline update empties
+# the folder. A set is named by QIDI's version, with the package's date where QIDI published a version twice; the
+# hand-off restores the latest.
 printers:
   - id: max4
     display_name: QIDI Max 4
@@ -37,6 +42,57 @@ printers:
         # QIDI published 01.01.06.04 twice: on 2026-06-09 with mainboard 02.01.01.11, then on 2026-06-12 with 02.01.01.12.
         "01.01.06.04": {mcu: ["02.01.01.11", "02.01.01.12"], thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
         "01.01.06.05": {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21", closed_loop: "03.01.10.13"}
+    restore_sets:
+      "01.01.06.03":
+        release: qidi-max4-firmware-01.01.06.03
+        archive: QD_MAX4_01.01.06.03_20260507_Release.zip
+        files:
+          firmware_manifest.json: {size: 660, sha256: 30f779dc5022fe2d99cd855801ccd706b5c0186c19b79610e9b438b123f28b0f}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_CLOSED_LOOPV2_03.01.10.25_20260402.bin: {size: 63087, sha256: 5a3755b44f94172cb9be287fb77b7ee96b3939a19eff896fc72f099c150828d5}
+          QD_MAX4_CLOSED_LOOP_03.01.10.13_20251230.bin: {size: 116736, sha256: 034712c8f90dd81c40a584608532c10ab9b973fab3df8b8d1d5fac4a0e6f6b17}
+          QD_MAX4_MCU_02.01.01.11_20260402.bin: {size: 36600, sha256: 33375f0debcb04fee18fbb65437fe6bd4082a6a6a70b2755f1de58320c56eab8}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
+      "01.01.06.04_20260609":
+        release: qidi-max4-firmware-01.01.06.04
+        archive: QD_MAX4_01.01.06.04_20260609_Release.zip
+        files:
+          firmware_manifest.json: {size: 660, sha256: 98b5cc2591c375d2efed0671eb352f5c8826d8227aca5893ca74d859e3beedd4}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_CLOSED_LOOPV2_03.01.10.40_20260512.bin: {size: 63164, sha256: 7aa66477f68856b94110f79bf065a63d64779ef54b73e5832f0431458e29424b}
+          QD_MAX4_CLOSED_LOOP_03.01.10.13_20251230.bin: {size: 116736, sha256: 034712c8f90dd81c40a584608532c10ab9b973fab3df8b8d1d5fac4a0e6f6b17}
+          QD_MAX4_MCU_02.01.01.11_20260402.bin: {size: 36600, sha256: 33375f0debcb04fee18fbb65437fe6bd4082a6a6a70b2755f1de58320c56eab8}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
+      "01.01.06.04_20260612":
+        release: qidi-max4-firmware-01.01.06.04-62357353ac0523f05d4173fefcdd39ae63540cd17047920a68795396ae24b280
+        archive: QD_MAX4_01.01.06.04_20260612_Release.zip
+        files:
+          firmware_manifest.json: {size: 660, sha256: aa4be35139d7615c2cdb223d8050815f0ccc16dcb4def08bc50488acffa535e5}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_CLOSED_LOOPV2_03.01.10.40_20260512.bin: {size: 63164, sha256: 7aa66477f68856b94110f79bf065a63d64779ef54b73e5832f0431458e29424b}
+          QD_MAX4_CLOSED_LOOP_03.01.10.13_20251230.bin: {size: 116736, sha256: 034712c8f90dd81c40a584608532c10ab9b973fab3df8b8d1d5fac4a0e6f6b17}
+          QD_MAX4_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
+      "01.01.06.05":
+        release: qidi-max4-firmware-01.01.06.05-b1826d1aed274c7233b4a23a3a3e5c0b4e9655c5d03188a8b6f3561f0d3f2de7
+        archive: QD_MAX4_01.01.06.05_20260804_Release.zip
+        files:
+          firmware_manifest.json: {size: 537, sha256: 486056fb9a39417d50c9e9691a79839aaf48911b1486bdd8b88957a078ead564}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_CLOSED_LOOP_03.01.10.13_20251230.bin: {size: 116736, sha256: 034712c8f90dd81c40a584608532c10ab9b973fab3df8b8d1d5fac4a0e6f6b17}
+          QD_MAX4_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
+      "01.01.07.01":
+        release: qidi-max4-firmware-01.01.07.01-0cc97445e77295116adaa665ff463e77608d4929520bd7cd46e732fbb0a6ecf2
+        archive: QD_MAX4_01.01.07.01_20261016_Release.zip
+        files:
+          firmware_manifest.json: {size: 743, sha256: dc7355726be2741fd48c1aa8dcc43e53d33da48687ff8faef76365e31844c10b}
+          QD_MAX4_BOX485_02.04.01.01_20261010.bin: {size: 49893, sha256: 53bf49f5250d95dd9dc0e4039feb43013502e3d3278b82c1c301b5d73e6db7f1}
+          QD_MAX4_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_MAX4_BUFFER_02.05.01.01_20261010.bin: {size: 8516, sha256: ef08f7450a14b91b21283eb8dcbb36aafa5fe94aa2ed4a7fa809dad3298e781f}
+          QD_MAX4_CLOSED_LOOP_03.01.10.15_20260907.bin: {size: 116736, sha256: d670e9104f4844d38669312104355837d4a92a06b03ed8157d487e87286b1be4}
+          QD_MAX4_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
+          QD_MAX4_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
   - id: plus5
     display_name: QIDI Plus 5
     soc_file_prefix: QD_PLUS5_SOC_
@@ -53,6 +109,17 @@ printers:
       size: 177626943
       boards: {mcu: "02.01.01.12", thr: "02.02.01.08", box: "02.03.01.21"}
       update_from: {}
+    restore_sets:
+      "01.01.02.01":
+        release: qidi-plus5-firmware-01.01.02.01-534e5ce959b1e387fc6355f8d78736ddb94432eb9c569ff2a135e103dfeb0871
+        archive: QD_PLUS5_01.01.02.01_20261016_Release.zip
+        files:
+          firmware_manifest.json: {size: 630, sha256: 085259c173e9bf13978552f79b3f37db6a5f470f12dd6a2c248f284754efddd6}
+          QD_PLUS5_BOX485_02.04.01.01_20261010.bin: {size: 49893, sha256: 53bf49f5250d95dd9dc0e4039feb43013502e3d3278b82c1c301b5d73e6db7f1}
+          QD_PLUS5_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          QD_PLUS5_BUFFER_02.05.01.01_20261010.bin: {size: 8516, sha256: ef08f7450a14b91b21283eb8dcbb36aafa5fe94aa2ed4a7fa809dad3298e781f}
+          QD_PLUS5_MCU_02.01.01.12_20260609.bin: {size: 36824, sha256: 65405946b4b0c152d9115e06d082bc3818b13b5a878970c8a18388a641d510fd}
+          QD_PLUS5_THR_02.02.01.08_20260303.bin: {size: 35056, sha256: 1d34b4b0142f2a2047f08c2fae59d827bcee0adbd1563b4bd1de311dff8b2d62}
   # QIDI numbers each printer's firmware on its own, and Smart 5 versions repeat the Plus 5's, so Smart 5 firmware
   # keys carry the printer id. The firmware manifest's SOC file name tells the two apart.
   - id: smart5
@@ -72,6 +139,17 @@ printers:
       size: 165505902
       boards: {mcu: "02.01.01.110", thr: "02.02.01.09", box: "02.03.01.21"}
       update_from: {}
+    restore_sets:
+      "01.01.02.01":
+        release: qidi-smart5-firmware-01.01.02.01-5677f126716aaa0c084c02a787145bc911cd346badd87cca350cecaeebbc041e
+        archive: S5_01.01.02.01_20261016_Release.zip
+        files:
+          firmware_manifest.json: {size: 596, sha256: 854c31f880ef7d783ea70364456a38912673c7ef90b07d9c0b1ca24fde90d21b}
+          S5_BOX485_02.04.01.01_20261010.bin: {size: 49893, sha256: 53bf49f5250d95dd9dc0e4039feb43013502e3d3278b82c1c301b5d73e6db7f1}
+          S5_BOX_02.03.01.21_20260124.bin: {size: 39392, sha256: dcf6bb191d77fb2d70e2cdabce7b24f277d4eb143ed28fe55c9ce19f1531cd12}
+          S5_BUFFER_02.05.01.01_20261010.bin: {size: 8516, sha256: ef08f7450a14b91b21283eb8dcbb36aafa5fe94aa2ed4a7fa809dad3298e781f}
+          S5_MCU_02.01.01.110_20260918.bin: {size: 74484, sha256: 2f1ac6ba1d1bb39791b38e6bf7572d11622a11a09917839660796a0115369b0b}
+          S5_THR_02.02.01.09_20260520.bin: {size: 35072, sha256: 4bcc5dea3fec9d114dc444c0b9b24933eca901adf0051932a9c5b6afca144b54}
 
 backup:
   source_directory: "config"

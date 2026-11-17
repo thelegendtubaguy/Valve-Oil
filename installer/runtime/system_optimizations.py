@@ -1635,6 +1635,14 @@ def resolve_policy(
     return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
 
 
+def ai_detection_running(manifest: Manifest, *, paths: RuntimePaths, environ: dict[str, str],
+                         run=subprocess.run) -> bool:
+    """Whether QIDI's AI detection service runs now, so the operator is asked about it (install_flow.py)."""
+    if manifest.system_optimizations is None:
+        return False
+    return _ai_detection_running(manifest.system_optimizations, paths=paths, environ=environ, run=run)
+
+
 def _ai_detection_running(spec: SystemOptimizationsSpec, *, paths: RuntimePaths, environ: dict[str, str], run) -> bool:
     if not _system_root_allowed(paths=paths, environ=environ):
         return True

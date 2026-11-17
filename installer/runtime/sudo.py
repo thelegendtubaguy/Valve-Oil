@@ -17,15 +17,24 @@ class SudoError(InstallerError):
     pass
 
 
+# The password the operator typed this run, so steps after the questions run without asking again (install_flow.py).
+# Kept in this process only: never in the environment, which child processes inherit.
+_entered: str | None = None
+
+
 def authenticate_sudo(*, run: RunFn, environ: dict[str, str], reporter, input_stream) -> str:
+    global _entered
     password = environ.get(SUDO_PASSWORD_ENV, PUBLIC_DEFAULT_SUDO_PASSWORD)
     if run_sudo(["-v"], run=run, password=password).returncode == 0:
         return password
+    if _entered is not None and run_sudo(["-v"], run=run, password=_entered).returncode == 0:
+        return _entered
     fallback = _prompt_sudo_password(reporter=reporter, input_stream=input_stream)
     if fallback is None:
         raise SudoError(messages.AUTO_UPDATE_SUDO_FAILED)
     if run_sudo(["-v"], run=run, password=fallback).returncode != 0:
         raise SudoError(messages.AUTO_UPDATE_SUDO_FAILED)
+    _entered = fallback
     return fallback
 
 
@@ -66,6 +75,18 @@ def run_sudo_ignore_failure(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def popen_sudo(command: list[str], *, password: str) -> subprocess.Popen:
+    """Start `command` as root with its output piped, for a reader that stays running (touch_ui.Touch)."""
+    process = subprocess.Popen(sudo_command(command), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    try:
+        process.stdin.write((password + "\n").encode("utf-8"))
+        process.stdin.close()
+    except OSError:
+        pass
+    return process
 
 
 def sudo_command(command: list[str]) -> list[str]:
