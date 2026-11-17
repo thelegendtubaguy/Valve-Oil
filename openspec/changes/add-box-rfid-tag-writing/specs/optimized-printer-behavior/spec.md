@@ -91,3 +91,14 @@ At each Klipper start, optimized configuration SHALL add to every QIDI `filament
 #### Scenario: Operator entry with the same name
 - **WHEN** the database already has an entry with a catalog filament's name or ID
 - **THEN** that entry is kept and the catalog filament is not added
+
+### Requirement: Spool tag reports
+Optimized configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `VO_BOX_RFID_REPORT SLOT=`, also answering to its earlier name `TLTG_BOX_RFID_REPORT`, SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
+
+#### Scenario: Unknown tag during a QIDI read
+- **WHEN** QIDI reads a tag whose layout is unknown, that opens with no known key, or whose type is unsupported
+- **THEN** one report with the tag's type and readable data is saved for that tag contents
+
+#### Scenario: Report on request
+- **WHEN** an operator runs `VO_BOX_RFID_REPORT` and turns the spool past the slot's reader
+- **THEN** the full readable tag memory and its decoding are saved without the spool's serial number, and the console names the file

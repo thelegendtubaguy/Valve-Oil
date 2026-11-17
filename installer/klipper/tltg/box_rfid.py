@@ -944,8 +944,11 @@ class BoxRfid:
         self.printer.register_event_handler("klippy:connect", self._guard_init_read)
         self.printer.register_event_handler("klippy:ready", self._ready)
         self.printer.lookup_object("gcode").register_command(
-            "TLTG_BOX_RFID_REPORT", self.cmd_TLTG_BOX_RFID_REPORT,
+            "VO_BOX_RFID_REPORT", self.cmd_VO_BOX_RFID_REPORT,
             desc="Read the spool tag in a QIDI Box slot into a shareable report")
+        # The name it had until 26.11.16.1, which older instructions give.
+        self.printer.lookup_object("gcode").register_command(
+            "TLTG_BOX_RFID_REPORT", self.cmd_VO_BOX_RFID_REPORT, desc="Renamed VO_BOX_RFID_REPORT")
         self.printer.lookup_object("gcode").register_command(
             "VO_BOX_RFID_WRITE", self.cmd_VO_BOX_RFID_WRITE,
             desc="Write a filament to the spool tag in a QIDI Box slot")
@@ -1054,7 +1057,7 @@ class BoxRfid:
             raise gcmd.error("QIDI is reading slot %s's tag; try again when it finishes." % (label,))
         return reader
 
-    def cmd_TLTG_BOX_RFID_REPORT(self, gcmd):
+    def cmd_VO_BOX_RFID_REPORT(self, gcmd):
         slot = gcmd.get_int("SLOT", minval=0, maxval=15)
         seconds = gcmd.get_float("SECONDS", 60., minval=1., maxval=300.)
         label = slot_label(slot)

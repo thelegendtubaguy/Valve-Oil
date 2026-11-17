@@ -424,7 +424,7 @@ class BoxRfidTests(unittest.TestCase):
         self.module(Tag("ntag", ANYCUBIC), firmware="02.03.01.21-tltg-shutdownfix1")
         self.assertEqual(self.qidi_read()["data"], b"stale QIDI buffer")
         with self.assertRaises(CommandError):
-            self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+            self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7))
 
     def test_startup_tag_read_waits_for_qidis_controller(self):
         self.module()
@@ -448,7 +448,7 @@ class BoxRfidTests(unittest.TestCase):
     def test_report_command_saves_the_whole_tag_without_its_uid(self):
         self.module(Tag("ntag", ANYCUBIC))
         gcmd = Gcmd(SLOT=7)
-        self.printer.commands["TLTG_BOX_RFID_REPORT"](gcmd)
+        self.printer.commands["VO_BOX_RFID_REPORT"](gcmd)
         path, = self.reports()
         report = json.loads(path.read_text())
         self.assertIn("_2D_", path.name)
@@ -461,7 +461,7 @@ class BoxRfidTests(unittest.TestCase):
         self.assertEqual(report["ident"], {"atqa": "4400", "uid_bytes": 7, "sak": "0400"})
         self.assertIn("Anycubic PLA High Speed", gcmd.messages[-1])
         self.module(Tag("classic", blocks=BAMBU_BLOCKS, bambu=True))
-        self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+        self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7))
         bambu, = set(self.reports()) - {path}
         report = json.loads(bambu.read_text())
         self.assertEqual(report["read"]["decoded"], {"format": "bambu", "brand": "Bambu", "material": "PLA Silk",
@@ -472,13 +472,15 @@ class BoxRfidTests(unittest.TestCase):
         self.assertNotIn(BAMBU_BLOCKS[9].hex(), json.dumps(report))  # the spool's serial number
         self.assertNotIn("c0ffee42", json.dumps(report))
         self.module(Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]))
-        self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7))
+        self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7))
         report = json.loads(max(self.reports(), key=lambda p: p.stat().st_mtime_ns).read_text())
         self.assertEqual(report["read"]["decoded"]["material"], "PLA Silk")
         self.assertNotIn(BAMBU_BLOCKS[9].hex(), json.dumps(report))
         self.module()
         with self.assertRaises(CommandError):
-            self.printer.commands["TLTG_BOX_RFID_REPORT"](Gcmd(SLOT=7, SECONDS=1))
+            self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7, SECONDS=1))
+        # The command's name before 26.11.16.1 still works.
+        self.assertEqual(self.printer.commands["TLTG_BOX_RFID_REPORT"], self.printer.commands["VO_BOX_RFID_REPORT"])
 
     def test_test_tool_writes_only_blank_and_qidi_tags_and_reads_them_back(self):
         test = lambda **params: self.printer.commands["VO_BOX_RFID_TEST"](Gcmd(SLOT=7, **params))

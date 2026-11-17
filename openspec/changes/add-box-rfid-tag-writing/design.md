@@ -2,7 +2,7 @@
 
 Reading spool tags shipped in `26.11.10.1` (archived change `add-box-rfid-tag-support`). The Valve Oil Box firmware's `fm17550_select` wakes and selects any ISO 14443A tag, and `fm17550_transceive` runs one Transceive or MFAuthent exchange of up to 32 frame bytes and returns the reader's error flags, Status2 (bit 3 shows a MIFARE login), the received bit count, and up to 44 received bytes. NTAG WRITE, MIFARE login, and the two-step MIFARE WRITE all fit those commands, so writing needs no firmware change.
 
-`tltg_box_rfid` already decodes QIDI's v1 block, QIDI-layout data in NTAG pages 4 to 7, and the Anycubic and Elegoo NTAG layouts (`openspec/observations/qidi-box/material-metadata.md`). Each reader has a reactor mutex shared by QIDI's polling and `TLTG_BOX_RFID_REPORT`, and the report already reads a slot's tag on request while the spool is turned by hand.
+`tltg_box_rfid` already decodes QIDI's v1 block, QIDI-layout data in NTAG pages 4 to 7, and the Anycubic and Elegoo NTAG layouts (`openspec/observations/qidi-box/material-metadata.md`). Each reader has a reactor mutex shared by QIDI's polling and `VO_BOX_RFID_REPORT`, and the report already reads a slot's tag on request while the spool is turned by hand.
 
 Each reader serves two adjacent slots (`card_reader_{slot//2+1}`), so a reader may see the tags of both spools beside it.
 
@@ -38,7 +38,7 @@ Only a tag that is blank (zeros, or a new NTAG's empty NDEF TLVs) or already hol
 
 ### Each write runs under the reader's mutex
 
-The write takes the same reactor mutex as QIDI's polling and reports, so a QIDI read can't interleave with it. The operator turns the spool past the reader as for `TLTG_BOX_RFID_REPORT`; the write doesn't move the slot, because QIDI's read feeds filament toward the hub and is refused when the hub is occupied. One write goes to one selected tag, identified by a hash of its UID, and its read-back must come from the same tag.
+The write takes the same reactor mutex as QIDI's polling and reports, so a QIDI read can't interleave with it. The operator turns the spool past the reader as for `VO_BOX_RFID_REPORT`; the write doesn't move the slot, because QIDI's read feeds filament toward the hub and is refused when the hub is occupied. One write goes to one selected tag, identified by a hash of its UID, and its read-back must come from the same tag.
 
 ### Turning the spool for a test
 
