@@ -270,7 +270,7 @@ With Valve Oil, its Box monitor does this instead:
 - **Klipper restarts only while the printer is idle,** with no print running or paused and no heater on, and the heaters are never turned off for it. Otherwise a printer warning says `A USB Box was connected or disconnected.`, and Klipper restarts once the printer is idle.
 - **Installs and board firmware go first.** While the installer runs or a board's firmware is written or waits for its rescue, the monitor changes nothing, and catches up when that ends.
 
-The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
+The touchscreen still shows the Boxes, their firmware, and its Box notices. This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`; with any other app, the app keeps managing `box.cfg` as before. A `box.cfg` you've edited, so it's no longer in QIDI's layout, is left as it is. Uninstall puts QIDI's app back, which writes `box.cfg` again when it next starts. RS-485 Boxes aren't in `box.cfg`, and aren't affected.
 
 ## Box disconnects
 

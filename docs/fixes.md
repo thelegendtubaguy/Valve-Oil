@@ -75,7 +75,7 @@ With this project's [toolhead board](firmware.md#toolhead-accelerometer-fix) or 
 
 The pop-up now accepts a board version that starts with QIDI's. It still appears when QIDI ships a newer version than the board has.
 
-The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
+The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
 ## Fixes from newer Klipper
 
@@ -95,18 +95,18 @@ QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These l
 
 Part of Klipper is compiled C code, `klippy/chelper/c_helper.so`. Valve Oil replaces QIDI's copy with the same Klipper code built with these later upstream fixes:
 
-- Every `SET_PRESSURE_ADVANCE` that changed the value kept about 50 bytes of memory that Klipper never freed. OrcaSlicer's adaptive pressure advance changes it many times a layer, so Klipper's memory grew through each print, and through the next, until Klipper restarted. The Max 4 and Plus 5 have about 480 MB of memory for everything they run.
+- Every `SET_PRESSURE_ADVANCE` that changed the value kept about 50 bytes of memory that Klipper never freed. OrcaSlicer's adaptive pressure advance changes it many times a layer, so Klipper's memory grew through each print, and through the next, until Klipper restarted. The Max 4, Plus 5, and Smart 5 have about 480 MB of memory for everything they run.
 - During homing and probing that involve more than one board, Klipper could send a board a homing timeout earlier than the one it had already given it, so the board could stop the move with `Communication timeout during homing` sooner than intended.
 - A step far in the future could be written past the end of Klipper's step queue, corrupting Klipper's memory.
 - Each time Klipper closed a board's connection, at `RESTART`, `FIRMWARE_RESTART`, or a failed attempt to connect, it left two files open.
 
-Valve Oil recognizes the library QIDI ships with Max 4 firmware `01.01.06.04` and later and Plus 5 firmware `01.01.02.01`. Any other library, such as one Klipper rebuilt after its source files were edited, is left as it is. QIDI's source files aren't changed. Klipper rebuilds the library at startup only when a source file is newer than it, which Valve Oil's never is, so Klipper uses it as it is. Install restarts Klipper once to load it, and uninstall puts QIDI's back. `sha256sum ~/klipper/klippy/chelper/c_helper.so` prints `f8b7b7bb28dddff1f28a0775d0ace4696cd7ac95094a8e2dbbef16b1a49ac593` for Valve Oil's library and `214d1ab79a78b2aa28ba8cd7ba0d7383afcaaf9d36561112aa7bf73cf6591714` for QIDI's.
+Valve Oil recognizes the library QIDI ships with Max 4 firmware `01.01.06.04` and later and Plus 5 and Smart 5 firmware `01.01.02.01`. Any other library, such as one Klipper rebuilt after its source files were edited, is left as it is. QIDI's source files aren't changed. Klipper rebuilds the library at startup only when a source file is newer than it, which Valve Oil's never is, so Klipper uses it as it is. Install restarts Klipper once to load it, and uninstall puts QIDI's back. `sha256sum ~/klipper/klippy/chelper/c_helper.so` prints `f8b7b7bb28dddff1f28a0775d0ace4696cd7ac95094a8e2dbbef16b1a49ac593` for Valve Oil's library and `214d1ab79a78b2aa28ba8cd7ba0d7383afcaaf9d36561112aa7bf73cf6591714` for QIDI's.
 
 ## Probe points retrying forever
 
 When a point's two probe samples disagree by more than `samples_tolerance` (0.02 mm), Klipper probes the point again, up to `samples_tolerance_retries` times (10). QIDI's Klipper restarted that count on every retry, so a point whose samples never agreed was probed forever, and print start hung on it. The point now gets at most that many retries, then the bed mesh, `Z_TILT_ADJUST`, or `PROBE` fails with `Probe samples exceed samples_tolerance`, as in upstream Klipper. During print start that error stops the print.
 
-QIDI also re-zeroed the nozzle load cell for the retry while the nozzle was still pressed on the bed. On a Max 4, the samples after it read 45–57 µm low, and they went into the mesh. The load cell is now re-zeroed once the nozzle has lifted off the bed, as it is before every point. The Max 4 and the Plus 5 have the same code. This fix comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check.
+QIDI also re-zeroed the nozzle load cell for the retry while the nozzle was still pressed on the bed. On a Max 4, the samples after it read 45–57 µm low, and they went into the mesh. The load cell is now re-zeroed once the nozzle has lifted off the bed, as it is before every point. The Max 4, the Plus 5, and the Smart 5 have the same code. This fix comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check.
 
 ## Motors turning on late
 
@@ -116,7 +116,7 @@ A few `Timer too close` lines during prints have no known cause yet. When Klippe
 
 ## Fans and lights switching at the wrong time
 
-`M106`, `M107`, `SET_FAN_SPEED`, and `SET_PIN` take effect when the move before them ends. QIDI's Klipper sent the board its command as soon as it planned that move, however far ahead that was. A board compares times in 32 bits, so it can tell a time ahead from one already past only within about 12.8 seconds on the Max 4 and Plus 5 mainboards and 30 seconds on the toolhead board. On the Plus 5, a part fan change during a pause went to the toolhead board about 30 seconds ahead, which the board reads as already past. Standard Klipper board firmware stops the printer with `Timer too close` for such a command.
+`M106`, `M107`, `SET_FAN_SPEED`, and `SET_PIN` take effect when the move before them ends. QIDI's Klipper sent the board its command as soon as it planned that move, however far ahead that was. A board compares times in 32 bits, so it can tell a time ahead from one already past only within about 12.8 seconds on the Max 4 and Plus 5 mainboards, 3.6 seconds on the Smart 5's, and 30 seconds on the toolhead board. On the Plus 5, a part fan change during a pause went to the toolhead board about 30 seconds ahead, which the board reads as already past. On the Smart 5, QIDI's start G-code sent the part fan's `M106` about 12 seconds ahead, which its mainboard read as 2.4 seconds past. Standard Klipper board firmware stops the printer with `Timer too close` for such a command.
 
 These commands now wait, as in newer upstream Klipper, and go to the board at most 3 seconds before they take effect. Klipper keeps no more than that queued during a print, so in a print's normal flow they go out as before. A request that a later one replaces before it's due is dropped. QIDI's own fan code still sets the fan, with its kick start and fan speed check, and QIDI's smart case light goes through the same queue. This comes from the same module as the [fixes from newer Klipper](#fixes-from-newer-klipper), with the same check.
 
