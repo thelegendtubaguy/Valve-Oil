@@ -14,7 +14,7 @@
 ## 3. Fluidd
 
 - [x] 3.1 Add the ZeroTier panel to the fork.
-- [ ] 3.2 Release the fork and pin the build in `installer/package.yaml`.
+- [x] 3.2 Release the fork and pin the build in `installer/package.yaml`.
 
 ## 4. Docs
 
