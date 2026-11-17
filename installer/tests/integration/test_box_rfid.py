@@ -353,7 +353,7 @@ class BoxRfidTests(unittest.TestCase):
         return self.rfid.fm17550_read_card.send([self.rfid.oid])
 
     def reports(self):
-        return sorted(self.root.glob("tltg_rfid_*.json"))
+        return sorted(self.root.glob("vo_rfid_*.json"))
 
     def test_catalog_adds_only_missing_filaments_and_never_changes_existing_ones(self):
         self.module()

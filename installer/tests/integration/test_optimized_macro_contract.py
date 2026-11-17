@@ -1284,7 +1284,7 @@ class PrinterWarningsTest(unittest.TestCase):
     def test_unsupported_box_firmware_reports(self) -> None:
         calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
         log_dir = temp_path("printer-warnings-")
-        for name in ("klippy.log", "tltg_box_firmware_box2.json", "tltg_rfid_1.json"):
+        for name in ("klippy.log", "tltg_box_firmware_box2.json", "vo_rfid_1.json"):
             (log_dir / name).write_text("{}")
         box, = self.warnings(calibrated, log_dir=log_dir)
         self.assertEqual((box["id"], box["level"]), ("box_firmware_unsupported_box2", "warning"))

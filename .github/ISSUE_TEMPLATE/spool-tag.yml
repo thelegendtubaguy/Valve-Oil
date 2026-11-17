@@ -39,7 +39,7 @@ body:
     id: report
     attributes:
       label: Tag report
-      description: Attach the `tltg_rfid_*.json` file from Fluidd's **Logs** (drag it in), or paste its contents.
+      description: Attach the `vo_rfid_*.json` file (`tltg_rfid_*.json` from releases before 26.11.16.1) from Fluidd's **Logs** (drag it in), or paste its contents.
     validations:
       required: true
 

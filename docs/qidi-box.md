@@ -215,13 +215,13 @@ Without `FILAMENT=` and `COLORS=` it writes the slot's saved filament and color.
 
 ### Spools that don't read
 
-When the Box reads a tag it doesn't recognize, Klipper saves what it read as `tltg_rfid_<reason>_<reader>_<time>.json` in its log folder (Fluidd: **Logs**). To read a tag on purpose, put the spool in a slot without feeding its filament and run:
+When the Box reads a tag it doesn't recognize, Klipper saves what it read as `vo_rfid_<reason>_<reader>_<time>.json` in its log folder (Fluidd: **Logs**). Reports from releases before 26.11.16.1 are named `tltg_rfid_…`. To read a tag on purpose, put the spool in a slot without feeding its filament and run:
 
 ```gcode
 VO_BOX_RFID_REPORT SLOT=7
 ```
 
-Slots are numbered from 0, so 2D is slot 7. For up to 60 seconds (`SECONDS=` up to 300) it waits for a tag; turn the spool slowly by hand until it reports. It saves `tltg_rfid_report_<slot>_<time>.json` with everything the tag lets it read. Attach the file to a [spool tag issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=spool-tag.yml) to get that brand supported. Reports never include the tag's serial number.
+Slots are numbered from 0, so 2D is slot 7. For up to 60 seconds (`SECONDS=` up to 300) it waits for a tag; turn the spool slowly by hand until it reports. It saves `vo_rfid_report_<slot>_<time>.json` with everything the tag lets it read. Attach the file to a [spool tag issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=spool-tag.yml) to get that brand supported. Reports never include the tag's serial number.
 
 ## Filaments missing from QIDI's list
 

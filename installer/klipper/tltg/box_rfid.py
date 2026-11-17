@@ -1006,7 +1006,7 @@ class BoxRfid:
 
     def _write_report(self, prefix, label, report):
         report = dict(report, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
-        stem = os.path.join(self.report_dir, "tltg_rfid_%s_%s_%s" % (
+        stem = os.path.join(self.report_dir, "vo_rfid_%s_%s_%s" % (
             prefix, label, time.strftime("%Y%m%d-%H%M%S", time.gmtime())))
         for attempt in range(100):
             path = stem + ("-%d" % (attempt,) if attempt else "") + ".json"
