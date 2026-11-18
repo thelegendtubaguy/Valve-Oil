@@ -110,7 +110,7 @@ Every install and update applies these, including on printers where an earlier i
 - Pointing the printer's package sources at Debian's official servers.
 - Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and QIDI AI detection if you choose.
 - Taking [ADB](#adb) off the network, where it gives anyone a root shell on the printer without a password. It stays on the board's USB port, for recovery with a cable.
-- Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode.
+- Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode. Files then reach storage up to about 30 seconds after they are written, unless the program writing them waits for them. Klipper's `SAVE_CONFIG` and `SAVE_CONFIG_QD` wait for `printer.cfg` before Klipper restarts.
 - Compressed swap in memory ([zram](#zram-swap)), so the printer doesn't run out of memory.
 - Running the CPU at full speed, so Klipper's short bursts of work don't start at a third of it. With a 65 °C chamber, the processor ran about 1 °C warmer, 11 °C below where it starts slowing itself down.
 - Still images instead of animations on the touchscreen.

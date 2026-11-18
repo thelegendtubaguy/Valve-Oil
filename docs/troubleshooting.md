@@ -88,6 +88,20 @@ QIDI's touchscreen shows `Update failed. Please ensure the MCU is properly conne
 
 Before 26.11.09.2, an automatic update could restart Klipper during a preheat, since it checked only for a running print. Updates now wait until every heater is off.
 
+## Klipper says `Option 'serial' in section 'mcu' must be specified`
+
+Klipper shows this, and the touchscreen shows it under `QDC_100_005_000_001`, when `~/printer_data/config/printer.cfg` is empty. Before 26.11.17.1, turning the printer off within about 30 seconds of a `SAVE_CONFIG`, such as the one at the end of input shaper calibration from the touchscreen, could leave it empty. QIDI's `SAVE_CONFIG` doesn't wait for the new file to reach storage, and Valve Oil's [storage repair](install.md#os-optimizations) means the printer no longer writes every file straight away.
+
+A factory reset isn't needed. `SAVE_CONFIG` keeps the file it replaces as `printer-YYYYMMDD_HHMMSS.cfg`, but QIDI's touchscreen app deletes those files each time it starts, so after a restart the copy to use is the one in the newest backup from a Valve Oil install or update. Over SSH, put that `printer.cfg` back and run the installer again, which puts back its own changes to the file:
+
+```bash
+cd ~/printer_data && ls -t tltg-optimized-macros-before-*.zip | head -1
+unzip -p <that backup>.zip config/printer.cfg > config/printer.cfg
+cd ~/valve-oil && ./install.sh
+```
+
+Then press **Restart Firmware** on the touchscreen, or run `FIRMWARE_RESTART` from Fluidd's console. Calibration saved since that install or update, such as the input shaper result `SAVE_CONFIG` was saving, isn't in the backup, so run it again.
+
 ## The camera doesn't show in Fluidd
 
 At boot, QIDI's `makerbase-webcam.service` writes the camera into `~/printer_data/config/crowsnest.conf`. It could run before the camera's device link existed and write an empty `device:` line instead, and then crowsnest, which streams the camera, doesn't start and Fluidd shows no camera. The package makes it wait for the camera, so the next reboot fills the line in again.

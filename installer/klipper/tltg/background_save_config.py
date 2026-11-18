@@ -11,6 +11,16 @@
 # during the save always finds a complete printer.cfg. SAVE_CONFIG,
 # SAVE_CONFIG_QD, and a second TLTG_SAVE_CONFIG_QD wait for a save in progress
 # so two writers never replace printer.cfg at once.
+#
+# QIDI's SAVE_CONFIG writes the new printer.cfg without fsync: it renames
+# printer.cfg to the dated backup, then renames the new file into its place.
+# QIDI's image mounts / with `sync`, but Valve Oil's OS optimization takes that
+# off, and ext4 then writes the new file's contents up to about 30 s after the
+# rename. Since that rename doesn't replace an existing file, ext4 doesn't
+# flush the contents first, so a power cut in that time leaves printer.cfg
+# empty, as after input shaper calibration from the screen (M901). SAVE_CONFIG
+# and SAVE_CONFIG_QD here flush printer.cfg and its folder after QIDI's handler
+# has written them, before Klipper restarts.
 
 import logging
 import os
@@ -44,7 +54,16 @@ class BackgroundSaveConfig:
     def _waiting(self, original):
         def handler(gcmd):
             self._wait_for_save()
-            return original(gcmd)
+            result = original(gcmd)
+            cfgname = self.printer.get_start_args()["config_file"]
+            try:
+                _fsync_saved(cfgname)
+            except Exception as e:
+                logging.exception("tltg_background_save_config: flushing"
+                                  " '%s' failed", cfgname)
+                gcmd.respond_raw("!! Unable to flush %s to storage: %s"
+                                 % (cfgname, e))
+            return result
         return handler
 
     def _wait_for_save(self):
@@ -113,11 +132,22 @@ class BackgroundSaveConfig:
             os.unlink(backup_name)
         os.link(cfgname, backup_name)
         os.replace(temp_name, cfgname)
-        dir_fd = os.open(os.path.dirname(os.path.abspath(cfgname)), os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        _fsync_path(os.path.dirname(os.path.abspath(cfgname)))
+
+
+def _fsync_path(path):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _fsync_saved(cfgname):
+    """Flush a printer.cfg that was renamed into place, and its folder."""
+    path = os.path.abspath(cfgname)
+    _fsync_path(path)
+    _fsync_path(os.path.dirname(path))
 
 
 def load_config(config):

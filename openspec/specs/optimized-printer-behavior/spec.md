@@ -845,6 +845,13 @@ When optimized print start calibrates a fresh adaptive mesh, it SHALL save the p
 - **WHEN** `SAVE_CONFIG` or `SAVE_CONFIG_QD` runs while a background save is writing
 - **THEN** it starts only after the background save finishes
 
+### Requirement: Config saves reach storage before Klipper restarts
+With the root filesystem mounted without `sync`, `SAVE_CONFIG` and `SAVE_CONFIG_QD` SHALL flush the `printer.cfg` they wrote, and its folder, to storage before Klipper restarts or the command finishes, so a power cut after the command leaves either the old or the new file, never an empty one.
+
+#### Scenario: Power cut after input shaper calibration
+- **WHEN** input shaper calibration from the touchscreen ends with `SAVE_CONFIG` and the printer loses power a few seconds later
+- **THEN** `printer.cfg` holds the new calibration after the next boot
+
 ### Requirement: Fast variable saves
 Optimized configuration SHALL make `SAVE_VARIABLE` and the vendor Box modules' own variable saves leave `saved_variables.cfg` and the saved values Klipper reports exactly as the vendor code would, without rewriting an unchanged file or re-reading it after a write. A completed write SHALL replace the file whole. Names and values whose round trip through the file is not exact SHALL use the vendor code unchanged.
 
