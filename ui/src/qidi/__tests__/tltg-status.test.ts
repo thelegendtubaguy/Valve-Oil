@@ -121,6 +121,19 @@ describe('tltgStatusApiBase', () => {
 })
 
 describe('parseTltgStatus', () => {
+  const install = {
+    state: 'running',
+    origin: 'usb',
+    steps: ['Check the printer', 'System changes', 'Finish'],
+    index: 2,
+    detail: null,
+    from_version: '26.11.15.1',
+    to_version: '26.11.18.2',
+    started_at: '2026-11-18T09:14:02Z',
+    finished_at: null,
+    log: 'valve-oil-usb-20261118-091402.log'
+  }
+
   it.each([
     ['an HTML page', '<!doctype html>'],
     ['null', null],
@@ -141,6 +154,7 @@ describe('parseTltgStatus', () => {
       pending: [],
       boards: [],
       run: null,
+      progress: null,
       job: null,
       busy: false,
       printer_busy: false,
@@ -217,7 +231,16 @@ describe('parseTltgStatus', () => {
       { auto_update: { window: { hours: null, timezone: null, timezone_source: null, in_window: true } } }
     ],
     ['a timezone from a source it does not know', windowed({ timezone_source: 'guess' }), { auto_update: { window: { timezone_source: null } } }],
-    ['a service without update windows', {}, { auto_update: { window: null } }]
+    ['a service without update windows', {}, { auto_update: { window: null } }],
+    [
+      'an install running as busy, with its steps and log',
+      { progress: install },
+      { progress: { state: 'running', origin: 'usb', steps: install.steps, index: 2, log: install.log }, busy: true }
+    ],
+    // The page opens the log from Moonraker's logs folder by this name.
+    ['an install log that is not a run log as none', { progress: { ...install, log: '../config/printer.cfg' } }, { progress: { log: null } }],
+    ['an install in a state it does not know as none', { progress: { ...install, state: 'paused' } }, { progress: null, busy: false }],
+    ['a step past the last as before the first', { progress: { ...install, index: 9 } }, { progress: { index: 0 } }]
   ])('reads %s', (_, changes, expected) => {
     expect(parseTltgStatus({ ...base, ...changes })).toMatchObject(expected)
   })

@@ -35,6 +35,7 @@ import { BoxScreen } from './screens/Box'
 import { DONT_POWER_OFF, UpdatesScreen } from './screens/Updates'
 import { useUpdateRunning, valveOil } from './state/valve-oil'
 import { useStore } from './lib/store'
+import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
 
@@ -203,6 +204,7 @@ function UpdatingBadge() {
 function UpdateBanner() {
   const running = useUpdateRunning()
   const route = useRoute()
+  const install = useStore(valveOil, (s) => (s.status?.progress?.state === 'running' ? s.status.progress : null))
   // The Updates screen says the same in its own card.
   if (!running || route === 'updates') return null
   return (
@@ -210,7 +212,9 @@ function UpdateBanner() {
       <div className="tone-warn flex items-start gap-2.5 rounded-xl px-3 py-2">
         <LoaderCircle size={16} className="spin mt-0.5 flex-none" />
         <div className="min-w-0 flex-1 text-ink">
-          <b>Valve Oil is updating the printer.</b> <span className="text-ink-2">{DONT_POWER_OFF}</span>
+          <b>{install ? `${installTitle(install)}.` : 'Valve Oil is updating the printer.'}</b>{' '}
+          {install && <span className="text-ink-2">{installStepText(install)}. </span>}
+          <span className="text-ink-2">{DONT_POWER_OFF}</span>
         </div>
         <a href={href('updates')} className="flex-none font-semibold text-accent-ink">
           Details

@@ -1304,6 +1304,21 @@ While an install or update holds the touchscreen, whether started from a USB dri
 - **WHEN** an automatic update holds the touchscreen
 - **THEN** the screen says the printer is updating itself, from which version to which, and shows the current step
 
+### Requirement: The browser shows install progress
+Every install, whether started from a USB drive, over SSH, or as an automatic update, SHALL publish its steps, its current step, how it was started, the versions it goes from and to, its log's name, and its result through the status service, so Valve Oil UI can follow it without having started it.
+
+#### Scenario: Install runs
+- **WHEN** an install is on a step
+- **THEN** the status service reports that step as current among the run's steps, with what the step is doing when the run says
+
+#### Scenario: Installer process ends partway
+- **WHEN** the installer's process ends, or the printer reboots, before the install finishes
+- **THEN** the status service reports the install as interrupted at the step it was on
+
+#### Scenario: Uninstall
+- **WHEN** the package is uninstalled
+- **THEN** the published progress is removed with the status file
+
 ### Requirement: Installer runs keep a log
 Every install, update, and uninstall run SHALL write a log of what it detected, decided, and did to the printer's log folder, where it can be downloaded without SSH. A run started from a USB drive SHALL also save that log to the drive when it finishes or fails.
 

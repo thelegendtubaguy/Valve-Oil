@@ -75,6 +75,16 @@ export function install(fake) {
   addLog(`klippy.log.${day(4)}`, klippyLines(900, now() - 86400 * 4), 86400 * 4)
   addLog('moonraker.log', moonrakerLines(1200, now() - 9000), 3)
   addLog(`moonraker.log.${day(1)}`, moonrakerLines(800, now() - 86400), 86400)
+  // installer/runtime/run_log.py: each install, update, uninstall, and backup restore keeps a log here.
+  const runLog = (mode, ageSeconds, steps) => {
+    const d = new Date((now() - ageSeconds) * 1000)
+    const pad = (n) => String(n).padStart(2, '0')
+    const name = `valve-oil-${mode}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.log`
+    addLog(name, steps.map((step, i) => `${new Date((now() - ageSeconds + i * 40) * 1000).toISOString()} ${step}`).join('\n') + '\n', ageSeconds)
+  }
+  runLog('install', 86400 * 2 + 3600, ['install: Valve Oil 26.11.11.3 (from 26.11.11.2), started automatic', 'step 1/6: Check the printer', 'step 2/6: Back up your configuration', 'step 3/6: Macros and Klipper fixes', 'step 4/6: System changes', 'step 5/6: Restart Klipper and verify', 'step 6/6: Finish', 'Installed Valve Oil 26.11.11.3.'])
+  runLog('usb', 86400 * 6, ['usb: Valve Oil 26.11.11.2, started from a USB drive', 'step 1/5: Check the printer', 'step 2/5: Macros and Klipper fixes', 'step 3/5: System changes', 'step 4/5: Restart Klipper and verify', 'step 5/5: Finish', 'Installed Valve Oil 26.11.11.2.'])
+  fake.addLog = addLog
   addLog('crowsnest.log', '[cs] crowsnest - A webcam Service for multiple Cams and Stream Services.\n[cs] V4L2 Control: Device /dev/video0 found\n[cs] ustreamer: Streaming on port 8080\n', 3600)
   addLog('tltg_box_link.log', 'box link: connected to Box 1 (USB)\nbox link: connected to Box 2 (USB)\nbox link: heartbeat ok\n', 60)
   addLog('tltg_boot_animation.log', 'boot animation installed\n', 86400 * 3)

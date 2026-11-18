@@ -356,6 +356,7 @@ async function gcode(script) {
       set('gcode_move', { gcode_position: pos })
     } else if (C === 'VO_SCENARIO') applyScenario(p.NAME ?? 'idle')
     else if (C === 'VO_UPDATES') applyUpdates(p.NAME ?? 'none')
+    else if (C === 'VO_INSTALL') startInstall(p.ORIGIN ?? 'ssh', { fail: Number(p.FAIL ?? 0), interrupt: Number(p.INTERRUPT ?? 0) })
     else if (C === 'SAVE_VARIABLE') {
       // Roughly Klipper: outer double quotes are stripped, then the value is a Python literal.
       let v = p.VALUE
@@ -808,6 +809,8 @@ function applyUpdates(name) {
     pending: [],
     boards: [board('thr', 'current', '1.0.4', 'patched'), board('mcu', 'current', '1.0.6', 'patched'), board('box1', 'current', '1.0.3', 'patched'), board('box2', 'current', '1.0.3', 'patched')],
     run: null,
+    // installer/runtime/valve_oil_status.py ProgressPublisher: the install running now or the last one (startInstall).
+    progress: null,
     job: null,
     failNext: false,
     // Update now's next request is refused: the update check holds the installer lock, with a heater on, until this time.
@@ -957,9 +960,10 @@ function voStatus() {
     pending: vo.pending.map((item) => ({ ...item, blocked_by: vo.auto ? [...blockers.map((code) => ({ code, message: BLOCKERS[code] })), ...(outside ? [voWindowBlocker()] : [])] : [] })),
     boards: vo.boards,
     run: vo.run && { firmware_update: false, can_continue: false, ...vo.run, job: undefined },
+    progress: vo.progress,
     // The job names its run once the run has begun and is the latest.
     job: vo.job && { ...vo.job, log: vo.job.log.slice(-200), message: vo.job.log.findLast((l) => l.trim()) ?? '', run_id: vo.run?.job === vo.job.id ? vo.run.id : null },
-    busy: running,
+    busy: running || vo.progress?.state === 'running',
     printer_busy: voPrinterBusy(),
     update_now: { allowed: refusal.length === 0, blocked_by: refusal.map((code) => ({ code, message: BLOCKERS[code] })) },
     support: { issue_url: SUPPORT_ISSUE_URL },
@@ -984,6 +988,56 @@ function moonrakerOutage(seconds) {
     outage = false
     klipperRestart(4)
   }, seconds * 1000)
+}
+
+// installer/runtime/progress.py: an install's steps, as an install started over SSH, from a USB drive, or by automatic
+// updates publishes them for the status service. VO_INSTALL ORIGIN=ssh|usb|automatic [FAIL=<step>] [INTERRUPT=<step>],
+// or --install <origin> at startup; FAIL and INTERRUPT stop it on that step (1-based) as failed or interrupted.
+const INSTALL_STEPS = [
+  ['Check the printer', 3],
+  ['Back up your configuration', 3],
+  ['Macros and Klipper fixes', 5, 'restarting Moonraker'],
+  ['System changes', 5, 'turning on zram swap'],
+  ['Restart Klipper and verify', 6],
+  ['Toolhead and mainboard firmware', 6, 'flashing the THR'],
+  ['QIDI Box 1 and 2 firmware', 6],
+  ['Finish', 2],
+]
+const INSTALL_TO = '26.11.18.2'
+
+function startInstall(origin = 'ssh', { fail = 0, interrupt = 0 } = {}) {
+  const generation = voGeneration
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  const log = `valve-oil-${origin === 'usb' ? 'usb' : 'install'}-${stamp}.log`
+  const lines = [`${iso()} install: Valve Oil ${INSTALL_TO} (from ${vo.release}), started ${origin}`]
+  const writeLog = () => fake.addLog?.(log, lines.join('\n') + '\n', 0)
+  writeLog()
+  vo.progress = { state: 'running', origin, steps: INSTALL_STEPS.map(([name]) => name), index: 0, detail: null, from_version: vo.release, to_version: INSTALL_TO, started_at: iso(), finished_at: null, log }
+  const stop = (state, message) => {
+    lines.push(`${iso()} ${message}`)
+    writeLog()
+    vo.progress = { ...vo.progress, state, detail: null, finished_at: iso() }
+  }
+  const next = () => {
+    if (generation !== voGeneration || vo.progress?.log !== log) return
+    const at = vo.progress.index
+    if (at && at === fail) return stop('failed', `error: ${vo.progress.steps[at - 1]} failed: Box 2 didn't answer after its firmware was written.`)
+    if (at && at === interrupt) return stop('interrupted', 'the installer process ended (SSH session closed)')
+    if (at >= INSTALL_STEPS.length) {
+      vo.release = INSTALL_TO
+      return stop('succeeded', `Installed Valve Oil ${INSTALL_TO}.`)
+    }
+    const [name, seconds, detail] = INSTALL_STEPS[at]
+    vo.progress = { ...vo.progress, index: at + 1, detail: null }
+    lines.push(`${iso()} step ${at + 1}/${INSTALL_STEPS.length}: ${name}`)
+    writeLog()
+    if (detail) setTimeout(() => vo.progress?.log === log && vo.progress.state === 'running' && (vo.progress = { ...vo.progress, detail }), 1500)
+    if (name === 'Restart Klipper and verify') klipperRestart(4)
+    setTimeout(next, seconds * 1000)
+  }
+  setTimeout(next, 800)
 }
 
 function startUpdate() {
@@ -1197,4 +1251,5 @@ for (const f of (await readdir(pluginDir).catch(() => [])).filter((f) => f.endsW
 
 applyScenario(scenario)
 applyUpdates(args.updates ?? 'none')
+if (args.install) startInstall(args.install, { fail: Number(args['install-fail'] ?? 0), interrupt: Number(args['install-interrupt'] ?? 0) })
 server.listen(PORT, () => console.log(`fake Moonraker (${scenario}, updates ${vo.scenario}) on http://localhost:${PORT}/valve-oil/`))

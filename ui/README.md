@@ -62,6 +62,8 @@ The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer stat
 | `--lan-mode 0\|1\|none` | QIDI's LAN only mode off, on, or missing |
 | `--spoolman` | Loads Moonraker's `spoolman` component with made-up spools |
 | `VO_KLIPPY_SHUTDOWN [SECONDS=30]` | Shuts Klipper down for a while, for the stop screen |
+| `--install ssh\|usb\|automatic`, `VO_INSTALL ORIGIN=<origin>` | Runs an install's steps, as the installer publishes them, for the Updates screen's steps, the banner, and the installer logs |
+| `--install-fail <step>`, `--install-interrupt <step>`, `VO_INSTALL FAIL=<step>` or `INTERRUPT=<step>` | Stops that install at that step (1-based), failed or interrupted |
 
 The G-code files it serves are generated: OrcaSlicer-style `.gcode` and QIDI Studio-style `.gcode.3mf`, with objects, feature types, retractions, fan changes, and a tool change, and the printing scenario moves through the file. It also has a `config` folder, logs, history, a job queue, timelapse videos, cameras, services, the touchscreen stream at `/tltg-screen/ws`, bed meshes, and the add-ons service.
 

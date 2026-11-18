@@ -597,11 +597,15 @@ def _install(args, *, paths, manifest, reporter, env, input_stream, in_firmware_
         screen = nullcontext()
     else:
         screen = install_screen.held(paths=paths, reporter=reporter, environ=env, input_stream=input_stream)
+    # Valve Oil UI follows the install's steps from the status service, however it was started.
+    published = nullcontext() if args.dry_run else valve_oil_status.progress_published(paths, log=_log_name(reporter))
     try:
-        with screen as hold:
+        with published as publisher, screen as hold:
             firmware = _install_held(args, hold, paths=paths, manifest=manifest, reporter=reporter, env=env,
                                      input_stream=input_stream, in_firmware_update=in_firmware_update,
                                      front_end=front_end)
+            if publisher is not None and firmware is not None and firmware.handled:
+                publisher.outcome = valve_oil_status.HANDED_OFF
     finally:
         progress.end()
     if not args.dry_run and (firmware is None or not firmware.handled):
@@ -703,6 +707,11 @@ def _progress_origin(env) -> str:
     if env.get(LOCK_HELD_ENV) == "1":
         return progress.ORIGIN_AUTOMATIC
     return env.get(USB_ORIGIN_ENV) and progress.ORIGIN_USB or progress.ORIGIN_SSH
+
+
+def _log_name(reporter) -> str | None:
+    path = getattr(getattr(reporter, "log", None), "path", None)
+    return path.name if path is not None else None
 
 
 def _name_log(reporter) -> None:

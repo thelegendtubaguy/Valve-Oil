@@ -8,7 +8,7 @@ import { fmtAgo } from '../../lib/format'
 import { fmtSize } from './bits'
 import { tailText, type LogTail } from './log-tail'
 
-type LogFile = { filename: string; size: number; modified: number; permissions?: string }
+export type LogFile = { filename: string; size: number; modified: number; permissions?: string }
 
 export function Logs() {
   const [files, setFiles] = useState<LogFile[] | null>(null)
@@ -116,7 +116,7 @@ const rank = (name: string) => (/\.log$/.test(name) ? 0 : 1)
 
 const CHUNK = 256 * 1024
 
-function LogViewer({ file, onClose }: { file: LogFile; onClose: () => void }) {
+export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => void }) {
   const [bytes, setBytes] = useState(CHUNK)
   const [tail, setTail] = useState<LogTail | null>(null)
   const [loading, setLoading] = useState(false)

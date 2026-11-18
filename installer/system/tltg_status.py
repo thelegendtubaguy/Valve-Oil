@@ -81,6 +81,8 @@ HOME = Path("/home/qidi")
 PRINTER_DATA = HOME / "printer_data"
 # Written by installer/runtime/valve_oil_status.py.
 STATUS_FILE = PRINTER_DATA / ".tltg_valve_oil_status.json"
+# Written by installer/runtime/valve_oil_status.py (ProgressPublisher): the steps of the install running now or last.
+PROGRESS_FILE = PRINTER_DATA / ".tltg_valve_oil_progress.json"
 # installer/runtime/board_firmware.py: the last install's read of every board.
 ADMISSION_FILE = PRINTER_DATA / ".tltg_board_admission.json"
 # installer/runtime/auto_update.py: present means automatic updates are on.
@@ -151,6 +153,11 @@ PENDING_KINDS = ("release", "firmware", "board")
 BOARD_STATES = ("current", "needs_image", "unrecognized_firmware", "unrecognized_bootloader", "held", "unknown")
 BOARD_NAMES = {"thr": "THR", "mcu": "Mainboard", "closed_loop": "Closed-loop drivers"}
 RUN_STATES = ("running", "succeeded", "failed", "interrupted")
+PROGRESS_STATES = (*RUN_STATES, "handed_off")
+PROGRESS_ORIGINS = ("ssh", "usb", "automatic", "firmware_update")
+MAX_PROGRESS_STEPS = 40
+# installer/runtime/run_log.py: a run's log in printer_data/logs, which Moonraker serves.
+RUN_LOG_NAME = re.compile(r"^valve-oil-[a-z-]+-\d{8}-\d{6}(-\d+)?\.log$")
 # installer/runtime/valve_oil_status.py BLOCKERS: the printer's state, which this service reads live.
 LIVE_BLOCKERS = {
     "printing": "a print is running or paused",
@@ -411,6 +418,7 @@ def status_body(jobs: Jobs) -> dict:
         "pending": pending,
         "boards": _boards(_records(data.get("boards")), admission, admitted_at),
         "run": _run(data.get("run")),
+        "progress": _progress(),
         "job": jobs.current(data.get("run")),
         "busy": busy,
         "printer_busy": live is not None and "printing" in live,
@@ -809,6 +817,32 @@ def _run(run) -> dict | None:
         "resumed": run.get("resumed") is True,
         "firmware_update": _text(run.get("firmware_update")) is not None,
         "can_continue": _can_continue(_text(run.get("firmware_update"))),
+    }
+
+
+def _progress() -> dict | None:
+    """The install running now, or the last one, step by step; a running one whose process is gone was interrupted."""
+    data = _record(_read_json(PROGRESS_FILE, limit=MAX_STATUS_BYTES))
+    if data.get("schema") != STATUS_SCHEMA or data.get("state") not in PROGRESS_STATES:
+        return None
+    steps = [step[:MAX_TEXT] for step in data.get("steps") or [] if isinstance(step, str) and step][:MAX_PROGRESS_STEPS] \
+        if isinstance(data.get("steps"), list) else []
+    index = data.get("index")
+    state = data["state"]
+    if state == "running" and not _run_active(data):
+        state = "interrupted"
+    log = _text(data.get("log"))
+    return {
+        "state": state,
+        "origin": data.get("origin") if data.get("origin") in PROGRESS_ORIGINS else None,
+        "steps": steps,
+        "index": index if isinstance(index, int) and 0 <= index <= len(steps) else 0,
+        "detail": _text(data.get("detail")),
+        "from_version": _text(data.get("from_version")),
+        "to_version": _text(data.get("to_version")),
+        "started_at": _text(data.get("started_at")),
+        "finished_at": _text(data.get("finished_at")),
+        "log": log if log and RUN_LOG_NAME.match(log) else None,
     }
 
 

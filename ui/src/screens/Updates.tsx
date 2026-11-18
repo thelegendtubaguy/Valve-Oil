@@ -4,6 +4,7 @@ import { Card, Dialog, PageHeader, Toggle } from '../components/ui'
 import { Notice } from '../components/settings/common'
 import { LanOnly } from '../components/settings/LanOnly'
 import { Log } from '../components/settings/Addons'
+import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
 import {
   TLTG_UPDATE_NOW_BLOCKERS,
   tltgBrowserTimezone,
@@ -237,8 +238,12 @@ export function UpdatesScreen() {
     <div className="grid content-start gap-3.5">
       <PageHeader title="Updates" />
       <div className="grid content-start items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <InstallStepsCard progress={s.status?.progress ?? null} />
         <ValveOilCard s={s} view={view} />
-        <BoardsCard view={view} />
+        <div className="grid content-start gap-3.5">
+          <BoardsCard view={view} />
+          <InstallerLogsCard progress={s.status?.progress ?? null} />
+        </div>
       </div>
     </div>
   )

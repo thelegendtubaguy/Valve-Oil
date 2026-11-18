@@ -16,6 +16,9 @@
 - Valve Oil UI and Fluidd share their settings on the printer, so macro categories, temperature presets, cameras, console history and filters, and file list choices set in one show in the other.
 - Fixed Valve Oil UI letting the nozzle and bed targets go up to 999 °C, the limit QIDI's configuration reports; targets now stop at the same limits as in Fluidd.
 - **Save config** shows in Valve Oil UI's top bar when Klipper has changes waiting for `SAVE_CONFIG`, as in Fluidd, and notifications list Klipper's and Moonraker's warnings and Moonraker's announcements.
+- Valve Oil UI's **Updates** screen shows an install as it runs, however it was started, over SSH, from a USB drive, or by automatic updates, as the touchscreen does: each step, the one it's on, how long it has run, and how it was started. Other screens' banner names the step. An install that didn't finish stays on the screen for a day with its log. Every install now writes its steps to `~/printer_data/.tltg_valve_oil_progress.json` for the `tltg-status` service to show.
+- Valve Oil UI's **Updates** screen lists the installer's logs, each install's, update's, uninstall's, and backup restore's, to view or download, and says how the last install was started and how it ended.
+- **Use QIDI Box** is in Valve Oil UI's Box settings, beside the print dialog's switch, to choose whether prints load from the Box or use the external spool. The installer no longer asks about it.
 - See [Valve Oil UI](docs/valve-oil-ui.md).
 
 ## 26.11.18.1

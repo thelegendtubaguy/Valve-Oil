@@ -26,6 +26,9 @@ from .models import RuntimePaths
 SCHEMA = 1
 STATUS_FILE = ".tltg_valve_oil_status.json"
 LOCK_FILE = ".tltg_valve_oil_status.lock"
+# The steps of the install running now, or of the last one (progress.py), for the tltg-status service to show a
+# browser. Its own file, written by one installer at a time, so publishing a step never waits on the status lock.
+PROGRESS_FILE = ".tltg_valve_oil_progress.json"
 # Readers ignore a file larger than this.
 MAX_BYTES = 262144
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
@@ -68,6 +71,8 @@ BOARD_STATES = (CURRENT, NEEDS_IMAGE, UNRECOGNIZED_FIRMWARE, UNRECOGNIZED_BOOTLO
 RUN_KINDS = ("update_now", "automatic", "install")
 RUNNING, SUCCEEDED, FAILED, INTERRUPTED = "running", "succeeded", "failed", "interrupted"
 RUN_STATES = (RUNNING, SUCCEEDED, FAILED, INTERRUPTED)
+# An install whose remaining steps a detached QIDI firmware update carries on, with a run of its own.
+HANDED_OFF = "handed_off"
 
 
 @dataclass(frozen=True)
@@ -363,8 +368,76 @@ def run_active(run: RunInfo | None) -> bool:
     return True
 
 
+class ProgressPublisher:
+    """Publishes an install's steps as progress.py reports them, so a browser can follow an install started over SSH,
+    from a USB drive, or by automatic updates. Best-effort: a file that can't be written never stops a run."""
+
+    def __init__(self, paths: RuntimePaths, *, log: str | None = None, clock: Callable[[], float] = time.time):
+        self.paths = paths
+        self.log = log
+        self.clock = clock
+        self.outcome: str | None = None  # set by the run when it ends some way other than succeeding or failing
+        self._run: float | None = None  # the monotonic start of the run being published
+        self._started_at = ""
+        self._last = None
+
+    def __call__(self, snapshot) -> None:
+        if snapshot.started_at != self._run:
+            self._run = snapshot.started_at
+            self._started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.clock() - snapshot.elapsed()))
+        self._last = snapshot
+        self._write(RUNNING)
+
+    def finish(self, state: str) -> None:
+        if self._last is not None:
+            self._write(state)
+
+    def _write(self, state: str) -> None:
+        snapshot = self._last
+        data = {
+            "schema": SCHEMA,
+            "state": state,
+            "origin": snapshot.origin,
+            "steps": list(snapshot.steps),
+            "index": snapshot.index,
+            "detail": snapshot.detail,
+            "from_version": snapshot.from_version,
+            "to_version": snapshot.to_version,
+            "started_at": self._started_at,
+            "finished_at": None if state == RUNNING else now(),
+            "log": self.log,
+            "pid": os.getpid(),
+            "boot_id": current_boot_id(),
+        }
+        try:
+            atomic_write_text(progress_path(self.paths), json.dumps(data, indent=2) + "\n", mode=0o644)
+        except OSError:
+            pass
+
+
+def progress_path(paths: RuntimePaths) -> Path:
+    return paths.printer_data_root / PROGRESS_FILE
+
+
+@contextmanager
+def progress_published(paths: RuntimePaths, *, log: str | None = None) -> Iterator[ProgressPublisher]:
+    """Publish the steps of the install run inside, ending with its result: succeeded, failed, or the publisher's
+    outcome."""
+    from . import progress
+
+    publisher = ProgressPublisher(paths, log=log)
+    progress.add_listener(publisher)
+    state = FAILED
+    try:
+        yield publisher
+        state = SUCCEEDED
+    finally:
+        progress.remove_listener(publisher)
+        publisher.finish(publisher.outcome or state)
+
+
 def remove_status(paths: RuntimePaths) -> None:
-    for name in (STATUS_FILE, LOCK_FILE):
+    for name in (STATUS_FILE, LOCK_FILE, PROGRESS_FILE):
         try:
             (paths.printer_data_root / name).unlink()
         except FileNotFoundError:

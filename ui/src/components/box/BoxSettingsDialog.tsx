@@ -1,4 +1,4 @@
-// QIDI's Box settings, saved variables its Box modules read, set to 1 or 0 as QIDI's Fluidd did; Valve Oil's turn
+// Whether prints use the Box, and QIDI's Box settings, saved variables its Box modules read, set to 1 or 0 as QIDI's Fluidd did; Valve Oil's turn
 // spools while heating when its module is installed; and the printer's own load and unload motion.
 import { Dialog, Toggle } from '../ui'
 import { attempt } from '../toast'
@@ -7,6 +7,13 @@ import { runGcode, usePrinter } from '../../state/printer'
 import { BoxMotion } from './BoxMotion'
 
 const SETTINGS: { key: BoxSetting; title: string; help: string }[] = [
+  // The printer-wide choice the print dialog's switch also sets. A new install turns it on when it finds a Box; later
+  // installs and updates leave it as set here.
+  {
+    key: 'enable_box',
+    title: 'Use QIDI Box',
+    help: 'Prints load each filament from its Box slot, including prints started from Fluidd or a slicer. Off, every print uses the external spool.',
+  },
   { key: 'auto_read_rfid', title: 'Detection on insertion', help: 'When filament is inserted, the Box reads its filament information, which takes about 20 seconds.' },
   { key: 'auto_init_detect', title: 'Detection on startup', help: 'On every startup, the Box reads the filament information of every slot, which takes about 1 minute.' },
   { key: 'auto_reload_detect', title: 'Automatic reload', help: 'When filament runs out, the Box switches to a slot with the same filament, vendor, and color.' },

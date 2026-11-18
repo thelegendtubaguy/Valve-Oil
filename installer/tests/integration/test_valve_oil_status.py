@@ -17,7 +17,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from installer.runtime import update_window, valve_oil_status as status_file
+from installer.runtime import progress, update_window, valve_oil_status as status_file
 from installer.tests.helpers import temp_path
 
 
@@ -52,6 +52,7 @@ class StatusServiceTests(unittest.TestCase):
         cls.paths = type("Paths", (), {"printer_data_root": root / "printer_data"})()
         cls.paths.printer_data_root.mkdir()
         server.STATUS_FILE = status_file.status_path(cls.paths)
+        server.PROGRESS_FILE = status_file.progress_path(cls.paths)
         server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".tltg_optimized_auto_update_enrolled"
         server.UPDATE_SETTINGS_FILE = update_window.settings_path(cls.paths)
         server.MACRO_GLOBALS = root / "globals.cfg"
@@ -182,6 +183,46 @@ class StatusServiceTests(unittest.TestCase):
         finally:
             marker.unlink(missing_ok=True)
             settings.unlink(missing_ok=True)
+
+    def test_an_install_publishes_its_steps_for_the_browser(self) -> None:
+        def reported() -> dict:
+            return self.request("/api/status", method="GET")[1]["progress"]
+
+        steps = (progress.CHECK, progress.CONFIGURATION, progress.SYSTEM_CHANGES, progress.FINISH)
+        log = "valve-oil-install-20261118-091402.log"
+        try:
+            with status_file.progress_published(self.paths, log=log):
+                progress.begin(steps, origin=progress.ORIGIN_USB, from_version="26.11.15.1", to_version="26.11.18.2")
+                progress.step(progress.CONFIGURATION)
+                progress.detail("restarting Moonraker")
+                running = reported()
+                # A step the run didn't expect counts where it starts.
+                progress.step(progress.box_firmware([1]))
+                self.assertEqual(reported()["steps"][2], "QIDI Box 1 firmware")
+                raise RuntimeError("Box 1 didn't answer")
+        except RuntimeError:
+            pass
+        finally:
+            progress.end()
+        self.assertEqual(
+            {key: running[key] for key in ("state", "origin", "index", "detail", "from_version", "to_version", "log")},
+            {"state": "running", "origin": "usb", "index": 2, "detail": "restarting Moonraker",
+             "from_version": "26.11.15.1", "to_version": "26.11.18.2", "log": log})
+        self.assertEqual(running["steps"], list(steps))
+        failed = reported()
+        self.assertEqual((failed["state"], failed["index"]), ("failed", 3))
+        self.assertIsNotNone(failed["finished_at"])
+
+        # An install whose process is gone was interrupted, and only a run log's name is passed on as its log.
+        path = status_file.progress_path(self.paths)
+        data = json.loads(path.read_text())
+        path.write_text(json.dumps({**data, "state": "running", "pid": 2 ** 22 + 1, "log": "../../config/printer.cfg"}))
+        stale = reported()
+        self.assertEqual((stale["state"], stale["log"]), ("interrupted", None))
+
+        # Uninstall removes it with the status file.
+        status_file.remove_status(self.paths)
+        self.assertIsNone(reported())
 
     def test_status_reports_pending_work_and_update_now_runs_once(self) -> None:
         status_file.record_check(
