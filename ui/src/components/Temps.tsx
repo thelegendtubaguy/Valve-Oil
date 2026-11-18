@@ -3,6 +3,7 @@ import { Dialog, Sparkline } from './ui'
 import { attempt, toast } from './toast'
 import { runGcode, usePrinter } from '../state/printer'
 import { prettyName } from '../lib/format'
+import { targetError, targetRange } from './control/heaters'
 
 // m106 is the fan's M106 P index on QIDI printers, so speed changes go through the printer's own fan macro.
 export type Tile = { obj: string; label: string; kind: 'heater' | 'sensor' | 'fan'; m106?: number }
@@ -111,9 +112,11 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
       </Dialog>
     )
   }
-  const max = cfg?.target_max_temp ?? cfg?.max_temp ?? 300
+  // Within max_temp and QIDI's target_max_temp, whichever is lower: QIDI reports 999 for the nozzle and bed.
+  const range = targetRange(cfg)
+  const max = range.max
   const heater = tile.obj.replace(/^heater_generic /, '')
-  const presets = (PRESETS[tile.obj] ?? [45, 55, 65]).filter((t) => t <= max)
+  const presets = (PRESETS[tile.obj] ?? [45, 55, 65]).filter((t) => t <= max && t >= range.min)
   const set = (t: number) => attempt(() => runGcode(`SET_HEATER_TEMPERATURE HEATER=${heater} TARGET=${t}`)).then(onClose)
   return (
     <Dialog open onClose={onClose} title={`${tile.label} target`}>
@@ -134,9 +137,10 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
         className="mt-3 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          const t = Number(value)
-          if (!Number.isFinite(t) || t < 0 || t > max) return toast(`Enter 0–${max} °C.`, 'error')
-          set(Math.round(t))
+          const t = Math.round(Number(value))
+          const err = targetError(t, range)
+          if (err) return toast(err, 'error')
+          set(t)
         }}
       >
         <input className="field w-28" inputMode="numeric" placeholder="°C" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />

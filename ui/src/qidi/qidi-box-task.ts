@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/qidi-box-task.ts at
-// github.com/thelegendtubaguy/fluidd qidi@1ad1676. Keep behavior in step with the fork.
+// github.com/thelegendtubaguy/fluidd qidi@6405679. Keep behavior in step with the fork.
 import { QIDI_BOX_EXTERNAL_SLOT, qidiBoxSlotLabel, qidiBoxSlotNumber, type QidiBoxSlot } from './qidi-box'
 
 // QIDI's Box flows (multi_color_controller.task) run a queue of steps. A failed step leaves the task paused on it

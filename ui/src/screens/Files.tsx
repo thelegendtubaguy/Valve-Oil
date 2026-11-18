@@ -1,65 +1,77 @@
-import { useMemo, useState } from 'react'
-import { Folder, Search } from 'lucide-react'
-import { Card, Empty } from '../components/ui'
-import { FileCard } from '../components/FileCard'
-import { DropZone } from '../components/Upload'
+import { lazy, Suspense, useState } from 'react'
+import { PageHeader, Segmented, Spinner } from '../components/ui'
+import { FileBrowser } from '../components/files/FileBrowser'
 import { PrintDialog } from '../components/PrintDialog'
-import { useFiles, useHistory, type HistoryJob } from '../state/files'
-import { displayName } from '../lib/format'
+import { parentOf } from '../components/files/fs'
+import { href, navigate, useSubPath } from '../lib/router'
+import { usePrinter } from '../state/printer'
 
-type Sort = 'recent' | 'name' | 'size'
+// Both are heavy and only needed on their own routes.
+const ConfigEditor = lazy(() => import('../components/editor/ConfigEditor').then((m) => ({ default: m.ConfigEditor })))
+const GcodePreview = lazy(() => import('./GcodePreview').then((m) => ({ default: m.GcodePreview })))
 
+// The roots this screen browses, as Fluidd's Jobs and Configure pages do. Logs live on the System screen.
+const ROOTS = [
+  { value: 'gcodes', label: 'G-code' },
+  { value: 'config', label: 'Configuration' },
+  { value: 'config_examples', label: 'Config examples' },
+  { value: 'docs', label: 'Klipper docs' },
+]
+
+const segs = (path: string) => (path ? path.split('/') : [])
+
+/**
+ * Routes: #/files (G-code), #/files/<root>/<folder...>, #/files/edit/<root>/<path...> for the editor, and
+ * #/files/preview/<path...> for the G-code preview.
+ */
 export function FilesScreen() {
-  const files = useFiles()
-  const jobs = useHistory(500)
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<Sort>('recent')
-  const [open, setOpen] = useState<string | null>(null)
+  const sub = useSubPath()
+  const registered = usePrinter((s) => s.server?.registered_directories ?? [])
+  const roots = registered.length ? ROOTS.filter((r) => r.value === 'gcodes' || registered.includes(r.value)) : ROOTS
+  const [printing, setPrinting] = useState<string | null>(null)
 
-  const byFile = useMemo(() => {
-    const m = new Map<string, { last: HistoryJob; count: number }>()
-    for (const j of jobs ?? []) {
-      const e = m.get(j.filename)
-      if (!e) m.set(j.filename, { last: j, count: j.status === 'completed' ? 1 : 0 })
-      else if (j.status === 'completed') e.count++
-    }
-    return m
-  }, [jobs])
+  const loading = (
+    <div className="grid place-items-center py-16">
+      <Spinner size={22} />
+    </div>
+  )
 
-  const list = useMemo(() => {
-    if (!files) return []
-    const q = query.trim().toLowerCase()
-    const out = files.filter((f) => !q || f.path.toLowerCase().includes(q))
-    const lastUsed = (p: string, mod: number) => Math.max(byFile.get(p)?.last.start_time ?? 0, mod)
-    if (sort === 'name') out.sort((a, b) => displayName(a.path).localeCompare(displayName(b.path), undefined, { numeric: true }))
-    else if (sort === 'size') out.sort((a, b) => b.size - a.size)
-    else out.sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified))
-    return out
-  }, [files, query, sort, byFile])
+  if (sub[0] === 'preview')
+    return (
+      <Suspense fallback={loading}>
+        <GcodePreview path={sub.slice(1).join('/')} />
+      </Suspense>
+    )
 
+  if (sub[0] === 'edit' && sub[1]) {
+    const root = sub[1]
+    const path = sub.slice(2).join('/')
+    return (
+      <Suspense fallback={loading}>
+        <ConfigEditor key={`${root}/${path}`} root={root} path={path} onClose={() => navigate('files', root, ...segs(parentOf(path)))} />
+      </Suspense>
+    )
+  }
+
+  const root = roots.some((r) => r.value === sub[0]) ? sub[0] : 'gcodes'
+  const path = root === sub[0] ? sub.slice(1).join('/') : ''
+
+  // min-w-0: the app's screen grid would otherwise grow to the tabs' and table's width on phones.
   return (
-    <Card title="Files" icon={<Folder size={14} />} aside={files ? `${files.length} files` : undefined}>
-      <div className="mb-3.5 flex flex-wrap items-center gap-2">
-        <label className="relative min-w-[200px] flex-1">
-          <Search size={15} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-          <input className="field pl-8" placeholder="Search files" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </label>
-        <div className="flex gap-0.5 rounded-[9px] bg-canvas p-[3px] shadow-[inset_0_0_0_1px_var(--line)]">
-          {(['recent', 'name', 'size'] as Sort[]).map((s) => (
-            <button key={s} onClick={() => setSort(s)} className={`rounded-[7px] border-0 px-2.5 py-1 font-medium ${sort === s ? 'bg-surface text-ink shadow-[var(--shadow-btn)]' : 'bg-transparent text-ink-2'}`}>
-              {s === 'recent' ? 'Recent' : s === 'name' ? 'Name' : 'Size'}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-        <DropZone className="aspect-[4/3] sm:aspect-auto" />
-        {list.map((f) => (
-          <FileCard key={f.path} path={f.path} last={byFile.get(f.path)?.last} count={byFile.get(f.path)?.count ?? 0} onOpen={() => setOpen(f.path)} />
-        ))}
-      </div>
-      {files && list.length === 0 && <Empty>{query ? 'No files match.' : 'No files yet. Upload one, or send it from your slicer.'}</Empty>}
-      {open && <PrintDialog filename={open} onClose={() => setOpen(null)} />}
-    </Card>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3.5">
+      <PageHeader title="Files">
+        <Segmented value={root} label="File roots" options={roots.map((r) => ({ ...r, href: href('files', r.value) }))} />
+      </PageHeader>
+      <FileBrowser
+        key={root}
+        root={root}
+        path={path}
+        dirHref={(p) => href('files', root, ...segs(p))}
+        editHref={(p) => href('files', 'edit', root, ...segs(p))}
+        previewHref={(p) => href('files', 'preview', ...segs(p))}
+        onPrint={setPrinting}
+      />
+      {printing && <PrintDialog filename={printing} onClose={() => setPrinting(null)} />}
+    </div>
   )
 }

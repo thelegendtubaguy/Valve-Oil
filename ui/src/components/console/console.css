@@ -1,0 +1,3 @@
+/* Search matches in the console output. */
+.console-out mark { background: var(--accent-tint); color: inherit; border-radius: 3px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+.console-out .console-cmd:hover { text-decoration-style: solid; }

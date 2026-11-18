@@ -152,9 +152,9 @@ ZeroTier is not carried in release bundles either. When the operator installs th
 
 `ui/` is repository-authored and covered by the repository license, except as follows.
 
-- `ui/src/qidi/` ports QIDI Box and printer-warning logic from this project's Fluidd fork, <https://github.com/thelegendtubaguy/fluidd> (GPL-3.0-only), as credited in each file's header.
-- `ui/src/styles.css` adapts the design tokens of Beautiful UI, <https://github.com/slev12397/beautiful-ui>, Copyright (c) 2026 Shane Levine, under the MIT License. The full text is in [`LICENSES/Beautiful-UI-MIT.txt`](LICENSES/Beautiful-UI-MIT.txt).
-- The build bundles npm packages, chiefly React and React DOM (MIT) and lucide-react (ISC). Their versions are pinned in `ui/package-lock.json`, and each build writes their license texts to `licenses.md`, which the installer ships with the build.
+- `ui/src/qidi/` and `ui/src/workers/` port logic from this project's Fluidd fork, <https://github.com/thelegendtubaguy/fluidd> (GPL-3.0-only), as credited in each file's header: the QIDI Box, printer warnings, Valve Oil status and add-ons, bed soak, and the G-code preview parser.
+- `ui/src/styles.css` keeps component styles adapted from Beautiful UI, <https://github.com/slev12397/beautiful-ui>, Copyright (c) 2026 Shane Levine, under the MIT License, with Valve Oil's own colors. The full text is in [`LICENSES/Beautiful-UI-MIT.txt`](LICENSES/Beautiful-UI-MIT.txt).
+- The build bundles npm packages, chiefly React and React DOM (MIT), lucide-react (ISC), CodeMirror (MIT), and the Montserrat typeface from `@fontsource-variable/montserrat` (SIL Open Font License 1.1). Their versions are pinned in `ui/package-lock.json`, and each build writes their license texts to `licenses.md`, which the installer ships with the build.
 
 ## OpenSpec-generated workflow files
 

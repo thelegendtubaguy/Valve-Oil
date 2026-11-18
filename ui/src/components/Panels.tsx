@@ -3,6 +3,7 @@ import { Activity, Flame, Gauge } from 'lucide-react'
 import { client, usePrinter } from '../state/printer'
 import { useTiles, TargetDialog, type Tile } from './Temps'
 import { jobProgress, type Job } from '../state/job'
+import { fileLeft, printLayer, printLayers, slicerLeft } from './printing/estimates'
 import type { FileMeta } from '../state/files'
 import { fmtDuration, prettyName } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
@@ -54,12 +55,11 @@ function ThermalRow({ tile, onOpen }: { tile: Tile; onOpen: () => void }) {
   )
 }
 
-// ---- job details ----
-const FILAMENT_AREA = Math.PI * 0.875 * 0.875 // 1.75 mm filament, mm²
-
+// ---- job details: Fluidd's status tab, as figures ----
 export function JobDetails({ job, meta, className = '' }: { job: Job; meta: FileMeta | null; className?: string }) {
   const motion = usePrinter((s) => s.status.motion_report ?? {})
   const z = usePrinter((s) => (s.status.gcode_move?.gcode_position?.[2] as number | undefined) ?? null)
+  const diameter = usePrinter((s) => (s.settings.extruder?.filament_diameter as number | undefined) || 1.75)
   const p = jobProgress(job)
   const totalMm = meta?.filament_total ?? null
   const usedMm = job.filamentUsed
@@ -67,8 +67,13 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
   const usedG = weight != null && totalMm ? (weight * usedMm) / totalMm : null
   const expected = meta?.estimated_time && p > 0.02 ? meta.estimated_time * p : null
   const pace = expected && job.printDuration > 120 ? job.printDuration / expected - 1 : null
-  const speed = motion.live_velocity as number | undefined
-  const flow = motion.live_extruder_velocity != null ? (motion.live_extruder_velocity as number) * FILAMENT_AREA : null
+  const printing = job.state === 'printing'
+  const speed = printing ? ((motion.live_velocity as number | undefined) ?? 0) : 0
+  const flow = printing ? (Math.PI / 4) * diameter ** 2 * ((motion.live_extruder_velocity as number | undefined) ?? 0) : 0
+  const layers = printLayers(job, meta)
+  const layer = printLayer(job, meta, z)
+  const byFile = fileLeft(job)
+  const bySlicer = slicerLeft(job, meta)
   const colors = (meta?.filament_colors ?? []).map(normalizeQidiColor)
   const names = typeof meta?.filament_name === 'string' ? meta.filament_name.split(';').map((x) => x.trim()) : []
   const weights = Array.isArray(meta?.filament_weights) ? (meta!.filament_weights as number[]) : null
@@ -78,13 +83,15 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
         <Gauge size={14} /> This print
       </h3>
       <div className="grid">
-        <Row k="Filament" v={totalMm ? `${(usedMm / 1000).toFixed(1)} of ${(totalMm / 1000).toFixed(1)} m` : `${(usedMm / 1000).toFixed(1)} m`} />
-        {weight != null && <Row k="Weight" v={`${usedG != null ? Math.round(usedG) : '—'} of ${Math.round(weight)} g`} />}
+        <Row k="Speed" v={speed > 0 ? `${speed.toFixed(1)} mm/s` : '—'} />
+        <Row k="Flow" v={flow > 0 ? `${flow.toFixed(1)} mm³/s` : '—'} />
+        <Row k="Filament" v={`${fmtLength(usedMm)}${totalMm ? ` of ${fmtLength(totalMm)}` : ''}${usedG != null ? ` · ${Math.round(usedG)} g` : ''}`} />
+        <Row k="Layer" v={`${layer ?? '—'} of ${layers ?? '—'}${z != null ? ` · Z ${z.toFixed(2)}` : ''}`} />
+        <Row k="Left by file" v={byFile != null ? fmtDuration(byFile) : '—'} />
+        <Row k="Left by slicer" v={bySlicer != null ? fmtDuration(bySlicer) : '—'} />
         {pace != null && <Row k="Against the slicer" v={Math.abs(pace) < 0.03 ? 'on time' : `${Math.round(Math.abs(pace) * 100)}% ${pace > 0 ? 'slower' : 'faster'}`} />}
         {meta?.estimated_time != null && <Row k="Slicer estimate" v={fmtDuration(meta.estimated_time)} />}
-        <Row k="Layer" v={`${job.currentLayer ?? '—'} of ${job.totalLayers ?? '—'}${z != null ? ` · Z ${z.toFixed(2)}` : ''}`} />
         {meta?.layer_height != null && <Row k="Layer height" v={`${meta.layer_height} mm${meta.object_height ? ` · ${meta.object_height} mm tall` : ''}`} />}
-        {(speed != null || flow != null) && <Row k="Live" v={`${speed != null ? `${Math.round(speed)} mm/s` : ''}${flow != null ? ` · ${flow.toFixed(1)} mm³/s` : ''}`} />}
       </div>
       {colors.length > 1 && (
         <div className="mt-2 grid gap-1">
@@ -101,6 +108,11 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
       )}
     </section>
   )
+}
+
+/** Filament length as Fluidd reads it: mm under a metre, then metres. */
+export function fmtLength(mm: number) {
+  return mm < 1000 ? `${Math.round(mm)} mm` : `${(mm / 1000).toFixed(2)} m`
 }
 
 function Row({ k, v }: { k: ReactNode; v: ReactNode }) {

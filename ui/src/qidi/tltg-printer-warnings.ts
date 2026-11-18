@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/tltg-printer-warnings.ts at
-// github.com/thelegendtubaguy/fluidd qidi@1ad1676, with the board issue-link check of the fork's Valve Oil updates
+// github.com/thelegendtubaguy/fluidd qidi@6405679, with the board issue-link check of the fork's Valve Oil updates
 // section. Keep behavior in step with the fork.
 import { tltgIssueUrlValid } from './tltg-status'
 

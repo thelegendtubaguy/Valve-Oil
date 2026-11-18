@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchQidiBoxSlots, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxFileTools, qidiBoxReloadGroups, qidiBoxSlots } from '../qidi-box'
+import { matchQidiBoxSlots, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxFileTools, qidiBoxReloadGroups, qidiBoxSlots, qidiBoxToolButtons } from '../qidi-box'
 
 const filamentList = parseQidiFilamentList([
   '[fila18]',
@@ -171,5 +171,35 @@ describe('parseQidiFilamentDatabase', () => {
       { id: 'QFA00', name: 'QIDI PLA Basic', type: 'PLA', vendor: 'QIDI' },
       { id: 'QFL31', name: 'Bambu PETG', type: 'PETG', vendor: 'Bambu' }
     ])
+  })
+})
+
+describe('qidiBoxToolButtons', () => {
+  const slots = qidiBoxSlots({
+    save_variables: { variables: { box_count: 1 } },
+    'box_stepper slot0': { runout_button: 0 },
+    'box_stepper slot1': { runout_button: 0 },
+    'box_stepper slot2': { runout_button: 0 },
+    'box_stepper slot3': { runout_button: 1 }
+  }, null)
+
+  it('lists only tools mapped to a connected Box slot', () => {
+    // One Box: T4 maps to the external spool, T5 past the Box, and T6 shares 1B.
+    const buttons = qidiBoxToolButtons({ 0: 0, 1: 1, 2: 2, 3: 3, 4: 16, 5: 6, 6: 1 }, slots, null, null)
+
+    expect(buttons.map(button => [button.tool, button.slot.label])).toStrictEqual([
+      [0, '1A'], [1, '1B'], [2, '1C'], [3, '1D'], [6, '1B']
+    ])
+  })
+
+  it('marks the selected tool feeding the extruder active', () => {
+    const active = (current: number | null) => qidiBoxToolButtons({ 0: 0, 1: 1, 6: 1 }, slots, 1, current)
+      .filter(button => button.active)
+      .map(button => button.tool)
+
+    expect(active(6)).toStrictEqual([6])
+    // A selected tool mapped elsewhere leaves every tool on the loaded slot active.
+    expect(active(0)).toStrictEqual([1, 6])
+    expect(qidiBoxToolButtons({ 0: 0, 1: 1 }, slots, null, 1).some(button => button.active)).toBe(false)
   })
 })

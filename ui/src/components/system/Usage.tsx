@@ -1,0 +1,94 @@
+import { Activity } from 'lucide-react'
+import { Card } from '../ui'
+import { usePrinter } from '../../state/printer'
+import { LineChart, type ChartSeries } from './LineChart'
+import { SYSTEM_RETENTION, useSystemBuffers } from './metrics'
+import type { SeriesBuffer } from './chart-data'
+import { mcuLabel } from './bits'
+
+type Line = { col: string; label: string }
+
+/** One small chart with its name and latest values over it, as Fluidd's inline charts. */
+function InlineChart({ title, buf, lines, unit = ' %', digits = 1, max, min, hint }: { title: string; buf: SeriesBuffer; lines: Line[]; unit?: string; digits?: number; max?: number | ((m: number) => number); min?: number | ((m: number) => number); hint?: string }) {
+  const series: ChartSeries[] = lines.map((l, i) => ({ key: l.col, label: l.label, values: buf.cols[l.col] ?? [], color: `var(--series-${i + 1})`, fill: lines.length === 1 ? 0.12 : 0 }))
+  const last = (vals: number[]) => {
+    for (let i = vals.length - 1; i >= Math.max(0, vals.length - 5); i--) if (Number.isFinite(vals[i])) return vals[i]
+    return NaN
+  }
+  return (
+    <div className="min-w-0 rounded-xl bg-inset p-3" style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }} title={hint}>
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <span className="text-[12.5px] font-semibold text-ink-2">{title}</span>
+        <span className="ml-auto flex flex-wrap items-baseline gap-x-3">
+          {series.map((s) => {
+            const v = last(s.values)
+            return (
+              <span key={s.key} className="flex items-baseline gap-1.5">
+                {series.length > 1 && <span className="swatch self-center" style={{ background: s.color }} />}
+                {series.length > 1 && <span className="text-[11.5px] text-ink-3">{s.label}</span>}
+                <b className="num text-[15px] text-ink">
+                  {Number.isFinite(v) ? v.toFixed(digits) : '—'}
+                  <small className="text-[11px] font-semibold text-ink-3">{unit}</small>
+                </b>
+              </span>
+            )
+          })}
+        </span>
+      </div>
+      <LineChart times={buf.times} series={series} height={92} spanMs={SYSTEM_RETENTION * 1000} max={max} min={min} unit={unit} digits={digits} />
+    </div>
+  )
+}
+
+const pctMax = (m: number) => Math.max(100, m)
+// MCU load sits low; give it headroom like Fluidd rather than flattening it against 100 %.
+const mcuMax = (m: number) => (m <= 80 ? Math.ceil((m + 5) / 10) * 10 + 5 : Math.max(100, m))
+
+export function UsageCard({ cores }: { cores: number }) {
+  const b = useSystemBuffers()
+  const mcus = usePrinter((s) => s.objects.filter((o) => o === 'mcu' || o.startsWith('mcu ')))
+  const hasHealth = usePrinter((s) => s.status.tltg_klipper_health != null)
+  const has = (buf: SeriesBuffer, col: string) => buf.cols[col]?.some(Number.isFinite)
+  return (
+    <Card title="System utilization" icon={<Activity size={15} />} aside="Last 10 minutes">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {has(b.host, 'cpu') && <InlineChart title="Host CPU" buf={b.host} lines={[{ col: 'cpu', label: 'CPU' }]} max={pctMax} />}
+        {has(b.klipper, 'load') && <InlineChart title="System load" buf={b.klipper} lines={[{ col: 'load', label: 'Load' }]} unit={` / ${cores}`} digits={2} max={(m) => Math.max(cores, m)} hint="Load average: how many processes want the CPU, out of its cores" />}
+        {has(b.host, 'memused') && <InlineChart title="System memory" buf={b.host} lines={[{ col: 'memused', label: 'Memory used' }]} max={pctMax} />}
+        {has(b.host, 'cpu_temp') && <InlineChart title="CPU temperature" buf={b.host} lines={[{ col: 'cpu_temp', label: 'CPU' }]} unit=" °C" min={(m: number) => Math.max(0, Math.floor((m - 10) / 10) * 10)} max={(m) => Math.ceil((m + 5) / 10) * 10} />}
+        <InlineChart
+          title="Klipper load"
+          buf={b.klipper}
+          lines={hasHealth ? [{ col: 'cputime_change', label: 'Load' }, { col: 'main_thread', label: 'Main thread' }] : [{ col: 'cputime_change', label: 'Load' }]}
+          max={pctMax}
+          hint={hasHealth ? 'Klipper’s CPU use, and its main thread, the one that has to keep up with endstops and heaters, as a share of one core' : 'Klipper’s CPU use as a share of one core'}
+        />
+        {hasHealth && (
+          <InlineChart
+            title="Klipper timers"
+            buf={b.klipper}
+            lines={[{ col: 'timers', label: 'Timers' }]}
+            unit=""
+            digits={0}
+            min={0}
+            max={(m) => Math.max(100, Math.ceil((m * 1.2) / 50) * 50)}
+            hint="Klipper walks every timer on each pass of its main loop, so a count that keeps climbing slows it down"
+          />
+        )}
+        {has(b.host, 'moonraker') && <InlineChart title="Moonraker load" buf={b.host} lines={[{ col: 'moonraker', label: 'Load' }]} max={pctMax} />}
+        {mcus.map((m) =>
+          b.mcus[m] ? (
+            <InlineChart
+              key={m}
+              title={`${mcuLabel(m)} MCU`}
+              buf={b.mcus[m]}
+              lines={b.mcus[m].cols.load ? [{ col: 'load', label: 'Load' }, { col: 'awake', label: 'Awake' }] : [{ col: 'awake', label: 'Awake' }]}
+              max={mcuMax}
+              digits={2}
+            />
+          ) : null,
+        )}
+      </div>
+    </Card>
+  )
+}

@@ -1,6 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, CircleAlert, CircleCheck, Cpu, ExternalLink, Info, LoaderCircle, RefreshCw, TriangleAlert, X } from 'lucide-react'
-import { Card, Dialog, Toggle } from '../components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronDown, CircleCheck, Cpu, Download, ExternalLink, Info, LoaderCircle, TriangleAlert } from 'lucide-react'
+import { Card, Dialog, PageHeader, Toggle } from '../components/ui'
+import { Notice } from '../components/settings/common'
+import { LanOnly } from '../components/settings/LanOnly'
+import { Log } from '../components/settings/Addons'
 import {
   TLTG_UPDATE_NOW_BLOCKERS,
   tltgBrowserTimezone,
@@ -217,20 +220,26 @@ export function UpdatesScreen() {
   if (!view) {
     const text = reconnecting(s) ? reconnectText(s) : s.unavailable ? "Valve Oil's update status isn't available on this printer." : "Loading Valve Oil's status…"
     return (
-      <Card title="Valve Oil" icon={<RefreshCw size={14} />}>
-        <div className="flex items-start gap-2.5 text-ink-2">
-          {reconnecting(s) ? <LoaderCircle size={16} className="spin mt-0.5 flex-none" /> : <Info size={16} className="mt-0.5 flex-none text-ink-3" />}
-          <span>{text}</span>
-        </div>
-        {s.expectUpdate && reconnecting(s) && <div className="mt-2 font-medium text-warn">{DONT_POWER_OFF}</div>}
-      </Card>
+      <div className="grid content-start gap-3.5">
+        <PageHeader title="Updates" />
+        <Card>
+          <div className="flex items-start gap-2.5 text-ink-2">
+            {reconnecting(s) ? <LoaderCircle size={16} className="spin mt-0.5 flex-none" /> : <Info size={16} className="mt-0.5 flex-none text-ink-3" />}
+            <span>{text}</span>
+          </div>
+          {s.expectUpdate && reconnecting(s) && <div className="mt-2 font-medium text-warn">{DONT_POWER_OFF}</div>}
+        </Card>
+      </div>
     )
   }
 
   return (
-    <div className="grid content-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-      <ValveOilCard s={s} view={view} />
-      <BoardsCard view={view} />
+    <div className="grid content-start gap-3.5">
+      <PageHeader title="Updates" />
+      <div className="grid content-start items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <ValveOilCard s={s} view={view} />
+        <BoardsCard view={view} />
+      </div>
     </div>
   )
 }
@@ -358,8 +367,24 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
   const recoveryRequired = view.updateNow.blockedBy.some((b) => b.code === 'recovery_required')
 
   return (
-    <Card title="Valve Oil" icon={<RefreshCw size={14} />}>
-      <div className="grid">
+    <Card>
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1">
+          <div className="section-label">Valve Oil{view.printerName ? ` · ${view.printerName}` : ''}</div>
+          <div className="mt-1 flex items-center gap-2.5 text-[22px] font-bold tracking-[-0.01em]">
+            {view.updating ? (
+              <LoaderCircle size={22} className="spin flex-none text-accent-ink" />
+            ) : view.waiting.length > 0 ? (
+              <Download size={22} className="flex-none text-accent-ink" />
+            ) : (
+              <CircleCheck size={22} className="flex-none text-good" />
+            )}
+            {view.updating ? 'Updating' : view.waiting.length > 0 ? 'Waiting to install' : 'Up to date'}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl bg-inset px-3.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">
         <div className="row-k">
           <span className="k">Valve Oil release</span>
           <span className="v">{view.release || 'Unknown'}</span>
@@ -372,7 +397,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         </div>
       </div>
 
-      <div className="sep my-2" />
+      <div className="mt-2" />
       <label className="flex items-center gap-3 py-1">
         <div className="min-w-0 flex-1">
           <div className="font-medium">Automatic updates</div>
@@ -382,6 +407,8 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         <Toggle checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} label="Automatic updates" onChange={setAutoUpdate} />
       </label>
       {view.updateWindow && <UpdateWindow window={view.updateWindow} disabled={autoUpdateDisabled(s)} pending={s.windowPending} error={s.windowError} />}
+      {/* QIDI's setting, through Moonraker; it hides itself while Moonraker is down or isn't QIDI's. */}
+      <LanOnly className="mt-2 border-t border-line pt-2" />
 
       <div className="sep my-2" />
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-1">
@@ -399,7 +426,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         </div>
         {view.updateNow.offered && (
           <div className="ml-auto grid max-w-[320px] justify-items-end gap-1">
-            <button className="btn btn-sm btn-primary" disabled={disabled} onClick={() => setConfirm(true)}>
+            <button className="btn btn-primary" disabled={disabled} onClick={() => setConfirm(true)}>
               {s.updateNowPending && <LoaderCircle size={13} className="spin" />}
               {actionLabel}
             </button>
@@ -489,22 +516,6 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
   )
 }
 
-function Notice({ tone, icon, onClose, children }: { tone: 'info' | 'warn' | 'bad' | 'good'; icon?: ReactNode; onClose?: () => void; children: ReactNode }) {
-  const cls = { info: 'tone-accent', warn: 'tone-warn', bad: 'tone-bad', good: 'tone-good' }[tone]
-  const Icon = { info: Info, warn: TriangleAlert, bad: CircleAlert, good: CircleCheck }[tone]
-  return (
-    <div className={`${cls} flex items-start gap-2.5 rounded-lg px-3 py-2`}>
-      <span className="mt-0.5 flex-none">{icon ?? <Icon size={15} />}</span>
-      <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{children}</div>
-      {onClose && (
-        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label="Dismiss">
-          <X size={15} />
-        </button>
-      )}
-    </div>
-  )
-}
-
 function UpdateProgress({ update, recoveryRequired }: { update: TltgUpdateView; recoveryRequired: boolean }) {
   // null follows the update: the log opens by itself when it fails.
   const [showLog, setShowLog] = useState<boolean | null>(null)
@@ -556,28 +567,6 @@ function UpdateProgress({ update, recoveryRequired }: { update: TltgUpdateView; 
   )
 }
 
-function Log({ lines }: { lines: string[] }) {
-  const ref = useRef<HTMLPreElement>(null)
-  const following = useRef(true)
-  // Follow the newest line unless the reader has scrolled back.
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el && following.current) el.scrollTop = el.scrollHeight
-  }, [lines])
-  return (
-    <pre
-      ref={ref}
-      onScroll={(e) => {
-        const el = e.currentTarget
-        following.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
-      }}
-      className="m-0 max-h-[240px] overflow-auto rounded-lg bg-inset p-2.5 font-mono text-[12px] whitespace-pre-wrap text-ink-2 shadow-[inset_0_0_0_1px_var(--line)] [overflow-wrap:anywhere]"
-    >
-      {lines.join('\n')}
-    </pre>
-  )
-}
-
 function BoardsCard({ view }: { view: TltgStatusView }) {
   if (view.boards.length === 0) return null
   return (
@@ -592,7 +581,7 @@ function BoardsCard({ view }: { view: TltgStatusView }) {
                   <div className="font-medium">{board.name}</div>
                   <div className="text-[12.5px] text-ink-3">{boardFirmwareText(board)}</div>
                 </div>
-                <span className={`${BOARD_TONE[board.badge]} flex-none rounded-md px-2 py-0.5 text-[12px] font-medium`}>{BOARD_BADGE[board.badge]}</span>
+                <span className={`pill ${BOARD_TONE[board.badge]} flex-none py-0.5!`}>{BOARD_BADGE[board.badge]}</span>
               </div>
               {(explanation || board.shownDetail) && (
                 <div className="mt-1.5 text-ink-2">

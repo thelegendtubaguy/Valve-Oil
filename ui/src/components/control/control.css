@@ -1,0 +1,38 @@
+/* Range sliders in Valve Oil's colors: an amber fill up to the thumb on the inset track. */
+.vo-range {
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.vo-range:disabled { opacity: 0.45; cursor: not-allowed; }
+.vo-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent) 0 var(--fill, 0%), var(--inset) var(--fill, 0%) 100%);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.vo-range::-moz-range-track { height: 6px; border-radius: 99px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+.vo-range::-moz-range-progress { height: 6px; border-radius: 99px; background: var(--accent); }
+.vo-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgb(0 0 0 / 0.3);
+}
+.vo-range::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent); }
+
+/* The jog pad's buttons: thumb-sized squares. */
+.jog { width: 52px; height: 52px; padding: 0 !important; display: grid; place-items: center; border-radius: 12px; line-height: 1; }
+.jog .ax { font-size: 10px; font-weight: 700; color: var(--ink-3); }
+.jog.home { color: var(--accent-ink); }
+@media (min-width: 640px) {
+  .jog { width: 58px; height: 58px; }
+}
+
+/* Swatches for picking an LED color. */
+.led-swatch { width: 28px; height: 28px; border-radius: 8px; border: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25), 0 0 0 1px var(--line); }
+.led-swatch.on { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25), 0 0 0 2px var(--accent); }

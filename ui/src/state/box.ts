@@ -9,7 +9,9 @@ import {
   qidiBoxSlotLabel,
   qidiBoxSlotNumber,
   qidiBoxSlots,
+  qidiBoxToolButtons,
   type QidiBoxReloadGroups,
+  type QidiBoxToolButton,
   type QidiBoxSlot,
   type QidiFilament,
   type QidiFilamentList,
@@ -23,13 +25,14 @@ import {
   qidiBoxTask,
   qidiBoxTaskText,
   qidiBoxWarnings,
+  QIDI_BOX_STEP_UNKNOWN,
   type QidiBoxError,
   type QidiBoxStepText,
   type QidiBoxTask,
 } from '../qidi/qidi-box-task'
 
 export { QIDI_BOX_EXTERNAL_SLOT, qidiBoxSlotLabel }
-export type { QidiBoxSlot, QidiFilament }
+export type { QidiBoxSlot, QidiFilament, QidiBoxToolButton }
 
 // ---- QIDI's filament lists, read through Moonraker's file API ----
 export const LEGACY_LIST_PATH = 'officiall_filas_list.cfg'
@@ -64,12 +67,17 @@ export async function loadFilamentLists() {
   }
   filamentLists.set({ legacy, database, databaseError })
 }
+// Klipper and the touchscreen read the filament files when they start, so they're read again after every Klipper start.
 onKlippyReady(() => {
-  if ((printer.get().status.save_variables?.variables?.box_count ?? 0) > 0) loadFilamentLists()
+  const st = printer.get().status
+  if (Number(st.save_variables?.variables?.box_count ?? 0) > 0 || st.multi_color_controller != null) loadFilamentLists()
 })
 
 // ---- derived state ----
 export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null }
+
+/** Valve Oil's turn spools while heating (tltg_box_spool_roll): on, and the slot it's turning now. */
+export type SpoolRoll = { enabled: boolean; rolling: string | null }
 
 export type BoxState = {
   boxCount: number
@@ -100,8 +108,26 @@ export type BoxState = {
   canCold: boolean
   canJog: boolean
   canCut: boolean
-  /** Valve Oil can write spool tags (VO_BOX_RFID_WRITE). */
+  /** Valve Oil can write spool tags (VO_BOX_RFID_WRITE), with the firmware filament database whose IDs tags carry. */
   canWriteTag: boolean
+  /** Slots whose filament the Box set from the spool's RFID tag. */
+  fromTag: Record<number, boolean>
+  /** Tool names (T0…) mapped to each slot. */
+  toolsBySlot: Record<number, string[]>
+  /** QIDI defines T0–T15 whatever Boxes are connected, so tool buttons follow the Box instead. */
+  managesTools: boolean
+  /** The tools T_MANAGER can load, with the active one; empty while the Box is off. */
+  toolButtons: QidiBoxToolButton[]
+  /** The slot's filament can be edited: the firmware database on 01.01.07.01, QIDI's list before it. */
+  canEditFilament: boolean
+  /** 01.01.07.01's filament database was read but lists no filaments. */
+  filamentDatabaseInvalid: boolean
+  flowPaused: boolean
+  /** The running step, in words; null while paused or idle. */
+  taskStep: string | null
+  /** The failed step's console error, then QIDI's Box warnings. */
+  problems: string[]
+  spoolRoll: SpoolRoll | null
 }
 
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
@@ -145,10 +171,24 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
 
   const text: QidiBoxStepText | null = qidiBoxTaskText(st)
   const commands = s.commands
+  const flowPaused = task?.paused === true
+  const lastError = flowPaused ? qidiBoxLastError(s.console.filter((l) => l.kind !== 'command').map((l) => l.text)) : null
+  const warnings = qidiBoxWarnings(st.multi_color_controller?.box_warning_info)
+  const toolsBySlot: Record<number, string[]> = {}
+  for (const [tool, slot] of Object.entries(toolMap)) (toolsBySlot[slot] ??= []).push(`T${tool}`)
+  const enabled = Number(variables.enable_box ?? 0) === 1
+  const currentTool = Number(variables.extrude_state)
+  const roll = st.tltg_box_spool_roll
+  const fromTag: Record<number, boolean> = {}
+  for (const slot of slots) {
+    const infos = slot.index === QIDI_BOX_EXTERNAL_SLOT ? [st.multi_color_controller?.extra?.filament_info] : st.box_extras?.boxes?.[Math.floor(slot.index / 4)]?.filament_info
+    const info = Array.isArray(infos) ? (infos.find((i) => i?.index === slot.index % 4) ?? infos[slot.index % 4]) : undefined
+    if (slot.present && Number(info?.info_from_rfid) === 1) fromTag[slot.index] = true
+  }
   return {
     boxCount,
     hasController,
-    enabled: Number(variables.enable_box ?? 0) === 1,
+    enabled,
     autoReload: Number(variables.auto_reload_detect ?? 0) === 1,
     slots,
     reloadGroups: Number(variables.auto_reload_detect ?? 0) === 1 ? qidiBoxReloadGroups(slots) : {},
@@ -161,8 +201,8 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     toolheadFilament,
     task,
     taskText: text ? stepText(text, task?.paused ?? false) : null,
-    lastError: task?.paused ? qidiBoxLastError(s.console.filter((l) => l.kind !== 'command').map((l) => l.text)) : null,
-    warnings: qidiBoxWarnings(st.multi_color_controller?.box_warning_info),
+    lastError,
+    warnings,
     busy,
     mappingLocked: busy || printState === 'paused',
     strandedRecovery,
@@ -172,7 +212,18 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     canCold: commands.includes('TLTG_CUT_FILAMENT'),
     canJog: commands.includes('TLTG_BOX_SLOT_JOG'),
     canCut: commands.includes('TLTG_CUT_FILAMENT'),
-    canWriteTag: commands.includes('VO_BOX_RFID_WRITE'),
+    canWriteTag: commands.includes('VO_BOX_RFID_WRITE') && hasController && !!lists.database?.length,
+    fromTag,
+    toolsBySlot,
+    managesTools: variables.box_count != null || hasController,
+    // T_MANAGER does nothing while the Box is off.
+    toolButtons: enabled ? qidiBoxToolButtons(toolMap, slots, loadedSlot, Number.isInteger(currentTool) ? currentTool : null) : [],
+    canEditFilament: hasController ? !!lists.database?.length : lists.legacy != null,
+    filamentDatabaseInvalid: hasController && lists.databaseError,
+    flowPaused,
+    taskStep: text && !flowPaused ? stepText(text, false) : null,
+    problems: [...new Set([...(lastError ? [lastError.code ? `${lastError.message} (${lastError.code})` : lastError.message] : []), ...warnings])],
+    spoolRoll: roll ? { enabled: roll.enabled === true, rolling: typeof roll.rolling === 'string' ? roll.rolling : null } : null,
   }
 }
 
@@ -200,7 +251,7 @@ const STEP_TEXT: Record<string, string> = {
 function stepText(t: QidiBoxStepText, failed: boolean): string {
   const text = (STEP_TEXT[t.key] ?? STEP_TEXT.working).replace(/\{(\w+)\}/g, (_, k) => String(t.params[k] ?? ''))
   if (!failed) return text
-  return t.key === 'working' ? 'Box step failed' : `${text} failed`
+  return t.key === QIDI_BOX_STEP_UNKNOWN ? 'Box step failed' : `${text} failed`
 }
 
 export function useBox(): BoxState {
@@ -232,31 +283,60 @@ export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
   const atHubLoaded = box.hubSensor === 0 && box.lastLoadSlot === slot.index
   let unload = base && atHubLoaded
   let eject = base
-  let hint: string | null = null
+  // Filament stranded between the hub and the toolhead can be unloaded or ejected even while a failed flow is paused,
+  // from the slot at the hub when that's known, as Valve Oil refuses any other.
   if (box.strandedRecovery && isBox && slot.present) {
     const ok = box.strandedSlot == null || box.strandedSlot === slot.index
     unload = ok
     eject = ok
-    hint =
-      box.strandedSlot == null
-        ? "Filament is stuck between the hub and the toolhead, and it isn't clear which slot it's from. Unload or eject the slot it came from."
-        : ok
-          ? `Filament from ${slot.label} is stuck between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it.`
-          : `Filament from ${qidiBoxSlotLabel(box.strandedSlot)} is stuck between the hub and the toolhead. Unload or eject ${qidiBoxSlotLabel(box.strandedSlot)} first.`
   }
   return {
     load: base && !atHubLoaded,
     unload,
     eject,
     rfid: base,
-    edit: !box.busy && slot.present,
+    edit: !box.busy && slot.present && box.canEditFilament,
     // A spool on an empty slot's rollers can be tagged before its filament is fed.
-    writeTag: box.canWriteTag && isBox && !box.busy && box.hasController,
+    writeTag: box.canWriteTag && isBox && !box.busy,
     jog: box.canJog && isBox && !box.mappingLocked,
     cut: box.canCut && !box.mappingLocked,
-    hint,
+    hint: box.strandedRecovery ? strandedHint(box, slot) : null,
   }
 }
+
+function strandedHint(box: BoxState, slot: QidiBoxSlot) {
+  const at = box.strandedSlot
+  if (at == null) return 'Filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.'
+  const label = qidiBoxSlotLabel(at)
+  return at === slot.index
+    ? `${label}'s filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.`
+    : `${label}'s filament is stopped between the hub and the toolhead. Unload or eject ${label} first.`
+}
+
+/** What a slot holds, as the Box card's overline: the slot, its tools, and whether it's loaded. */
+export function slotOverline(box: BoxState, slot: QidiBoxSlot) {
+  const tools = box.toolsBySlot[slot.index] ?? []
+  return [slot.index === QIDI_BOX_EXTERNAL_SLOT ? 'External spool' : `Slot ${slot.label}`, tools.length ? tools.join(', ') : 'no tool', box.loadedSlot === slot.index ? 'loaded' : null].filter(Boolean).join(' · ')
+}
+
+/** Automatic reload for a slot, as the fork's card says it. */
+export function reloadText(box: BoxState, slot: QidiBoxSlot) {
+  if (!box.autoReload) return 'Automatic reload is off'
+  const group = box.reloadGroups[slot.index]
+  if (!group) return 'No auto-reload backup'
+  return `Auto-reload with ${group.members.filter((m) => m !== slot.index).map(qidiBoxSlotLabel).join(', ')}`
+}
+
+/** A slot tile's state: loaded to the toolhead, parked at the hub, ready at its inlet, or empty. */
+export function slotStatus(box: BoxState, slot: QidiBoxSlot): 'loaded' | 'hub' | 'ready' | 'empty' | 'reading' {
+  if (slot.reading) return 'reading'
+  if (box.loadedSlot === slot.index) return 'loaded'
+  if (box.hubSensor === 0 && box.hubSlot === slot.index) return 'hub'
+  return slot.present ? 'ready' : 'empty'
+}
+
+// QIDI's Box settings are saved variables its Box modules read; vo_box_spool_roll is Valve Oil's turn spools while heating.
+export type BoxSetting = 'auto_read_rfid' | 'auto_init_detect' | 'auto_reload_detect' | 'enable_box' | 'vo_box_spool_roll'
 
 export const boxCommands = {
   load: (box: BoxState, slot: number) => (box.hasController ? `LOAD_FILAMENT_CONTROL SLOT=${slot}` : `E_LOAD slot=${slot}`),
@@ -271,7 +351,8 @@ export const boxCommands = {
   retry: () => 'FLOW_RETRY',
   stop: () => 'FLOW_STOP',
   mapTool: (tool: number, slot: number) => `SAVE_VARIABLE VARIABLE=value_t${tool} VALUE="'slot${slot}'"`,
-  setting: (name: 'auto_read_rfid' | 'auto_init_detect' | 'auto_reload_detect' | 'enable_box', on: boolean) => `SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
+  setting: (name: BoxSetting, on: boolean) => `SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
+  tool: (tool: number) => `T${tool}`,
   heater: (heater: string, target: number) => `SET_HEATER_TEMPERATURE HEATER=${heater.replace(/^heater_generic /, '')} TARGET=${target}`,
 }
 

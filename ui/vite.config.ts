@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -28,6 +28,17 @@ export default defineConfig({
       },
     },
     {
+      // Vite lists the licenses of bundled scripts only. Montserrat arrives through CSS, and the SIL Open Font License
+      // asks for its text to go with the font, so it's added to licenses.md here.
+      name: 'valve-oil-font-license',
+      apply: 'build',
+      writeBundle(options) {
+        const fontPkg = JSON.parse(readFileSync(new URL('./node_modules/@fontsource-variable/montserrat/package.json', import.meta.url), 'utf8'))
+        const text = readFileSync(new URL('./node_modules/@fontsource-variable/montserrat/LICENSE', import.meta.url), 'utf8')
+        appendFileSync(join(options.dir!, 'licenses.md'), `\n## ${fontPkg.name} - ${fontPkg.version} (${fontPkg.license})\n\nThe Montserrat typeface.\n\n\`\`\`\n${text.trim()}\n\`\`\`\n`)
+      },
+    },
+    {
       // The printer's nginx has gzip_static on: ship a .gz beside each script and stylesheet so the RK3308 doesn't
       // compress them on every request. gzipSync writes no timestamp, so the archive stays reproducible.
       name: 'valve-oil-gzip',
@@ -47,6 +58,14 @@ export default defineConfig({
       // names the printer or fake Moonraker to send it to; Origin is rewritten to match, as the service refuses
       // cross-origin changes.
       '/tltg-status': {
+        target: statusTarget,
+        changeOrigin: true,
+        configure: (proxy) => proxy.on('proxyReq', (req) => req.getHeader('origin') && req.setHeader('origin', new URL(statusTarget).origin)),
+      },
+      // The touchscreen stream (tltg-remote-screen), a websocket on the same origin.
+      '/tltg-screen': { target: statusTarget, ws: true, changeOrigin: true },
+      // Valve Oil's add-ons service, on the same origin and with the same cross-origin rule.
+      '/tltg-addons': {
         target: statusTarget,
         changeOrigin: true,
         configure: (proxy) => proxy.on('proxyReq', (req) => req.getHeader('origin') && req.setHeader('origin', new URL(statusTarget).origin)),

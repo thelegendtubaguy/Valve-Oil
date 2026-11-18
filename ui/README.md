@@ -50,7 +50,20 @@ It also stands in for Valve Oil's status service at `/tltg-status/api`, which fe
 
 Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update`, `release.channel` and `release.commit`, and `support.issue_url` as the service does, answers `GET /tltg-status/api/support-bundle` with an empty zip, and the printer warnings Klipper would report for it (with **Details** and **Report this board** links).
 
-Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/tltg-status` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
+Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/tltg-status`, `/tltg-addons`, and `/tltg-screen` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
+
+The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer state, the Box, Valve Oil's status service, scenarios) and each `dev/fake/*.mjs` adds one screen's methods, G-code, routes, and objects (see `dev/fake/README.md`). Their options:
+
+| Option or command | What it does |
+|---|---|
+| `--scenario bed-soak` | Starts with a bed soak test running, 20 times faster than on a printer |
+| `--gcode-kbps <n>` | Slows G-code downloads so the preview's progress shows |
+| `--addons <state>`, `VO_ADDONS NAME=<state>` | The add-ons service: `none`, `installed`, `linking`, `busy`, `foreign`, `failed`, `absent` |
+| `--lan-mode 0\|1\|none` | QIDI's LAN only mode off, on, or missing |
+| `--spoolman` | Loads Moonraker's `spoolman` component with made-up spools |
+| `VO_KLIPPY_SHUTDOWN [SECONDS=30]` | Shuts Klipper down for a while, for the stop screen |
+
+The G-code files it serves are generated: OrcaSlicer-style `.gcode` and QIDI Studio-style `.gcode.3mf`, with objects, feature types, retractions, fan changes, and a tool change, and the printing scenario moves through the file. It also has a `config` folder, logs, history, a job queue, timelapse videos, cameras, services, the touchscreen stream at `/tltg-screen/ws`, bed meshes, and the add-ons service.
 
 `npm run build` writes `dist/`, which the fake serves at `http://localhost:7125/valve-oil/`, the same layout as the printer.
 
@@ -60,18 +73,23 @@ To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload
 
 ```sh
 npm run typecheck
-npm test          # the Box, warning, and Valve Oil status logic ported from the Fluidd fork, with its tests
+npm test          # the logic ported from the Fluidd fork, with its tests, and the UI's own parsing and calculations
 npm run build
 ```
 
 ## Layout
 
 - `src/moonraker/client.ts`: websocket JSON-RPC client with reconnect.
-- `src/state/`: printer status (subscribed objects, batched updates, temperature history, console), jobs, files and history, QIDI Box, warnings.
-- `src/qidi/`: QIDI Box, printer-warning, and Valve Oil status logic ported from the Fluidd fork (`src/util/` there). Keep it in step with the fork.
+- `src/App.tsx`: the shell: the left rail (a bottom bar with **More** on phones), the top bar (state, temperatures, Save config, notifications, theme, emergency stop), warnings, and Klipper's stop screen. Screens other than Home, the Box, and Updates are loaded when first opened.
+- `src/lib/router.ts`: hash routes, `#/<screen>/<sub>/<path>`; tabs are sub-paths, such as `#/control/macros` and `#/files/config/printer.cfg`.
+- `src/styles.css`: Valve Oil's brand tokens (from the USB installer and touchscreen screens) and the shared classes: `card`, `btn`, `choice`, `seg`, `pm`, `pill`, `tile`, `link-row`, `table`, `menu`. Dark is the default.
+- `src/components/ui.tsx`: shared controls: dialogs, `confirm()` and `prompt()`, segmented tabs, pill choices, − value + steppers, menus, hold-to-confirm buttons.
+- `src/state/`: printer status (subscribed objects, batched updates, temperature history, console, all of `configfile.settings`), jobs, files and history, QIDI Box, warnings, add-ons, and `database.ts` for Moonraker's database. Anything Fluidd also stores goes in its `fluidd` namespace under Fluidd's own key and shape, so the two UIs agree; what only Valve Oil UI keeps goes in `valve_oil_ui`.
+- `src/qidi/`: QIDI Box, printer-warning, Valve Oil status and add-ons, LAN only mode, bed soak, probe report, and Klipper health logic ported from the Fluidd fork (`src/util/` there), with its tests. Keep it in step with the fork.
+- `src/workers/`: the G-code preview's parser, ported from the fork with its tests, run in a Web Worker.
 - `src/state/valve-oil.ts`: polls Valve Oil's status service for the Updates screen, and while an update runs, so the app keeps saying so while Moonraker is down for it.
-- `src/screens/`: Home, Files, QIDI Box, Updates. The Updates screen mirrors the Fluidd fork's Valve Oil settings section and uses its wording.
-- `src/components/`: shared pieces such as the filament path, spools, temperature tiles, and the print dialog.
+- `src/screens/`: Home, Files (with the G-code preview and the config editor), Box, Control, Console, Tune, History, System, Settings, Updates. The Updates screen mirrors the Fluidd fork's Valve Oil settings section and uses its wording.
+- `src/components/<screen>/`: each screen's pieces; shared ones such as the filament path, spools, temperature tiles, and the print dialog are directly in `src/components/`. The config editor is CodeMirror 6, loaded only when it opens.
 
 ## Release
 

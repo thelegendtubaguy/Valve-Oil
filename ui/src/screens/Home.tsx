@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Box as BoxIcon, Camera, ChevronRight, Folder, History, Layers, Pause, Play, RotateCcw, X } from 'lucide-react'
-import { Card, Dialog, HoldButton } from '../components/ui'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Box as BoxIcon, Camera, ChevronRight, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Card, HoldButton, Segmented } from '../components/ui'
+import { LivePreview } from '../components/gcode-preview/LivePreview'
+import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
 import { BoxStrip } from '../components/BoxStrip'
 import { FileRow } from '../components/FileCard'
 import { DropZone } from '../components/Upload'
 import { PrintDialog } from '../components/PrintDialog'
 import { TempChart } from '../components/TempChart'
 import { MiniConsole } from '../components/MiniConsole'
-import { Health, JobDetails, Thermals } from '../components/Panels'
+import { Health, JobDetails, Thermals, fmtLength } from '../components/Panels'
+import { TuneDialog } from '../components/printing/TunePanel'
+import { ExcludeObjectsButton } from '../components/printing/ExcludeObjects'
+import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
 import { Motion } from '../components/Motion'
 import { HeaterDialog, Operation, SlotActionButtons, ToolMapDialog } from './Box'
 import { Spool, slotTitle } from '../components/Spool'
@@ -43,7 +48,7 @@ export function HomeScreen() {
         <RecentFiles jobs={jobs} />
       </div>
       <div className="col">
-        {camera && <CameraCard cam={camera} />}
+        <CameraOrLayers cam={camera} />
         <div style={area('chart')} className={camera ? 'h-[300px] wide:h-[290px] wide:flex-none' : 'grow h-[300px]'}>
           <TempChart className="h-full" />
         </div>
@@ -55,7 +60,11 @@ export function HomeScreen() {
         </div>
       </div>
       <div className="col">
-        {boxPresent && <BoxCard />}
+        {/* The Box and, when Moonraker has Spoolman, the spool in use share one cell, so neither leaves a gap when absent. */}
+        <div style={area('box')} className="grid content-start gap-3.5 empty:hidden">
+          {boxPresent && <BoxCard />}
+          <SpoolmanCard />
+        </div>
         <div style={area('health')}>
           <Health className="h-full" />
         </div>
@@ -82,7 +91,7 @@ function JobCard({ style }: { style?: CSSProperties }) {
   const fill = finished ? (job.state === 'complete' ? 1 : p) : p
 
   return (
-    <section className="card grid content-start gap-3.5" style={style}>
+    <section className="card grid content-start gap-3.5 @container" style={style}>
       <div className="flex gap-3.5">
         <div className="relative grid h-[104px] w-[104px] flex-none place-items-center overflow-hidden rounded-xl bg-inset shadow-[inset_0_0_0_1px_var(--line)]">
           {thumb ? (
@@ -135,18 +144,21 @@ function JobCard({ style }: { style?: CSSProperties }) {
             <Stat label="Done at" value={fmtEta(remaining)} />
             <Stat label="Elapsed" value={fmtDuration(job.totalDuration)} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {job.state === 'paused' ? (
-              <button className="btn btn-primary btn-lg" onClick={() => attempt(() => client.call('printer.print.resume'))}>
+              <button className="btn btn-primary btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.resume'))}>
                 <Play size={14} /> Resume
               </button>
             ) : (
-              <button className="btn btn-lg" onClick={() => attempt(() => client.call('printer.print.pause'))}>
+              <button className="btn btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.pause'))}>
                 <Pause size={14} /> Pause
               </button>
             )}
-            <HoldButton className="btn-lg" onHold={() => attempt(() => client.call('printer.print.cancel'))}>
-              <X size={14} /> Hold to cancel
+            <button className="btn btn-lg px-2!" onClick={() => setTune(true)}>
+              <SlidersHorizontal size={14} /> Tune
+            </button>
+            <HoldButton className="btn-lg px-2!" onHold={() => attempt(() => client.call('printer.print.cancel'))}>
+              <X size={14} /> Cancel <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">hold</span>
             </HoldButton>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -160,12 +172,17 @@ function JobCard({ style }: { style?: CSSProperties }) {
               Z {job.zOffset >= 0 ? '+' : ''}
               {job.zOffset.toFixed(3)}
             </button>
+            <span className="flex-1" />
+            <ExcludeObjectsButton className="chip cursor-pointer border-0 hover:bg-hover" />
+            <PauseAtLayerButton className="chip cursor-pointer border-0 hover:bg-hover" />
           </div>
         </>
       ) : (
         <>
-          <div className="text-ink-2">
-            {fmtDuration(job.printDuration)} printing{job.filamentUsed > 0 ? ` · ${(job.filamentUsed / 1000).toFixed(1)} m of filament` : ''}
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label="Printing" value={fmtDuration(job.printDuration)} />
+            <Stat label="Filament" value={job.filamentUsed > 0 ? fmtLength(job.filamentUsed) : meta?.filament_total ? fmtLength(meta.filament_total) : '—'} />
+            <Stat label="Slicer" value={meta?.estimated_time ? fmtDuration(meta.estimated_time) : '—'} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <ReprintButton filename={job.filename} />
@@ -266,46 +283,6 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
   )
 }
 
-function TuneDialog({ onClose }: { onClose: () => void }) {
-  const job = useJob()
-  const row = (label: string, value: string, buttons: [string, string][]) => (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line py-2.5">
-      <span className="w-24 font-medium">{label}</span>
-      <span className="num w-16 font-semibold">{value}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {buttons.map(([text, g]) => (
-          <button key={text} className="btn btn-sm" onClick={() => attempt(() => runGcode(g))}>
-            {text}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-  const sp = Math.round(job.speedFactor * 100)
-  const fl = Math.round(job.extrudeFactor * 100)
-  return (
-    <Dialog open onClose={onClose} title="Tune the print">
-      {row('Speed', `${sp}%`, [
-        ['−10', `M220 S${Math.max(10, sp - 10)}`],
-        ['100%', 'M220 S100'],
-        ['+10', `M220 S${sp + 10}`],
-      ])}
-      {row('Flow', `${fl}%`, [
-        ['−1', `M221 S${Math.max(50, fl - 1)}`],
-        ['100%', 'M221 S100'],
-        ['+1', `M221 S${fl + 1}`],
-      ])}
-      {row('Z offset', `${job.zOffset >= 0 ? '+' : ''}${job.zOffset.toFixed(3)}`, [
-        ['−0.01', 'SET_GCODE_OFFSET Z_ADJUST=-0.01 MOVE=1'],
-        ['+0.01', 'SET_GCODE_OFFSET Z_ADJUST=0.01 MOVE=1'],
-        ['−0.05', 'SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1'],
-        ['+0.05', 'SET_GCODE_OFFSET Z_ADJUST=0.05 MOVE=1'],
-      ])}
-      <div className="mt-3 text-[12.5px] text-ink-3">Z offset changes apply to this print only.</div>
-    </Dialog>
-  )
-}
-
 // ---- camera ----
 type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number }
 
@@ -328,7 +305,44 @@ function useWebcam(): Webcam | null {
   return cam
 }
 
-function CameraCard({ cam }: { cam: Webcam }) {
+/**
+ * The camera, and while a print runs, the file's current layer from the G-code preview as a second view. Without a
+ * camera, the layer view takes the card on its own.
+ */
+function CameraOrLayers({ cam }: { cam: Webcam | null }) {
+  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
+  const [view, setView] = useState<'camera' | 'layers'>(() => (localStorage.getItem('vo-home-view') === 'layers' ? 'layers' : 'camera'))
+  const pick = (v: 'camera' | 'layers') => {
+    setView(v)
+    try {
+      localStorage.setItem('vo-home-view', v)
+    } catch {}
+  }
+  if (!printing) return cam ? <CameraCard cam={cam} /> : null
+  const shown = cam ? view : 'layers'
+  const toggle = cam && (
+    <div className="absolute top-2.5 right-2.5 z-10">
+      <Segmented
+        label="View"
+        value={shown}
+        onChange={pick}
+        options={[
+          { value: 'camera', label: 'Camera' },
+          { value: 'layers', label: 'Layers' },
+        ]}
+      />
+    </div>
+  )
+  if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} />
+  return (
+    <section className="card grow relative p-2.5!" style={area('cam')}>
+      {toggle}
+      <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
+    </section>
+  )
+}
+
+function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
   const [failed, setFailed] = useState(false)
   const [full, setFull] = useState(false)
   const src = new URL(cam.stream_url, client.httpBase + '/').toString()
@@ -348,13 +362,13 @@ function CameraCard({ cam }: { cam: Webcam }) {
             </span>
           </div>
         )}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
-          <i className="h-1.5 w-1.5 rounded-full bg-[#ff4d4f]" style={{ animation: 'vo-blink 1.4s infinite' }} />
+        <div className="absolute top-2.5 left-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
           {cam.name}
         </div>
         <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={() => setFull((f) => !f)}>
           {full ? 'Close' : 'Full screen'}
         </button>
+        {!full && toggle}
       </div>
     </section>
   )
@@ -372,7 +386,7 @@ function BoxCard() {
   const loaded = box.slots.find((s) => s.index === box.loadedSlot)
   const slot = slotByIndex(box, selected)
   return (
-    <section className="card" style={area('box')}>
+    <section className="card">
       <h3 className="card-title">
         <BoxIcon size={14} />
         <a href={href('box')}>QIDI Box</a>

@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../state/box'
 import { SpoolGlyph } from './Spool'
+import { qidiBoxFlowConnections, qidiBoxFlowPath, type QidiBoxFlowConnection } from '../qidi/qidi-box-flow'
 
 // Geometry, in SVG units; the drawing scales to the card's width.
 const R = 24
@@ -31,10 +32,7 @@ type Props = {
   nozzleTemp: number | null
 }
 
-const curveV = (x1: number, y1: number, x2: number, y2: number) => {
-  const my = (y1 + y2) / 2
-  return `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2}`
-}
+const curveV = (x1: number, y1: number, x2: number, y2: number) => qidiBoxFlowPath([[x1, y1], [x2, y2]], 'v')
 
 export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
   const units = [...Array.from({ length: box.boxCount }, (_, i) => i + 1), 0]
@@ -53,6 +51,16 @@ export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
   const toolheadSlot = box.toolheadSlot != null ? byIndex.get(box.toolheadSlot) : undefined
   const hubSlot = box.hubSlot != null ? byIndex.get(box.hubSlot) : undefined
   const extX = slotPos.get(QIDI_BOX_EXTERNAL_SLOT)!
+
+  // Where each named port sits. The external spool's strand joins the toolhead sensor from above its right edge, clear
+  // of the hub.
+  const port = (name: string, c: QidiBoxFlowConnection): [number, number] => {
+    if (name.startsWith('inlet:')) return [slotPos.get(Number(name.slice(6)))!, INLET_Y + 4]
+    if (name === 'ext') return [extX, INLET_Y + 4]
+    if (name === 'hub') return [cx, hubTop]
+    if (name === 'th' && c.key === 'external') return [cx + NODE_W / 2 - 10, nodeY('th') - NODE_H / 2]
+    return [cx, nodeY(name)]
+  }
 
   const toolsFor = (slot: number) =>
     Object.entries(box.toolMap)
@@ -78,12 +86,12 @@ export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
       <path d={`M${cx} ${hubTop} L${cx} ${nodeY('noz')}`} stroke="var(--line-strong)" strokeWidth={3} fill="none" />
       <path d={curveV(extX, INLET_Y + 4, cx + NODE_W / 2 - 10, nodeY('th') - NODE_H / 2)} stroke="var(--line-strong)" strokeWidth={2} strokeDasharray="2 4" fill="none" />
 
-      {/* live strands */}
-      {hubSlot && <Strand d={`${curveV(slotPos.get(hubSlot.index)!, INLET_Y + 4, cx, hubTop)} L${cx} ${nodeY('hub')}`} color={hubSlot.color} />}
-      {toolheadSlot && toolheadSlot.index !== QIDI_BOX_EXTERNAL_SLOT && <Strand d={`M${cx} ${nodeY('hub')} L${cx} ${nodeY('noz')}`} color={toolheadSlot.color} />}
-      {toolheadSlot && toolheadSlot.index === QIDI_BOX_EXTERNAL_SLOT && (
-        <Strand d={`${curveV(extX, INLET_Y + 4, cx + NODE_W / 2 - 10, nodeY('th') - NODE_H / 2)} L${cx} ${nodeY('th')} L${cx} ${nodeY('noz')}`} color={toolheadSlot.color} />
-      )}
+      {/* live strands: what the hub and toolhead sensors see, as the fork's flow diagram connects them */}
+      {qidiBoxFlowConnections(box.hubSensor === 0 ? box.hubSlot : null, box.toolheadSlot, false)
+        .filter((c) => c.slot != null)
+        .map((c) => (
+          <Strand key={c.key} d={qidiBoxFlowPath(c.via.map((p) => port(p, c)), c.dir)} color={byIndex.get(c.slot!)?.color ?? null} />
+        ))}
 
       {/* units */}
       {(() => {

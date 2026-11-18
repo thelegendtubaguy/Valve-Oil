@@ -1,0 +1,24 @@
+/* The preview's sliders: an amber track up to the thumb, as the app's progress bars. */
+.gp-range { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; margin: 0; cursor: pointer; touch-action: pan-y;
+  --pct: 0%; }
+.gp-range:disabled { opacity: 0.45; cursor: not-allowed; }
+.gp-range::-webkit-slider-runnable-track { height: 6px; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent) var(--pct), var(--inset) var(--pct)); box-shadow: inset 0 0 0 1px var(--line); }
+.gp-range::-moz-range-track { height: 6px; border-radius: 99px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+.gp-range::-moz-range-progress { height: 6px; border-radius: 99px; background: var(--accent); }
+.gp-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; border: 0;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--accent); }
+.gp-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; border: 0; background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--accent); }
+
+/* The view: as tall as the window allows on wide screens, square on phones. */
+.gp-view { position: relative; background: var(--canvas); border-radius: 14px; box-shadow: var(--shadow-card); overflow: hidden;
+  aspect-ratio: 1; max-height: 72vh; width: 100%; }
+@media (min-width: 1024px) {
+  .gp-view { aspect-ratio: auto; max-height: none; height: clamp(420px, calc(100dvh - 150px), 1100px); }
+}
+.gp-tools { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: var(--shadow-card); z-index: 2; }
+.gp-badge { position: absolute; left: 10px; bottom: 10px; z-index: 2; padding: 5px 10px; border-radius: 10px; font-weight: 650; font-size: 12.5px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: var(--shadow-card); }
+.gp-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; z-index: 3; }

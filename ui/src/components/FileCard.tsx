@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock, Layers } from 'lucide-react'
-import { useFileMeta, thumbnailUrl, type HistoryJob } from '../state/files'
+import { Clock, Ellipsis, Layers } from 'lucide-react'
+import { useFileMeta, thumbnailUrl, type FileMeta, type HistoryJob } from '../state/files'
 import { displayName, fmtDuration } from '../lib/format'
 
 /** Last outcome of a file, from print history. */
@@ -12,41 +12,75 @@ export function outcomeLabel(job: HistoryJob | undefined, count: number): { text
   return { text: 'Failed', tone: 'bad' }
 }
 
-/** A file with its thumbnail; metadata loads once the card scrolls into view. */
-export function FileCard({ path, last, count, onOpen }: { path: string; last?: HistoryJob; count: number; onOpen: () => void }) {
+/**
+ * A file with its thumbnail; metadata loads once the card scrolls into view unless the folder listing brought it.
+ * In the file browser it also takes a selection box and a menu.
+ */
+export function FileCard({
+  path,
+  last,
+  count,
+  onOpen,
+  meta: given,
+  selected,
+  onSelect,
+  onMenu,
+}: {
+  path: string
+  last?: HistoryJob
+  count: number
+  onOpen: () => void
+  meta?: FileMeta | null
+  selected?: boolean
+  onSelect?: (on: boolean, shift: boolean) => void
+  onMenu?: (x: number, y: number) => void
+}) {
   const ref = useRef<HTMLButtonElement>(null)
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || given) return
     const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && (setVisible(true), io.disconnect()), { rootMargin: '200px' })
     io.observe(el)
     return () => io.disconnect()
-  }, [])
-  const meta = useFileMeta(visible ? path : null)
+  }, [given])
+  const fetched = useFileMeta(visible && !given ? path : null)
+  const meta = given ?? fetched
   const thumb = thumbnailUrl(path, meta, 150)
   const outcome = outcomeLabel(last, count)
-  const types = [...new Set((meta?.filament_type ?? '').split(';').map((t) => t.trim()).filter(Boolean))]
+  const types = [...new Set((Array.isArray(meta?.filament_type) ? meta.filament_type : String(meta?.filament_type ?? '').split(';')).map((t) => String(t).trim()).filter(Boolean))]
   return (
-    <button ref={ref} onClick={onOpen} className="flex flex-col items-stretch overflow-hidden rounded-xl border-0 bg-surface p-0 text-left text-inherit shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
-      <div className="relative grid aspect-[4/3] place-items-center border-b border-line bg-inset">
-        {thumb ? <img src={thumb} alt="" loading="lazy" className="max-h-[85%] max-w-[85%] object-contain" /> : <Layers size={26} className="text-ink-3" />}
-        <span className={`chip absolute top-2 left-2 ${outcome.tone === 'bad' ? 'text-bad!' : ''}`}>{outcome.text}</span>
-      </div>
-      <div className="grid gap-1.5 px-3 py-2.5">
-        <b className="truncate text-[12.5px]" title={path}>
-          {displayName(path)}
-        </b>
-        <div className="flex flex-wrap gap-1.5">
-          {meta?.estimated_time != null && (
-            <span className="chip">
-              <Clock size={11} /> {fmtDuration(meta.estimated_time)}
-            </span>
-          )}
-          {types.length > 0 && <span className="chip">{types.length > 1 ? `${types[0]} +${types.length - 1}` : types[0]}</span>}
+    <div className={`group relative rounded-xl ${selected ? 'shadow-[0_0_0_2px_var(--accent)]' : ''}`} onContextMenu={onMenu && ((e) => (e.preventDefault(), onMenu(e.clientX, e.clientY)))}>
+      <button ref={ref} onClick={onOpen} className="flex h-full w-full flex-col items-stretch overflow-hidden rounded-xl border-0 bg-surface p-0 text-left text-inherit shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5">
+        <div className="relative grid aspect-[4/3] place-items-center border-b border-line bg-inset">
+          {thumb ? <img src={thumb} alt="" loading="lazy" className="max-h-[85%] max-w-[85%] object-contain" /> : <Layers size={26} className="text-ink-3" />}
+          <span className={`chip absolute ${onSelect ? 'bottom-2 left-2' : 'top-2 left-2'} ${outcome.tone === 'bad' ? 'text-bad!' : ''}`}>{outcome.text}</span>
         </div>
-      </div>
-    </button>
+        <div className="grid gap-1.5 px-3 py-2.5">
+          <b className="truncate text-[12.5px]" title={path}>
+            {displayName(path)}
+          </b>
+          <div className="flex flex-wrap gap-1.5">
+            {meta?.estimated_time != null && (
+              <span className="chip">
+                <Clock size={11} /> {fmtDuration(meta.estimated_time)}
+              </span>
+            )}
+            {types.length > 0 && <span className="chip">{types.length > 1 ? `${types[0]} +${types.length - 1}` : types[0]}</span>}
+          </div>
+        </div>
+      </button>
+      {onSelect && (
+        <label className={`absolute top-1.5 left-1.5 grid h-7 w-7 cursor-pointer place-items-center rounded-lg bg-surface/90 shadow-[0_0_0_1px_var(--line)] ${selected ? '' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100'}`}>
+          <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={!!selected} onChange={(e) => onSelect(e.target.checked, (e.nativeEvent as MouseEvent).shiftKey)} aria-label={`Select ${displayName(path)}`} />
+        </label>
+      )}
+      {onMenu && (
+        <button className="iconbtn absolute top-1.5 right-1.5 h-7 w-7 bg-surface/90 shadow-[0_0_0_1px_var(--line)]" aria-label={`More for ${displayName(path)}`} onClick={(e) => onMenu(e.clientX, e.clientY)}>
+          <Ellipsis size={15} />
+        </button>
+      )}
+    </div>
   )
 }
 

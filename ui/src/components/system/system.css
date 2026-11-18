@@ -1,0 +1,21 @@
+/* System screen extras that the shared component classes don't cover. */
+
+/* Printer screen: the touchscreen image on black, letterboxed in full screen. */
+.vo-screen { position: relative; background: #000; line-height: 0; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.vo-screen--full { display: flex; align-items: center; justify-content: center; border-radius: 0; margin: 0; }
+.vo-screen__canvas { display: block; width: 100%; height: auto; touch-action: auto; cursor: default; }
+.vo-screen--full .vo-screen__canvas { height: 100%; object-fit: contain; }
+.vo-screen__canvas--control { touch-action: none; cursor: pointer; }
+.vo-screen__canvas--dim { opacity: 0.4; }
+.vo-screen__status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; color: #fff; text-align: center; line-height: 1.4; pointer-events: none; font-weight: 600; }
+.vo-screen__notice { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 10px; background: rgb(0 0 0 / 0.6); color: #fff; line-height: 1.4; font-size: 12px; pointer-events: none; }
+
+/* State explorer tree. */
+.vo-tree { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
+.vo-tree button.vo-key { border: 0; background: none; padding: 0 2px; border-radius: 4px; color: var(--ink); font: inherit; text-align: left; }
+.vo-tree button.vo-key:hover { background: var(--hover); }
+.vo-tree .vo-num { color: var(--blue); }
+.vo-tree .vo-str { color: var(--green); }
+.vo-tree .vo-bool { color: var(--accent-ink); }
+.vo-tree .vo-null { color: var(--ink-3); }
+.vo-tree ul { list-style: none; margin: 0; padding-left: 16px; border-left: 1px solid var(--line); }

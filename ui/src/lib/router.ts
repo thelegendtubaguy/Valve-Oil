@@ -1,22 +1,56 @@
 import { useSyncExternalStore } from 'react'
 
-export type Route = 'home' | 'files' | 'box' | 'updates'
-const ROUTES: Route[] = ['home', 'files', 'box', 'updates']
+// Hash routes: #/<route>[/<sub>/<path>...]. Each segment is URI-encoded, so file paths with spaces survive.
+export type Route = 'home' | 'files' | 'box' | 'control' | 'console' | 'tune' | 'history' | 'system' | 'settings' | 'updates'
+const ROUTES: Route[] = ['home', 'files', 'box', 'control', 'console', 'tune', 'history', 'system', 'settings', 'updates']
+
+function segments(): string[] {
+  return location.hash
+    .replace(/^#\/?/, '')
+    .split('/')
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s)
+      } catch {
+        return s
+      }
+    })
+}
 
 function current(): Route {
-  const r = location.hash.replace(/^#\/?/, '').split('/')[0] as Route
+  const r = segments()[0] as Route
   return ROUTES.includes(r) ? r : 'home'
 }
 
-export function useRoute(): Route {
-  return useSyncExternalStore(
-    (fn) => {
-      window.addEventListener('hashchange', fn)
-      return () => window.removeEventListener('hashchange', fn)
-    },
-    current,
-    current,
-  )
+// useSyncExternalStore needs a stable snapshot: the joined hash is compared, and the array is rebuilt only when it
+// changes.
+let lastHash = ''
+let lastSub: string[] = []
+function currentSub(): string[] {
+  if (location.hash !== lastHash) {
+    lastHash = location.hash
+    lastSub = segments().slice(1)
+  }
+  return lastSub
 }
 
-export const href = (r: Route) => `#/${r}`
+function subscribe(fn: () => void) {
+  window.addEventListener('hashchange', fn)
+  return () => window.removeEventListener('hashchange', fn)
+}
+
+export function useRoute(): Route {
+  return useSyncExternalStore(subscribe, current, current)
+}
+
+/** The segments after the route: ['config', 'printer.cfg'] for #/files/config/printer.cfg. */
+export function useSubPath(): string[] {
+  return useSyncExternalStore(subscribe, currentSub, currentSub)
+}
+
+export const href = (r: Route, ...sub: string[]) => `#/${[r, ...sub.filter((s) => s !== '').map(encodeURIComponent)].join('/')}`
+
+export function navigate(r: Route, ...sub: string[]) {
+  location.hash = href(r, ...sub)
+}

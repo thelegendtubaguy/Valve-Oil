@@ -10,7 +10,7 @@
 - [Spoolman](spoolman.md): setting it up, a spool for each Box slot
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).
 - [Add-ons](addons.md): installing OctoEverywhere, Obico, Tailscale, ZeroTier, and other optional programs from Fluidd
-- [Valve Oil UI](valve-oil-ui.md): the early second web interface at `/valve-oil/`, alongside Fluidd, and its Updates screen
+- [Valve Oil UI](valve-oil-ui.md): this project's own web interface at `/valve-oil/`, alongside Fluidd, with everything Fluidd does on these printers and the Updates screen
 - [Tools](tools.md): load-cell check, probe and bed screw helpers, external spool runout sensor, input shaper calibration, bed soak test
 - [Settings and commands](settings.md): everything you can change, in one table
 

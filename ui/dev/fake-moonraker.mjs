@@ -11,7 +11,7 @@
 // two Boxes; switch scenarios at runtime from the console with `VO_SCENARIO NAME=<scenario>`, and Valve Oil's update
 // status (/tltg-status/api) with `VO_UPDATES NAME=<scenario>`.
 import { createServer } from 'node:http'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
@@ -211,6 +211,11 @@ function baseStatus() {
     'gcode_macro TLTG_RESET_TOOL_MAPPINGS': {},
     'gcode_macro _TLTG_INTERNAL': {},
     tltg_printer: { name: 'Max 4' },
+    heaters: {
+      available_heaters: ['heater_bed', 'extruder', 'heater_generic chamber', 'heater_generic heater_box1', 'heater_generic heater_box2'],
+      available_sensors: ['heater_bed', 'extruder', 'heater_generic chamber', 'heater_generic heater_box1', 'heater_generic heater_box2', 'temperature_sensor mcu_temp', 'temperature_sensor chamber_temp'],
+      available_monitors: [],
+    },
   }
   for (let i = 0; i < 16; i++) status[`box_stepper slot${i}`] = { runout_button: i < 8 && BOX_SLOTS[i]?.[0] ? 0 : 1, rfid_state: 0 }
   return status
@@ -256,6 +261,7 @@ function applyScenario(name) {
   if (name !== 'printing') {
     st.tltg_printer_warnings.warnings = [{ id: 'input_shaper_uncalibrated', level: 'warning', title: 'No input shaper calibration is saved.', message: 'Run SHAPER_CALIBRATE with the bed empty, then SAVE_CONFIG.' }]
   }
+  for (const h of statusHooks) h(st, name)
   seedTemps()
   broadcast('notify_klippy_ready', [])
 }
@@ -417,9 +423,64 @@ async function gcode(script) {
     else if (C === 'M107' || C === 'M106') {
       /* accepted */
     } else if (/^T\d+$/.test(C)) throw rpcError(`${C} not run: QIDI's tool change runs only during a print. To load a slot, use Load on the QIDI Box card or LOAD_FILAMENT_CONTROL SLOT=<n>.`)
-    else if (C) pushConsole(`// fake: accepted ${C}`)
+    else if (C && !(await runGcodeHooks(C, p, words, line))) pushConsole(`// fake: accepted ${C}`)
   }
   return 'ok'
+}
+
+// ---------- feature plugins ----------
+// Each dev/fake/*.mjs exports install(fake) and adds its own RPC methods, G-code, HTTP routes, Klipper objects, and
+// config settings through the object below, so a feature's fake lives beside nothing else's.
+const gcodeHooks = []
+const httpRoutes = []
+const statusHooks = []
+const extraCommands = {}
+const extraSettings = {}
+const wsRoutes = new Map()
+async function runGcodeHooks(C, p, words, line) {
+  for (const h of gcodeHooks) if (await h(C, p, words, line)) return true
+  return false
+}
+const fake = {
+  args,
+  /** QIDI's filament list the Box reads; plugins that add filaments add them here. */
+  filaments: FILAMENTS,
+  state,
+  temps,
+  now,
+  set,
+  broadcast,
+  pushConsole,
+  rpcError,
+  get scenario() {
+    return scenario
+  },
+  /** The JSON-RPC handlers, so a plugin can wrap one (for example printer.gcode.script). */
+  get handlers() {
+    return handlers
+  },
+  /**
+   * Wraps one JSON-RPC method so several plugins can add to it: fn(params, ws, next) where next(params, ws) runs
+   * whatever handled it before (or fails with "Method not found").
+   */
+  wrap: (method, fn) => {
+    const prev = handlers[method] ?? (() => Promise.reject(rpcError(`Method not found: ${method}`)))
+    handlers[method] = (params, ws) => fn(params, ws, prev)
+  },
+  /** Adds or replaces JSON-RPC methods: { 'server.history.list': (params, ws) => result }. */
+  handle: (methods) => Object.assign(handlers, methods),
+  /** (COMMAND, PARAMS, {X,Y,Z,E,F words}, rawLine) => true when handled. Runs for commands the core doesn't know. */
+  gcode: (fn) => gcodeHooks.push(fn),
+  /** (req, res, path, url) => true when it answered the request. Runs before the built-in routes. */
+  http: (fn) => httpRoutes.push(fn),
+  /** Serves a websocket at `path`: onConnection(ws, req) for each client. */
+  websocket: (path, onConnection) => wsRoutes.set(path, { server: new WebSocketServer({ noServer: true }), onConnection }),
+  /** (status, scenarioName) => void: adds Klipper objects to the status for every scenario. */
+  status: (fn) => statusHooks.push(fn),
+  /** G-code commands with their help text, for gcode.commands and printer.gcode.help. */
+  commands: (map) => Object.assign(extraCommands, map),
+  /** configfile.settings sections. */
+  settings: (map) => Object.assign(extraSettings, map),
 }
 
 // VO_BOX_RFID_TEST and VO_BOX_RFID_WRITE: each reader's tags, as the spools turn past it. `side` is the slot of the
@@ -514,7 +575,7 @@ function rpcError(message) {
 
 const handlers = {
   'server.connection.identify': () => ({ connection_id: 1 }),
-  'server.info': () => ({ klippy_connected: true, klippy_state: state.klippy, components: ['history', 'webcam', 'file_manager'], moonraker_version: 'fake' }),
+  'server.info': () => ({ klippy_connected: true, klippy_state: state.klippy, components: ['history', 'webcam', 'file_manager', 'announcements', 'job_queue', 'timelapse', 'machine', 'proc_stats', 'database', 'extensions'], registered_directories: ['config', 'logs', 'gcodes', 'timelapse', 'timelapse_frames', 'config_examples', 'docs'], warnings: [], moonraker_version: 'fake' }),
   'printer.info': () => ({ state: state.klippy, state_message: state.klippy === 'ready' ? 'Printer is ready' : 'Klipper is restarting', hostname: 'fake-max4', software_version: 'v0.12-fake' }),
   'printer.objects.list': () => ({ objects: [...Object.keys(state.status), 'gcode', 'configfile'] }),
   'printer.objects.subscribe': (p, ws) => {
@@ -524,7 +585,7 @@ const handlers = {
   'printer.objects.query': (p) => {
     const out = {}
     for (const k of Object.keys(p.objects)) {
-      if (k === 'gcode') out.gcode = { commands: Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'TLTG_CUT_FILAMENT', 'TLTG_BOX_SLOT_JOG', 'TLTG_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'TLTG_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) }
+      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'TLTG_CUT_FILAMENT', 'TLTG_BOX_SLOT_JOG', 'TLTG_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'TLTG_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
       else if (k === 'configfile')
         out.configfile = {
           settings: {
@@ -533,6 +594,7 @@ const handlers = {
             'heater_generic chamber': { min_temp: 0, max_temp: 70 },
             'heater_generic heater_box1': { min_temp: 0, max_temp: 70, target_max_temp: 65 },
             'heater_generic heater_box2': { min_temp: 0, max_temp: 70, target_max_temp: 65 },
+            ...extraSettings,
           },
         }
       else if (state.status[k]) out[k] = state.status[k]
@@ -569,6 +631,7 @@ const handlers = {
   'server.webcams.list': () => ({ webcams: [{ name: 'Chamber', enabled: true, service: 'mjpegstreamer', stream_url: '/webcam/?action=stream', snapshot_url: '/webcam/?action=snapshot', flip_horizontal: false, flip_vertical: false, rotation: 0 }] }),
   'printer.gcode.script': (p) => gcode(p.script),
   'printer.gcode.help': () => ({
+    ...extraCommands,
     G28: 'Home axes', M84: 'Disable motors', SET_HEATER_TEMPERATURE: 'Sets a heater temperature', SAVE_VARIABLE: 'Save arbitrary variables to disk',
     TLTG_BOX_MOTION: 'Show or set QIDI Box load and unload motion', TLTG_CUT_FILAMENT: 'Cut the filament at the toolhead without heating',
     TLTG_BOX_SLOT_JOG: "Move a Box slot's filament", LOAD_FILAMENT_CONTROL: 'Load a Box slot', PRINT_START: 'Start a print', M600: 'Filament change',
@@ -1055,6 +1118,8 @@ const server = createServer(async (req, res) => {
   const path = decodeURIComponent(url.pathname)
   res.setHeader('Access-Control-Allow-Origin', '*')
   try {
+    // Feature plugins answer first, so they can add to or replace any route below.
+    for (const h of httpRoutes) if (await h(req, res, path, url)) return
     if (path === '/' || path === '/valve-oil') return res.writeHead(302, { Location: '/valve-oil/' }).end()
     if (path.startsWith('/valve-oil/')) {
       const rel = normalize(path.slice('/valve-oil/'.length) || 'index.html').replace(/^(\.\.[/\\])+/, '')
@@ -1092,7 +1157,15 @@ const server = createServer(async (req, res) => {
   }
 })
 
-const wss = new WebSocketServer({ server, path: '/websocket' })
+// Moonraker's websocket at /websocket, and any a plugin adds with fake.websocket(path, onConnection).
+const wss = new WebSocketServer({ noServer: true })
+server.on('upgrade', (req, socket, head) => {
+  const path = new URL(req.url, 'http://x').pathname
+  const extra = wsRoutes.get(path)
+  if (extra) return extra.server.handleUpgrade(req, socket, head, (ws) => extra.onConnection(ws, req))
+  if (path !== '/websocket') return socket.destroy()
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+})
 wss.on('connection', (ws) => {
   // Moonraker is down during a simulated firmware update.
   if (outage) return ws.terminate()
@@ -1115,6 +1188,12 @@ wss.on('connection', (ws) => {
     }
   })
 })
+
+const pluginDir = fileURLToPath(new URL('./fake/', import.meta.url))
+for (const f of (await readdir(pluginDir).catch(() => [])).filter((f) => f.endsWith('.mjs')).sort()) {
+  const mod = await import(new URL(`./fake/${f}`, import.meta.url))
+  await mod.install?.(fake)
+}
 
 applyScenario(scenario)
 applyUpdates(args.updates ?? 'none')

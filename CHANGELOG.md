@@ -1,5 +1,23 @@
 # Changelog
 
+## 26.11.18.2
+- Valve Oil UI, at `http://<your printer's ip>/valve-oil/`, now does everything Fluidd does on these printers, so it no longer sends you to Fluidd for the console, configuration files, or bed mesh. New screens:
+  - **Control:** jogging and homing, extruding, Z offset with **Save**, pressure advance, speed and flow, heaters with PID calibration and presets, fans, lights, and output pins, macros with their parameters, and speed limits.
+  - **Console:** command completion, history, and Fluidd's filters, also while Klipper is stopped.
+  - **Tune:** the bed mesh in 3D and as a heat map, with profiles and the probe points that needed a retry; the bed soak test; and calibration: Z tilt, bed screws, endstops, probe accuracy, and input shaper.
+  - **History:** past prints and statistics, Moonraker's job queue, and timelapse.
+  - **System:** the printer's computer and boards, live load charts, services including QIDI's touchscreen app, reboot and shutdown, logs, the touchscreen stream, and diagnostics.
+  - **Settings:** cameras, temperature presets, jog and extrude defaults, file and preview options, and the add-ons.
+- **Files** in Valve Oil UI now has folders, the printer's configuration with an editor and **Save and restart**, moving, renaming, duplicating, and zipping files, the job queue, and a G-code preview that draws each layer and follows the print. Home's print card adds **Tune** for heaters, speed, flow, Z offset, and fans during a print, skipping an object, and a layer view beside the camera.
+- **Box** in Valve Oil UI now shows each slot's spool in its color as on the touchscreen, has **Dry**, and has a **Filaments** tab that edits QIDI's filament list.
+- **Updates** in Valve Oil UI adds the **LAN only mode** switch Fluidd has.
+- With [Spoolman](docs/spoolman.md) set up, Valve Oil UI shows the spool in use and each Box slot's spool on Home and the Box screen, and **Change spool** gives the loaded slot its spool, as Fluidd's Spoolman card does.
+- Valve Oil UI takes on Valve Oil's look, from the USB installer's screens: dark, with amber for what to press and the Montserrat typeface, with the oil can logo and a left rail of screens. The top bar names the printer model and shows the printer's state only when it isn't ready. A light theme is in Settings and the top bar.
+- Valve Oil UI and Fluidd share their settings on the printer, so macro categories, temperature presets, cameras, console history and filters, and file list choices set in one show in the other.
+- Fixed Valve Oil UI letting the nozzle and bed targets go up to 999 °C, the limit QIDI's configuration reports; targets now stop at the same limits as in Fluidd.
+- **Save config** shows in Valve Oil UI's top bar when Klipper has changes waiting for `SAVE_CONFIG`, as in Fluidd, and notifications list Klipper's and Moonraker's warnings and Moonraker's announcements.
+- See [Valve Oil UI](docs/valve-oil-ui.md).
+
 ## 26.11.18.1
 - New: an update window for automatic updates. Choose the hours they start in, such as 02:00 to 05:00, with **Update window** under the **Automatic updates** switch in Fluidd's **Valve Oil** settings or on Valve Oil UI's **Updates** screen, or with `~/valve-oil/auto-update.sh --window 2-5`. Outside the window the hourly check still shows what's waiting, and the printer warning says it will be installed during the window. Hours are whole hours, and a window can run past midnight. Without one, automatic updates start at any hour, as before. **Update now** and `./install.sh` ignore the window. See [Update window](docs/install.md#update-window).
 - The window is read in your timezone, since the printer's clock runs in UTC. Installing this release looks the timezone up once from the printer's internet address, by asking `ipapi.co`, or `worldtimeapi.org` if that doesn't answer. Setting a window from a browser saves the browser's timezone when none is saved, **Use <timezone>** switches to the browser's, and `auto-update.sh --timezone America/Chicago` sets one over SSH.

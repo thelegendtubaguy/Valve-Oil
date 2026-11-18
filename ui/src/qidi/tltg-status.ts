@@ -1,7 +1,6 @@
-// Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/tltg-status.ts on
-// github.com/thelegendtubaguy/fluidd qidi, ported with the section before the fork release that adds it. Keep behavior
-// in step with the fork. Unchanged from the fork; Valve Oil UI passes its Moonraker's origin as apiUrl, and no token,
-// as it has no Moonraker login.
+// Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/tltg-status.ts at
+// github.com/thelegendtubaguy/fluidd qidi@6405679. Unchanged from the fork; keep it in step. Valve Oil UI passes its
+// Moonraker's origin as apiUrl, and no token, as it has no Moonraker login.
 //
 // Client for Valve Oil's status service (tltg-status), which the nginx serving Fluidd on the printer exposes at
 // /tltg-status/api. It reports the installed Valve Oil release, the printer's QIDI firmware, each board's firmware,

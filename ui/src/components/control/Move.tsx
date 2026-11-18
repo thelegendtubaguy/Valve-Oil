@@ -1,0 +1,469 @@
+import { useState, type ReactNode } from 'react'
+import { BoxToolsCard } from '../box/BoxTools'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Gauge, House, Move as MoveIcon, Pipette, Snowflake, Wrench } from 'lucide-react'
+import { Card, Choices, MenuButton, Segmented, Stepper, confirm } from '../ui'
+import { NumberInput, Note, jog as jogAxis, send, usePrinting, useHasCommand } from './common'
+import { extrudeGcode, moveGcode } from './gcode'
+import { registerObjects, usePrinter } from '../../state/printer'
+import { createStore, useStore } from '../../lib/store'
+
+registerObjects((n) => n === 'bed_screws' || n === 'gcode_macro _CLIENT_LINEAR_MOVE')
+
+// Fluidd's defaults (uiSettings.general): 130 mm/s for X and Y, 10 mm/s for Z, and 10 mm at 5 mm/s for the extruder.
+const XY_SPEED = 130
+const Z_SPEED = 10
+const STEPS = [0.1, 1, 10, 25, 50, 100]
+// A long Z jog with the bed under the nozzle is the easiest crash to make, so Z steps stop at 25 mm.
+const Z_STEP_MAX = 25
+
+// Kept for the session, so switching tabs doesn't reset them.
+const prefs = createStore({ step: 10, eLength: 10, eSpeed: 5, gcodeCoords: false })
+const usePrefs = () => useStore(prefs, (s) => s)
+const setPref = (p: Partial<ReturnType<typeof prefs.get>>) => prefs.set((s) => ({ ...s, ...p }))
+
+function useClientMacro() {
+  return usePrinter((s) => (s.objects.includes('gcode_macro _CLIENT_LINEAR_MOVE') ? '_CLIENT_LINEAR_MOVE' : null))
+}
+
+/** The Move tab: the toolhead, the extruder, Z offset, and speed and flow. */
+export function MoveTab() {
+  return (
+    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-3.5">
+        <ToolheadCard />
+      </div>
+      <div className="grid min-w-0 grid-cols-1 gap-3.5">
+        <BoxToolsCard />
+        <ExtruderCard />
+        <ZOffsetCard />
+        <SpeedFlowCard />
+      </div>
+    </div>
+  )
+}
+
+// ---- toolhead: jog, home, position ----
+export function ToolheadCard() {
+  const homed = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
+  const printing = usePrinting()
+  const steppersOn = usePrinter((s) => {
+    const st = s.status.stepper_enable?.steppers as Record<string, boolean> | undefined
+    return st ? Object.values(st).some(Boolean) : true
+  })
+  const clientMacro = useClientMacro()
+  const { step } = usePrefs()
+  const can = (axis: string) => !printing && homed.includes(axis)
+  const jog = (axis: 'X' | 'Y' | 'Z', dir: 1 | -1) => jogAxis(axis, dir * (axis === 'Z' ? Math.min(step, Z_STEP_MAX) : step), axis === 'Z' ? Z_SPEED : XY_SPEED, clientMacro)
+  const missing = 'XYZ'.split('').filter((a) => !homed.includes(a.toLowerCase()))
+  return (
+    <Card
+      title="Toolhead"
+      icon={<MoveIcon size={14} />}
+      aside={<span className={`pill ${missing.length ? 'tone-warn' : 'tone-good'}`}>{missing.length === 3 ? 'Not homed' : missing.length ? `${missing.join('')} not homed` : 'Homed'}</span>}
+    >
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+        <div className="flex gap-3">
+          <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Move X and Y">
+            <span />
+            <Jog label="Y+" disabled={!can('y')} onClick={() => jog('Y', 1)}>
+              <ArrowUp size={18} />
+              <span className="ax">Y+</span>
+            </Jog>
+            <span />
+            <Jog label="X−" disabled={!can('x')} onClick={() => jog('X', -1)}>
+              <ArrowLeft size={18} />
+              <span className="ax">X−</span>
+            </Jog>
+            <Jog label="Home X and Y" home disabled={printing} onClick={() => send('G28 X Y')}>
+              <House size={17} />
+              <span className="ax">XY</span>
+            </Jog>
+            <Jog label="X+" disabled={!can('x')} onClick={() => jog('X', 1)}>
+              <ArrowRight size={18} />
+              <span className="ax">X+</span>
+            </Jog>
+            <span />
+            <Jog label="Y−" disabled={!can('y')} onClick={() => jog('Y', -1)}>
+              <ArrowDown size={18} />
+              <span className="ax">Y−</span>
+            </Jog>
+            <span />
+          </div>
+          <div className="grid grid-rows-3 gap-1.5" role="group" aria-label="Move Z">
+            <Jog label="Z+: the bed moves down" disabled={!can('z')} onClick={() => jog('Z', 1)}>
+              <ArrowUp size={18} />
+              <span className="ax">Z+</span>
+            </Jog>
+            <Jog label="Home Z" home disabled={printing} onClick={() => send('G28 Z')}>
+              <House size={17} />
+              <span className="ax">Z</span>
+            </Jog>
+            <Jog label="Z−: the bed moves up" disabled={!can('z')} onClick={() => jog('Z', -1)}>
+              <ArrowDown size={18} />
+              <span className="ax">Z−</span>
+            </Jog>
+          </div>
+        </div>
+        <div className="grid min-w-[220px] flex-1 content-start gap-3">
+          <div>
+            <div className="section-label mb-1.5">Step (mm)</div>
+            <Choices value={step} options={STEPS.map((v) => ({ value: v, label: `${v}` }))} onChange={(v) => setPref({ step: v })} />
+            <div className="mt-1.5">
+              <Note>Z+ moves the bed down, away from the nozzle, and Z− moves it up. Z moves are at most {Z_STEP_MAX} mm.</Note>
+            </div>
+          </div>
+          <div>
+            <div className="section-label mb-1.5">Home</div>
+            <div className="flex flex-wrap gap-1.5">
+              <button className="btn btn-sm" disabled={printing} onClick={() => send('G28 X')}>
+                X
+              </button>
+              <button className="btn btn-sm" disabled={printing} onClick={() => send('G28 Y')}>
+                Y
+              </button>
+              <button className="btn btn-sm" disabled={printing} onClick={() => send('G28 Z')}>
+                Z
+              </button>
+              <button className="btn btn-sm btn-primary" disabled={printing} onClick={() => send('G28')}>
+                <House size={13} /> All
+              </button>
+              <button className="btn btn-sm" disabled={printing || !steppersOn} onClick={() => send('M84')}>
+                Motors off
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Position />
+      {printing ? <Note>Moving the toolhead is locked while printing. Pause to move it.</Note> : missing.length ? <Note>Home an axis before moving it.</Note> : null}
+    </Card>
+  )
+}
+
+function Jog({ label, disabled, onClick, children, home }: { label: string; disabled?: boolean; onClick: () => void; children: ReactNode; home?: boolean }) {
+  return (
+    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={`btn jog ${home ? 'home' : ''}`}>
+      <span className="grid justify-items-center gap-0.5">{children}</span>
+    </button>
+  )
+}
+
+/** Live, toolhead, and G-code positions, with a move to an entered position. */
+function Position() {
+  const live = usePrinter((s) => (s.status.motion_report?.live_position as number[] | undefined) ?? null)
+  const toolhead = usePrinter((s) => (s.status.toolhead?.position as number[] | undefined) ?? null)
+  const gcodePos = usePrinter((s) => (s.status.gcode_move?.gcode_position as number[] | undefined) ?? null)
+  const absolute = usePrinter((s) => s.status.gcode_move?.absolute_coordinates !== false)
+  const homed = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
+  const printing = usePrinting()
+  const clientMacro = useClientMacro()
+  const { gcodeCoords } = usePrefs()
+  const shown = gcodeCoords ? gcodePos : toolhead
+  const moveTo = (i: number, v: number) => {
+    const axis = (['X', 'Y', 'Z'] as const)[i]
+    send(moveGcode({ [axis]: v }, axis === 'Z' ? Z_SPEED : XY_SPEED, true, clientMacro))
+  }
+  return (
+    <div className="mt-4 grid gap-2 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="section-label mr-auto">Position</span>
+        <Segmented
+          label="Coordinates"
+          value={gcodeCoords ? 'gcode' : 'toolhead'}
+          options={[
+            { value: 'toolhead', label: 'Toolhead' },
+            { value: 'gcode', label: 'G-code' },
+          ]}
+          onChange={(v) => setPref({ gcodeCoords: v === 'gcode' })}
+        />
+        <Segmented
+          label="Positioning"
+          value={absolute ? 'abs' : 'rel'}
+          options={[
+            { value: 'abs', label: 'Absolute', disabled: printing },
+            { value: 'rel', label: 'Relative', disabled: printing },
+          ]}
+          onChange={(v) => send(v === 'abs' ? 'G90' : 'G91')}
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {['X', 'Y', 'Z'].map((a, i) => (
+          <label key={a} className="grid gap-1">
+            <span className="lbl flex justify-between gap-1">
+              <span>{a}</span>
+              <span className="num" title="Live position">
+                {live ? live[i].toFixed(i === 2 ? 3 : 2) : ''}
+              </span>
+            </span>
+            <NumberInput
+              label={`Move ${a} to`}
+              value={shown?.[i] ?? 0}
+              digits={i === 2 ? 3 : 2}
+              disabled={!homed.includes(a.toLowerCase())}
+              readOnly={printing}
+              onCommit={(v) => moveTo(i, v)}
+            />
+          </label>
+        ))}
+      </div>
+      <Note>Enter a position and press Enter to move there. The small numbers are where the toolhead is right now.</Note>
+    </div>
+  )
+}
+
+// ---- calibration tools, manual probe, bed screws ----
+type Tool = { name: string; label?: string; disabled?: boolean } | null
+
+function useTools(): Tool[] {
+  const settings = usePrinter((s) => s.settings)
+  const objects = usePrinter((s) => s.objects)
+  const homed = usePrinter((s) => s.status.toolhead?.homed_axes === 'xyz')
+  const probing = usePrinter((s) => s.status.manual_probe?.is_active === true)
+  const macro = (...names: string[]) => names.map((n) => objects.find((o) => o.toLowerCase() === `gcode_macro ${n.toLowerCase()}`)).find(Boolean)?.slice(12)
+  const description = (name: string) => {
+    const d = settings[`gcode_macro ${name.toLowerCase()}`]?.description
+    return d && d !== 'G-Code macro' ? d : null
+  }
+  const tools: Tool[] = []
+  const park = macro('PARK_TOOLHEAD', 'TOOLHEAD_PARK', 'G27')
+  const clean = macro('CLEAN_NOZZLE', 'NOZZLE_CLEAN', 'WIPE_NOZZLE', 'NOZZLE_WIPE', 'G12')
+  if (clean) tools.push({ name: clean.toUpperCase(), label: clean.toLowerCase() === 'g12' ? `G12 (${description(clean) ?? 'Clean nozzle'})` : undefined })
+  if (park) tools.push({ name: park.toUpperCase(), label: park.toLowerCase() === 'g27' ? `G27 (${description(park) ?? 'Park toolhead'})` : undefined, disabled: !homed })
+  if (tools.length) tools.push(null)
+  const calib = (name: string) => tools.push({ name, disabled: !homed || probing })
+  if (settings.bed_screws) calib('BED_SCREWS_ADJUST')
+  if (settings.bed_tilt) calib('BED_TILT_CALIBRATE')
+  if (settings.delta_calibrate) calib('DELTA_CALIBRATE')
+  calib('MANUAL_PROBE')
+  if (settings.probe || settings.bltouch || settings.smart_effector) {
+    calib('PROBE_ACCURACY')
+    calib('PROBE_CALIBRATE')
+  }
+  if (settings.quad_gantry_level) calib('QUAD_GANTRY_LEVEL')
+  if (settings.screws_tilt_adjust) calib('SCREWS_TILT_CALCULATE')
+  if (settings.stepper_z?.position_endstop != null) calib('Z_ENDSTOP_CALIBRATE')
+  if (settings.z_tilt) calib('Z_TILT_ADJUST')
+  return tools
+}
+
+/** The Tools menu in the page header: the printer's calibration commands, as Fluidd's toolhead card offers them. */
+export function ToolsMenu() {
+  const tools = useTools()
+  const printing = usePrinting()
+  const items = tools.map((t) => (t ? { label: <span className="code">{t.label ?? t.name}</span>, onSelect: () => send(t.name), disabled: t.disabled } : null))
+  return (
+    <MenuButton
+      className="btn btn-sm"
+      label="Tools"
+      button={
+        <>
+          <Wrench size={13} /> Tools <ChevronDown size={13} />
+        </>
+      }
+      items={printing ? items.map((i) => i && { ...i, disabled: true }) : items}
+    />
+  )
+}
+
+// ---- extruder ----
+export function ExtruderCard() {
+  const ext = usePrinter((s) => s.status.extruder ?? {})
+  const cfg = usePrinter((s) => s.settings.extruder ?? {})
+  const factor = usePrinter((s) => (s.status.gcode_move?.extrude_factor as number | undefined) || 1)
+  const direction = usePrinter((s) => Math.sign((s.status.motion_report?.live_extruder_velocity as number | undefined) ?? 0))
+  const printing = usePrinting()
+  const clientMacro = useClientMacro()
+  const { eLength, eSpeed } = usePrefs()
+  const [details, setDetails] = useState(false)
+  const ready = ext.can_extrude ?? (typeof ext.temperature === 'number' && ext.temperature >= (cfg.min_extrude_temp ?? 170))
+  const maxLength = (cfg.max_extrude_only_distance as number | undefined) || 50
+  const maxSpeed = (cfg.max_extrude_only_velocity as number | undefined) || 500
+  const fil = (cfg.filament_diameter as number | undefined) || 1.75
+  const noz = (cfg.nozzle_diameter as number | undefined) || 0.4
+  const layer = 0.2
+  const length = Math.round(eLength * factor * (fil ** 2 / noz ** 2) * 10) / 10
+  const flow = Math.round((Math.PI / 4) * fil ** 2 * eSpeed * 10) / 10
+  const maxPrintSpeed = Math.round((flow / (layer * (noz + layer * (Math.PI / 4 - 1)))) * 10) / 10
+  const valid = eLength > 0 && eLength <= maxLength && eSpeed > 0 && eSpeed <= maxSpeed
+  const hasPa = typeof ext.pressure_advance === 'number'
+  return (
+    <Card
+      title="Extruder"
+      icon={<Pipette size={14} />}
+      aside={
+        !ready ? (
+          <span className="pill tone-info">
+            <Snowflake size={12} /> Cold
+          </span>
+        ) : direction ? (
+          <span className={`pill ${direction < 0 ? 'tone-bad' : 'tone-good'}`}>{direction < 0 ? 'Retracting' : 'Extruding'}</span>
+        ) : undefined
+      }
+    >
+      {!printing && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1">
+              <span className="section-label">Length</span>
+              <Stepper label="Extrude length" value={eLength} onChange={(v) => setPref({ eLength: v })} step={5} min={0.1} max={maxLength} digits={1} unit="mm" />
+            </div>
+            <div className="grid gap-1">
+              <span className="section-label">Speed</span>
+              <Stepper label="Extrude speed" value={eSpeed} onChange={(v) => setPref({ eSpeed: v })} step={1} min={0.1} max={maxSpeed} digits={1} unit="mm/s" />
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button className="btn" disabled={!ready || !valid} onClick={() => send(extrudeGcode(-eLength, eSpeed, clientMacro))}>
+              <ArrowUp size={14} /> Retract
+            </button>
+            <button className="btn btn-primary" disabled={!ready || !valid} onClick={() => send(extrudeGcode(eLength, eSpeed, clientMacro))}>
+              <ArrowDown size={14} /> Extrude
+            </button>
+          </div>
+          {!ready && (
+            <div className="mt-2">
+              <Note tone="info">
+                Extruder disabled, below min_extrude_temp ({cfg.min_extrude_temp ?? '—'} °C). The nozzle is {typeof ext.temperature === 'number' ? Math.round(ext.temperature) : '—'} °C.
+              </Note>
+            </div>
+          )}
+          <button type="button" className="mt-3 flex w-full items-center gap-2 rounded-lg border-0 bg-inset px-3 py-2 text-left text-[12.5px] text-ink-2" onClick={() => setDetails((d) => !d)} aria-expanded={details}>
+            <span className="num min-w-0 flex-1">
+              ~ {length} mm @ {flow} mm³/s, {maxPrintSpeed} mm/s
+            </span>
+            <ChevronDown size={14} className={details ? 'rotate-180' : ''} />
+          </button>
+          {details && (
+            <div className="mt-2 grid gap-1.5 text-[12.5px] text-ink-2">
+              <p className="m-0">
+                The extruder is set for <b className="text-ink">{fil} mm</b> filament and a <b className="text-ink">{noz} mm</b> nozzle.
+              </p>
+              <p className="m-0">
+                Extruding at <b className="text-ink">{eSpeed} mm/s</b>, the extruder should give about <b className="text-ink">{flow} mm³/s</b>.
+              </p>
+              <p className="m-0">
+                Extruding {eLength} mm of filament at {Math.round(factor * 100)}% flow gives about <b className="text-ink">{length} mm</b> of extrusion.
+              </p>
+              <p className="m-0">
+                At a {layer} mm layer height, the fastest it could print is about <b className="text-ink">{maxPrintSpeed} mm/s</b>.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+      {hasPa && (
+        <div className={`grid gap-3 sm:grid-cols-2 ${printing ? '' : 'mt-4 border-t border-line pt-3'}`}>
+          <div className="grid gap-1">
+            <span className="section-label">Pressure advance</span>
+            <Stepper label="Pressure advance" value={ext.pressure_advance as number} step={0.001} min={0} max={2} digits={3} onChange={(v) => send(`SET_PRESSURE_ADVANCE ADVANCE=${v}`)} />
+          </div>
+          <div className="grid gap-1">
+            <span className="section-label">Smooth time</span>
+            <Stepper label="Pressure advance smooth time" value={(ext.smooth_time as number | undefined) ?? 0} step={0.005} min={0} max={0.2} digits={3} unit="s" onChange={(v) => send(`SET_PRESSURE_ADVANCE SMOOTH_TIME=${v}`)} />
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ---- Z offset ----
+const Z_STEPS = [0.005, 0.01, 0.025, 0.05]
+
+export function ZOffsetCard() {
+  const z = usePrinter((s) => (s.status.gcode_move?.homing_origin?.[2] as number | undefined) ?? 0)
+  const zHomed = usePrinter((s) => ((s.status.toolhead?.homed_axes as string | undefined) ?? '').includes('z'))
+  const pending = usePrinter((s) => s.status.configfile?.save_config_pending === true)
+  const printing = usePrinting()
+  const probe = useHasCommand('Z_OFFSET_APPLY_PROBE')
+  const endstop = useHasCommand('Z_OFFSET_APPLY_ENDSTOP')
+  const [step, setStep] = useState(Z_STEPS[1])
+  const adjust = (d: number) => send(`SET_GCODE_OFFSET Z_ADJUST=${d > 0 ? '+' : ''}${d} MOVE=${+zHomed}`)
+  const saveDisabled = printing || z === 0
+  return (
+    <Card title="Z offset" icon={<ArrowDown size={14} />} aside={<span className="num text-[15px] font-bold text-ink">{`${z >= 0 ? '+' : ''}${z.toFixed(3)} mm`}</span>}>
+      <div className="grid gap-3">
+        <div>
+          <div className="section-label mb-1.5">Step</div>
+          <Choices value={step} options={Z_STEPS.map((v) => ({ value: v, label: `${v}` }))} onChange={setStep} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="btn" onClick={() => adjust(-step)} title="SET_GCODE_OFFSET Z_ADJUST">
+            − Closer to the bed
+          </button>
+          <button className="btn" onClick={() => adjust(step)} title="SET_GCODE_OFFSET Z_ADJUST">
+            + Farther from the bed
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button className="btn btn-sm" disabled={z === 0} onClick={() => send(`SET_GCODE_OFFSET Z=0 MOVE=${+zHomed}`)}>
+            Clear
+          </button>
+          {probe && endstop ? (
+            <MenuButton
+              className="btn btn-sm"
+              label="Save Z offset"
+              button={
+                <>
+                  Save <ChevronDown size={13} />
+                </>
+              }
+              items={['Z_OFFSET_APPLY_ENDSTOP', 'Z_OFFSET_APPLY_PROBE'].map((c) => ({ label: <span className="code">{c}</span>, onSelect: () => send(c), disabled: saveDisabled }))}
+            />
+          ) : probe || endstop ? (
+            <button className="btn btn-sm" disabled={saveDisabled} onClick={() => send(probe ? 'Z_OFFSET_APPLY_PROBE' : 'Z_OFFSET_APPLY_ENDSTOP')} title={probe ? 'Z_OFFSET_APPLY_PROBE' : 'Z_OFFSET_APPLY_ENDSTOP'}>
+              Save
+            </button>
+          ) : null}
+          {pending && (
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={printing}
+              onClick={async () => {
+                if (await confirm({ title: 'Save config and restart Klipper?', body: 'SAVE_CONFIG writes the saved changes to printer.cfg and restarts Klipper.', confirm: 'Save and restart' })) send('SAVE_CONFIG')
+              }}
+            >
+              Save config
+            </button>
+          )}
+        </div>
+        <Note>The offset applies until Klipper restarts. Save moves it into the {probe ? 'probe' : 'endstop'} offset, which SAVE_CONFIG then keeps.</Note>
+      </div>
+    </Card>
+  )
+}
+
+// ---- speed and flow ----
+export function SpeedFlowCard() {
+  const speed = usePrinter((s) => Math.round(((s.status.gcode_move?.speed_factor as number | undefined) ?? 1) * 100))
+  const flow = usePrinter((s) => Math.round(((s.status.gcode_move?.extrude_factor as number | undefined) ?? 1) * 100))
+  return (
+    <Card title="Speed and flow" icon={<Gauge size={14} />}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-1">
+          <span className="section-label flex justify-between">
+            Speed
+            {speed !== 100 && (
+              <button type="button" className="border-0 bg-transparent p-0 text-[11px] font-semibold text-accent-ink normal-case" onClick={() => send('M220 S100')}>
+                Reset
+              </button>
+            )}
+          </span>
+          <Stepper label="Speed" value={speed} step={5} min={1} max={500} unit="%" onChange={(v) => send(`M220 S${Math.round(v)}`)} />
+        </div>
+        <div className="grid gap-1">
+          <span className="section-label flex justify-between">
+            Flow
+            {flow !== 100 && (
+              <button type="button" className="border-0 bg-transparent p-0 text-[11px] font-semibold text-accent-ink normal-case" onClick={() => send('M221 S100')}>
+                Reset
+              </button>
+            )}
+          </span>
+          <Stepper label="Flow" value={flow} step={1} min={1} max={200} unit="%" onChange={(v) => send(`M221 S${Math.round(v)}`)} />
+        </div>
+      </div>
+    </Card>
+  )
+}
+

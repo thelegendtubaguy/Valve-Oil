@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/qidi-box.ts at
-// github.com/thelegendtubaguy/fluidd qidi@1ad1676. Keep behavior in step with the fork.
+// github.com/thelegendtubaguy/fluidd qidi@6405679. Keep behavior in step with the fork.
 // QIDI Box slots: Box 1 holds slots 0-3 (1A-1D), Box 2 slots 4-7 (2A-2D), and so on; slot 16 is the external spool.
 
 export const QIDI_BOX_EXTERNAL_SLOT = 16
@@ -302,4 +302,33 @@ export const matchQidiBoxSlots = (tools: QidiBoxTool[], slots: QidiBoxSlot[]): R
   }
 
   return result
+}
+
+export interface QidiBoxToolButton {
+  tool: number;
+  slot: QidiBoxSlot;
+  active: boolean;
+}
+
+// The tools T_MANAGER can load: those mapped to a connected Box slot. It pauses the printer with QDE_004_027 for a
+// tool mapped to the external spool or past the connected Boxes, and an unmapped tool defaults to the external spool.
+// Of the tools mapped to the slot feeding the extruder, extrude_state's (the last tool T_MANAGER selected) is active,
+// or all of them when it names none.
+export const qidiBoxToolButtons = (
+  toolMap: Record<number, number>,
+  slots: QidiBoxSlot[],
+  loadedSlot: number | null,
+  currentTool: number | null
+): QidiBoxToolButton[] => {
+  const buttons = Object.entries(toolMap)
+    .map(([tool, index]) => ({
+      tool: Number(tool),
+      slot: slots.find(slot => slot.index === index && slot.index !== QIDI_BOX_EXTERNAL_SLOT)
+    }))
+    .filter((button): button is { tool: number; slot: QidiBoxSlot } => button.slot != null)
+    .sort((a, b) => a.tool - b.tool)
+  const feeding = buttons.filter(button => button.slot.index === loadedSlot).map(button => button.tool)
+  const active = feeding.includes(currentTool ?? -1) ? [currentTool] : feeding
+
+  return buttons.map(button => ({ ...button, active: active.includes(button.tool) }))
 }

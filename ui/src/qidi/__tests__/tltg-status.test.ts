@@ -1,4 +1,4 @@
-// Ported from the Valve Oil Fluidd fork, src/util/__tests__/tltg-status.spec.ts. Unchanged but for the vitest imports
+// Ported from the Valve Oil Fluidd fork, src/util/__tests__/tltg-status.spec.ts at qidi@6405679. Unchanged but for the vitest imports
 // (the fork's tests use globals).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {

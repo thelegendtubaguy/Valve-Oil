@@ -8,8 +8,7 @@ import { toast } from './toast'
 import { useStore } from '../lib/store'
 import { boxCommands, filamentLists, type BoxState, type QidiBoxSlot } from '../state/box'
 import { runGcode, usePrinter } from '../state/printer'
-
-const PALETTE = ['#FFFFFF', '#000000', '#8A8F98', '#E5484D', '#FF7A1A', '#F5D90A', '#30A46C', '#2F6BFF', '#8E4EC6', '#D6409F', '#A0522D', '#F2EFE8']
+import { ColorSwatches, FilamentPicker } from './box/FilamentPicker'
 
 export type TagJob = {
   run: number
@@ -46,7 +45,6 @@ function refusal(layout: string, reason?: string) {
 export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: QidiBoxSlot; onClose: () => void }) {
   const lists = useStore(filamentLists, (l) => l)
   const database = useMemo(() => lists.database ?? [], [lists.database])
-  const vendors = useMemo(() => [...new Set(database.map((f) => f.vendor))].sort((a, b) => a.localeCompare(b)), [database])
   const variables = usePrinter((s) => s.status.save_variables?.variables ?? {})
   const job = usePrinter((s) => s.status.tltg_box_rfid?.job as TagJob | undefined)
 
@@ -61,8 +59,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const initial = database.find((f) => f.id === savedId)
-  const [vendor, setVendor] = useState(initial?.vendor ?? vendors[0] ?? '')
-  const [id, setId] = useState(initial?.id ?? '')
+  const [id, setId] = useState(initial?.id ?? database[0]?.id ?? '')
   const [colors, setColors] = useState<string[]>(savedColors.length ? savedColors.slice(0, 4) : ['#FFFFFF'])
   const [picked, setPicked] = useState(0)
 
@@ -73,16 +70,10 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
   const closed = useRef(false)
   const mine = job && job.run > startRun.current && job.action === 'write' && !job.test ? job : undefined
 
-  const options = database.filter((f) => f.vendor === vendor)
-  const filament = database.find((f) => f.id === id) ?? options[0]
+  const filament = database.find((f) => f.id === id)
   // The Box turns a spool sitting on an empty slot's rollers; with filament fed, it's turned by hand.
   const turns = !slot.present && Number(variables[`slot${slot.index}`] ?? 0) === 0
 
-  const pickVendor = (v: string) => {
-    setVendor(v)
-    const cur = database.find((f) => f.id === id)
-    setId((database.find((f) => f.vendor === v && f.type === cur?.type) ?? database.find((f) => f.vendor === v))?.id ?? '')
-  }
   const setColor = (c: string) => setColors((cs) => cs.map((x, i) => (i === picked ? c.toUpperCase() : x)))
 
   const write = async () => {
@@ -197,28 +188,9 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
           <Spool slot={preview} size={52} />
           <div className="min-w-0 flex-1 text-ink-2">Put what’s on this spool on its RFID tag. The Box then sets the slot from the tag whenever the spool is loaded, here or in any Box slot.</div>
         </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <label className="grid gap-1">
-            <span className="lbl">Vendor</span>
-            <select className="field" value={vendor} onChange={(e) => pickVendor(e.target.value)}>
-              {vendors.map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1">
-            <span className="lbl">Filament</span>
-            <select className="field" value={filament?.id ?? ''} onChange={(e) => setId(e.target.value)}>
-              {options.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name.startsWith(`${f.vendor} `) ? f.name.slice(f.vendor.length + 1) : f.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <FilamentPicker database={database} value={filament?.id ?? null} onChange={setId} />
         <div className="grid gap-1.5">
-          <span className="lbl">Colors · up to four for a multicolor spool</span>
+          <span className="section-label">Colors · up to four for a multicolor spool</span>
           <div className="flex flex-wrap items-center gap-1.5">
             {colors.map((c, i) => (
               <span key={i} className="relative">
@@ -259,19 +231,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
               </button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={c}
-                onClick={() => setColor(c)}
-                className="h-6 w-6 rounded-md border-0"
-                style={{ background: c, boxShadow: colors[picked]?.toUpperCase() === c ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'inset 0 0 0 1px oklch(0 0 0 / .25)' }}
-              />
-            ))}
-            <input type="color" value={colors[picked] ?? '#FFFFFF'} onChange={(e) => setColor(e.target.value)} className="h-6 w-9 cursor-pointer rounded-md border-0 bg-transparent p-0" aria-label="Custom color" />
-          </div>
+          <ColorSwatches value={colors[picked] ?? null} onChange={setColor} size={26} />
         </div>
         <div className="tone-muted flex items-start gap-2.5 rounded-lg px-3 py-2.5">
           {turns ? <RotateCcw size={16} className="mt-0.5 flex-none" /> : <Hand size={16} className="mt-0.5 flex-none" />}

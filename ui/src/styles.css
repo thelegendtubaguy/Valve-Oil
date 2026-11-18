@@ -1,34 +1,41 @@
 @import "tailwindcss";
+@import "@fontsource-variable/montserrat/wght.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design tokens adapted from Beautiful UI (MIT, Copyright (c) 2026 Shane Levine,
- * https://github.com/slev12397/beautiful-ui). See ui/THIRD_PARTY_NOTICES.md. */
+/* Valve Oil's brand, from the USB installer and touchscreen screens (openspec/changes/add-usb-touchscreen-installer and
+ * add-valve-oil-touchscreen): near-black surfaces, amber for what to press and what's active, crimson and rose for
+ * what stops or fails, and Montserrat. Dark is the brand; light keeps the same amber for people in bright rooms. */
 :root {
-  --page: oklch(0.985 0.001 286.4);
-  --canvas: oklch(0.961 0.002 247.8);
-  --surface: oklch(1 0 0);
-  --inset: oklch(0.979 0.002 247.8);
-  --hover: oklch(0.97 0.002 247.8);
-  --hover-2: oklch(0.933 0.003 247.9);
-  --ink: oklch(0.247 0.006 258.4);
-  --ink-2: oklch(0.506 0.01 264.5);
-  --ink-3: oklch(0.62 0.009 264.5);
-  --line: oklch(0.936 0.003 264.5);
-  --line-strong: oklch(0.89 0.005 258.3);
-  --field: oklch(0.961 0.001 286.4);
-  --accent: oklch(0.626 0.205 254.9);
-  --accent-ink: oklch(0.556 0.187 255.6);
-  --accent-tint: oklch(0.96 0.019 252.9);
-  --green: oklch(0.603 0.155 150.9);
-  --green-tint: oklch(0.958 0.017 159.1);
-  --orange: oklch(0.66 0.179 49.9);
-  --orange-tint: oklch(0.964 0.021 67.6);
-  --red: oklch(0.6 0.192 23);
-  --red-tint: oklch(0.956 0.017 17.5);
-  --shadow-card: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.05), 0 2px 6px oklch(0 0 0 / 0.04);
-  --shadow-btn: 0 0 0 1px var(--line-strong), 0 1px 2px oklch(0 0 0 / 0.06);
-  --shadow-overlay: 0 0 0 1px var(--line), 0 12px 40px oklch(0 0 0 / 0.18);
+  --page: #ffffff;
+  --canvas: #f3f4f6;
+  --surface: #ffffff;
+  --inset: #f1f3f6;
+  --hover: #eceff3;
+  --hover-2: #e3e7ec;
+  --ink: #0d1117;
+  --ink-2: #4b5563;
+  --ink-3: #7b8594;
+  --line: #e3e6eb;
+  --line-strong: #cdd3db;
+  --field: #f6f7f9;
+  --accent: #f2b05a;
+  --accent-2: #e39a3e;
+  --accent-ink: #a8620f;
+  --accent-tint: rgb(242 176 90 / 0.2);
+  --on-accent: #14100a;
+  --green: #1f8a55;
+  --green-tint: rgb(31 138 85 / 0.12);
+  --orange: #b86e12;
+  --orange-tint: rgb(242 176 90 / 0.2);
+  --red: #b23a4b;
+  --red-tint: rgb(200 74 90 / 0.12);
+  --crimson: #c84a5a;
+  --blue: #2a78d6;
+  --rail: #f7f8fa;
+  --shadow-card: 0 0 0 1px var(--line), 0 1px 2px rgb(13 17 23 / 0.04);
+  --shadow-btn: 0 0 0 1px var(--line-strong);
+  --shadow-overlay: 0 0 0 1px var(--line), 0 16px 48px rgb(13 17 23 / 0.18);
   /* Chart series, in fixed order (validated with the dataviz palette checks for both modes). */
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -41,30 +48,35 @@
   color-scheme: light;
 }
 .dark {
-  --page: oklch(0.209 0.004 264.5);
-  --canvas: oklch(0.231 0.004 264.5);
-  --surface: oklch(0.26 0.006 271.2);
-  --inset: oklch(0.243 0.004 264.5);
-  --hover: oklch(0.289 0.006 271.2);
-  --hover-2: oklch(0.318 0.007 274.7);
-  --ink: oklch(0.964 0.002 247.8);
-  --ink-2: oklch(0.731 0.008 260.7);
-  --ink-3: oklch(0.58 0.01 264.5);
-  --line: oklch(0.308 0.006 258.4);
-  --line-strong: oklch(0.356 0.007 264.5);
-  --field: oklch(0.293 0.006 271.2);
-  --accent: oklch(0.68 0.173 253.3);
-  --accent-ink: oklch(0.788 0.113 248.3);
-  --accent-tint: oklch(0.68 0.173 253.3 / 0.16);
-  --green: oklch(0.705 0.154 153.8);
-  --green-tint: oklch(0.705 0.154 153.8 / 0.14);
-  --orange: oklch(0.746 0.156 55.6);
-  --orange-tint: oklch(0.746 0.156 55.6 / 0.14);
-  --red: oklch(0.666 0.18 21.4);
-  --red-tint: oklch(0.666 0.18 21.4 / 0.14);
-  --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.2), 0 2px 6px oklch(0 0 0 / 0.2);
-  --shadow-btn: 0 0 0 1px oklch(1 0 0 / 0.1), 0 1px 2px oklch(0 0 0 / 0.3);
-  --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.15), 0 8px 28px oklch(0 0 0 / 0.4);
+  --page: #0b0f15;
+  --canvas: #0d1117;
+  --surface: #161c25;
+  --inset: #1d2530;
+  --hover: #1d2530;
+  --hover-2: #253040;
+  --ink: #f0f0f0;
+  --ink-2: #a3adba;
+  --ink-3: #6f7a88;
+  --line: #2b3440;
+  --line-strong: #3a4553;
+  --field: #11161e;
+  --accent: #f2b05a;
+  --accent-2: #e39a3e;
+  --accent-ink: #f2b05a;
+  --accent-tint: rgb(242 176 90 / 0.14);
+  --on-accent: #14100a;
+  --green: #62c28e;
+  --green-tint: rgb(98 194 142 / 0.14);
+  --orange: #f2b05a;
+  --orange-tint: rgb(242 176 90 / 0.14);
+  --red: #f08a97;
+  --red-tint: rgb(200 74 90 / 0.18);
+  --crimson: #c84a5a;
+  --blue: #6fb3f2;
+  --rail: #090c11;
+  --shadow-card: 0 0 0 1px var(--line);
+  --shadow-btn: 0 0 0 1px var(--line-strong);
+  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 16px 48px rgb(0 0 0 / 0.5);
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -79,8 +91,8 @@
 @theme {
   /* The three-column Home cockpit needs this much width; narrower screens get two columns. */
   --breakpoint-wide: 100rem;
-  --font-sans: "Inter", -apple-system, "SF Pro Text", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "Montserrat Variable", "Montserrat", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --color-page: var(--page);
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -94,12 +106,15 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-tint: var(--accent-tint);
+  --color-on-accent: var(--on-accent);
   --color-good: var(--green);
   --color-good-tint: var(--green-tint);
   --color-warn: var(--orange);
   --color-warn-tint: var(--orange-tint);
   --color-bad: var(--red);
   --color-bad-tint: var(--red-tint);
+  --color-crimson: var(--crimson);
+  --color-info: var(--blue);
 }
 
 @layer base {
@@ -110,64 +125,104 @@
     color: var(--ink);
     font-family: var(--font-sans);
     font-size: 13.5px;
-    letter-spacing: -0.006em;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
-  button { cursor: pointer; }
+  button { cursor: pointer; font: inherit; }
   button:disabled { cursor: not-allowed; }
+  input, select, textarea { font: inherit; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  ::selection { background: var(--accent-tint); }
 }
 
 @layer components {
   .num { font-variant-numeric: tabular-nums; }
-  .card { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-card); padding: 16px; min-width: 0; }
-  .card-title { margin: 0 0 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
-  .card-title .aside { margin-left: auto; font-weight: 500; color: var(--ink-3); text-align: right; }
-  .lbl { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+  .card { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-card); padding: 16px; min-width: 0; }
+  .card-title { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .card-title > svg { color: var(--accent-ink); }
+  .card-title .aside { margin-left: auto; font-weight: 600; color: var(--ink-3); text-align: right; }
+  /* Small uppercase labels over a group of controls, as in the touchscreen's "BED MESH" and "THIS PRINT". */
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+  .lbl { font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
   .muted { color: var(--ink-3); }
-  .big { font-size: 30px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; }
+  .big { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
 
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 12px; border-radius: 8px; border: 0;
-    background: var(--surface); color: var(--ink); box-shadow: var(--shadow-btn); font-weight: 550; white-space: nowrap; user-select: none; }
-  .btn:hover:not(:disabled) { background: var(--hover); }
+  /* Screen header: the page title the touchscreen puts top left, with tabs or actions after it. */
+  .page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 40px; }
+  .page-head h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 13px; border-radius: 10px; border: 0;
+    background: var(--inset); color: var(--ink); box-shadow: var(--shadow-btn); font-weight: 650; white-space: nowrap; user-select: none; }
+  .btn:hover:not(:disabled) { background: var(--hover-2); }
   .btn:disabled { opacity: 0.45; }
-  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 80%, black), 0 1px 2px oklch(0 0 0 / 0.2); }
+  .btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px var(--accent); }
   .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
   .btn-ghost { box-shadow: none; background: none; color: var(--ink-2); }
-  .btn-danger { color: var(--red); }
-  .btn-sm { padding: 4px 9px; font-size: 12.5px; }
-  .btn-lg { padding: 11px 14px; }
+  .btn-ghost:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+  .btn-danger { background: transparent; color: var(--red); box-shadow: 0 0 0 1px var(--crimson); }
+  .btn-danger:hover:not(:disabled) { background: var(--red-tint); }
+  .btn-sm { padding: 4px 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn-lg { padding: 12px 16px; font-size: 15px; border-radius: 12px; }
 
+  /* A small tag: a material, a tool, a state. */
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 6px; background: var(--inset);
-    box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
-  .swatch { width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.25); flex: none; }
+    box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+  /* A choice among several, as the touchscreen's material and step pills: amber when picked. */
+  .choice { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 32px; padding: 0 14px; border-radius: 99px; border: 0;
+    background: var(--inset); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); font-weight: 650; font-size: 13px; white-space: nowrap; user-select: none; }
+  .choice:hover:not(:disabled) { background: var(--hover-2); }
+  .choice.on { background: var(--accent-tint); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent); }
+  .choice:disabled { opacity: 0.45; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25); flex: none; }
 
-  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 99px; font-weight: 600; font-size: 12.5px; white-space: nowrap; }
-  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
+  /* Segmented control: tabs inside a screen, and short exclusive choices. */
+  .seg { display: inline-flex; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); border-radius: 12px; padding: 3px; gap: 3px; max-width: 100%; overflow-x: auto; }
+  .seg > button, .seg > a { border: 0; background: none; height: 30px; padding: 0 13px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 650; color: var(--ink-2); white-space: nowrap; }
+  .seg > button:hover, .seg > a:hover { color: var(--ink); }
+  .seg > .on { background: var(--inset); color: var(--ink); box-shadow: 0 0 0 1px var(--line-strong); }
+
+  /* − value + steppers, the touchscreen's thumb-sized pairs. */
+  .pm { width: 34px; height: 34px; border-radius: 10px; border: 0; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--ink);
+    display: grid; place-items: center; flex: none; }
+  .pm:hover:not(:disabled) { background: var(--hover-2); }
+  .pm:disabled { opacity: 0.45; }
+
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 9px; border-radius: 99px; font-weight: 650; font-size: 12.5px; white-space: nowrap; }
   .tone-accent { background: var(--accent-tint); color: var(--accent-ink); }
   .tone-good { background: var(--green-tint); color: var(--green); }
   .tone-warn { background: var(--orange-tint); color: var(--orange); }
   .tone-bad { background: var(--red-tint); color: var(--red); }
   .tone-muted { background: var(--inset); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .tone-info { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue); }
 
-  .field { width: 100%; padding: 7px 10px; border-radius: 8px; border: 0; background: var(--field); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: inherit; }
+  .field { width: 100%; padding: 7px 10px; border-radius: 9px; border: 0; background: var(--field); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); font: inherit; }
   .field:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .field:disabled { opacity: 0.55; }
+  select.field { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
 
-  .bar { height: 8px; border-radius: 99px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-  .bar > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), oklch(0.7 0.16 230)); position: relative; overflow: hidden; transition: width 0.6s ease; }
-  .bar.live > i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.35), transparent); animation: vo-shim 2.2s infinite; transform: translateX(-100%); }
+  .bar { height: 8px; border-radius: 99px; background: var(--inset); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); position: relative; overflow: hidden; transition: width 0.6s ease; }
+  .bar.live > i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent); animation: vo-shim 2.2s infinite; transform: translateX(-100%); }
 
-  .tile { padding: 12px 14px; border-radius: 10px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 4px; position: relative; min-width: 0; text-align: left; border: 0; color: inherit; font: inherit; }
+  .tile { padding: 12px 14px; border-radius: 12px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 4px; position: relative; min-width: 0; text-align: left; border: 0; color: inherit; font: inherit; }
   button.tile:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
-  .tile .v { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
-  .tile .v small { font-size: 13px; color: var(--ink-3); font-weight: 500; }
+  .tile.hot { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+  .tile .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .tile .v small { font-size: 13px; color: var(--ink-3); font-weight: 600; }
 
-  .task { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; }
+  /* A row that opens something: the touchscreen's Settings tiles. */
+  .link-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-card); color: inherit; min-width: 0; text-align: left; border: 0; width: 100%; }
+  .link-row:hover { box-shadow: 0 0 0 1px var(--line-strong); }
+  .link-row .ic { width: 38px; height: 38px; border-radius: 11px; background: var(--inset); display: grid; place-items: center; color: var(--accent-ink); flex: none; }
+
+  .task { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; }
   .task .t { color: var(--ink-3); font-size: 12px; }
   .task.done .ic { color: var(--green); }
   .task.run { background: var(--accent-tint); }
-  .task.run .ic { color: var(--accent); }
+  .task.run .ic { color: var(--accent-ink); }
   .task.wait { color: var(--ink-3); }
   .task.fail { background: var(--red-tint); }
   .task.fail .ic { color: var(--red); }
@@ -176,24 +231,51 @@
     -webkit-background-clip: text; background-clip: text; color: transparent; animation: vo-tshim 1.8s linear infinite; }
   .spin { animation: vo-spin 1s linear infinite; }
 
-  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 8px; color: var(--ink-2); font-weight: 500; }
+  /* Left rail, as on the touchscreen: an icon over its name, amber when it's the screen you're on. */
+  .rail { width: 84px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 0 10px; overflow-y: auto; }
+  .rail-item { position: relative; width: 68px; min-height: 58px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--ink-3); font-size: 11px; font-weight: 650; text-align: center; line-height: 1.1; padding: 6px 2px; }
+  .rail-item:hover { color: var(--ink); background: var(--hover); }
+  .rail-item.on { color: var(--accent-ink); background: var(--accent-tint); }
+  .rail-item .badge { position: absolute; top: 6px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--rail); }
+  /* Kept for screens that still link with it. */
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 9px; color: var(--ink-2); font-weight: 600; }
   .nav-item:hover { background: var(--hover); }
-  .nav-item.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-btn); }
+  .nav-item.active { background: var(--accent-tint); color: var(--accent-ink); }
 
-  .estop { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--red) 50%, transparent);
-    color: var(--red); background: var(--red-tint); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
-  .estop:hover { background: color-mix(in srgb, var(--red) 22%, transparent); }
+  .wordmark { font-weight: 800; letter-spacing: 0.16em; font-size: 13px; }
 
-  .iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; border: 0; background: none; color: var(--ink-2); position: relative; }
-  .iconbtn:hover { background: var(--hover); }
+  .estop { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--crimson);
+    color: var(--red); background: var(--red-tint); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  .estop:hover { background: color-mix(in srgb, var(--crimson) 30%, transparent); }
+
+  .iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; border: 0; background: none; color: var(--ink-2); position: relative; flex: none; }
+  .iconbtn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+  .iconbtn:disabled { opacity: 0.45; }
 
   .hold { position: relative; overflow: hidden; }
   .hold .hold-fill { position: absolute; inset: 0; background: var(--red-tint); transform: scaleX(0); transform-origin: left; transition: transform 0.15s; }
   .hold.holding .hold-fill { transform: scaleX(1); transition: transform var(--hold-ms, 1200ms) linear; }
   .hold > span:not(.hold-fill) { position: relative; display: inline-flex; align-items: center; gap: 7px; }
 
-  .dialog-backdrop { position: fixed; inset: 0; background: oklch(0 0 0 / 0.4); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 60; padding: 16px; }
-  .dialog { width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-overlay); }
+  .dialog-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.55); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 60; padding: 16px; }
+  .dialog { width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-overlay); }
+  .dialog.wide { width: min(880px, 100%); }
+  .dialog.full { width: min(1280px, 100%); height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+
+  .menu { position: absolute; z-index: 50; min-width: 180px; padding: 5px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-overlay); display: grid; gap: 1px; }
+  .menu > button, .menu > a { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px; border: 0; background: none; color: var(--ink); text-align: left; font-weight: 550; white-space: nowrap; }
+  .menu > button:hover:not(:disabled), .menu > a:hover { background: var(--hover); }
+  .menu > button:disabled { opacity: 0.45; }
+  .menu > .danger { color: var(--red); }
+
+  .table { width: 100%; border-collapse: collapse; }
+  .table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .table tr:last-child td { border-bottom: 0; }
+  .table tbody tr:hover td { background: var(--hover); }
+
+  .code { font-family: var(--font-mono); font-size: 12.5px; }
 
   .sep { height: 1px; background: var(--line); }
 
@@ -216,19 +298,18 @@
     .cockpit .grow { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
     .cockpit .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; }
   }
-  .row-k { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 4px 0; }
+  .row-k { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 5px 0; }
   .row-k + .row-k { border-top: 1px solid var(--line); }
   .rows-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; }
   .rows-2 > .row-k { border-top: 0; border-bottom: 1px solid var(--line); }
   .row-k .k { color: var(--ink-2); }
-  .row-k .v { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+  .row-k .v { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
 }
 
 @keyframes vo-shim { to { transform: translateX(100%); } }
 @keyframes vo-tshim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @keyframes vo-spin { to { transform: rotate(360deg); } }
 @keyframes vo-dash { to { stroke-dashoffset: -12; } }
-@keyframes vo-blink { 50% { opacity: 0.3; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
