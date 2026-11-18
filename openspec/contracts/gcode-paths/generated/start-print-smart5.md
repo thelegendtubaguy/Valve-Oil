@@ -504,7 +504,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool start pre-scrape wipe with the nozzle already in the chute`
 
-Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:93-110`
+Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:97-114`
 
 Direct visible macro calls in branch slice:
 
@@ -542,7 +542,7 @@ Forbidden patterns:
 
 Condition: `optimized cleanup with the nozzle already in the chute`
 
-Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:115-126`
+Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:119-130`
 
 Direct visible macro calls in branch slice:
 
@@ -608,7 +608,7 @@ Forbidden patterns:
 
 Condition: `optimized cleanup sweeping across the chute so wiped waste drops`
 
-Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:131-146`
+Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:135-150`
 
 Direct visible macro calls in branch slice:
 
@@ -645,7 +645,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool scrape on the strip behind the bed, just above where the probe touches it`
 
-Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:52-88`
+Source: `installer/klipper/printers/smart5/nozzle_motion.cfg:56-92`
 
 Direct visible macro calls in branch slice:
 

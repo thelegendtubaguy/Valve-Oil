@@ -102,6 +102,10 @@ cd ~/valve-oil && ./install.sh
 
 Then press **Restart Firmware** on the touchscreen, or run `FIRMWARE_RESTART` from Fluidd's console. Calibration saved since that install or update, such as the input shaper result `SAVE_CONFIG` was saving, isn't in the backup, so run it again.
 
+## The toolhead is stuck in the filament cutter
+
+Before 26.11.18.1, a cut with the nozzle below 135 °C, such as `OPTIMIZED_CUT_FILAMENT` run from Fluidd's macros or a cut while a print was paused, stopped with `Extrude below minimum temp` while the toolhead was pressed against the cutter. Homing doesn't move the toolhead off the cutter first, so after a restart homing Y can catch on it. Turn the motors off with `M84`, or turn the printer off, slide the toolhead away from the cutter by hand, then home. On the Max 4 and Plus 5 the cutter is at the front left, so slide the toolhead right; on the Smart 5 it's at the front right, so slide it left.
+
 ## The camera doesn't show in Fluidd
 
 At boot, QIDI's `makerbase-webcam.service` writes the camera into `~/printer_data/config/crowsnest.conf`. It could run before the camera's device link existed and write an empty `device:` line instead, and then crowsnest, which streams the camera, doesn't start and Fluidd shows no camera. The package makes it wait for the camera, so the next reboot fills the line in again.

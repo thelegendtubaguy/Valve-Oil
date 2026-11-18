@@ -606,6 +606,17 @@ Optimized configuration SHALL provide a console command that cuts the filament a
 - **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
 - **THEN** the command refuses without moving, and the console says why
 
+### Requirement: Cuts never stop at the cutter
+The optimized cut and the stock-named cutter macro SHALL let their post-cut retract through the cold-extrusion check as the cold-cut command does, wherever they run, and SHALL move the toolhead off the cutter when a cut ends with an error.
+
+#### Scenario: Any cut with the nozzle cold
+- **WHEN** the optimized cut or the stock-named cutter macro runs, by hand, while a print is paused, in a filament change, or in a vendor Box flow, with the nozzle below `min_extrude_temp`
+- **THEN** its post-cut retract passes the cold-extrusion check as during the cold-cut command, and extrusion below `min_extrude_temp` is still refused
+
+#### Scenario: A cut that ends with an error
+- **WHEN** a cut ends with an error after the toolhead reached the cutter, and Klipper is not shut down
+- **THEN** the toolhead still moves off the cutter to the cut's normal exit position before the error is reported
+
 ### Requirement: QIDI Box unload and eject with the nozzle cold
 Optimized configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
 

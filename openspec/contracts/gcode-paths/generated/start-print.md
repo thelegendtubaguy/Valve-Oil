@@ -497,7 +497,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool start pre-scrape wipe with the nozzle already at the rear wiper`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:89-104`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:93-108`
 
 Direct visible macro calls in branch slice:
 
@@ -538,7 +538,7 @@ Forbidden patterns:
 
 Condition: `optimized cleanup with the nozzle already at the rear wiper`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:108-120`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:112-124`
 
 Direct visible macro calls in branch slice:
 
@@ -605,7 +605,7 @@ Forbidden patterns:
 
 Condition: `nozzle at the rear wiper after an optimized wipe`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:124-133`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:128-137`
 
 Direct visible macro calls in branch slice:
 
@@ -638,7 +638,7 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool rear-bed scrape`
 
-Source: `installer/klipper/printers/max4/nozzle_motion.cfg:58-85`
+Source: `installer/klipper/printers/max4/nozzle_motion.cfg:62-89`
 
 Direct visible macro calls in branch slice:
 

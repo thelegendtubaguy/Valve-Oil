@@ -249,9 +249,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
         stock_root = NEWEST_STOCK["max4"] / "config/klipper-macros-qd"
         stock_cut = commands(self._section_gcode(stock_root / "filament.cfg", "gcode_macro CUT_FILAMENT_1"))
         self.assertEqual(stock_cut[-1], "G4 P2000")
-        self.assertEqual(
-            commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro CUT_FILAMENT_1")), stock_cut[:-1]
-        )
+        motion = MAX4_MACRO_ROOT / "nozzle_motion.cfg"
+        cut = self._expand_cutter_strike(motion, self._section_gcode(motion, "gcode_macro CUT_FILAMENT_1"))
+        self.assertEqual(commands(cut), stock_cut[:-1])
 
         stock_chute = commands(self._section_gcode(stock_root / "qd_macro.cfg", "gcode_macro MOVE_TO_TRASH"))
         chute = commands(self._section_gcode(MAX4_MACRO_ROOT / "nozzle_motion.cfg", "gcode_macro MOVE_TO_TRASH"))
@@ -266,11 +266,22 @@ class OptimizedMacroContractTests(unittest.TestCase):
     def test_plus5_cut_presses_the_cutter_once(self):
         for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
             with self.subTest(section=section):
-                gcode = self._section_gcode(PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg", section)
+                motion = PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg"
+                gcode = self._expand_cutter_strike(motion, self._section_gcode(motion, section))
                 xs = [float(x) for x in re.findall(r"^\s*G1 X(-?[\d.]+)", gcode, re.M)]
                 strikes = sum(1 for before, after in zip([15.0] + xs, xs) if after <= 0 < before)
                 self.assertEqual(strikes, 1, gcode)
                 self.assertNotIn("G4 P1000", gcode)
+
+    def test_cuts_press_the_cutter_only_through_the_strike(self):
+        # _VO_CUTTER_STRIKE lets the pull-back through with the nozzle cold and leaves the cutter after an error,
+        # so neither can leave the toolhead pressed against the cutter.
+        for printer in NEWEST_STOCK:
+            for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
+                with self.subTest(printer=printer, section=section):
+                    gcode = self._section_gcode(PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg", section)
+                    self.assertEqual(len(re.findall(r"^\s*_VO_CUTTER_STRIKE EXIT_X=\S+ EXIT_F=\S+\s*$", gcode, re.M)), 1)
+                    self.assertNotRegex(gcode, r"(?m)^\s*G1\b.*\sE-?[\d.]")
 
     def test_printer_folders_define_the_same_sections(self):
         # Driver sections only add options to the printer's own stock driver sections, which differ by printer.
@@ -339,7 +350,8 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 self._assert_nozzle_moves_inside(printer, limits)
 
     def _assert_nozzle_moves_inside(self, printer, limits):
-        text = (PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg").read_text(encoding="utf-8")
+        motion = PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg"
+        text = self._expand_cutter_strike(motion, motion.read_text(encoding="utf-8"))
         profile = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
         relative = False
         for line in text.splitlines():
@@ -367,14 +379,17 @@ class OptimizedMacroContractTests(unittest.TestCase):
             for name in ("park_x", "park_y")
         })
         km.print_max = tuple(map(float, re.search(r"^variable_print_max: *\((\d+), *(\d+)\)", globals_cfg, re.M | re.I).groups()))
+        motion = PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg"
         bodies = {
             match.group(1): match.group(2)
             for match in re.finditer(
                 r"^\[gcode_macro (\S+)\]\n(.*?)(?=^\[|\Z)",
-                (PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg").read_text(encoding="utf-8"),
+                self._expand_cutter_strike(motion, motion.read_text(encoding="utf-8")),
                 re.M | re.S,
             )
         }
+        # The strike runs only inside the cuts, where it is inlined above.
+        del bodies["_VO_CUTTER_STRIKE_MOTION"]
         # Pure-motion entry points the common macros and slicer packs call.
         calls = {
             "OPTIMIZED_WIPE_NOZZLE_DROP": ["_OPTIMIZED_WIPE_NOZZLE", "_OPTIMIZED_CHUTE_DROP"],
@@ -709,7 +724,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "_OPTIMIZED_MOVE_TO_TRASH_MOTION",
             "{% endif %}",
         )
-        cut_motion = self._macro_gcode("_OPTIMIZED_CUT_FILAMENT_MOTION")
+        cut_motion = self._expand_cutter_strike(
+            MAX4_MACRO_ROOT / "nozzle_motion.cfg", self._macro_gcode("_OPTIMIZED_CUT_FILAMENT_MOTION")
+        )
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_motion)
         self.assertNotIn("G4 P2000", cut_motion)
         self.assert_ordered(
@@ -1133,6 +1150,16 @@ class OptimizedMacroContractTests(unittest.TestCase):
     def _macro_gcode(self, name: str) -> str:
         macro = self.macros[name]
         return "\n".join(line for _, line in macro.gcode_lines)
+
+    def _expand_cutter_strike(self, path, text: str) -> str:
+        """Inlines _VO_CUTTER_STRIKE as what it runs: the printer's strike macro, then the move off the cutter."""
+        strike = [line.strip() for line in self._section_gcode(path, "gcode_macro _VO_CUTTER_STRIKE_MOTION").splitlines()]
+
+        def inline(match):
+            lines = [line for line in strike if line] + [f"G1 X{match.group(2)} F{match.group(3)}"]
+            return "\n".join(match.group(1) + line for line in lines)
+
+        return re.sub(r"^([ \t]*)_VO_CUTTER_STRIKE EXIT_X=(\S+) EXIT_F=(\S+)[ \t]*$", inline, text, flags=re.M)
 
     def _section_gcode(self, path, name: str) -> str:
         lines = path.read_text(encoding="utf-8").splitlines()

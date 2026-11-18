@@ -31,6 +31,30 @@ class CommandError(Exception):
     pass
 
 
+class Params:
+    """Klipper's GCodeCommand for a command line."""
+
+    def __init__(self, line):
+        self.line = line
+        self.params = dict(arg.split("=", 1) for arg in line.split()[1:] if "=" in arg)
+
+    def get_commandline(self):
+        return self.line
+
+    def get(self, name, default=None):
+        return self.params.get(name, default)
+
+    def get_float(self, name, default=None, above=None):
+        if name not in self.params:
+            if default is None:
+                raise CommandError("Error on '%s': missing %s" % (self.line, name))
+            return default
+        value = float(self.params[name])
+        if above is not None and value <= above:
+            raise CommandError("Error on '%s': %s must be above %s" % (self.line, name, above))
+        return value
+
+
 class Heater:
     """QIDI's heater: can_extrude follows every temperature reading."""
 
@@ -66,7 +90,9 @@ class Printer:
         self.command_error = CommandError
         self.scripts = []
         self.moves = []
+        self.handlers = {}
         self.cut_error = cut_error
+        self.shutdown = False
         printer = self
         toolhead = types.SimpleNamespace(
             get_extruder=lambda: self.extruder,
@@ -82,11 +108,16 @@ class Printer:
 
         class GCode:
             def register_command(self, name, handler, desc=None):
-                printer.handler = handler
+                printer.handlers[name] = handler
 
             def run_script_from_command(self, script):
                 printer.scripts.append(script)
-                if script == cold_cut.CUT_MACRO:
+                command = script.split()[0]
+                if command in printer.handlers:
+                    printer.handlers[command](Params(script))
+                elif script == cold_cut.CUT_MACRO:
+                    self.run_script_from_command("_VO_CUTTER_STRIKE EXIT_X=15 EXIT_F=8000")
+                elif script == cold_cut.STRIKE_MACRO:
                     printer.heater.temperature_callback()
                     printer.move(-4.)
                     if printer.cut_error:
@@ -105,7 +136,7 @@ class Printer:
         return types.SimpleNamespace(monotonic=lambda: 0.)
 
     def is_shutdown(self):
-        return False
+        return self.shutdown
 
 
 class GCmd:
@@ -163,20 +194,59 @@ class ColdRetractsTest(unittest.TestCase):
             printer.move(-4.)
 
 
+class CutterStrikeTest(unittest.TestCase):
+    """Every cut presses the cutter through _VO_CUTTER_STRIKE, which pulls
+    back at any nozzle temperature and always leaves the cutter."""
+
+    LEAVE = "G1 X15.000 F8000.000"
+
+    def strike(self, printer):
+        make(printer)
+        printer.handlers["_VO_CUTTER_STRIKE"](Params("_VO_CUTTER_STRIKE EXIT_X=15 EXIT_F=8000"))
+
+    def test_cold_cut_by_hand_or_while_paused_pulls_back_and_leaves(self) -> None:
+        for state in ("standby", "paused", "printing"):
+            with self.subTest(state=state):
+                printer = Printer(25., print_state=state)
+                self.strike(printer)
+                self.assertEqual(printer.moves, [-4.])
+                self.assertEqual(printer.scripts[-1], self.LEAVE)
+                with self.assertRaises(CommandError):
+                    printer.move(-4.)
+
+    def test_failed_strike_still_leaves_the_cutter(self) -> None:
+        printer = Printer(25., cut_error="Move out of range")
+        with self.assertRaisesRegex(CommandError, "Move out of range"):
+            self.strike(printer)
+        self.assertEqual(printer.scripts[-1], self.LEAVE)
+        with self.assertRaises(CommandError):
+            printer.move(-4.)
+
+    def test_no_move_after_a_shutdown(self) -> None:
+        printer = Printer(25., cut_error="MCU shutdown")
+        printer.shutdown = True
+        with self.assertRaises(CommandError):
+            self.strike(printer)
+        self.assertNotIn(self.LEAVE, printer.scripts)
+
+
 class ColdCutCommandTest(unittest.TestCase):
     def run_cut(self, printer):
         make(printer)
         gcmd = GCmd()
-        printer.handler(gcmd)
+        printer.handlers["TLTG_CUT_FILAMENT"](gcmd)
         return gcmd
 
     def test_cuts_cold_after_homing_and_restores_state(self) -> None:
         printer = Printer(25.)
         gcmd = self.run_cut(printer)
-        self.assertEqual(printer.scripts, [
+        self.assertEqual(printer.scripts[:3], [
             "SAVE_GCODE_STATE NAME=tltg_cut_filament",
             "G28 O X Y",
             "_OPTIMIZED_CUT_FILAMENT_MOTION",
+        ])
+        self.assertEqual(printer.scripts[-2:], [
+            "G1 X15.000 F8000.000",
             "SET_VELOCITY_LIMIT ACCEL=20000.000\nRESTORE_GCODE_STATE NAME=tltg_cut_filament",
         ])
         self.assertEqual(printer.moves, [-4.])
@@ -238,9 +308,11 @@ class Dispatcher:
             if command == "G1" and " E" in line:
                 self.printer.move(float(line.split(" E")[1].split()[0]))
             elif command == "CUT_FILAMENT_1":
+                self.run_script_from_command("_VO_CUTTER_STRIKE EXIT_X=15 EXIT_F=3000")
+            elif command == cold_cut.STRIKE_MACRO:
                 self.printer.move(-4.)
             elif command in self.handlers:
-                self.handlers[command](types.SimpleNamespace(line=line, get_commandline=lambda: line))
+                self.handlers[command](Params(line))
 
     def respond_info(self, message):
         self.messages.append(message)

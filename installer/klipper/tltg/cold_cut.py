@@ -14,17 +14,26 @@
 # and runs one command at a time, so holding it around one command's moves
 # lets nothing else retract cold.
 #
+# Every cut, by hand, in a filament change, or in QIDI's Box flows, presses
+# the cutter through _VO_CUTTER_STRIKE: it runs the printer's
+# _VO_CUTTER_STRIKE_MOTION (the strike and the 4 mm pull-back) inside
+# cold_retracts(), then moves the toolhead off the cutter to EXIT_X, also when
+# the strike ends with an error. Otherwise an error there, such as the
+# pull-back refused below min_extrude_temp, ended the macro with the toolhead
+# held against the cutter, where homing Y after a restart could catch on it.
+#
 # TLTG_CUT_FILAMENT cuts while no print is running or paused and no QIDI Box
 # flow is running or paused, at any nozzle temperature and without changing
-# the heater: it homes X and Y if either isn't homed, runs the optimized cut
-# inside cold_retracts(), and restores the acceleration and G-code state
-# whether or not the cut finishes.
+# the heater: it homes X and Y if either isn't homed, runs the optimized cut,
+# and restores the acceleration and G-code state whether or not the cut
+# finishes.
 
 import contextlib
 import logging
 
 CUT_STATE = "tltg_cut_filament"
 CUT_MACRO = "_OPTIMIZED_CUT_FILAMENT_MOTION"
+STRIKE_MACRO = "_VO_CUTTER_STRIKE_MOTION"
 
 
 class ColdCut:
@@ -37,6 +46,10 @@ class ColdCut:
             "TLTG_CUT_FILAMENT", self.cmd_TLTG_CUT_FILAMENT,
             desc="Cut the filament at the toolhead outside a print, at any "
                  "nozzle temperature")
+        self.gcode.register_command(
+            "_VO_CUTTER_STRIKE", self.cmd_VO_CUTTER_STRIKE,
+            desc="Press the cutter and pull the filament back at any nozzle "
+                 "temperature, then leave the cutter, also after an error")
 
     def _status(self, name):
         obj = self.printer.lookup_object(name, None)
@@ -108,6 +121,22 @@ class ColdCut:
             return "a QIDI Box task is running"
         return None
 
+    def cmd_VO_CUTTER_STRIKE(self, gcmd):
+        leave = "G1 X%.3f F%.3f" % (gcmd.get_float("EXIT_X"),
+                                    gcmd.get_float("EXIT_F", above=0.))
+        try:
+            with self.cold_retracts():
+                self.gcode.run_script_from_command(STRIKE_MACRO)
+        except Exception:
+            if not self.printer.is_shutdown():
+                try:
+                    self.gcode.run_script_from_command(leave)
+                except Exception:
+                    logging.exception("tltg_cold_cut: leaving the cutter "
+                                      "after a failed strike failed")
+            raise
+        self.gcode.run_script_from_command(leave)
+
     def cmd_TLTG_CUT_FILAMENT(self, gcmd):
         blocker = self.blocker()
         if blocker is not None:
@@ -118,8 +147,7 @@ class ColdCut:
         try:
             # Rendered after homing, so the cut starts from where X and Y are.
             self.gcode.run_script_from_command("G28 O X Y")
-            with self.cold_retracts():
-                self.gcode.run_script_from_command(CUT_MACRO)
+            self.gcode.run_script_from_command(CUT_MACRO)
         finally:
             if not self.printer.is_shutdown():
                 restore = "RESTORE_GCODE_STATE NAME=%s" % (CUT_STATE,)

@@ -127,6 +127,8 @@ QIDI's eject parks the toolhead over the waste chute before and after the Box pu
 - The acceleration and positioning mode are put back afterwards, even if the cut stops with an error.
 - It's refused while a print is running or paused, or while the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
 
+Every other cut works the same way at the cutter: `OPTIMIZED_CUT_FILAMENT` and `CUT_FILAMENT_1` run by hand, a cut while a print is paused, the cut in a filament change, and the cuts in QIDI's Box flows. Each allows its pull-back with the nozzle cold, and each moves the toolhead off the cutter even if the cut stops with an error, so a failed cut doesn't leave the toolhead pressed against the cutter. If one already is, see [The toolhead is stuck in the filament cutter](troubleshooting.md#the-toolhead-is-stuck-in-the-filament-cutter).
+
 ### Unloading and ejecting cold
 
 QIDI's Box unload and eject first heat the nozzle to the top of the filament's printing range, 280 °C for some ASA, then cut and pull the filament back. With `COLD=1` they run the same steps without heating:
