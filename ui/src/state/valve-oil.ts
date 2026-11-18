@@ -22,6 +22,7 @@ import {
   type TltgStatusBlocker,
   type TltgStatusView,
   type TltgUpdateView,
+  type TltgUpdateWindowHours,
 } from '../qidi/tltg-status'
 
 export type ValveOilState = {
@@ -35,6 +36,9 @@ export type ValveOilState = {
   now: number
   autoUpdateRequest: boolean | null
   autoUpdateError: string
+  /** A change to the update window or its timezone is being saved. */
+  windowPending: boolean
+  windowError: string
   updateNowPending: boolean
   updateNowError: string
   /** Why the printer refused Update now, when it said. */
@@ -87,6 +91,8 @@ export const valveOil = createStore<ValveOilState>({
   now: Date.now(),
   autoUpdateRequest: null,
   autoUpdateError: '',
+  windowPending: false,
+  windowError: '',
   updateNowPending: false,
   updateNowError: '',
   updateNowBlockedBy: [],
@@ -210,6 +216,23 @@ export async function setAutoUpdate(enabled: boolean) {
   poll()
 }
 
+/** Saves the update window or its timezone: any of {"window": {...} | null, "timezone": "<IANA name>"}. */
+export async function setUpdateWindow(body: { window?: TltgUpdateWindowHours | null; timezone?: string }) {
+  if (autoUpdateDisabled(valveOil.get())) return
+  patch({ windowPending: true, windowError: '' })
+  try {
+    const status = parseTltgStatus(await request('/auto-update', 'POST', undefined, body))
+    if (status) applyStatus(status)
+  } catch (e) {
+    patch({ windowError: e instanceof Error ? e.message : String(e) })
+  } finally {
+    patch({ windowPending: false })
+  }
+  poll()
+}
+
+export const clearWindowError = () => patch({ windowError: '' })
+
 export async function updateNow() {
   if (updateNowDisabled(valveOil.get())) return
   patch({ updateNowPending: true, updateNowError: '', updateNowBlockedBy: [] })
@@ -276,7 +299,7 @@ export const clearUpdateNowError = () => patch({ updateNowError: '', updateNowBl
 // ---- derived ----
 export const reconnecting = (s: ValveOilState) => s.reconnectingSince != null
 
-export const autoUpdateDisabled = (s: ValveOilState) => s.status?.auto_update.enabled == null || s.autoUpdateRequest != null || reconnecting(s)
+export const autoUpdateDisabled = (s: ValveOilState) => s.status?.auto_update.enabled == null || s.autoUpdateRequest != null || s.windowPending || reconnecting(s)
 
 export const updateNowDisabled = (s: ValveOilState) => {
   const view = s.status ? tltgStatusView(s.status) : null

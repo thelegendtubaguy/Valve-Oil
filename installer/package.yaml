@@ -227,6 +227,7 @@ install:
       - "printer_warnings.cfg"
       - "resonance_sweep.cfg"
       - "bed_soak.cfg"
+      - "update_lights.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -316,6 +317,9 @@ install:
     - id: pause_timeout
       source: "klipper/tltg/pause_timeout.py"
       destination: "klippy/extras/tltg_pause_timeout.py"
+    - id: update_lights
+      source: "klipper/tltg/update_lights.py"
+      destination: "klippy/extras/tltg_update_lights.py"
     - id: probe_report
       source: "klipper/tltg/probe_report.py"
       destination: "klippy/extras/tltg_probe_report.py"
@@ -807,10 +811,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-6405679
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-6405679/fluidd.zip
+    version: v1.37.7-tltg-32e13db
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-32e13db/fluidd.zip
     archive: system/fluidd.zip
-    sha256: eb264da214acb54da1582cb2a578cdcab16bdac61318cfd3f011b1df499bd57c
+    sha256: 7b8983a6eb3867926a6cf7419b5b3e840c824b4a888035281c7ea33cf7cbca16
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui

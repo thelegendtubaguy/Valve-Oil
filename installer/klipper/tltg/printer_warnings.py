@@ -422,6 +422,8 @@ class PrinterWarnings:
             if not group:
                 continue
             reasons = []
+            window = None
+            only_window = True
             for item in group:
                 blockers = item.get("blocked_by")
                 for blocker in blockers if isinstance(blockers, list) else []:
@@ -429,11 +431,24 @@ class PrinterWarnings:
                         continue
                     reason = (self._pending_text(blocker.get("message"))
                               or self._pending_text(blocker.get("code")))
+                    # "it's outside the update window, 02:00–05:00 <zone>"
+                    if blocker.get("code") == "outside_window" and reason \
+                            and ", " in reason:
+                        window = reason.split(", ", 1)[1]
+                    else:
+                        only_window = False
                     if reason and reason not in reasons:
                         reasons.append(reason)
             if not self.enrolled:
                 message = ("Automatic updates are off, so run the Valve Oil"
                            " installer to install it.")
+            elif window and only_window:
+                message = ("Automatic updates are on, so it will be installed"
+                           " during the update window, " + window + ", while"
+                           " the printer is idle.")
+                if kind != "release":
+                    message += (" The printer can't be used while it"
+                                " installs.")
             elif reasons:
                 message = ("Automatic updates are on, but it hasn't been"
                            " installed yet: " + "; ".join(reasons) + ".")

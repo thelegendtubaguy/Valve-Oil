@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import time
 import types
 import unittest
 
@@ -1404,6 +1405,15 @@ class PrinterWarningsTest(unittest.TestCase):
         reinstall, = pending()
         self.assertEqual((reinstall["id"], reinstall["title"]),
                          ("valve_oil_release_waiting", "Valve Oil needs to be installed again."))
+        # Waiting only for the update window, as the check words it, it says when it will install.
+        window = status_file.Blocker.of(
+            "outside_window", status_file.BLOCKERS["outside_window"] + ", 02:00–05:00 America/Chicago")
+        check(status_file.PendingItem(kind="release", version="26.12.1.1", blocked_by=(window,)), enrolled=True)
+        release, = pending()
+        self.assertIn("during the update window, 02:00–05:00 America/Chicago,", release["message"])
+        check(status_file.PendingItem(kind="release", version="26.12.1.1",
+                                      blocked_by=(window, status_file.Blocker.of("printing"))), enrolled=True)
+        self.assertIn(status_file.BLOCKERS["printing"], pending()[0]["message"])
         check(status_file.PendingItem(kind="firmware", version="01.01.07.01", blocked_by=(status_file.Blocker.of("printing"),)),
               enrolled=True)
         # A run whose process is gone was interrupted.
@@ -1807,3 +1817,43 @@ class PauseTimeoutTest(unittest.TestCase):
         sim = self.printer()
         sim.idle()
         self.assertEqual((sim.ran, sim.messages), ([], []))
+
+
+spec = importlib.util.spec_from_file_location(
+    "tltg_update_lights", REPO_ROOT / "installer/klipper/tltg/update_lights.py"
+)
+update_lights = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(update_lights)
+
+
+class UpdateLightsTest(unittest.TestCase):
+    """While an automatic update's hold lasts, every Klipper start turns
+    the chamber light, which printer.cfg starts on, off again; an ended
+    hold is removed and the light is left alone."""
+
+    def start_klipper(self, hold, *, caselight=True):
+        root = temp_path("update-lights-")
+        (root / "config").mkdir()
+        if hold is not None:
+            (root / update_lights.HOLD_FILE).write_text(json.dumps(hold))
+        ran, handlers = [], {}
+        objects = {"gcode": types.SimpleNamespace(run_script=ran.append)}
+        if caselight:
+            objects["output_pin caselight"] = object()
+        printer = types.SimpleNamespace(
+            get_reactor=lambda: types.SimpleNamespace(register_callback=lambda callback: callback(0.)),
+            get_start_args=lambda: {"config_file": str(root / "config/printer.cfg")},
+            register_event_handler=handlers.__setitem__,
+            lookup_object=lambda name, default=None: objects.get(name, default))
+        update_lights.load_config(types.SimpleNamespace(get_printer=lambda: printer))
+        handlers["klippy:ready"]()
+        return ran, root / update_lights.HOLD_FILE
+
+    def test_the_light_stays_off_only_while_the_hold_lasts(self) -> None:
+        ran, hold = self.start_klipper({"until": time.time() + 600})
+        self.assertEqual((ran, hold.exists()), (["SET_PIN PIN=caselight VALUE=0"], True))
+        ran, hold = self.start_klipper({"until": time.time() - 1})
+        self.assertEqual((ran, hold.exists()), ([], False))
+        for held, caselight in ((None, True), ({"until": "soon"}, True), ({"until": time.time() + 600}, False)):
+            with self.subTest(hold=held, caselight=caselight):
+                self.assertEqual(self.start_klipper(held, caselight=caselight)[0], [])

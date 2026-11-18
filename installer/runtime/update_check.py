@@ -77,6 +77,7 @@ class Findings:
     printer_blockers: tuple[Blocker, ...] = ()
     recovery_required: bool = False
     recovery: Blocker | None = None  # what the recovery needs, saying what to run, when the check can tell
+    outside_window: str | None = None  # the update window, as update_window labels it, while the check is outside it
     attempts: dict = field(default_factory=dict)
     board_manifests: dict = field(default_factory=dict)
     pinned_images: dict = field(default_factory=dict)
@@ -94,7 +95,8 @@ def installed(paths, *, enrolled: bool) -> bool:
 
 def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliation_required: bool,
              release_changed: bool, urlopen=urllib.request.urlopen, recovery_required: bool = False,
-             resolve_usb=usb_path_for_serial, disk_usage=shutil.disk_usage, **_seams) -> Findings:
+             resolve_usb=usb_path_for_serial, disk_usage=shutil.disk_usage, outside_window: str | None = None,
+             **_seams) -> Findings:
     manifest = load_manifest(paths.installer_root / "package.yaml")
     try:
         printer, firmware = detect_supported_firmware(paths.firmware_manifest_path, manifest)
@@ -128,7 +130,8 @@ def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliatio
         latest_version=latest_version, release_waiting=release_changed or reconciliation_required or newer,
         newer_release=newer,
         release_item=item, plan=plan, boards=boards, boxes=boxes, printer_blockers=firmware_update.printer_blockers(paths, urlopen=urlopen),
-        recovery_required=recovery_required or recovery is not None, recovery=recovery, attempts=_load_attempts(paths),
+        recovery_required=recovery_required or recovery is not None, recovery=recovery, outside_window=outside_window,
+        attempts=_load_attempts(paths),
         board_manifests=manifests, pinned_images=pinned)
 
 
@@ -248,7 +251,9 @@ def _tried_blocker(entry: dict) -> Blocker:
 def pending_items(found: Findings) -> tuple[PendingItem, ...]:
     """Everything waiting; why it hasn't run only on an enrolled printer (blocked_by is empty without enrollment)."""
     recovery = (found.recovery or Blocker.of("recovery_required"),) if found.recovery_required else ()
-    common = _merge(found.printer_blockers, recovery)
+    window = ((Blocker.of("outside_window", f"{valve_oil_status.BLOCKERS['outside_window']}, {found.outside_window}"),)
+              if found.outside_window else ())
+    common = _merge(found.printer_blockers, recovery, window)
 
     def blocked(*extra) -> tuple[Blocker, ...]:
         return _merge(common, *extra) if found.enrolled else ()

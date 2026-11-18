@@ -84,6 +84,13 @@ const firmwareFailed = {
 
 const blocker = (code: string, message = code) => ({ code, message })
 
+// Automatic updates with an update window, as a service that has them sends them.
+const nightly = { start: 2, end: 5 }
+const windowed = (changes: Record<string, unknown> = {}) => ({
+  auto_update: { enabled: true, scheduled: true, window: nightly, timezone: 'America/Chicago', timezone_source: 'lookup', in_window: false, ...changes }
+})
+const outsideWindow = blocker('outside_window', "it's outside the update window, 02:00–05:00 America/Chicago")
+
 const view = (changes: Record<string, unknown>) => {
   const status = parseTltgStatus({ ...base, ...changes })
 
@@ -129,7 +136,7 @@ describe('parseTltgStatus', () => {
       updated_at: null,
       release: { installed: null, channel: null, commit: null },
       printer: { id: null, name: null, firmware: null, target_firmware: null },
-      auto_update: { enabled: null, scheduled: null },
+      auto_update: { enabled: null, scheduled: null, window: null },
       check: { at: null, result: null, message: '', next_at: null },
       pending: [],
       boards: [],
@@ -193,9 +200,35 @@ describe('parseTltgStatus', () => {
     ['only a release as one to install again', { pending: [{ ...firmware, reinstall: true }] }, { pending: [{ reinstall: false }] }],
     ['a board waiting for the QIDI firmware update', { boards: [{ id: 'thr', state: 'needs_image', waiting_for_firmware_update: true }] }, { boards: [{ waiting_for_firmware_update: true }] }],
     ['a board from a service that does not say whether it waits', {}, { boards: [{ waiting_for_firmware_update: null }] }],
-    ['when the next check is due', {}, { check: { next_at: '2026-11-11T09:05:00Z' } }]
+    ['when the next check is due', {}, { check: { next_at: '2026-11-11T09:05:00Z' } }],
+    [
+      'the update window and the timezone it is read in',
+      windowed(),
+      { auto_update: { window: { hours: nightly, timezone: 'America/Chicago', timezone_source: 'lookup', in_window: false } } }
+    ],
+    [
+      'a window past midnight',
+      windowed({ window: { start: 22, end: 3 } }),
+      { auto_update: { window: { hours: { start: 22, end: 3 } } } }
+    ],
+    [
+      'no window as any time, in UTC',
+      windowed({ window: null, timezone: null, timezone_source: null, in_window: true }),
+      { auto_update: { window: { hours: null, timezone: null, timezone_source: null, in_window: true } } }
+    ],
+    ['a timezone from a source it does not know', windowed({ timezone_source: 'guess' }), { auto_update: { window: { timezone_source: null } } }],
+    ['a service without update windows', {}, { auto_update: { window: null } }]
   ])('reads %s', (_, changes, expected) => {
     expect(parseTltgStatus({ ...base, ...changes })).toMatchObject(expected)
+  })
+
+  it.each([
+    ['hours it cannot read', { start: '2', end: 5 }],
+    ['an hour out of range', { start: 2, end: 24 }],
+    ['a window starting and ending at the same hour', { start: 3, end: 3 }],
+    ['part hours', { start: 2.5, end: 5 }]
+  ])('reads %s as no update window', (_, window) => {
+    expect(parseTltgStatus({ ...base, ...windowed({ window }) })?.auto_update.window).toBeNull()
   })
 })
 
@@ -272,7 +305,37 @@ describe('tltgStatusView', () => {
     ],
     ['Valve Oil to install again', { pending: [reinstall] }, { notice: 'next_check', reinstall: true, firmwareWaiting: false }],
     ['Valve Oil to install again and QIDI firmware', { pending: [reinstall, firmware] }, { reinstall: false, firmwareWaiting: true }],
-    ['a newer release', { pending: [release] }, { reinstall: false }]
+    ['a newer release', { pending: [release] }, { reinstall: false }],
+    [
+      'a release waiting for the update window',
+      { ...windowed(), pending: [{ ...release, blocked_by: [outsideWindow] }] },
+      { notice: 'window', reasons: [outsideWindow.message] }
+    ],
+    [
+      'a release waiting outside the window, from a printer that does not list the window as a reason',
+      { ...windowed(), pending: [release] },
+      { notice: 'window' }
+    ],
+    [
+      'a release waiting outside the window while printing, with both reasons',
+      { ...windowed(), pending: [{ ...release, blocked_by: [outsideWindow, printing] }] },
+      { notice: 'blocked', reasons: [outsideWindow.message, printing.message] }
+    ],
+    [
+      'a release waiting in the update window',
+      { ...windowed({ in_window: true }), pending: [release] },
+      { notice: 'next_check' }
+    ],
+    [
+      'a release waiting for a window this page cannot read',
+      { ...windowed({ window: { start: 3, end: 3 } }), pending: [{ ...release, blocked_by: [outsideWindow] }] },
+      { notice: 'blocked', reasons: [outsideWindow.message] }
+    ],
+    [
+      'a release waiting outside the window with automatic updates off',
+      { ...windowed({ enabled: false }), pending: [release] },
+      { notice: 'auto_off' }
+    ]
   ])('with %s', (_, changes, expected) => {
     expect(view(changes)).toMatchObject(expected)
   })

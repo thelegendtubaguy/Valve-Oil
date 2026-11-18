@@ -522,6 +522,25 @@ The update check SHALL be scheduled on every installation. Installing a release,
 - **THEN** only the enrollment changes, without a password, and it takes effect at the next check
 - **AND** the check stays scheduled either way
 
+#### Scenario: An update window limits when enrolled work starts
+- **WHEN** the operator has set an update window of whole hours, which may wrap past midnight, and an enrolled check runs outside it in the window's saved timezone, or in UTC without one
+- **THEN** the check publishes what is waiting, with every waiting item blocked by `outside_window` naming the window and timezone, and returns without installing, reconciling, finishing a pending Klipper activation, starting a firmware update, reading or flashing a board, or advancing release state
+- **AND** inside the window, or without one, the check proceeds as before
+- **AND** Update now, direct installs, and a firmware update continuing after a power loss ignore the window
+- **AND** the status service reports the window, its timezone and where that came from, and whether now is inside it, and judges `outside_window` from the saved window and the clock rather than from the last check
+
+#### Scenario: The window's timezone is saved once
+- **WHEN** an install finds no timezone saved for the update window
+- **THEN** it asks a geolocation service for the timezone of the printer's public address, trying a second when the first fails, and saves an answer the printer's zone database knows, recorded as looked up
+- **AND** a failed or unknown answer leaves the timezone unset without failing the install
+- **AND** a saved timezone is never looked up again; a browser's saved with a window in Fluidd or Valve Oil UI, or one given to `auto-update.sh --timezone`, replaces it
+- **AND** the window and timezone are kept outside firmware-cleaned configuration and removed by uninstall
+
+#### Scenario: An automatic update keeps a chamber light that was off, off
+- **WHEN** an enrolled check is about to install, finish a pending Klipper activation, start a firmware update, or flash boards, and Klipper reports `output_pin caselight` at 0
+- **THEN** it records a hold that ends 3 hours later, and while it lasts every Klipper start turns the chamber light off again
+- **AND** an ended hold is removed at the next Klipper start, a light that is on or can't be read gets no hold, and a check that holds the light and then changes nothing removes the hold it wrote
+
 ### Requirement: THR transfer is admitted and byte-verified
 The THR transfer SHALL require supported firmware, idle ready state, zero heater targets, exclusive service ownership, and exact known THR application/bootloader identities. It MUST preserve stock recovery files before erase and verify the complete resulting application and unchanged bootloader before success. It MUST NOT change `printer.cfg`.
 

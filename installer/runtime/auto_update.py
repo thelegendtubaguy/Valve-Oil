@@ -6,7 +6,9 @@ the release's QIDI firmware update, boards not on their pinned firmware) and pub
 (update_check.py). The enrollment marker in printer_data is the only switch: without it a run only checks and
 publishes; with it, a run on an idle printer installs the newer release, or starts the waiting firmware update, or
 flashes the boards that need it. Switching writes or removes the marker, without sudo, and takes effect at the next
-check.
+check. An update window (update_window.py) limits the hours an enrolled run acts in; outside it the run only checks and
+publishes, and the work waits for the window. A run about to change the printer while the chamber light is off keeps it
+off through the Klipper starts that follow.
 """
 from __future__ import annotations
 
@@ -30,7 +32,7 @@ from .box_enablement import (
     maybe_repair_saved_variables,
     verify_pending_saved_variable_expectations,
 )
-from . import messages, safety
+from . import messages, safety, update_window
 from .errors import (
     ActivePrintError,
     FirmwareDetectionError,
@@ -288,6 +290,12 @@ def auto_update_status_lines(paths: RuntimePaths, environ: dict[str, str] | None
     from . import valve_oil_status
 
     lines = [messages.AUTO_UPDATE_ON if auto_update_enrolled(paths) else messages.AUTO_UPDATE_OFF]
+    settings = update_window.load_settings(paths)
+    if settings.window is None:
+        lines.append(f"Update window: any time (timezone {settings.zone_label()}).")
+    else:
+        lines.append(f"Update window: {settings.window_label()}"
+                     + ("" if settings.in_window() else ", outside it now") + ".")
     if not check_scheduled(environ):
         lines.append(messages.AUTO_UPDATE_NOT_SCHEDULED)
     status = valve_oil_status.load_status(paths)
@@ -334,7 +342,9 @@ def run_auto_update_check(
     if not update_check.installed(paths, enrolled=enrolled):
         reporter.line(messages.AUTO_UPDATE_NOT_INSTALLED)
         return AutoUpdateRunResult(action="not-installed")
-    if enrolled and not recovery_required:
+    settings = update_window.load_settings(paths)
+    in_window = settings.in_window()
+    if enrolled and not recovery_required and in_window:
         _complete_pending_activation(paths, reporter=reporter, urlopen=urlopen)
     try:
         checksum, latest_version = fetch_latest_release(release_checksum_url(env), urlopen=_release_opener(urlopen))
@@ -351,7 +361,7 @@ def run_auto_update_check(
     found = update_check.discover(
         paths, enrolled=enrolled, latest_version=latest_version, reconciliation_required=reconciliation_required,
         release_changed=state.get("latest_checksum") != checksum, urlopen=urlopen, recovery_required=recovery_required,
-        **seams)
+        outside_window=None if in_window else settings.window_label(), **seams)
     update_check.publish(paths, found, urlopen=urlopen)
 
     if not enrolled:
@@ -360,10 +370,14 @@ def run_auto_update_check(
         return AutoUpdateRunResult(action="checked", checksum=checksum)
     if recovery_required:
         return AutoUpdateRunResult(action="recovery-required", checksum=checksum)
+    if not in_window:
+        reporter.line(messages.AUTO_UPDATE_SKIPPED_OUTSIDE_WINDOW.format(window=settings.window_label()))
+        return AutoUpdateRunResult(action="skipped-outside-window", checksum=checksum)
 
     if found.release_waiting:
         if found.printer_blockers:
             return _skipped(reporter, found, checksum)
+        update_window.hold_lights_if_off(paths, urlopen=urlopen)
         # A new release, or the current one installed again: missing checksum state or drifted installation state.
         updating = state.get("latest_checksum") not in (None, checksum) or found.newer_release
         reporter.line(messages.AUTO_UPDATE_AVAILABLE if updating else messages.AUTO_UPDATE_RECONCILING)
@@ -396,8 +410,13 @@ def run_auto_update_check(
     except SavedVariablePersistenceError:
         reporter.line(messages.AUTO_UPDATE_SKIPPED_UNKNOWN_STATE)
         return AutoUpdateRunResult(action="skipped-unknown-printer-state", checksum=checksum)
+    # A hold an earlier run wrote outlasts this one, as for the reboot that run's install scheduled.
+    earlier_hold = update_window.lights_hold_path(paths).exists()
+    held = update_window.hold_lights_if_off(paths, urlopen=urlopen)
     applied = update_check.apply(paths, found, reporter=reporter, environ=dict(env), urlopen=urlopen, run=run, **seams)
     if applied is None:
+        if held and not earlier_hold:
+            update_window.release_lights(paths)
         reporter.line(messages.AUTO_UPDATE_ALREADY_CURRENT)
         return AutoUpdateRunResult(action="already-current", checksum=checksum)
     return AutoUpdateRunResult(action=applied, checksum=checksum)
@@ -422,6 +441,7 @@ def _complete_pending_activation(paths: RuntimePaths, *, reporter, urlopen: UrlO
     try:
         manifest = load_manifest(paths.installer_root / "package.yaml")
         safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+        update_window.hold_lights_if_off(paths, urlopen=urlopen)
         restart_pending(
             paths,
             allowed_entries=restart_entries(manifest),

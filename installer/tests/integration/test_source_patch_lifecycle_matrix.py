@@ -10,11 +10,14 @@ import pwd
 import shutil
 import subprocess
 import tarfile
+import time
 import types
 import unittest
 import urllib.parse
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 from installer.runtime import box_enablement, klipper_cfg, process_restart
 from installer.runtime.box_enablement import (
@@ -24,7 +27,7 @@ from installer.runtime.box_enablement import (
     maybe_write_required_tool_slot_variables,
     saved_variable_verify_marker_path,
 )
-from installer.runtime import auto_update, firmware_update, valve_oil_status
+from installer.runtime import auto_update, firmware_update, update_window, valve_oil_status
 from installer.runtime.board_images import load_board_manifest, pinned_board_image
 from installer.runtime.errors import InstallerError
 from installer.runtime.auto_update import (
@@ -1365,6 +1368,79 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertEqual(result.action, "firmware-update-started")
         self.assertEqual([(call["kind"], call["follow"], call["input_stream"]) for call in started],
                          [("automatic", False, None)])
+
+    def test_enrolled_check_waits_for_the_update_window_and_keeps_the_light_off(self):
+        # The printer's clock runs in UTC; the install looked the operator's timezone up, and the window is read in it.
+        printer_root, paths, urlopen, forbidden, _ = self._waiting_printer(latest=None)
+        paths.restart_marker_path.unlink()
+        enrollment_path(paths).write_text("1\n", encoding="utf-8")
+        state_path(paths).write_text(json.dumps({"latest_checksum": "2" * 64}), encoding="utf-8")
+        (printer_root / ".tltg_board_admission.json").write_text(json.dumps({
+            "schema_version": 1, "package_version": self.manifest.package.version, "printer": "max4",
+            "firmware": "01.01.06.05", "target_firmware": "01.01.07.01", "new_install": False,
+            "boards": [{"board": board, "state": "current"} for board in ("thr", "mcu")]}))
+
+        def lookups(answers):
+            def lookup(request, timeout=0):
+                answer = answers[request.full_url]
+                if isinstance(answer, Exception):
+                    raise answer
+                return _BytesResponse(answer.encode())
+            return lookup
+
+        update_window.ensure_timezone(paths, reporter=PlainReporter(io.StringIO()), urlopen=lookups({
+            "https://ipapi.co/timezone/": OSError("unreachable"),
+            "https://worldtimeapi.org/api/ip": '{"timezone": "America/Chicago", "utc_offset": "-06:00"}'}))
+        # A saved timezone is kept at the next install.
+        update_window.ensure_timezone(paths, reporter=PlainReporter(io.StringIO()),
+                                      urlopen=lookups({"https://ipapi.co/timezone/": "Europe/Berlin"}))
+        settings = update_window.load_settings(paths)
+        self.assertEqual((settings.timezone, settings.timezone_source), ("America/Chicago", "lookup"))
+
+        hour = datetime.now(ZoneInfo("America/Chicago")).hour
+        light = {"value": 0.0}
+
+        def printer(request, timeout=0):
+            if "output_pin%20caselight" in getattr(request, "full_url", str(request)):
+                return _JsonResponse({"result": {"status": {"output_pin caselight": dict(light)}}})
+            return urlopen(request, timeout=timeout)
+
+        started = []
+
+        def start(**kwargs):
+            started.append(kwargs["kind"])
+            return firmware_update.FirmwareUpdateResult(firmware_update.RUNNING)
+
+        def check():
+            with mock.patch("installer.runtime.auto_update._installation_requires_reconciliation", return_value=False), \
+                    mock.patch("installer.runtime.auto_update.maybe_repair_saved_variables"):
+                return run_auto_update_check(
+                    paths=paths, reporter=PlainReporter(io.StringIO()),
+                    environ={"TLTG_AUTO_UPDATE_CHECKSUM_URL": "https://example.invalid/latest.sha256"},
+                    urlopen=printer, run=forbidden, start_firmware=start, deliver=forbidden, read_session=forbidden,
+                    disk_usage=lambda path: types.SimpleNamespace(free=2 ** 40))
+
+        # Outside the window (here it wraps past midnight), the check only publishes; the work waits, saying why.
+        update_window.set_window(paths, update_window.Window((hour + 1) % 24, hour))
+        self.assertEqual(check().action, "skipped-outside-window")
+        self.assertEqual(started, [])
+        pending = valve_oil_status.load_status(paths).pending
+        self.assertTrue(pending)
+        self.assertTrue(all("outside_window" in [blocker.code for blocker in item.blocked_by] for item in pending))
+        self.assertFalse(update_window.lights_hold_path(paths).exists())
+
+        # Inside it, the firmware update starts, and the light that was off stays off through the Klipper starts.
+        update_window.set_window(paths, update_window.Window(hour, (hour + 1) % 24))
+        self.assertEqual(check().action, "firmware-update-started")
+        self.assertEqual(started, ["automatic"])
+        hold = json.loads(update_window.lights_hold_path(paths).read_text(encoding="utf-8"))
+        self.assertGreater(hold["until"], time.time())
+
+        # A light that is on is left to Klipper.
+        update_window.lights_hold_path(paths).unlink()
+        light["value"] = 1.0
+        self.assertEqual(check().action, "firmware-update-started")
+        self.assertFalse(update_window.lights_hold_path(paths).exists())
 
     def test_enrolled_auto_update_recovers_after_firmware_config_cleanup(self):
         firmware = "01.01.07.01"

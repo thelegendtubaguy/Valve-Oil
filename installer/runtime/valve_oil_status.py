@@ -49,6 +49,7 @@ BLOCKERS = {
                           "to see what is needed"),
     "run_in_progress": "another update is still running",
     "last_run_failed": "the last update failed",
+    "outside_window": "it's outside the update window",
 }
 
 # Board identities and their display names; USB Boxes are box1 to box4.

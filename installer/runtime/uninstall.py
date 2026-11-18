@@ -14,7 +14,7 @@ from .auto_update import (
     remove_auto_update_units,
     remove_state as remove_auto_update_state,
 )
-from . import update_check
+from . import update_check, update_window
 from .box_enablement import saved_variable_verify_marker_path
 from . import firmware_update
 from .board_firmware import ADMISSION_FILE
@@ -587,6 +587,7 @@ def _remove_update_check(*, paths: RuntimePaths, reporter, input_stream, environ
     remove_status(paths)
     remove_auto_update_state(paths)
     update_check.remove_files(paths)
+    update_window.remove_settings(paths)
     if not auto_updates_configured(environ):
         return
     password = None

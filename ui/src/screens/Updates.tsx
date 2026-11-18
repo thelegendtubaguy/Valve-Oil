@@ -3,26 +3,34 @@ import { ChevronDown, CircleAlert, CircleCheck, Cpu, ExternalLink, Info, LoaderC
 import { Card, Dialog, Toggle } from '../components/ui'
 import {
   TLTG_UPDATE_NOW_BLOCKERS,
+  tltgBrowserTimezone,
+  tltgHourLabel,
   tltgSentence,
+  tltgUpdateWindowLabel,
+  tltgUpdateWindowValid,
   type TltgBoardBadge,
   type TltgBoardNote,
   type TltgBoardView,
   type TltgStatusBlocker,
   type TltgStatusBoard,
   type TltgStatusPending,
+  type TltgStatusUpdateWindow,
   type TltgStatusView,
   type TltgUpdateView,
+  type TltgUpdateWindowHours,
 } from '../qidi/tltg-status'
 import {
   autoUpdateDisabled,
   clearAutoUpdateError,
   clearSupportError,
   clearUpdateNowError,
+  clearWindowError,
   dismissUpdate,
   reconnecting,
   reconnectingLongMinutes,
   reportProblem,
   setAutoUpdate,
+  setUpdateWindow,
   shownUpdate,
   updateNow,
   updateNowDisabled,
@@ -155,6 +163,13 @@ function noticeText(view: TltgStatusView) {
       return `${view.reinstall ? 'Valve Oil needs to be installed again.' : 'An update is waiting.'} Automatic updates are off, so install it with Update now or by running the Valve Oil installer.`
     case 'blocked':
       return `Automatic updates are on, but ${view.reinstall ? "Valve Oil hasn't been installed again yet" : "the update hasn't been installed yet"}: ${view.reasons.join('; ')}.`
+    case 'window': {
+      const hours = view.updateWindow?.hours
+      const window = `${hours ? tltgUpdateWindowLabel(hours) : ''} ${view.updateWindow?.timezone ?? 'UTC'}`
+      return view.reinstall
+        ? `Automatic updates are on, so Valve Oil will be installed again during the update window, ${window}, while the printer is idle.`
+        : `Automatic updates are on, so the update will be installed during the update window, ${window}, while the printer is idle.${view.firmwareWaiting ? " The printer can't be used while it installs." : ''}`
+    }
     case 'next_check': {
       const when = view.nextCheckAt != null ? `, around ${fmtSoon(view.nextCheckAt)},` : ''
       return view.reinstall
@@ -220,6 +235,119 @@ export function UpdatesScreen() {
   )
 }
 
+// The hours offered when a window is first set, before it's saved.
+const SUGGESTED_HOURS: TltgUpdateWindowHours = { start: 2, end: 6 }
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
+const sameHours = (a: TltgUpdateWindowHours | null, b: TltgUpdateWindowHours | null) => (a == null || b == null ? a === b : a.start === b.start && a.end === b.end)
+
+/** The hours automatic updates start in, and the timezone they're read in; edits are kept here until saved. */
+function UpdateWindow({ window, disabled, pending, error }: { window: TltgStatusUpdateWindow; disabled: boolean; pending: boolean; error: string }) {
+  // undefined while not edited; null for any time.
+  const [draft, setDraft] = useState<TltgUpdateWindowHours | null | undefined>(undefined)
+  const [browser] = useState(tltgBrowserTimezone)
+  const hours = draft === undefined ? window.hours : draft
+  const changed = draft !== undefined && !sameHours(draft, window.hours)
+  const valid = hours == null || tltgUpdateWindowValid(hours)
+  // A window saved without a timezone is saved with this browser's.
+  const savesBrowserTimezone = window.timezone == null && browser != null
+  const wasPending = useRef(pending)
+  useEffect(() => {
+    // Saved: show the window as the printer now has it.
+    if (wasPending.current && !pending && !error) setDraft(undefined)
+    wasPending.current = pending
+  }, [pending, error])
+
+  const timezoneText = (() => {
+    if (changed && savesBrowserTimezone) return `Times are in ${browser} (this browser's timezone).`
+    if (window.timezone == null) return 'Times are in UTC.'
+    switch (window.timezone_source) {
+      case 'lookup':
+        return `Times are in ${window.timezone} (found from the printer's internet address).`
+      case 'operator':
+        return `Times are in ${window.timezone} (set over SSH).`
+      case 'browser':
+        return window.timezone === browser ? `Times are in ${window.timezone} (this browser's timezone).` : `Times are in ${window.timezone} (set from a browser).`
+      default:
+        return `Times are in ${window.timezone}.`
+    }
+  })()
+  // This browser's timezone, when the window is read in another; not while the hours are being edited.
+  const offeredTimezone = browser != null && !changed && browser !== (window.timezone ?? 'UTC') ? browser : null
+  const setHours = (change: Partial<TltgUpdateWindowHours>) => setDraft({ ...(hours ?? SUGGESTED_HOURS), ...change })
+  const save = () => {
+    if (!changed || !valid) return
+    void setUpdateWindow({ window: hours, ...(hours && savesBrowserTimezone && browser ? { timezone: browser } : {}) })
+  }
+  const hourSelect = (value: number, label: string, onChange: (hour: number) => void) => (
+    <select className="field w-auto" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))}>
+      {HOURS.map((hour) => (
+        <option key={hour} value={hour}>
+          {tltgHourLabel(hour)}
+        </option>
+      ))}
+    </select>
+  )
+
+  return (
+    <div className="grid gap-2 py-1">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">Update window</div>
+          <div className="text-[12.5px] text-ink-3">{hours ? 'Automatic updates start only between these hours.' : 'Automatic updates can start at any hour.'}</div>
+          {hours && (
+            <div className="text-[12.5px] text-ink-3">
+              {timezoneText}
+              {offeredTimezone && (
+                <button className="ml-1 cursor-pointer border-0 bg-transparent p-0 font-medium text-accent hover:underline disabled:opacity-45" disabled={disabled} onClick={() => void setUpdateWindow({ timezone: offeredTimezone })}>
+                  Use {offeredTimezone}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <select
+          className="field w-auto"
+          aria-label="Update window"
+          value={hours ? 'hours' : 'any'}
+          disabled={disabled}
+          onChange={(e) => setDraft(e.target.value === 'hours' ? (hours ?? window.hours ?? { ...SUGGESTED_HOURS }) : null)}
+        >
+          <option value="any">Any time</option>
+          <option value="hours">Set hours</option>
+        </select>
+      </div>
+      {(hours || changed) && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {hours && (
+            <>
+              {hourSelect(hours.start, 'Start hour', (start) => setHours({ start }))}
+              <span className="text-ink-2">to</span>
+              {hourSelect(hours.end, 'End hour', (end) => setHours({ end }))}
+            </>
+          )}
+          {changed && (
+            <>
+              <button className="btn btn-sm btn-primary" disabled={disabled || !valid} onClick={save}>
+                {pending && <LoaderCircle size={13} className="spin" />}
+                Save
+              </button>
+              <button className="btn btn-sm" disabled={pending} onClick={() => setDraft(undefined)}>
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {!valid && <div className="text-right text-[12px] text-bad">Pick a different start and end hour.</div>}
+      {error && (
+        <Notice tone="bad" onClose={clearWindowError}>
+          The update window couldn't be changed: {error}
+        </Notice>
+      )}
+    </div>
+  )
+}
+
 function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
   const [confirm, setConfirm] = useState(false)
   const update = shownUpdate(view, s.dismissed)
@@ -253,6 +381,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
         {s.autoUpdateRequest != null && <LoaderCircle size={15} className="spin flex-none text-ink-3" />}
         <Toggle checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} label="Automatic updates" onChange={setAutoUpdate} />
       </label>
+      {view.updateWindow && <UpdateWindow window={view.updateWindow} disabled={autoUpdateDisabled(s)} pending={s.windowPending} error={s.windowError} />}
 
       <div className="sep my-2" />
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-1">
@@ -280,7 +409,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
       </div>
 
       <div className="mt-1 grid gap-2 empty:hidden">
-        {notice && <Notice tone={view.notice === 'next_check' ? 'info' : 'warn'}>{notice}</Notice>}
+        {notice && <Notice tone={view.notice === 'next_check' || view.notice === 'window' ? 'info' : 'warn'}>{notice}</Notice>}
         {reconnecting(s) && (
           <Notice tone="info" icon={<LoaderCircle size={15} className="spin" />}>
             {reconnectText(s)}

@@ -12,10 +12,12 @@ import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import replace
+from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from installer.runtime import valve_oil_status as status_file
+from installer.runtime import update_window, valve_oil_status as status_file
 from installer.tests.helpers import temp_path
 
 
@@ -51,6 +53,7 @@ class StatusServiceTests(unittest.TestCase):
         cls.paths.printer_data_root.mkdir()
         server.STATUS_FILE = status_file.status_path(cls.paths)
         server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".tltg_optimized_auto_update_enrolled"
+        server.UPDATE_SETTINGS_FILE = update_window.settings_path(cls.paths)
         server.MACRO_GLOBALS = root / "globals.cfg"
         server.FIRMWARE_MANIFEST = root / "firmware_manifest.json"
         server.AUTO_UPDATE_TIMER = root / "missing.timer"
@@ -138,6 +141,47 @@ class StatusServiceTests(unittest.TestCase):
         status, body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"enabled": false}')
         self.assertEqual((status, body["auto_update"]["enabled"]), (200, False))
         self.assertEqual(sorted(path.name for path in self.paths.printer_data_root.iterdir()), before)
+
+    def test_the_update_window_is_saved_for_the_check_and_judged_live(self) -> None:
+        marker, settings = self.server.ENROLLMENT_FILE, self.server.UPDATE_SETTINGS_FILE
+        status_file.record_check(
+            self.paths, enrolled=True, printer=status_file.PrinterInfo(), installed_release=None,
+            pending=(status_file.PendingItem(kind=status_file.RELEASE, version="99.1.1.1", blocked_by=(
+                status_file.Blocker.of("outside_window", "it's outside the update window, 01:00–02:00 UTC"),)),))
+        hour = datetime.now(ZoneInfo("Asia/Tokyo")).hour
+        try:
+            for body in (b'{"window": {"start": 2, "end": 2}}', b'{"window": {"start": 2, "end": 24}}',
+                         b'{"window": {"start": true, "end": 3}}', b'{"window": [2, 5]}',
+                         b'{"timezone": "Mars/Olympus_Mons"}', b'{"timezone": "../../etc/passwd"}', b"{}"):
+                with self.subTest(body=body):
+                    self.assertEqual(self.request("/api/auto-update", headers=self.GOOD, body=body)[0], 400)
+            self.assertFalse(settings.exists())
+
+            # A window that wraps past midnight, saved with the browser's timezone and automatic updates on at once.
+            outside = {"start": (hour + 1) % 24, "end": hour}
+            status, body = self.request("/api/auto-update", headers=self.GOOD, body=json.dumps(
+                {"enabled": True, "window": outside, "timezone": "Asia/Tokyo"}).encode())
+            self.assertEqual(status, 200)
+            self.assertEqual(body["auto_update"], {"enabled": True, "scheduled": False, "window": outside,
+                                                   "timezone": "Asia/Tokyo", "timezone_source": "browser",
+                                                   "in_window": False})
+            saved = update_window.load_settings(self.paths)
+            self.assertEqual((saved.window, saved.timezone, saved.in_window()),
+                             (update_window.Window(**outside), "Asia/Tokyo", False))
+            reasons = body["pending"][0]["blocked_by"]
+            self.assertEqual([item["code"] for item in reasons], ["outside_window"])
+            self.assertIn("Asia/Tokyo", reasons[0]["message"])
+
+            # The window as it is now, not as the check found it; the timezone stays when only the window changes.
+            body = self.request("/api/auto-update", headers=self.GOOD,
+                                body=json.dumps({"window": {"start": hour, "end": (hour + 1) % 24}}).encode())[1]
+            self.assertEqual((body["auto_update"]["in_window"], body["auto_update"]["timezone"]), (True, "Asia/Tokyo"))
+            self.assertEqual(body["pending"][0]["blocked_by"], [])
+            body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"window": null}')[1]
+            self.assertEqual((body["auto_update"]["window"], body["auto_update"]["in_window"]), (None, True))
+        finally:
+            marker.unlink(missing_ok=True)
+            settings.unlink(missing_ok=True)
 
     def test_status_reports_pending_work_and_update_now_runs_once(self) -> None:
         status_file.record_check(

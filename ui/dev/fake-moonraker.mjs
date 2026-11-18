@@ -732,6 +732,10 @@ function applyUpdates(name) {
     scenario: name,
     absent: name === 'absent',
     auto: true,
+    // tltg_status.py: the update window and its timezone, as the install looked it up.
+    window: null,
+    timezone: 'America/Chicago',
+    timezoneSource: 'lookup',
     release: '26.11.11.3',
     channel: 'release',
     commit: null,
@@ -854,11 +858,27 @@ function voPrinterBusy() {
   return ['printing', 'paused'].includes(state.status.print_stats?.state)
 }
 
+function voInWindow() {
+  if (!vo.window) return true
+  let hour = new Date().getUTCHours()
+  try {
+    hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: vo.timezone ?? 'UTC' }).format(new Date()))
+  } catch {}
+  const { start, end } = vo.window
+  return start < end ? start <= hour && hour < end : hour >= start || hour < end
+}
+
+function voWindowBlocker() {
+  const hour = (h) => `${String(h).padStart(2, '0')}:00`
+  return { code: 'outside_window', message: `it's outside the update window, ${hour(vo.window.start)}–${hour(vo.window.end)} ${vo.timezone ?? 'UTC'}` }
+}
+
 function voStatus() {
   const live = []
   if (voPrinterBusy()) live.push('printing')
   else if (state.status.extruder?.target > 0 || state.status.heater_bed?.target > 0 || Date.now() < vo.installerBusyUntil) live.push('heaters_on')
   const blockers = [...live]
+  const outside = !voInWindow()
   if (vo.recovery) blockers.push('recovery_required')
   if (vo.run?.state === 'failed') blockers.push('last_run_failed')
   const running = vo.run?.state === 'running' || vo.job?.state === 'running'
@@ -869,9 +889,9 @@ function voStatus() {
     updated_at: iso(60),
     release: { installed: vo.release, channel: vo.channel, commit: vo.commit },
     printer: { id: 'max4', name: 'QIDI Max 4', firmware: vo.firmware, target_firmware: vo.target },
-    auto_update: { enabled: vo.auto, scheduled: true },
+    auto_update: { enabled: vo.auto, scheduled: true, window: vo.window, timezone: vo.timezone, timezone_source: vo.timezoneSource, in_window: !outside },
     check: { ...vo.check, next_at: nextCheck() },
-    pending: vo.pending.map((item) => ({ ...item, blocked_by: vo.auto ? blockers.map((code) => ({ code, message: BLOCKERS[code] })) : [] })),
+    pending: vo.pending.map((item) => ({ ...item, blocked_by: vo.auto ? [...blockers.map((code) => ({ code, message: BLOCKERS[code] })), ...(outside ? [voWindowBlocker()] : [])] : [] })),
     boards: vo.boards,
     run: vo.run && { firmware_update: false, can_continue: false, ...vo.run, job: undefined },
     // The job names its run once the run has begun and is the latest.
@@ -991,8 +1011,26 @@ async function statusApi(req, res, path) {
   }
   await new Promise((r) => setTimeout(r, 400))
   if (route === 'auto-update') {
-    if (typeof body.enabled !== 'boolean') return send(400, { error: 'Expected {"enabled": true} or {"enabled": false}.' })
-    vo.auto = body.enabled
+    // tltg_status.py Handler._auto_update: any of enabled, window, and timezone.
+    const keys = Object.keys(body)
+    if (!keys.length || keys.some((key) => !['enabled', 'window', 'timezone'].includes(key)))
+      return send(400, { error: 'Expected any of "enabled", "window", and "timezone", such as {"enabled": true}.' })
+    if ('enabled' in body && typeof body.enabled !== 'boolean') return send(400, { error: 'Expected {"enabled": true} or {"enabled": false}.' })
+    if ('window' in body && body.window !== null) {
+      const { start, end } = body.window ?? {}
+      if (![start, end].every((h) => Number.isInteger(h) && h >= 0 && h <= 23)) return send(400, { error: "The window's hours must be whole hours from 0 to 23." })
+      if (start === end) return send(400, { error: 'The window must start and end at different hours.' })
+    }
+    if ('timezone' in body) {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: body.timezone })
+      } catch {
+        return send(400, { error: "The timezone isn't one this printer knows." })
+      }
+    }
+    if ('window' in body) vo.window = body.window && { start: body.window.start, end: body.window.end }
+    if ('timezone' in body) [vo.timezone, vo.timezoneSource] = [body.timezone, 'browser']
+    if ('enabled' in body) vo.auto = body.enabled
     return send(200, voStatus())
   }
   if (route === 'update-now') {

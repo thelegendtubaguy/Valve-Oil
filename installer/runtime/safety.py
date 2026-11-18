@@ -198,6 +198,12 @@ def ensure_klipper_idle(
         raise KlipperBusyError()
 
 
+def query_objects(url: str, names: tuple[str, ...], *, timeout: int = 5,
+                  urlopen: UrlOpenFn = urllib.request.urlopen) -> dict:
+    """Klipper's status of the named objects through Moonraker; raises PrinterStateError when it can't be read."""
+    return _query_objects(url, names, timeout=timeout, urlopen=urlopen)
+
+
 def _query_objects(url: str, names: tuple[str, ...], *, timeout: int, urlopen: UrlOpenFn) -> dict:
     parts = urllib.parse.urlsplit(url)
     query = "&".join(urllib.parse.quote(name, safe="") for name in names)

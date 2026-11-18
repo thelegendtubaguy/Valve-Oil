@@ -3,13 +3,14 @@
 
 Reports the installed Valve Oil release, the printer's QIDI firmware, each board's firmware, and the work waiting for
 the printer, from the pending-work status file the update check and update runs write, and switches automatic updates
-on or off by writing or removing only the enrollment marker. "Update now" starts the installer's update-now run in its
+on or off by writing or removing only the enrollment marker, and saves the update window and its timezone. "Update now" starts the installer's update-now run in its
 own session; it records its result in files, so it finishes and is reported even if this service restarts. nginx
 authorizes every request through Moonraker before it reaches this loopback-only server.
 
 API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
   GET  api/status       the status
-  POST api/auto-update  {"enabled": true|false}; answers with the status
+  POST api/auto-update  any of {"enabled": true|false, "window": {"start": <hour>, "end": <hour>} | null,
+                        "timezone": "<IANA name>"}; answers with the status. A timezone posted here is the browser's.
   POST api/update-now   {}; answers 202 with {"job": ...}, or 409 with {"error", "blocked_by"} when update_now.allowed
                         is false
   GET  api/support-bundle  a zip of what a support issue needs (see support_bundle), named in Content-Disposition;
@@ -17,7 +18,7 @@ API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
 POSTs need the X-Valve-Oil: status header and a JSON body, and a same-origin Origin when a browser sends one.
 
 The status: {schema, updated_at, release: {installed, channel, commit}, printer: {id, name, firmware, target_firmware},
-auto_update: {enabled, scheduled}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
+auto_update: {enabled, scheduled, window: {start, end} | null, timezone, timezone_source, in_window}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
 reinstall, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware, build, pinned, bootloader, report,
 detail, checked_at, issue_url, waiting_for_firmware_update}], run: {id, kind, state, step, step_label, started_at,
 finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, state, started_at, finished_at, log,
@@ -26,13 +27,17 @@ support: {issue_url}}.
 - release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
   release (its RELEASE_METADATA.yaml); null when the bundle in ~/valve-oil is for another version or doesn't say. A
   dev build's update check fails until a release publishes the archive it looks for, so the UIs don't report that.
+- auto_update.window: the whole hours an enrolled check installs in, from start up to end, wrapping past midnight when
+  end is earlier; null for any time. timezone: the IANA zone it is read in (null: UTC), and timezone_source how it was
+  set ("lookup" at install from the printer's internet address, "browser", or "operator" over SSH). in_window: whether
+  now is inside it (true without one). installer/runtime/update_window.py owns the file.
 - check.next_at: when the timer runs the next check (ISO 8601 UTC), or null when it isn't scheduled or can't be read.
 - pending[].reinstall: true for a release item that installs the installed release again, because its installed state
   is missing or has drifted (as after QIDI's firmware package emptied the config folder); version is then the
   installed release. A release item no newer than the installed release is otherwise left out, as it is installed.
 - pending[].blocked_by: why an enrolled printer's update hasn't run; empty while automatic updates are off. The
-  printer's state (printing, heaters_on, printer_state_unknown) is read live when Moonraker answers; the rest is what
-  the last check found.
+  printer's state (printing, heaters_on, printer_state_unknown) is read live when Moonraker answers, and
+  outside_window from the saved window and the clock; the rest is what the last check found.
 - boards[].waiting_for_firmware_update: a board that needs its pinned image and is left as it is until the QIDI
   firmware update is installed (detail: "will be updated after the QIDI firmware update to <version>").
 - run.firmware_update: the run is a QIDI firmware update (or update now continuing one). run.can_continue: that
@@ -64,6 +69,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+from datetime import datetime, timezone as dt_timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -80,6 +86,10 @@ ADMISSION_FILE = PRINTER_DATA / ".tltg_board_admission.json"
 # installer/runtime/auto_update.py: present means automatic updates are on.
 ENROLLMENT_FILE = PRINTER_DATA / ".tltg_optimized_auto_update_enrolled"
 AUTO_UPDATE_TIMER = Path("/etc/systemd/system/tltg-optimized-auto-update.timer")
+# installer/runtime/update_window.py: the update window and the timezone it is read in.
+UPDATE_SETTINGS_FILE = PRINTER_DATA / ".tltg_optimized_auto_update_settings.json"
+TIMEZONE_SOURCES = ("lookup", "browser", "operator")
+ZONE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$")
 MACRO_GLOBALS = PRINTER_DATA / "config/tltg-optimized-macros/globals.cfg"
 FIRMWARE_MANIFEST = HOME / "update/firmware_manifest.json"
 BUNDLE = HOME / "valve-oil"
@@ -147,6 +157,7 @@ LIVE_BLOCKERS = {
     "heaters_on": "a heater is set to a temperature",
     "printer_state_unknown": "Klipper didn't report whether the printer is idle",
 }
+OUTSIDE_WINDOW = "it's outside the update window"
 UPDATE_NOW_BLOCKERS = {
     "run_in_progress": "another update is still running",
     "installer_busy": "another installer run is in progress",
@@ -296,6 +307,70 @@ def set_auto_update(enabled: bool) -> None:
         ENROLLMENT_FILE.unlink(missing_ok=True)
 
 
+def zone(name):
+    """The tzinfo for an IANA name the printer knows, or None (update_window.zone)."""
+    if not isinstance(name, str) or not ZONE_NAME.match(name):
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception:
+        return None
+
+
+def window_from(value) -> dict | None:
+    """A posted or saved window, {"start", "end"} in whole hours that differ, or None; ValueError for anything else."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"start", "end"}:
+        raise ValueError('Expected "window" to be {"start": <hour>, "end": <hour>} or null.')
+    hours = (value["start"], value["end"])
+    if any(isinstance(hour, bool) or not isinstance(hour, int) or not 0 <= hour <= 23 for hour in hours):
+        raise ValueError("The window's hours must be whole hours from 0 to 23.")
+    if hours[0] == hours[1]:
+        raise ValueError("The window must start and end at different hours.")
+    return {"start": hours[0], "end": hours[1]}
+
+
+def update_settings() -> dict:
+    data = _read_json(UPDATE_SETTINGS_FILE, limit=MAX_BODY)
+    data = data if isinstance(data, dict) else {}
+    try:
+        window = window_from(data.get("window"))
+    except ValueError:
+        window = None
+    name = data.get("timezone") if zone(data.get("timezone")) is not None else None
+    source = data.get("timezone_source") if name and data.get("timezone_source") in TIMEZONE_SOURCES else None
+    return {"window": window, "timezone": name, "timezone_source": source}
+
+
+def save_update_settings(settings: dict) -> None:
+    tmp = UPDATE_SETTINGS_FILE.with_name(f".{UPDATE_SETTINGS_FILE.name}.{os.getpid()}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(settings, sort_keys=True, indent=2) + "\n")
+        os.replace(tmp, UPDATE_SETTINGS_FILE)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def in_window(settings: dict, now: datetime | None = None) -> bool:
+    window = settings["window"]
+    if window is None:
+        return True
+    hour = (now or datetime.now(dt_timezone.utc)).astimezone(zone(settings["timezone"]) or dt_timezone.utc).hour
+    start, end = window["start"], window["end"]
+    return start <= hour < end if start < end else hour >= start or hour < end
+
+
+def window_blocker(settings: dict) -> dict:
+    window = settings["window"]
+    return {"code": "outside_window", "message": f"{OUTSIDE_WINDOW}, {window['start']:02d}:00–{window['end']:02d}:00 "
+                                                 f"{settings['timezone'] or 'UTC'}"}
+
+
 def status_body(jobs: Jobs) -> dict:
     """The API's status: the status file, with what can change between checks read live."""
     data = _read_json(STATUS_FILE, limit=MAX_STATUS_BYTES)
@@ -306,11 +381,14 @@ def status_body(jobs: Jobs) -> dict:
     check = _record(data.get("check"))
     admission, admitted_at = _admission()
     enabled = auto_update_enabled()
+    settings = update_settings()
+    outside = not in_window(settings)
     live = live_printer()
     busy = jobs.busy() or _run_active(_record(data.get("run")))
     pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
     for item in pending:
-        item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled)
+        item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
+                                            window_blocker(settings) if outside else None)
     channel, commit = release_build(installed)
     body = {
         "schema": STATUS_SCHEMA,
@@ -322,7 +400,8 @@ def status_body(jobs: Jobs) -> dict:
             "firmware": _qidi_firmware() or _text(printer.get("firmware")),
             "target_firmware": _text(printer.get("target_firmware")) or _text(admission.get("target_firmware")),
         },
-        "auto_update": {"enabled": enabled, "scheduled": AUTO_UPDATE_TIMER.is_file()},
+        "auto_update": {"enabled": enabled, "scheduled": AUTO_UPDATE_TIMER.is_file(), **settings,
+                        "in_window": not outside},
         "check": {
             "at": _text(check.get("at")),
             "result": check.get("result") if check.get("result") in ("ok", "failed") else None,
@@ -534,15 +613,18 @@ def _finite(value) -> float:
     return float(value)
 
 
-def _live_blockers(recorded: list[dict], live: tuple[str, ...] | None, enabled: bool) -> list[dict]:
+def _live_blockers(recorded: list[dict], live: tuple[str, ...] | None, enabled: bool,
+                   outside: dict | None = None) -> list[dict]:
     """Why a waiting update hasn't run: nothing while automatic updates are off; otherwise what the check recorded,
-    with the printer's state as it is now when Moonraker answers."""
+    with the printer's state as it is now when Moonraker answers, and the update window as it is now."""
     if not enabled:
         return []
+    recorded = [blocker for blocker in recorded if blocker["code"] != "outside_window"]
+    window = [outside] if outside else []
     if live is None:
-        return recorded
+        return window + recorded
     kept = [blocker for blocker in recorded if blocker["code"] not in LIVE_BLOCKERS]
-    return [{"code": code, "message": LIVE_BLOCKERS[code]} for code in live] + kept
+    return [{"code": code, "message": LIVE_BLOCKERS[code]} for code in live] + window + kept
 
 
 def _update_now(busy: bool, live: tuple[str, ...] | None) -> dict:
@@ -800,14 +882,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._check_post()
             route = self._route()
             if route == "auto-update":
-                if set(body) != {"enabled"} or not isinstance(body["enabled"], bool):
-                    raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"enabled": true} or {"enabled": false}.')
-                try:
-                    set_auto_update(body["enabled"])
-                except OSError as exc:
-                    log(f"Automatic update switch failed: {exc}")
-                    raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "The automatic update setting could not be saved.") from exc
-                log(f"Automatic updates {'on' if body['enabled'] else 'off'}")
+                self._auto_update(body)
                 self._send(HTTPStatus.OK, status_body(self.jobs))
             elif route == "update-now":
                 if body:
@@ -827,6 +902,33 @@ class Handler(BaseHTTPRequestHandler):
         except RequestError as exc:
             allow = {"status": "GET", "support-bundle": "GET"}.get(self._route(), "POST") if exc.status == HTTPStatus.METHOD_NOT_ALLOWED else None
             self._send(exc.status, {"error": str(exc)}, allow=allow)
+
+    def _auto_update(self, body: dict) -> None:
+        if not body or not set(body) <= {"enabled", "window", "timezone"}:
+            raise RequestError(HTTPStatus.BAD_REQUEST,
+                               'Expected any of "enabled", "window", and "timezone", such as {"enabled": true}.')
+        if "enabled" in body and not isinstance(body["enabled"], bool):
+            raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"enabled": true} or {"enabled": false}.')
+        settings = update_settings()
+        try:
+            if "window" in body:
+                settings["window"] = window_from(body["window"])
+        except ValueError as exc:
+            raise RequestError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+        if "timezone" in body:
+            if zone(body["timezone"]) is None:
+                raise RequestError(HTTPStatus.BAD_REQUEST, "The timezone isn't one this printer knows.")
+            settings["timezone"], settings["timezone_source"] = body["timezone"], "browser"
+        try:
+            if "window" in body or "timezone" in body:
+                save_update_settings(settings)
+                log(f"Update window {settings['window']} in {settings['timezone'] or 'UTC'}")
+            if "enabled" in body:
+                set_auto_update(body["enabled"])
+                log(f"Automatic updates {'on' if body['enabled'] else 'off'}")
+        except OSError as exc:
+            log(f"Automatic update settings failed: {exc}")
+            raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "The automatic update setting could not be saved.") from exc
 
     def _check_post(self) -> dict:
         name, value = ACTION_HEADER

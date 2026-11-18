@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import replace
 
 from .addons_cli import maybe_update_installed_addons
-from . import boot_logo, klipper_cfg, messages, patches, progress, safety
+from . import boot_logo, klipper_cfg, messages, patches, progress, safety, update_window
 from .auto_update import (
     LOCK_HELD_ENV,
     adopt_legacy_enrollment,
@@ -592,6 +592,8 @@ def _execute_install(
 
         # Units an earlier release wrote only for automatic updates mean they are on, before this install replaces them.
         adopt_legacy_enrollment(paths, environ)
+        # The printer's clock runs in UTC: the update window needs the operator's timezone (update_window.py).
+        update_window.ensure_timezone(paths, reporter=reporter, urlopen=urlopen)
         progress.step(progress.SYSTEM_CHANGES, reporter)
         state = maybe_apply_system_optimizations(
             paths=paths,

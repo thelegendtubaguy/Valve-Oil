@@ -222,12 +222,33 @@ Every install schedules Valve Oil's update check, 5 minutes after the printer st
 
 A board the update check tried and couldn't bring to Valve Oil's firmware isn't tried again by later checks until it reports another firmware version; the next install tries again.
 
+#### Update window
+
+Set an **Update window** to choose the hours automatic updates start in, such as 02:00 to 05:00. Outside it, the hourly check still looks and shows what's waiting, but installs, restarts, and flashes nothing, and the printer warning says `Automatic updates are on, so it will be installed during the update window, 02:00–05:00 America/Chicago, while the printer is idle.` Hours are whole hours, up to but not including the end hour, and a window can run past midnight, such as 22:00 to 04:00. The check runs once an hour, so an update starts within the window's first hour and may run past the window's end. Without a window, automatic updates start at any hour, as before. Each check does one step: installing a release, starting the QIDI firmware update, or flashing boards. When a release, QIDI firmware, and board firmware are all waiting, a window shorter than three hours can spread them over several nights. **Update now** and `./install.sh` ignore the window.
+
+The printer's clock runs in UTC, so the window is read in your timezone. The first install with this release looks it up from the printer's internet address, by asking `ipapi.co`, or `worldtimeapi.org` if that doesn't answer; they see the printer's public address and nothing else. Setting a window in Fluidd or Valve Oil UI saves your browser's timezone when none is saved yet, and **Use <timezone>** there switches to the browser's. A timezone that's saved is never looked up again. Without one, the window is read in UTC.
+
+Set the window with the **Update window** setting under the **Automatic updates** switch in Fluidd's **Valve Oil** settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen, or over SSH:
+
+```bash
+~/valve-oil/auto-update.sh --window 2-5                 # 02:00 to 05:00
+~/valve-oil/auto-update.sh --window 22-4                # 22:00 to 04:00, past midnight
+~/valve-oil/auto-update.sh --window any                 # any hour
+~/valve-oil/auto-update.sh --timezone America/Chicago   # the timezone the window is read in
+```
+
+`--window` and `--timezone` also go with `--enable` and `--disable`. Each prints the same as `--status`, which includes the window.
+
+#### The chamber light
+
+Stock `printer.cfg` turns the chamber light on whenever Klipper starts, and an update restarts Klipper, or the whole printer for a QIDI firmware update. When the light is off as an automatic update starts, Valve Oil turns it off again each time Klipper starts during the next 3 hours, which covers the update and the restart that can follow it. A light that's on is left alone. It may come on for a few seconds while Klipper starts. This starts with the update after the one that installs this release, since the update check runs from the release already installed.
+
 Turn automatic updates on or off with the **Automatic updates** switch in Fluidd's **Valve Oil** settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen, by answering the installer's question, or over SSH. It needs no password and takes effect at the next check. Printers that had automatic updates on with an earlier release keep them on.
 
 ```bash
 ~/valve-oil/auto-update.sh --enable    # turn automatic updates on
 ~/valve-oil/auto-update.sh --disable   # turn them off
-~/valve-oil/auto-update.sh --status    # whether they're on, the last check, and what's waiting
+~/valve-oil/auto-update.sh --status    # whether they're on, the update window, the last check, and what's waiting
 ~/valve-oil/auto-update.sh --run       # check now; installs only with automatic updates on
 ```
 

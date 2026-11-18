@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
-from . import addons_cli, firmware_update, install_flow, install_screen, messages, progress, safety, valve_oil_status
+from . import addons_cli, firmware_update, install_flow, install_screen, messages, progress, safety, update_window, valve_oil_status
 from .auto_update import (
     KIND_ENV,
     LOCK_HELD_ENV,
@@ -61,6 +61,8 @@ DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
 DEFAULT_MOONRAKER_URL = "http://127.0.0.1:7125/printer/objects/query?print_stats"
 FIRMWARE_MODES = {"box-firmware", "mainboard-firmware"}
 AUTO_UPDATE_SWITCH_MODES = {"enable-auto-updates", "disable-auto-updates", "auto-update-status"}
+# --window not given: the saved window stays as it is.
+_UNCHANGED = object()
 # Runs that keep a log in printer_data/logs (run_log.py).
 LOGGED_MODES = {"install", "uninstall", "restore-backup", "usb"}
 
@@ -149,7 +151,12 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
             return 0
 
         if args.mode in AUTO_UPDATE_SWITCH_MODES:
-            # Only the enrollment marker changes: no sudo, no lock, and the check reads it at its next run.
+            # Only the enrollment marker and the window's settings change: no sudo, no lock, and the check reads them at
+            # its next run.
+            if args.window is not _UNCHANGED:
+                update_window.set_window(paths, args.window)
+            if args.timezone is not None:
+                update_window.set_timezone(paths, args.timezone, source="operator")
             if args.mode == "enable-auto-updates":
                 enable_auto_updates(paths=paths, reporter=reporter, environ=env)
             elif args.mode == "disable-auto-updates":
@@ -818,6 +825,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                                 (("--status",), "status", "Show whether automatic updates are on and what is waiting")):
         auto_update_actions.add_argument(*flags, dest="auto_update_action", action="store_const", const=action,
                                          help=text + " (auto-update mode only).")
+    parser.add_argument("--window", metavar="HOURS", help="Limit automatic updates to these hours, such as 2-5 or 22-4 (up to, not including, the end hour), or any (auto-update mode only).")
+    parser.add_argument("--timezone", metavar="ZONE", help="The IANA timezone the update window is read in, such as America/Chicago (auto-update mode only).")
     args = parser.parse_args(_normalize_command_aliases(argv))
     if args.uninstall:
         if args.mode != "install":
@@ -827,8 +836,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if args.mode != "install" or args.uninstall:
             parser.error("--clear-recovery-sentinel cannot be combined with another mode.")
         args.mode = "clear-recovery-sentinel"
-    if args.auto_update_action and args.mode != "auto-update":
+    if (args.auto_update_action or args.window is not None or args.timezone is not None) and args.mode != "auto-update":
         parser.error("auto-update action flags are only supported with auto-update.")
+    if args.window is not None or args.timezone is not None:
+        if args.auto_update_action == "run":
+            parser.error("--window and --timezone go with --enable, --disable, --status, or on their own.")
+        try:
+            args.window = update_window.parse_window_argument(args.window) if args.window is not None else _UNCHANGED
+            if args.timezone is not None and update_window.zone(args.timezone) is None:
+                raise update_window.UpdateWindowError(
+                    f"{args.timezone} isn't a known timezone; use an IANA name such as America/Chicago.")
+        except update_window.UpdateWindowError as exc:
+            parser.error(str(exc))
+        args.auto_update_action = args.auto_update_action or "status"
+    else:
+        args.window = _UNCHANGED
     if args.mode == "auto-update":
         if args.auto_update_action == "run":
             args.mode = "auto-update-check"

@@ -5,8 +5,9 @@
 //
 // Client for Valve Oil's status service (tltg-status), which the nginx serving Fluidd on the printer exposes at
 // /tltg-status/api. It reports the installed Valve Oil release, the printer's QIDI firmware, each board's firmware,
-// and the work waiting for the printer, switches automatic updates on or off, and starts "update now". nginx
-// authorizes each request through Moonraker, so requests carry Fluidd's Moonraker access token when there is one.
+// and the work waiting for the printer, switches automatic updates on or off, sets the hours they run in, and starts
+// "update now". nginx authorizes each request through Moonraker, so requests carry Fluidd's Moonraker access token when
+// there is one.
 //
 // Kept free of Vue and the store: Valve Oil UI ports this file and its spec.
 
@@ -26,6 +27,28 @@ export type TltgJobState = 'running' | 'succeeded' | 'failed'
 
 /** Which run an update result came from: Update now, the automatic update, or the installer run by hand. */
 export type TltgRunKind = 'update_now' | 'automatic' | 'install' | 'other'
+
+/**
+ * Where the update window's timezone came from: looked up from the printer's public address by the installer, this or
+ * another browser's when a window was set, or set over SSH.
+ */
+export type TltgTimezoneSource = 'lookup' | 'browser' | 'operator'
+
+/** Whole hours automatic updates install in: from start up to, not including, end; past midnight when end < start. */
+export interface TltgUpdateWindowHours {
+  start: number;
+  end: number;
+}
+
+export interface TltgStatusUpdateWindow {
+  /** null: any time. */
+  hours: TltgUpdateWindowHours | null;
+  /** The IANA timezone the hours are read in; null reads them in UTC. */
+  timezone: string | null;
+  timezone_source: TltgTimezoneSource | null;
+  /** Whether it's within the hours now; true when any time. */
+  in_window: boolean;
+}
 
 export interface TltgStatusBlocker {
   code: string;
@@ -119,6 +142,8 @@ export interface TltgStatus {
     /** null when the printer didn't say. */
     enabled: boolean | null;
     scheduled: boolean | null;
+    /** null from a service without update windows. */
+    window: TltgStatusUpdateWindow | null;
   };
   check: {
     at: string | null;
@@ -149,6 +174,8 @@ export type TltgWaitingNotice =
   | 'blocked'
   /** Automatic updates are on, and it installs at the next check. */
   | 'next_check'
+  /** Automatic updates are on, and it installs at a check in the update window, which it's outside of now. */
+  | 'window'
 
 /**
  * What Update now would do: continue a QIDI firmware update that failed part way, install what's waiting, or finish an
@@ -228,9 +255,11 @@ export interface TltgStatusView {
   /** The QIDI firmware the installed release brings the printer to, when it isn't on it already. */
   targetFirmware: string | null;
   autoUpdate: boolean | null;
+  /** The update window, or null when the printer doesn't have them. */
+  updateWindow: TltgStatusUpdateWindow | null;
   waiting: TltgStatusPending[];
   notice: TltgWaitingNotice;
-  /** Every distinct reason the waiting work hasn't run, while automatic updates are on. */
+  /** Every distinct reason the waiting work hasn't run, while automatic updates are on, being outside the window included. */
   reasons: string[];
   /** All that's waiting is installing the installed Valve Oil release again. */
   reinstall: boolean;
@@ -300,7 +329,11 @@ const PRINTING: TltgStatusBlocker = { code: 'printing', message: 'a print is run
 // nothing has changed, and a failure there isn't kept.
 const FIRMWARE_STEPS: readonly string[] = ['stage', 'closed_loop', 'stop_services', 'soc', 'update_folder', 'finish', 'resume']
 
+/** The blocker a waiting item carries while automatic updates wait for the update window. */
+export const TLTG_OUTSIDE_WINDOW = 'outside_window'
+
 const PENDING_KINDS: readonly string[] = ['release', 'firmware', 'board']
+const TIMEZONE_SOURCES: readonly string[] = ['lookup', 'browser', 'operator']
 const BOARD_STATES: readonly string[] = ['current', 'needs_image', 'unrecognized_firmware', 'unrecognized_bootloader', 'held', 'unknown']
 const RUN_STATES: readonly string[] = ['running', 'succeeded', 'failed', 'interrupted']
 const RUN_KINDS: readonly string[] = ['update_now', 'automatic', 'install']
@@ -332,6 +365,28 @@ export const tltgSentence = (value: string): string => {
   }
 
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + (/[.!?]$/.test(sentence) ? '' : '.')
+}
+
+/** An hour of the day as the update window shows it: 02:00. */
+export const tltgHourLabel = (hour: number): string => `${String(hour).padStart(2, '0')}:00`
+
+/** An update window's hours as the printer words them: 02:00–05:00. */
+export const tltgUpdateWindowLabel = (hours: TltgUpdateWindowHours): string => `${tltgHourLabel(hours.start)}–${tltgHourLabel(hours.end)}`
+
+/** Whether hours can be saved as an update window: whole hours of the day, starting and ending at different hours. */
+export const tltgUpdateWindowValid = (hours: TltgUpdateWindowHours): boolean => {
+  const hour = (value: number) => Number.isInteger(value) && value >= 0 && value <= 23
+
+  return hour(hours.start) && hour(hours.end) && hours.start !== hours.end
+}
+
+/** This browser's IANA timezone, or null when it doesn't say. */
+export const tltgBrowserTimezone = (): string | null => {
+  try {
+    return optionalText(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  } catch {
+    return null
+  }
 }
 
 const time = (value: string | null): number | null => {
@@ -391,6 +446,44 @@ const parseBlockers = (value: unknown): TltgStatusBlocker[] => records(value)
     code: text(blocker.code),
     message: optionalText(blocker.message) ?? text(blocker.code)
   }))
+
+/**
+ * The update window, or null from a service without them, which leaves the window out of auto_update, or one that sends
+ * hours this page can't read.
+ */
+const parseUpdateWindow = (autoUpdate: Record<string, unknown>): TltgStatusUpdateWindow | null => {
+  if (!('window' in autoUpdate)) {
+    return null
+  }
+
+  let hours: TltgUpdateWindowHours | null = null
+
+  if (autoUpdate.window != null) {
+    const window = record(autoUpdate.window)
+
+    if (typeof window.start !== 'number' || typeof window.end !== 'number') {
+      return null
+    }
+
+    hours = { start: window.start, end: window.end }
+
+    if (!tltgUpdateWindowValid(hours)) {
+      return null
+    }
+  }
+
+  const timezone = optionalText(autoUpdate.timezone)
+  const source = autoUpdate.timezone_source
+
+  return {
+    hours,
+    timezone,
+    timezone_source: timezone != null && typeof source === 'string' && TIMEZONE_SOURCES.includes(source)
+      ? source as TltgTimezoneSource
+      : null,
+    in_window: hours == null || autoUpdate.in_window !== false
+  }
+}
 
 const parsePending = (value: Record<string, unknown>): TltgStatusPending | null => {
   if (typeof value.kind !== 'string' || !PENDING_KINDS.includes(value.kind)) {
@@ -519,7 +612,8 @@ export const parseTltgStatus = (value: unknown): TltgStatus | null => {
     },
     auto_update: {
       enabled: optionalBoolean(autoUpdate.enabled),
-      scheduled: optionalBoolean(autoUpdate.scheduled)
+      scheduled: optionalBoolean(autoUpdate.scheduled),
+      window: parseUpdateWindow(autoUpdate)
     },
     check: {
       at: optionalText(check.at),
@@ -724,12 +818,21 @@ const boardView = (board: TltgStatusBoard, status: TltgStatus): TltgBoardView =>
 /** What the Valve Oil section shows for a status, at `now`. */
 export const tltgStatusView = (status: TltgStatus, now: number = Date.now()): TltgStatusView => {
   const autoUpdate = status.auto_update.enabled
+  const updateWindow = status.auto_update.window
   const waiting = status.pending
   const reasons: string[] = []
+  let otherReasons = false
+  let outsideWindow = updateWindow?.hours != null && !updateWindow.in_window
 
   if (autoUpdate === true) {
     for (const item of waiting) {
       for (const blocker of item.blocked_by) {
+        if (blocker.code === TLTG_OUTSIDE_WINDOW) {
+          outsideWindow = true
+        } else {
+          otherReasons = true
+        }
+
         if (blocker.message && !reasons.includes(blocker.message)) {
           reasons.push(blocker.message)
         }
@@ -742,6 +845,11 @@ export const tltgStatusView = (status: TltgStatus, now: number = Date.now()): Tl
   if (waiting.length > 0) {
     if (autoUpdate !== true) {
       notice = 'auto_off'
+    } else if (otherReasons) {
+      notice = 'blocked'
+    } else if (outsideWindow && updateWindow?.hours != null) {
+      // Only the window stops it, and the page knows the window to name.
+      notice = 'window'
     } else if (reasons.length > 0) {
       notice = 'blocked'
     } else {
@@ -762,6 +870,7 @@ export const tltgStatusView = (status: TltgStatus, now: number = Date.now()): Tl
     firmware,
     targetFirmware: target && target !== firmware ? target : null,
     autoUpdate,
+    updateWindow,
     waiting,
     notice,
     reasons,
@@ -838,7 +947,7 @@ export interface TltgStatusRequestOptions {
   method?: 'GET' | 'POST';
   token?: string | null;
   signal?: AbortSignal;
-  /** A POST's JSON body, such as {"enabled": true}. */
+  /** A POST's JSON body, such as {"enabled": true} or {"window": {"start": 2, "end": 5}}. */
   body?: Record<string, unknown>;
 }
 
