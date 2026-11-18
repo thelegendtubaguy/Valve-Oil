@@ -1392,8 +1392,10 @@ class PrinterWarningsTest(unittest.TestCase):
         # Automatic updates on: why it hasn't run, read again without a restart.
         (data / ".tltg_optimized_auto_update_enrolled").write_text("1\n")
         check(status_file.PendingItem(kind="firmware", version="01.01.07.01", blocked_by=(status_file.Blocker.of("printing"),)),
-              # The release Klipper already runs is no longer waiting.
-              status_file.PendingItem(kind="release", version="26.11.11.3"), enrolled=True)
+              # The release Klipper already runs is no longer waiting, nor is an older one the last check listed
+              # before an install went past it.
+              status_file.PendingItem(kind="release", version="26.11.11.3"),
+              status_file.PendingItem(kind="release", version="26.11.9.1"), enrolled=True)
         firmware, = pending()
         self.assertEqual(firmware["id"], "valve_oil_firmware_waiting")
         self.assertIn(status_file.BLOCKERS["printing"], firmware["message"])

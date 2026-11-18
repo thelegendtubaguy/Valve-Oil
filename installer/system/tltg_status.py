@@ -29,7 +29,7 @@ support: {issue_url}}.
 - check.next_at: when the timer runs the next check (ISO 8601 UTC), or null when it isn't scheduled or can't be read.
 - pending[].reinstall: true for a release item that installs the installed release again, because its installed state
   is missing or has drifted (as after QIDI's firmware package emptied the config folder); version is then the
-  installed release. A release item whose version is the installed release is otherwise left out, as it is installed.
+  installed release. A release item no newer than the installed release is otherwise left out, as it is installed.
 - pending[].blocked_by: why an enrolled printer's update hasn't run; empty while automatic updates are off. The
   printer's state (printing, heaters_on, printer_state_unknown) is read live when Moonraker answers; the rest is what
   the last check found.
@@ -637,10 +637,21 @@ def _pending(item: dict) -> dict | None:
 
 
 def _still_waiting(item: dict | None, installed: str | None) -> bool:
-    # A manual install of the waiting release ends the wait before the next check rewrites the file. Installing the
-    # same release again doesn't change its version, so that install removes a reinstall item itself.
-    return item is not None and (item["reinstall"] or not (
-        item["kind"] == "release" and installed and item["version"] == installed))
+    # A manual install of the waiting release, or of a later one, ends the wait before the next check rewrites the
+    # file. Installing the same release again doesn't change its version, so that install removes a reinstall item
+    # itself.
+    if item is None or item["reinstall"] or item["kind"] != "release" or not installed:
+        return item is not None
+    if item["version"] == installed:
+        return False
+    waiting, running = _version_key(item["version"]), _version_key(installed)
+    return waiting is None or running is None or waiting > running
+
+
+def _version_key(version: str | None) -> tuple[int, ...] | None:
+    if not version or not re.fullmatch(r"\d+(?:\.\d+)*", version):
+        return None
+    return tuple(int(part) for part in version.split("."))
 
 
 def _boards(recorded: list[dict], admission: dict, admitted_at: str | None) -> list[dict]:

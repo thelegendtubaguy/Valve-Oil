@@ -146,8 +146,9 @@ class StatusServiceTests(unittest.TestCase):
             printer=status_file.PrinterInfo(id="max4", name="QIDI Max 4", firmware="01.01.06.01", target_firmware="01.01.07.01"),
             installed_release="26.11.11.2",
             pending=(
-                # A release the operator has since installed by hand is no longer waiting.
+                # A release the operator has since installed by hand, or gone past, is no longer waiting.
                 status_file.PendingItem(kind=status_file.RELEASE, version="26.11.11.3", current="26.11.11.2"),
+                status_file.PendingItem(kind=status_file.RELEASE, version="26.11.9.1", current="26.11.8.1"),
                 # The installed release, found with its installed state missing or drifted, is installed again.
                 status_file.PendingItem(kind=status_file.RELEASE, version="26.11.11.3", current="26.11.11.3",
                                         reinstall=True),

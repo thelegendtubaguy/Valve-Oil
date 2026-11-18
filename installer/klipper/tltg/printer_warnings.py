@@ -71,6 +71,27 @@ CONTINUE_IT = ("Continue it with Update now or by running the Valve Oil"
 BOOT_ID = "/proc/sys/kernel/random/boot_id"
 
 
+def _version_key(version):
+    if not isinstance(version, str) or not re.match(r"^\d+(\.\d+)*$",
+                                                    version):
+        return None
+    return tuple(int(part) for part in version.split("."))
+
+
+def _release_installed(item, installed):
+    # A release no newer than the one Klipper runs is installed, unless the
+    # check found it needs installing again (its installed state is missing
+    # or has drifted). An install that went past it, or the last check
+    # written before an install, can still list it.
+    if item.get("reinstall") is True or not installed:
+        return False
+    version = item.get("version")
+    if version == installed:
+        return True
+    waiting, running = _version_key(version), _version_key(installed)
+    return waiting is not None and running is not None and waiting <= running
+
+
 class PrinterWarnings:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -395,13 +416,9 @@ class PrinterWarnings:
             isinstance(items, list)) else []
         installed = self._installed_release()
         for kind in ("release", "firmware", "board"):
-            # A release Klipper already runs is installed, unless the check
-            # found it needs installing again (its installed state is missing
-            # or has drifted).
             group = [item for item in items if item.get("kind") == kind
-                     and not (kind == "release" and installed
-                              and item.get("version") == installed
-                              and item.get("reinstall") is not True)]
+                     and not (kind == "release"
+                              and _release_installed(item, installed))]
             if not group:
                 continue
             reasons = []

@@ -1068,15 +1068,19 @@ class BoardAdmissionTests(unittest.TestCase):
         code, block, _, _ = install("--dry-run")
         self.assertEqual((code, block), (0, None))
         # Every board admitted: blocked. The install settles what the last check listed for this release, such as
-        # installing it again, and leaves a newer release waiting.
+        # installing it again, or for an older one it went past, records this release as installed, and leaves a
+        # newer release waiting.
         printer.boards["thr"] = ("admitted", "stock")
-        valve_oil_status.record_check(paths, enrolled=False, printer=valve_oil_status.PrinterInfo(), installed_release=None,
+        valve_oil_status.record_check(paths, enrolled=False, printer=valve_oil_status.PrinterInfo(), installed_release="1.1.1.1",
                                       pending=(valve_oil_status.PendingItem(kind="release", version="99.1.1.1"),
+                                               valve_oil_status.PendingItem(kind="release", version="1.1.1.2", current="1.1.1.1"),
                                                valve_oil_status.PendingItem(kind="release", reinstall=True,
                                                                             version=MANIFEST.package.version)))
         code, block, deliver, _ = install()
         self.assertEqual((code, block), (0, True))
-        self.assertEqual([item.version for item in valve_oil_status.load_status(paths).pending], ["99.1.1.1"])
+        settled = valve_oil_status.load_status(paths)
+        self.assertEqual([item.version for item in settled.pending], ["99.1.1.1"])
+        self.assertEqual(settled.installed_release, MANIFEST.package.version)
         self.assertTrue(deliver.call_args.kwargs["admission"].admitted)
         self.assertFalse(deliver.call_args.kwargs["dry_run"])
         # An existing install whose THR this release doesn't admit: installed, with QIDI's updates still blocked.

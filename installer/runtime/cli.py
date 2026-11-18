@@ -5,6 +5,7 @@ import os
 import sys
 import traceback
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 
 from . import addons_cli, firmware_update, install_flow, install_screen, messages, progress, safety, valve_oil_status
@@ -17,6 +18,7 @@ from .auto_update import (
     current_auto_update_checksum,
     disable_auto_updates,
     enable_auto_updates,
+    newer_release,
     run_auto_update_check,
 )
 from .box_enablement import maybe_reconcile_tool_slots_after_box_count_change
@@ -750,13 +752,20 @@ def _host_reboot_operation_current(*, manifest, reporter, environ: dict[str, str
 
 
 def _settle_waiting_release(paths, version: str) -> None:
-    """This release is installed now: what the last update check listed as waiting for it, such as installing it
-    again after QIDI's package emptied the config folder, is done. Readers can't tell that from the version alone."""
-    pending = valve_oil_status.load_status(paths).pending
-    if not any(item.kind == valve_oil_status.RELEASE and item.version == version for item in pending):
+    """This release is installed now: a release the last update check listed as waiting that isn't newer, such as this
+    one, one this install went past, or this one installed again after QIDI's package emptied the config folder, is
+    done, and the status records this release as installed. Until the next check the file would otherwise say an older
+    release is waiting."""
+
+    def done(item: valve_oil_status.PendingItem) -> bool:
+        return item.kind == valve_oil_status.RELEASE and (item.version == version or newer_release(version, item.version))
+
+    status = valve_oil_status.load_status(paths)
+    if status.installed_release == version and not any(done(item) for item in status.pending):
         return
     try:
-        valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE, version=version)
+        valve_oil_status.update_status(paths, lambda current: replace(
+            current, installed_release=version, pending=tuple(item for item in current.pending if not done(item))))
     except OSError:
         pass
 

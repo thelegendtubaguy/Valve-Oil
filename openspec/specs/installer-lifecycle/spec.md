@@ -512,6 +512,11 @@ The update check SHALL be scheduled on every installation. Installing a release,
 - **THEN** it publishes what is waiting and records the fetched checksum
 - **AND** it installs no release, starts no firmware update, reconciles nothing, reads or flashes no board, starts, stops, or restarts no service, uses no sudo, and schedules no reboot
 
+#### Scenario: An install ends the wait for the releases it reaches
+- **WHEN** a release is installed while the last update check listed it, or an older release, as waiting
+- **THEN** the printer warnings, Fluidd, and Valve Oil UI stop listing every waiting release no newer than the installed one, without waiting for the next check
+- **AND** a newer waiting release stays listed
+
 #### Scenario: Automatic updates are switched on or off
 - **WHEN** the operator switches automatic updates in Fluidd, in Valve Oil UI, or with `auto-update.sh`
 - **THEN** only the enrollment changes, without a password, and it takes effect at the next check
