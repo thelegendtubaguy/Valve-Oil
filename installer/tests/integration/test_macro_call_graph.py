@@ -9,7 +9,7 @@ from installer.runtime.manifest import load_manifest
 from installer.tests.helpers import REPO_ROOT
 
 
-OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
+OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "macros"
 PRINTER_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "printers"
 
 

@@ -27,13 +27,13 @@ Without any input shaping, moves at full speed and acceleration shake the toolhe
 By default, each print start measures a fresh adaptive mesh over the area being printed. To load a saved Klipper bed-mesh profile instead, save its exact name:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_start_bed_mesh_profile VALUE='"default"'
+SAVE_VARIABLE VARIABLE=vo_start_bed_mesh_profile VALUE='"default"'
 ```
 
 To go back to a fresh mesh each print:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_start_bed_mesh_profile VALUE='""'
+SAVE_VARIABLE VARIABLE=vo_start_bed_mesh_profile VALUE='""'
 ```
 
 This works with files you've already sliced. The console says which one the start is using. The profile must exist, or Klipper stops the print start.
@@ -63,14 +63,14 @@ The fan is turned off when a chamber that had reached its target falls back to 4
 Off by default. Heats the bed, then the chamber, then the nozzle, with a pause between stages:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating VALUE=1
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating_dwell_seconds VALUE=10
+SAVE_VARIABLE VARIABLE=vo_staggered_start_heating VALUE=1
+SAVE_VARIABLE VARIABLE=vo_staggered_start_heating_dwell_seconds VALUE=10
 ```
 
 The pause is in seconds; `0` keeps the order without pausing. With a [minimum chamber temperature](#minimum-chamber-temperature), the nozzle starts heating once the chamber reaches the minimum. Turn it off with:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_staggered_start_heating VALUE=0
+SAVE_VARIABLE VARIABLE=vo_staggered_start_heating VALUE=0
 ```
 
 Needs files sliced with the current start G-code from this repo or the OrcaCloud bundle.
@@ -82,13 +82,13 @@ After a completed print, the Box filament stays loaded. The installer turns this
 To cut and unload after each print the way QIDI does:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_keep_loaded_between_prints VALUE=0
+SAVE_VARIABLE VARIABLE=vo_keep_loaded_between_prints VALUE=0
 ```
 
 To keep filament loaded again:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_keep_loaded_between_prints VALUE=1
+SAVE_VARIABLE VARIABLE=vo_keep_loaded_between_prints VALUE=1
 ```
 
 This works with files you've already sliced and survives Klipper restarts.
@@ -100,7 +100,7 @@ A print left paused for 72 hours is cancelled, as Fluidd's **Cancel** does, and 
 To change how long, in hours:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_pause_timeout_hours VALUE=24
+SAVE_VARIABLE VARIABLE=vo_pause_timeout_hours VALUE=24
 ```
 
 It applies from the next pause.

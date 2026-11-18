@@ -16,7 +16,7 @@ MODULE_NAME = "tltg_moonraker_fixes"
 MODULE_FILE = f"{SITE_PACKAGES}/{MODULE_NAME}.py"
 PATH_FILE = f"{SITE_PACKAGES}/tltg-moonraker-fixes.pth"
 RESTART_SERVICE = "moonraker.service"
-MODULE_PAYLOAD = Path(__file__).resolve().parents[1] / f"system/{MODULE_NAME}.py"
+MODULE_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_moonraker_fixes.py"
 # Package-created files start with a marker line so later package versions replace earlier ones.
 MODULE_MARKER = "# tltg-optimized:moonraker-fixes\n"
 PATH_MARKER = "# tltg-optimized:moonraker-fixes-path\n"

@@ -129,7 +129,7 @@ function baseStatus() {
     auto_init_detect: 0,
     slot_sync: 'slot1',
     last_load_slot: 'slot1',
-    tltg_box_hub_slot: 'slot1',
+    vo_box_hub_slot: 'slot1',
     filament_slot16: 'QFA01',
     color_slot16: ['F5D90A'],
   }
@@ -207,9 +207,9 @@ function baseStatus() {
     'gcode_macro BED_MESH_CALIBRATE': {},
     'gcode_macro CLEAR_NOZZLE': {},
     'gcode_macro SHAPER_CALIBRATE': {},
-    'gcode_macro TLTG_BOX_MOTION': {},
-    'gcode_macro TLTG_RESET_TOOL_MAPPINGS': {},
-    'gcode_macro _TLTG_INTERNAL': {},
+    'gcode_macro VO_BOX_MOTION': {},
+    'gcode_macro VO_RESET_TOOL_MAPPINGS': {},
+    'gcode_macro _VO_INTERNAL': {},
     tltg_printer: { name: 'Max 4' },
     heaters: {
       available_heaters: ['heater_bed', 'extruder', 'heater_generic chamber', 'heater_generic heater_box1', 'heater_generic heater_box2'],
@@ -407,7 +407,7 @@ async function gcode(script) {
       setTimeout(() => set(`box_stepper slot${p.SLOT}`, { rfid_state: 0 }), 3000)
     } else if (C === 'VO_BOX_RFID_TEST') await rfidJob(p, false)
     else if (C === 'VO_BOX_RFID_WRITE') await rfidJob(p, true)
-    else if (C === 'TLTG_BOX_MOTION') {
+    else if (C === 'VO_BOX_MOTION') {
       const m = state.status.tltg_box_feed_motion
       if (p.RESET) set('tltg_box_feed_motion', { settings: Object.fromEntries(Object.keys(m.settings).map((k) => [k, null])) })
       else {
@@ -416,10 +416,10 @@ async function gcode(script) {
         set('tltg_box_feed_motion', { settings: s })
       }
       pushConsole('// Box motion settings saved.')
-    } else if (C === 'TLTG_CUT_FILAMENT') {
+    } else if (C === 'VO_CUT_FILAMENT') {
       await new Promise((r) => setTimeout(r, 2000))
       pushConsole('// Filament cut.')
-    } else if (C === 'TLTG_BOX_SLOT_JOG') pushConsole(`// Moved slot ${p.SLOT} ${p.DISTANCE} mm.`)
+    } else if (C === 'VO_BOX_SLOT_JOG') pushConsole(`// Moved slot ${p.SLOT} ${p.DISTANCE} mm.`)
     else if (C === 'M84') set('toolhead', { homed_axes: '' })
     else if (C === 'M107' || C === 'M106') {
       /* accepted */
@@ -586,7 +586,7 @@ const handlers = {
   'printer.objects.query': (p) => {
     const out = {}
     for (const k of Object.keys(p.objects)) {
-      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'TLTG_CUT_FILAMENT', 'TLTG_BOX_SLOT_JOG', 'TLTG_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'TLTG_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
+      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'VO_CUT_FILAMENT', 'VO_BOX_SLOT_JOG', 'VO_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'VO_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
       else if (k === 'configfile')
         out.configfile = {
           settings: {
@@ -634,10 +634,10 @@ const handlers = {
   'printer.gcode.help': () => ({
     ...extraCommands,
     G28: 'Home axes', M84: 'Disable motors', SET_HEATER_TEMPERATURE: 'Sets a heater temperature', SAVE_VARIABLE: 'Save arbitrary variables to disk',
-    TLTG_BOX_MOTION: 'Show or set QIDI Box load and unload motion', TLTG_CUT_FILAMENT: 'Cut the filament at the toolhead without heating',
-    TLTG_BOX_SLOT_JOG: "Move a Box slot's filament", LOAD_FILAMENT_CONTROL: 'Load a Box slot', PRINT_START: 'Start a print', M600: 'Filament change',
+    VO_BOX_MOTION: 'Show or set QIDI Box load and unload motion', VO_CUT_FILAMENT: 'Cut the filament at the toolhead without heating',
+    VO_BOX_SLOT_JOG: "Move a Box slot's filament", LOAD_FILAMENT_CONTROL: 'Load a Box slot', PRINT_START: 'Start a print', M600: 'Filament change',
     CLEAR_NOZZLE: 'Wipe the nozzle', BED_MESH_CALIBRATE: 'Probe the bed mesh', SHAPER_CALIBRATE: 'Measure resonances and pick input shaping',
-    TLTG_RESET_TOOL_MAPPINGS: 'Restore T0 → 1A, T1 → 1B, …',
+    VO_RESET_TOOL_MAPPINGS: 'Restore T0 → 1A, T1 → 1B, …',
   }),
   'machine.proc_stats': () => procStats(true),
   'server.files.get_directory': () => ({ dirs: [], files: [], disk_usage: { total: 7.2e9, used: 3.1e9, free: 4.1e9 }, root_info: { name: 'gcodes', permissions: 'rw' } }),
@@ -716,7 +716,7 @@ setInterval(() => {
       if (f.i >= f.steps.length) {
         state.flow = null
         const loadedNow = f.kind === 'load'
-        set('save_variables', { variables: { ...vars(), slot_sync: loadedNow ? `slot${f.slot}` : 'slot-1', last_load_slot: `slot${f.slot}`, tltg_box_hub_slot: `slot${f.slot}` } })
+        set('save_variables', { variables: { ...vars(), slot_sync: loadedNow ? `slot${f.slot}` : 'slot-1', last_load_slot: `slot${f.slot}`, vo_box_hub_slot: `slot${f.slot}` } })
         set('multi_color_controller', { task: { current_queue: [], current_step: '', is_paused: false }, box: { last_load_slot: `slot${f.slot}`, b_endstop_state: loadedNow ? 0 : 1 } })
         set('filament_switch_sensor filament_switch_sensor', { filament_detected: loadedNow })
         set('extruder', { target: 0 })
@@ -726,7 +726,7 @@ setInterval(() => {
   }
 }, 1000)
 
-// ---------- Valve Oil status service (/tltg-status/api, installer/system/tltg_status.py) ----------
+// ---------- Valve Oil status service (/tltg-status/api, installer/system/vo_status.py) ----------
 // Pick a starting state with --updates, or switch at runtime with `VO_UPDATES NAME=<scenario>`. Update now runs a
 // simulated update; with QIDI or board firmware waiting it takes Moonraker and this API away for a while, as the real
 // one restarts them.
@@ -740,7 +740,7 @@ const SUPPORT_ISSUE_URL =
 const SUPPORT_BUNDLE = Buffer.concat([Buffer.from('PK\x05\x06'), Buffer.alloc(18)])
 const iso = (secondsAgo = 0) => new Date(Date.now() - secondsAgo * 1000).toISOString().replace(/\.\d+Z$/, 'Z')
 const board = (id, state, firmware, build, extra = {}) => ({ id, state, name: { thr: 'THR', mcu: 'Mainboard', closed_loop: 'Closed-loop drivers' }[id] ?? `Box ${id.slice(3)}`, firmware, build, pinned: firmware, bootloader: null, issue_url: null, report: null, detail: null, checked_at: iso(3600), waiting_for_firmware_update: false, ...extra })
-// installer/runtime/valve_oil_status.py BLOCKERS and installer/system/tltg_status.py UPDATE_NOW_BLOCKERS.
+// installer/runtime/valve_oil_status.py BLOCKERS and installer/system/vo_status.py UPDATE_NOW_BLOCKERS.
 const BLOCKERS = {
   printing: 'a print is running or paused',
   heaters_on: 'a heater is set to a temperature',
@@ -881,7 +881,7 @@ function applyUpdates(name) {
   voWarnings()
 }
 
-// The printer warnings Klipper's tltg_printer_warnings reports for the update state (installer/klipper/tltg/
+// The printer warnings Klipper's tltg_printer_warnings reports for the update state (installer/klipper/extras/
 // printer_warnings.py), beside the printer scenario's own.
 function voWarnings() {
   const kept = (state.status.tltg_printer_warnings?.warnings ?? []).filter((w) => !w.id.startsWith('valve_oil_') && !w.id.startsWith('box_firmware_'))

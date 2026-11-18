@@ -9,7 +9,7 @@
 - Translate comments only unless told otherwise. Leave runtime/status/warning strings unchanged unless the affected string set is approved.
 - Keep `config/` stock-mapped except redactions, approved comment translation, generated state blocks, and minimal include wiring. Never tune `config/printer.cfg` or `config/klipper-macros-qd/*.cfg`. Put changes where they belong:
   - stock values: guarded `installer/package.yaml patches.*`, or a guarded host-file patch under `installer/runtime/` when the file is QIDI-generated with varying sections (e.g. `config/box.cfg`);
-  - Klipper behavior: `installer/klipper/tltg-optimized-macros/`, with printer-specific homing, cutter/wiper/chute moves, and positions in `installer/klipper/printers/<printer>/` (same macro names on every printer; the installer layers the detected printer's folder onto the common macros);
+  - Klipper behavior: `installer/klipper/macros/`, with printer-specific homing, cutter/wiper/chute moves, and positions in `installer/klipper/printers/<printer>/` (same macro names on every printer; the installer layers the detected printer's folder onto the common macros);
   - slicer behavior: `orcaslicer_gcode/` and `qidistudio_gcode/`;
   - Valve Oil UI, the web interface served at `/valve-oil/` beside Fluidd: `ui/`;
   - installer/runtime metadata: `installer/`.
@@ -51,18 +51,18 @@ Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behav
 
 ## Start-print changes
 
-Read the printer spec, contract, and generated view first. Update `start-print.path.json` for branch-level invariants, run `python3 scripts/check_gcode_paths.py --write` then `python3 scripts/check_gcode_paths.py`, and include changed generated `.md`/`.mmd` files. If a command change leaves generated views unchanged, say why it isn't a branch-level invariant. Contracted sources: both slicers' `start.gcode`, `config/box.cfg`, `config/klipper-macros-qd/*.cfg`, `installer/klipper/tltg-optimized-macros/*.cfg`.
+Read the printer spec, contract, and generated view first. Update `start-print.path.json` for branch-level invariants, run `python3 scripts/check_gcode_paths.py --write` then `python3 scripts/check_gcode_paths.py`, and include changed generated `.md`/`.mmd` files. If a command change leaves generated views unchanged, say why it isn't a branch-level invariant. Contracted sources: both slicers' `start.gcode`, `config/box.cfg`, `config/klipper-macros-qd/*.cfg`, `installer/klipper/macros/*.cfg`.
 
 ## Runtime paths
 
 - Include graph: `config/printer.cfg` → `MCU_ID.cfg`, `timelapse.cfg`, `klipper-macros-qd/*.cfg`, `tltg-optimized-macros/*.cfg`, `box.cfg` (active).
 - Stock/optimized pairs: `start_end.cfg`, `kinematics.cfg` (homing; optimized homing sequence in `printers/<printer>/homing.cfg`), `filament.cfg`, `bed_mesh.cfg` plus optimized wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
-- Cooling: `installer/klipper/tltg-optimized-macros/cooling.cfg`; pause/resume/cancel: `config/klipper-macros-qd/pause_resume_cancel.cfg`.
+- Cooling: `installer/klipper/macros/cooling.cfg`; pause/resume/cancel: `config/klipper-macros-qd/pause_resume_cancel.cfg`.
 - To see what QIDI's Box code does on a live printer (calls, settings lookups, G-code, motor positions), use `scripts/box_trace/` instead of writing a new tracer.
 
 ## Versions and changelog
 
-- Changes to installed macros, installer behavior, or release-bundle contents must advance the package version with `python3 scripts/bump_installer_version.py <version>`, which keeps `installer/package.yaml` and `tltg-optimized-macros/globals.cfg` aligned. The installer admits state from any version of this package, so renumbering or folding an unreleased version needs no compatibility bookkeeping.
+- Changes to installed macros, installer behavior, or release-bundle contents must advance the package version with `python3 scripts/bump_installer_version.py <version>`, which keeps `installer/package.yaml` and `installer/klipper/macros/globals.cfg` aligned. The installer admits state from any version of this package, so renumbering or folding an unreleased version needs no compatibility bookkeeping.
 - Update `installer/supported_upgrade_sources.yaml` by hand only when adding a guarded patch target or source-patch provenance; its cumulative envelope must cover the current manifest.
 - Every version needs a matching `CHANGELOG.md` section in the same change, covering every operator-visible change shipped under it. Before finishing, check the headings against `installer/package.yaml` and run `python3 scripts/check_installer_known_versions.py`.
 
@@ -89,5 +89,5 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 ## Timing and terminology
 
 - `G4 P...` is fixed dead time; `M400` waits only for queued motion. For conservative speedups, trim `G4` before changing speeds or acceleration.
-- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; optimized-only globals go in `installer/klipper/tltg-optimized-macros/globals.cfg`, and printer-specific positions and calibration defaults in `installer/klipper/printers/<printer>/printer_profile.cfg` (`_tltg_printer`). Treat seemingly unused stock globals as externally consumed unless proven otherwise.
+- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; optimized-only globals go in `installer/klipper/macros/globals.cfg`, and printer-specific positions and calibration defaults in `installer/klipper/printers/<printer>/printer_profile.cfg` (`_vo_printer`). Treat seemingly unused stock globals as externally consumed unless proven otherwise.
 - "Purge" means rear waste-chute/wiper extrusion only; "prime line" means front-of-bed slicer-start extrusion.

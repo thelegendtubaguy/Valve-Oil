@@ -39,8 +39,8 @@ Forbidden patterns:
 - `SET_INPUT_SHAPER`
 - `G1 E-0.2 F1800`
 - `BED_MESH_PROFILE`
-- `tltg_start_bed_mesh_profile`
-- `tltg_keep_loaded_between_prints`
+- `vo_start_bed_mesh_profile`
+- `vo_keep_loaded_between_prints`
 - `M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
 G29.0`
@@ -79,8 +79,8 @@ Forbidden patterns:
 - `SET_INPUT_SHAPER`
 - `G1 E-0.2 F1800`
 - `BED_MESH_PROFILE`
-- `tltg_start_bed_mesh_profile`
-- `tltg_keep_loaded_between_prints`
+- `vo_start_bed_mesh_profile`
+- `vo_keep_loaded_between_prints`
 - `M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperatures]
 G29.0`
@@ -91,7 +91,7 @@ G29.0`
 
 Condition: `all optimized starts`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:65-72`
+Source: `installer/klipper/macros/start_end.cfg:65-72`
 
 Direct visible macro calls in branch slice:
 
@@ -100,8 +100,8 @@ Direct visible macro calls in branch slice:
 Ordered invariants:
 
 - `{% set svv = printer.save_variables.variables %}`
-- `svv.tltg_staggered_start_heating|default(opt.staggered_start_heating)|int`
-- `([svv.tltg_staggered_start_heating_dwell_seconds|default(opt.staggered_start_heating_dwell_seconds)|float, 0]|max)`
+- `svv.vo_staggered_start_heating|default(opt.staggered_start_heating)|int`
+- `([svv.vo_staggered_start_heating_dwell_seconds|default(opt.staggered_start_heating_dwell_seconds)|float, 0]|max)`
 
 Forbidden patterns:
 
@@ -111,43 +111,43 @@ Forbidden patterns:
 
 Condition: `staggered_start_heating && BEDTEMP or CHAMBER is provided`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:75-76`
+Source: `installer/klipper/macros/start_end.cfg:75-76`
 
 Direct visible macro calls in branch slice:
 
-- `_OPTIMIZED_STAGGERED_START_EXPLICIT`
+- `_VO_STAGGERED_START_EXPLICIT`
 
 Ordered invariants:
 
-- `_OPTIMIZED_STAGGERED_START_EXPLICIT BEDTEMP={bed_target} CHAMBER={chamber_target} PROBETEMP={probe_target} DWELL={dwell_seconds} CHAMBER_MIN_TEMP={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `_VO_STAGGERED_START_EXPLICIT BEDTEMP={bed_target} CHAMBER={chamber_target} PROBETEMP={probe_target} DWELL={dwell_seconds} CHAMBER_MIN_TEMP={params.CHAMBER_MIN_TEMP|default(0)|float}`
 
 Forbidden patterns:
 
-- `_OPTIMIZED_STAGGERED_START_ACTIVE`
+- `_VO_STAGGERED_START_ACTIVE`
 
 ### staggered_active_target_compatibility
 
 Condition: `staggered_start_heating && prior no-argument slicer invocation`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:78-78`
+Source: `installer/klipper/macros/start_end.cfg:78-78`
 
 Direct visible macro calls in branch slice:
 
-- `_OPTIMIZED_STAGGERED_START_ACTIVE`
+- `_VO_STAGGERED_START_ACTIVE`
 
 Ordered invariants:
 
-- `_OPTIMIZED_STAGGERED_START_ACTIVE PROBETEMP={probe_target} DWELL={dwell_seconds}`
+- `_VO_STAGGERED_START_ACTIVE PROBETEMP={probe_target} DWELL={dwell_seconds}`
 
 Forbidden patterns:
 
-- `_OPTIMIZED_STAGGERED_START_EXPLICIT`
+- `_VO_STAGGERED_START_EXPLICIT`
 
 ### concurrent_start_heating
 
 Condition: `staggered_start_heating is disabled`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:81-90`
+Source: `installer/klipper/macros/start_end.cfg:81-90`
 
 Direct visible macro calls in branch slice:
 
@@ -165,29 +165,29 @@ Ordered invariants:
 
 Forbidden patterns:
 
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
 - `G4 P{dwell_ms}`
 
 ### staggered_explicit_heating
 
 Condition: `explicit targets with staggered heating enabled`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:6-28`
+Source: `installer/klipper/macros/start_end.cfg:6-28`
 
 Direct visible macro calls in branch slice:
 
 - `m104`
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
 
 Ordered invariants:
 
 - `M104 S0`
 - `SET_HEATER_TEMPERATURE HEATER=chamber TARGET=0`
-- `OPTIMIZED_WAIT_BED S={bed_target}`
+- `VO_WAIT_BED S={bed_target}`
 - `G4 P{dwell_ms}`
-- `OPTIMIZED_WAIT_CHAMBER S={chamber_target} MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `VO_WAIT_CHAMBER S={chamber_target} MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
 - `G4 P{dwell_ms}`
 - `M104 S{probe_target}`
 
@@ -201,7 +201,7 @@ Forbidden patterns:
 
 Condition: `prior no-argument slicer targets with staggered heating enabled`
 
-Source: `installer/klipper/tltg-optimized-macros/start_end.cfg:32-60`
+Source: `installer/klipper/macros/start_end.cfg:32-60`
 
 Direct visible macro calls in branch slice:
 
@@ -220,15 +220,15 @@ Ordered invariants:
 
 Forbidden patterns:
 
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
 - `G28`
 
 ### chamber_start_wait_threshold
 
 Condition: `chamber heater available; positive minimum selects exact threshold, otherwise target minus 3 degrees`
 
-Source: `installer/klipper/tltg-optimized-macros/heaters.cfg:26-43`
+Source: `installer/klipper/macros/heaters.cfg:26-43`
 
 Direct visible macro calls in branch slice:
 
@@ -252,30 +252,30 @@ Forbidden patterns:
 
 Condition: `all optimized starts`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:207-259`
+Source: `installer/klipper/macros/filament.cfg:207-259`
 
 Direct visible macro calls in branch slice:
 
-- `_TLTG_ENSURE_TOOL_MAPPINGS`
+- `_VO_ENSURE_TOOL_MAPPINGS`
 - `SAVE_VARIABLE`
 
 Ordered invariants:
 
-- `keep_loaded_between_prints = svv.tltg_keep_loaded_between_prints|default(0)|int == 1`
-- `_TLTG_ENSURE_TOOL_MAPPINGS`
+- `keep_loaded_between_prints = svv.vo_keep_loaded_between_prints|default(0)|int == 1`
+- `_VO_ENSURE_TOOL_MAPPINGS`
 - `SET_GCODE_VARIABLE MACRO=OPTIMIZED_END_NOZZLE_COOLDOWN_START VARIABLE=reset_tool_mappings VALUE=0`
 - `SAVE_VARIABLE VARIABLE=retained_tool_ready VALUE=0`
 
 Forbidden patterns:
 
 - `BOX_PRINT_START`
-- `_TLTG_RESET_TOOL_MAPPINGS`
+- `_VO_RESET_TOOL_MAPPINGS`
 
 ### start_tool_without_usb_box_slot
 
 Condition: `USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:232-255`
+Source: `installer/klipper/macros/filament.cfg:232-255`
 
 Direct visible macro calls in branch slice:
 
@@ -288,11 +288,11 @@ Ordered invariants:
 - `{% set external_tool = box_on and box_available and not tool_on_box %}`
 - `{% set box_enabled = (box_on or restore_box) and box_available and tool_on_box %}`
 - `{% if external_tool %}`
-- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=0`
-- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=1`
+- `_VO_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=0`
+- `_VO_SAVE_VARIABLE_BASE VARIABLE=vo_box_off_for_external_tool VALUE=1`
 - `{% elif restore_box %}`
-- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=1`
-- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=0`
+- `_VO_SAVE_VARIABLE_BASE VARIABLE=enable_box VALUE=1`
+- `_VO_SAVE_VARIABLE_BASE VARIABLE=vo_box_off_for_external_tool VALUE=0`
 
 Forbidden patterns:
 
@@ -301,9 +301,9 @@ Forbidden patterns:
 
 ### retained_filament_reuse
 
-Condition: `tltg_keep_loaded_between_prints == 1 and retained physical state is proven`
+Condition: `vo_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:260-298`
+Source: `installer/klipper/macros/filament.cfg:260-298`
 
 Direct visible macro calls in branch slice:
 
@@ -312,13 +312,13 @@ Direct visible macro calls in branch slice:
 - `m140`
 - `m141`
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
-- `OPTIMIZED_WAIT_HOTEND`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
+- `VO_WAIT_HOTEND`
 - `M106`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
-- `_OPTIMIZED_REPORT_BED_TEMP`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `VO_WIPE_NOZZLE_DROP`
+- `_VO_REPORT_BED_TEMP`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002`
 - `ENABLE_ALL_SENSOR`
 
@@ -326,46 +326,46 @@ Ordered invariants:
 
 - `SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}`
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
-- `OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
-- `OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
-- `_OPTIMIZED_REPORT_BED_TEMP`
+- `VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
+- `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `VO_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle`
+- `VO_WIPE_NOZZLE_DROP`
+- `_VO_REPORT_BED_TEMP`
 - `Z_TILT_ADJUST`
 - `M400`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002 A1`
 - `ENABLE_ALL_SENSOR`
 
 Forbidden patterns:
 
 - `BOX_PRINT_START`
-- `OPTIMIZED_EXTRUSION_AND_FLUSH`
-- `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE`
+- `VO_EXTRUSION_AND_FLUSH`
+- `VO_WIPE_AND_SCRAPE_NOZZLE`
 - `PATTERN=MIXED`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
 - `CLEAR_NOZZLE`
 
 ### box_fresh_load
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:299-342`
+Source: `installer/klipper/macros/filament.cfg:299-342`
 
 Direct visible macro calls in branch slice:
 
 - `SAVE_VARIABLE`
-- `OPTIMIZED_EXTRUSION_AND_FLUSH`
+- `VO_EXTRUSION_AND_FLUSH`
 - `OPTIMIZED_MOVE_TO_TRASH`
 - `m104`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
-- `_OPTIMIZED_REPORT_BED_TEMP`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `VO_WIPE_NOZZLE_DROP`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
+- `_VO_REPORT_BED_TEMP`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002`
 - `ENABLE_ALL_SENSOR`
 
@@ -373,78 +373,78 @@ Ordered invariants:
 
 - `SET_PRINT_SUB_STATUS SUB_STATUS=change_filament`
 - `BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={purge_temp}`
-- `OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target} PRE_SCRAPE=1`
+- `VO_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target} PRE_SCRAPE=1`
 - `{% if purge_temp > scrape_target %}`
 - `TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purge_temp}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED`
+- `VO_WIPE_NOZZLE_DROP PATTERN=MIXED`
 - `{% if purge_temp - 30 > scrape_target %}`
 - `TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purge_temp - 30}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED`
+- `VO_WIPE_NOZZLE_DROP PATTERN=MIXED`
 - `TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={scrape_maximum}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
-- `OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
-- `OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `VO_WIPE_NOZZLE_DROP PATTERN=MIXED`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
+- `VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
+- `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
 - `G1 X{profile.z_tilt_staging_x} Y{profile.z_tilt_staging_y} F33900`
-- `_OPTIMIZED_REPORT_BED_TEMP`
+- `_VO_REPORT_BED_TEMP`
 - `Z_TILT_ADJUST`
 - `M400`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002 A1`
 - `ENABLE_ALL_SENSOR`
 
 Forbidden patterns:
 
 - `CLEAR_NOZZLE`
-- `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE`
+- `VO_WIPE_AND_SCRAPE_NOZZLE`
 
 ### no_box_external_spool
 
 Condition: `!box_available || !enable_box || start tool on no connected USB Box`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:343-379`
+Source: `installer/klipper/macros/filament.cfg:343-379`
 
 Direct visible macro calls in branch slice:
 
 - `SAVE_VARIABLE`
 - `m140`
 - `m141`
-- `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE`
+- `VO_WIPE_AND_SCRAPE_NOZZLE`
 - `M106`
-- `OPTIMIZED_WAIT_BED`
-- `OPTIMIZED_WAIT_CHAMBER`
-- `_OPTIMIZED_REPORT_BED_TEMP`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `VO_WAIT_BED`
+- `VO_WAIT_CHAMBER`
+- `_VO_REPORT_BED_TEMP`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002`
 - `ENABLE_ALL_SENSOR`
 
 Ordered invariants:
 
 - `M118 Starting without QIDI Box filament prep`
-- `OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}`
-- `OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
-- `OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
-- `_OPTIMIZED_REPORT_BED_TEMP`
+- `VO_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}`
+- `VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
+- `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
+- `_VO_REPORT_BED_TEMP`
 - `Z_TILT_ADJUST`
 - `M400`
-- `_OPTIMIZED_PREPARE_PRINT_MESH`
+- `_VO_PREPARE_PRINT_MESH`
 - `M1002 A1`
 - `ENABLE_ALL_SENSOR`
 
 Forbidden patterns:
 
 - `BOX_PRINT_START`
-- `OPTIMIZED_EXTRUSION_AND_FLUSH`
-- `_OPTIMIZED_WIPE_NOZZLE`
+- `VO_EXTRUSION_AND_FLUSH`
+- `_VO_WIPE_NOZZLE`
 - `CLEAR_NOZZLE`
 - `G1 E250`
 
 ### saved_mesh_profile
 
-Condition: `tltg_start_bed_mesh_profile is non-empty`
+Condition: `vo_start_bed_mesh_profile is non-empty`
 
-Source: `installer/klipper/tltg-optimized-macros/bed_mesh.cfg:18-23`
+Source: `installer/klipper/macros/bed_mesh.cfg:18-23`
 
 Direct visible macro calls in branch slice:
 
@@ -460,20 +460,20 @@ Ordered invariants:
 
 Forbidden patterns:
 
-- `_OPTIMIZED_G29_HOME_Z_OR_FULL`
+- `_VO_G29_HOME_Z_OR_FULL`
 - `BED_MESH_CALIBRATE`
 - `SAVE_CONFIG_QD`
 
 ### fresh_adaptive_mesh
 
-Condition: `tltg_start_bed_mesh_profile is absent or empty`
+Condition: `vo_start_bed_mesh_profile is absent or empty`
 
-Source: `installer/klipper/tltg-optimized-macros/bed_mesh.cfg:24-35`
+Source: `installer/klipper/macros/bed_mesh.cfg:24-35`
 
 Direct visible macro calls in branch slice:
 
 - `G31`
-- `_OPTIMIZED_G29_HOME_Z_OR_FULL`
+- `_VO_G29_HOME_Z_OR_FULL`
 - `BED_MESH_CALIBRATE`
 - `SAVE_VARIABLE`
 
@@ -483,11 +483,11 @@ Ordered invariants:
 - `G31`
 - `SET_STEPPER_ENABLE STEPPER=extruder enable=0`
 - `BED_MESH_CLEAR`
-- `_OPTIMIZED_G29_HOME_Z_OR_FULL`
+- `_VO_G29_HOME_Z_OR_FULL`
 - `BED_MESH_CALIBRATE PROFILE=kamp`
 - `SAVE_VARIABLE VARIABLE=profile_name VALUE='"kamp"'`
 - `G4 P500`
-- `TLTG_SAVE_CONFIG_QD`
+- `VO_SAVE_CONFIG_QD`
 
 Forbidden patterns:
 
@@ -506,7 +506,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `SAVE_GCODE_STATE NAME=optimized_start_pre_scrape_wipe_state`
+- `SAVE_GCODE_STATE NAME=vo_start_pre_scrape_wipe_state`
 - `G90`
 - `M204 S10000`
 - `{% for i in range(2) %}`
@@ -519,7 +519,7 @@ Ordered invariants:
 - `{% endfor %}`
 - `M400`
 - `SET_VELOCITY_LIMIT ACCEL={saved_accel}`
-- `RESTORE_GCODE_STATE NAME=optimized_start_pre_scrape_wipe_state`
+- `RESTORE_GCODE_STATE NAME=vo_start_pre_scrape_wipe_state`
 
 Forbidden patterns:
 
@@ -532,7 +532,7 @@ Forbidden patterns:
 - `CLEAR_NOZZLE`
 - `CLEAR_OOZE`
 - `CLEAR_FLUSH`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
 
 ### silicone_wiper_finishing_strokes
 
@@ -547,7 +547,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `SAVE_GCODE_STATE NAME=optimized_wipe_nozzle_state`
+- `SAVE_GCODE_STATE NAME=vo_wipe_nozzle_state`
 - `G90`
 - `M204 S10000`
 - `{% for i in range(4) %}`
@@ -557,7 +557,7 @@ Ordered invariants:
 - `G1 X180 F12000`
 - `M400`
 - `SET_VELOCITY_LIMIT ACCEL={saved_accel}`
-- `RESTORE_GCODE_STATE NAME=optimized_wipe_nozzle_state`
+- `RESTORE_GCODE_STATE NAME=vo_wipe_nozzle_state`
 
 Forbidden patterns:
 
@@ -569,28 +569,28 @@ Forbidden patterns:
 - `M109`
 - `CLEAR_NOZZLE`
 - `CLEAR_OOZE`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
 
 ### chute_wipe_and_drop_dispatch
 
 Condition: `PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through the optimized chute drop`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:168-174`
+Source: `installer/klipper/macros/filament.cfg:168-174`
 
 Direct visible macro calls in branch slice:
 
-- `_OPTIMIZED_START_PRE_SCRAPE_WIPE`
-- `_OPTIMIZED_WIPE_NOZZLE`
-- `_OPTIMIZED_CHUTE_DROP`
+- `_VO_START_PRE_SCRAPE_WIPE`
+- `_VO_WIPE_NOZZLE`
+- `_VO_CHUTE_DROP`
 
 Ordered invariants:
 
 - `{% if params.PATTERN|default("FAST")|upper == "MIXED" %}`
-- `_OPTIMIZED_START_PRE_SCRAPE_WIPE`
+- `_VO_START_PRE_SCRAPE_WIPE`
 - `{% else %}`
-- `_OPTIMIZED_WIPE_NOZZLE`
+- `_VO_WIPE_NOZZLE`
 - `{% endif %}`
-- `_OPTIMIZED_CHUTE_DROP`
+- `_VO_CHUTE_DROP`
 
 Forbidden patterns:
 
@@ -615,13 +615,13 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `SAVE_GCODE_STATE NAME=optimized_chute_drop_state`
+- `SAVE_GCODE_STATE NAME=vo_chute_drop_state`
 - `G90`
 - `M204 S10000`
 - `G1 X180 F10000`
 - `OPTIMIZED_MOVE_TO_TRASH`
 - `SET_VELOCITY_LIMIT ACCEL={saved_accel}`
-- `RESTORE_GCODE_STATE NAME=optimized_chute_drop_state`
+- `RESTORE_GCODE_STATE NAME=vo_chute_drop_state`
 
 Forbidden patterns:
 
@@ -676,34 +676,34 @@ Forbidden patterns:
 
 Condition: `external-spool start, with optional vendor chute cleanup guarded by Box object availability`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:188-203`
+Source: `installer/klipper/macros/filament.cfg:188-203`
 
 Direct visible macro calls in branch slice:
 
 - `m104`
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WAIT_HOTEND`
+- `VO_WAIT_HOTEND`
 - `M106`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
+- `VO_WIPE_NOZZLE_DROP`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
 
 Ordered invariants:
 
 - `box_available = printer.tltg_macro_status.box_available`
-- `OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle`
+- `VO_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle`
 - `TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}`
 - `{% if box_available %}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED`
+- `VO_WIPE_NOZZLE_DROP PATTERN=MIXED`
 - `{% endif %}`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
 
 Forbidden patterns:
 
 - `BOX_PRINT_START`
-- `OPTIMIZED_EXTRUSION_AND_FLUSH`
-- `_OPTIMIZED_WIPE_NOZZLE`
+- `VO_EXTRUSION_AND_FLUSH`
+- `_VO_WIPE_NOZZLE`
 - `G1 E`
 - `CLEAR_NOZZLE`
 - `CLEAR_FLUSH`
@@ -712,54 +712,54 @@ Forbidden patterns:
 
 Condition: `fresh Box or external-spool scrape complete and vendor chute cleanup object available`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:178-183`
+Source: `installer/klipper/macros/filament.cfg:178-183`
 
 Direct visible macro calls in branch slice:
 
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
+- `VO_WIPE_NOZZLE_DROP`
 
 Ordered invariants:
 
 - `{% if box_available %}`
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
+- `VO_WIPE_NOZZLE_DROP`
 - `{% endif %}`
 
 Forbidden patterns:
 
 - `CLEAR_NOZZLE`
 - `CLEAR_OOZE`
-- `_OPTIMIZED_REAR_BED_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
 - `CLEAR_FLUSH`
 
 ### start_purge_wipe_dispatch
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/tltg-optimized-macros/filament.cfg:536-582`
+Source: `installer/klipper/macros/filament.cfg:536-582`
 
 Direct visible macro calls in branch slice:
 
 - `OPTIMIZED_MOVE_TO_TRASH`
-- `OPTIMIZED_WAIT_HOTEND`
+- `VO_WAIT_HOTEND`
 - `M106`
-- `OPTIMIZED_M1004`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
+- `VO_M1004`
+- `VO_WIPE_NOZZLE_DROP`
 - `pause`
 
 Ordered invariants:
 
 - `{% if pre_scrape %}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED`
+- `VO_WIPE_NOZZLE_DROP PATTERN=MIXED`
 - `{% else %}`
-- `OPTIMIZED_WIPE_NOZZLE_DROP`
+- `VO_WIPE_NOZZLE_DROP`
 - `{% endif %}`
 
 Forbidden patterns:
 
-- `_OPTIMIZED_REAR_BED_SCRAPE`
-- `_OPTIMIZED_FINISH_START_SCRAPE`
+- `_VO_REAR_BED_SCRAPE`
+- `_VO_FINISH_START_SCRAPE`
 - `CLEAR_NOZZLE`
 - `CLEAR_FLUSH`
 
@@ -767,5 +767,5 @@ Forbidden patterns:
 
 - `config/box.cfg`
 - `config/klipper-macros-qd/*.cfg`
-- `installer/klipper/tltg-optimized-macros/*.cfg`
+- `installer/klipper/macros/*.cfg`
 - `installer/klipper/printers/max4/*.cfg`

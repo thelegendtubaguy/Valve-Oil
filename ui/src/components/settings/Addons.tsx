@@ -1,29 +1,29 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, ExternalLink, Puzzle } from 'lucide-react'
 import { Card, confirm, Spinner } from '../ui'
-import { tltgAddonActions, type TltgAddon, type TltgAddonAction, type TltgAddonJob } from '../../qidi/tltg-addons'
+import { voAddonActions, type VoAddon, type VoAddonAction, type VoAddonJob } from '../../qidi/vo-addons'
 import { actionsDisabled, dismissJob, hasStatusPanel, installBlocked, jobFor, runAddonAction, useAddons, watchAddons } from '../../state/addons'
 import { Notice } from './common'
 import { ObicoPanel, OctoEverywherePanel, TailscalePanel, ZerotierPanel } from './AddonPanels'
 
-// The Fluidd fork's Add-ons section (src/components/settings/addons/) and its wording (app.tltg_addons in
+// The Fluidd fork's Add-ons section (src/components/settings/addons/) and its wording (app.vo_addons in
 // src/locales/en.yaml there); keep the two in step.
 
-const STATE: Record<TltgAddon['state'], { label: string; tone: string }> = {
+const STATE: Record<VoAddon['state'], { label: string; tone: string }> = {
   installed: { label: 'Installed', tone: 'tone-good' },
   update_available: { label: 'Update available', tone: 'tone-accent' },
   foreign: { label: 'Installed outside Valve Oil', tone: 'tone-warn' },
   not_installed: { label: 'Not installed', tone: 'tone-muted' },
 }
-const BUTTON: Record<TltgAddonAction, string> = { install: 'Install', update: 'Update', remove: 'Remove', relink: 'Restart linking' }
-const JOB: Record<TltgAddonAction, Record<TltgAddonJob['state'], (name: string) => string>> = {
+const BUTTON: Record<VoAddonAction, string> = { install: 'Install', update: 'Update', remove: 'Remove', relink: 'Restart linking' }
+const JOB: Record<VoAddonAction, Record<VoAddonJob['state'], (name: string) => string>> = {
   install: { running: (n) => `Installing ${n}…`, succeeded: (n) => `${n} installed`, failed: (n) => `Installing ${n} failed` },
   update: { running: (n) => `Updating ${n}…`, succeeded: (n) => `${n} updated`, failed: (n) => `Updating ${n} failed` },
   remove: { running: (n) => `Removing ${n}…`, succeeded: (n) => `${n} removed`, failed: (n) => `Removing ${n} failed` },
   relink: { running: (n) => `Restarting ${n} for linking…`, succeeded: (n) => `${n} is ready to link`, failed: (n) => `Restarting ${n} for linking failed` },
 }
 
-function versionText(addon: TltgAddon) {
+function versionText(addon: VoAddon) {
   const { installed_version: installed, available_version: available } = addon
   if (addon.state === 'update_available' && installed && available) return `Version ${installed}, ${available} available`
   if (addon.state !== 'not_installed' && installed) return `Version ${installed}`
@@ -54,10 +54,10 @@ export function AddonsSettings() {
   )
 }
 
-function AddonCard({ addon }: { addon: TltgAddon }) {
+function AddonCard({ addon }: { addon: VoAddon }) {
   const s = useAddons()
   const disabled = actionsDisabled(s)
-  const actions = tltgAddonActions(addon)
+  const actions = voAddonActions(addon)
   const blocked = installBlocked(addon)
   const job = jobFor(s, addon)
   const error = s.actionErrors[addon.id]
@@ -66,7 +66,7 @@ function AddonCard({ addon }: { addon: TltgAddon }) {
   const printerBusyHint = s.list != null && s.list.printer_busy && !s.list.busy
   const pending = s.pendingAction?.addon === addon.id
 
-  const run = async (action: TltgAddonAction | null, body?: Record<string, unknown>) => {
+  const run = async (action: VoAddonAction | null, body?: Record<string, unknown>) => {
     if (!action || actionsDisabled(s) || (action === 'install' && blocked)) return
     if (action === 'remove' && !(await confirm({ title: `Remove ${addon.name}`, body: `Remove ${addon.name} from the printer?`, confirm: 'Remove', danger: true }))) return
     runAddonAction(addon, action, body)
@@ -125,7 +125,7 @@ function AddonCard({ addon }: { addon: TltgAddon }) {
   )
 }
 
-function AddonJob({ job, name }: { job: TltgAddonJob; name: string }) {
+function AddonJob({ job, name }: { job: VoAddonJob; name: string }) {
   // null follows the job: the log opens by itself when the job fails.
   const [showLog, setShowLog] = useState<boolean | null>(null)
   useEffect(() => setShowLog(null), [job.id])

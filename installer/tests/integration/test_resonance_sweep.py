@@ -82,7 +82,7 @@ def _load():
     sys.modules["extras"] = package
     try:
         spec = importlib.util.spec_from_file_location(
-            "extras.tltg_resonance_sweep", REPO_ROOT / "installer/klipper/tltg/resonance_sweep.py")
+            "extras.tltg_resonance_sweep", REPO_ROOT / "installer/klipper/extras/resonance_sweep.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -204,9 +204,9 @@ class ResonanceSweepTest(unittest.TestCase):
     def test_saved_variable_and_sweeping_period_choose_the_test(self) -> None:
         cases = [
             (None, {}, True),
-            ({"tltg_resonance_sweep": 1}, {}, True),
-            ({"tltg_resonance_sweep": 0}, {}, False),
-            ({"tltg_resonance_sweep": 0}, {"SWEEPING_PERIOD": 1.2}, True),
+            ({"vo_resonance_sweep": 1}, {}, True),
+            ({"vo_resonance_sweep": 0}, {}, False),
+            ({"vo_resonance_sweep": 0}, {"SWEEPING_PERIOD": 1.2}, True),
             (None, {"SWEEPING_PERIOD": 0}, False),
         ]
         for variables, params, sweeps in cases:
@@ -255,7 +255,7 @@ class ResonanceSweepTest(unittest.TestCase):
     def test_a_printer_profile_limit_lowers_the_sweep_further(self) -> None:
         # The Smart 5 skipped steps sweeping at QIDI's 20000 mm/s^2.
         printer = Printer(toolhead=FakeToolHead(max_accel_cap=20000.))
-        printer.objects["gcode_macro _tltg_printer"] = types.SimpleNamespace(
+        printer.objects["gcode_macro _vo_printer"] = types.SimpleNamespace(
             variables={"resonance_sweep_max_accel": 13000})
         tester, gcmd = self.run_test(printer)
         accel = float(printer.scripts[0].split("ACCEL=")[1].split()[0])

@@ -188,7 +188,7 @@ class AddonLifecycleTests(unittest.TestCase):
         # The launcher that keeps the plugin out of printer.cfg runs in place of the plugin's own entry point.
         unit = self.path(f"{addons.UNIT_DIR}/{OBICO.unit}").read_text(encoding="utf-8")
         self.assertIn(f"-m tltg_obico -c {paths.data}/{addons.OBICO_CONFIG}", unit)
-        self.assertEqual(self.path(f"{paths.app}/tltg_obico.py").read_bytes(), (addons.PAYLOAD_DIR / "tltg_obico.py").read_bytes())
+        self.assertEqual(self.path(f"{paths.app}/tltg_obico.py").read_bytes(), (addons.PAYLOAD_DIR / "vo_obico.py").read_bytes())
         self.assertTrue(any("--no-build-isolation" in command and command[-1].endswith("pure-1.0.tar.gz") for command in self.host.commands))
         self.assertFalse(self.path("/home/qidi/printer_data/config").exists())
 
@@ -396,7 +396,7 @@ def _deb(members: dict[str, bytes]) -> bytes:
 
 
 def _load_server():
-    path = Path(__file__).resolve().parents[2] / "system/tltg_addons.py"
+    path = Path(__file__).resolve().parents[2] / "system/vo_addons.py"
     module_spec = importlib.util.spec_from_file_location("tltg_addons_under_test", path)
     module = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(module)

@@ -358,7 +358,7 @@ function Warnings() {
           <div className="min-w-0 text-ink [overflow-wrap:anywhere]">
             <b>{w.title}</b>
             {w.message && <span className="text-ink-2"> {w.message}</span>}
-            {/* A board's issue link (checked by tltgPrinterWarnings), and the Updates screen for Valve Oil's update warnings. */}
+            {/* A board's issue link (checked by voPrinterWarnings), and the Updates screen for Valve Oil's update warnings. */}
             {w.url && (
               <>
                 {' '}

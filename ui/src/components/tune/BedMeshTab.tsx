@@ -4,7 +4,7 @@ import { Card, Dialog, Segmented, Choices, Toggle, Empty, confirm } from '../ui'
 import { attempt } from '../toast'
 import { runGcode, useObject } from '../../state/printer'
 import { useStore } from '../../lib/store'
-import tltgProbeReportPoints, { type TltgProbeReportPoint } from '../../qidi/tltg-probe-report'
+import voProbeReportPoints, { type VoProbeReportPoint } from '../../qidi/vo-probe-report'
 import { MeshSurface3D, type MeshSurfaceHandle } from './MeshSurface3D'
 import { MeshHeatmap } from './MeshHeatmap'
 import { SaveConfigNotice } from './SaveConfigNotice'
@@ -26,7 +26,7 @@ export function BedMeshTab() {
 }
 
 function useProblemPoints() {
-  return tltgProbeReportPoints(useObject('tltg_probe_report'))
+  return voProbeReportPoints(useObject('tltg_probe_report'))
 }
 
 function MeshCard() {
@@ -198,7 +198,7 @@ function ProblemChip({ count, title }: { count: number; title?: string }) {
 }
 
 /** The fork's note under the Bed mesh card: retried points of the loaded mesh. */
-function ProblemPoints({ points, measured }: { points: TltgProbeReportPoint[]; measured?: number | null }) {
+function ProblemPoints({ points, measured }: { points: VoProbeReportPoint[]; measured?: number | null }) {
   const list = points.map((p) => `${pointName(p)} (${p.tries} tries, ${Math.round(p.spread * 1000)} µm apart)`).join(', ')
   return (
     <div className="tone-warn mt-3 flex items-start gap-2.5 rounded-lg px-3 py-2.5">

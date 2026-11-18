@@ -263,7 +263,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         state = load_installed_state(printer_root / manifest.state_file)
         self.assertIn("rockchip_root_sync", state.system_ledger["restore_preimages"])
         probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
-        self.assertEqual(probe_helper.read_bytes(), (REPO_ROOT / "installer/klipper/tltg/probe_test.py").read_bytes())
+        self.assertEqual(probe_helper.read_bytes(), (REPO_ROOT / "installer/klipper/extras/probe_test.py").read_bytes())
         # Earlier builds recorded the probe helper as a host operation; loading the state drops it.
         retired = copy.deepcopy(state.system_ledger)
         retired["restore_preimages"]["klipper_probe_signal_test"] = {"path": "/home/qidi/klipper/klippy/extras/tltg_probe_test.py", "exists": False}

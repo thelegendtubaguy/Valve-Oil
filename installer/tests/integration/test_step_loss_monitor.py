@@ -14,9 +14,9 @@ def _load(name, path):
 
 
 step_loss_monitor = _load("tltg_step_loss_monitor",
-                          "installer/klipper/tltg/step_loss_monitor.py")
+                          "installer/klipper/extras/step_loss_monitor.py")
 printer_warnings = _load("tltg_printer_warnings",
-                         "installer/klipper/tltg/printer_warnings.py")
+                         "installer/klipper/extras/printer_warnings.py")
 
 NEVER = 9999999999999999.
 ADDRS = {"x": 1, "y": 3}
@@ -213,8 +213,8 @@ class Printer:
             "print_stats_manager": self.status_manager,
             "virtual_sdcard": self.sdcard,
             "save_variables": Status(variables={
-                "tltg_step_loss_monitor": 1 if enabled else 0,
-                "tltg_step_loss_recovery": 1 if recovery else 0}),
+                "vo_step_loss_monitor": 1 if enabled else 0,
+                "vo_step_loss_recovery": 1 if recovery else 0}),
         }
         if closed_loop:
             self.objects["cl_interface"] = self.cl
@@ -349,13 +349,13 @@ class StepLossMonitorTest(unittest.TestCase):
 
     def test_recovery_corrects_the_position_once_per_print(self) -> None:
         printer = Printer(recovery=True)
-        printer.gcode.macros["_TLTG_STEP_LOSS_RECOVER"] = \
-            lambda: printer.gcode.run("TLTG_STEP_LOSS_CORRECT")
+        printer.gcode.macros["_VO_STEP_LOSS_RECOVER"] = \
+            lambda: printer.gcode.run("VO_STEP_LOSS_CORRECT")
         printer.reads({"x": 1024, "y": 3074}, 4)
         # stepper_x loses 14 cycles, 10.92 mm of belt: on a CoreXY the
         # toolhead is 5.46 mm short in both X and Y.
         printer.reads({"x": 15 * 1024 + 9, "y": 3074}, 4)
-        self.assertEqual(printer.gcode.scripts, ["_TLTG_STEP_LOSS_RECOVER"])
+        self.assertEqual(printer.gcode.scripts, ["_VO_STEP_LOSS_RECOVER"])
         self.assertIn("Correcting", printer.gcode.console[0])
         x, y, z, e = printer.toolhead.position
         self.assertAlmostEqual(x, 100. - 5.46)
@@ -376,7 +376,7 @@ class StepLossMonitorTest(unittest.TestCase):
         printer.print_stats.status["state"] = "printing"
         printer.reads({"x": 0, "y": 0}, 4)
         printer.reads({"x": 0, "y": 3 * 1024}, 4)
-        self.assertEqual(printer.gcode.scripts[2:], ["_TLTG_STEP_LOSS_RECOVER"])
+        self.assertEqual(printer.gcode.scripts[2:], ["_VO_STEP_LOSS_RECOVER"])
 
     def test_correction_without_fresh_reads_leaves_position_and_pauses(
             self) -> None:
@@ -385,13 +385,13 @@ class StepLossMonitorTest(unittest.TestCase):
         def recover():
             # The motors stop answering once the toolhead stops.
             printer.answering = False
-            printer.gcode.run("TLTG_STEP_LOSS_CORRECT")
-        printer.gcode.macros["_TLTG_STEP_LOSS_RECOVER"] = recover
+            printer.gcode.run("VO_STEP_LOSS_CORRECT")
+        printer.gcode.macros["_VO_STEP_LOSS_RECOVER"] = recover
         printer.reads({"x": 0, "y": 0}, 4)
         printer.reads({"x": 7 * 1024, "y": 0}, 4)
         self.assertEqual(printer.gcode.scripts, [
-            "_TLTG_STEP_LOSS_RECOVER",
-            "RESTORE_GCODE_STATE NAME=_tltg_step_loss_recover", "PAUSE"])
+            "_VO_STEP_LOSS_RECOVER",
+            "RESTORE_GCODE_STATE NAME=_vo_step_loss_recover", "PAUSE"])
         self.assertEqual(printer.toolhead.position, [100., 100., 5., 0.])
         self.assertEqual(printer.banner(), ["xy_step_loss"])
 
@@ -403,7 +403,7 @@ class StepLossMonitorTest(unittest.TestCase):
             printer.reads({"x": 7 * 1024, "y": 0}, 4)
             self.assertTrue(printer.sdcard.cancelled)
             self.assertEqual(printer.gcode.scripts[-1], "CANCEL_PRINT")
-            self.assertNotIn("_TLTG_STEP_LOSS_RECOVER", printer.gcode.scripts)
+            self.assertNotIn("_VO_STEP_LOSS_RECOVER", printer.gcode.scripts)
             self.assertIn("cancelled", printer.gcode.console[0])
 
     def test_inert_when_disabled_unhomed_or_without_closed_loop(self) -> None:

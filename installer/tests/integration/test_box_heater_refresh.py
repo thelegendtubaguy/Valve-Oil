@@ -8,7 +8,7 @@ from installer.tests.helpers import REPO_ROOT
 
 def _load():
     spec = importlib.util.spec_from_file_location(
-        "extras.tltg_box_heater_refresh", REPO_ROOT / "installer/klipper/tltg/box_heater_refresh.py")
+        "extras.tltg_box_heater_refresh", REPO_ROOT / "installer/klipper/extras/box_heater_refresh.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

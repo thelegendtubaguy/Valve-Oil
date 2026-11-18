@@ -1,5 +1,5 @@
 // Settings screen fakes: Moonraker's webcams (server.webcams.*), QIDI's LAN only mode (QIDI Moonraker's
-// server.database.config.*), Valve Oil's add-ons service at /tltg-addons/api (installer/system/tltg_addons.py), and
+// server.database.config.*), Valve Oil's add-ons service at /tltg-addons/api (installer/system/vo_addons.py), and
 // Fluidd's temperature presets in the database another plugin keeps in state.database.
 //
 // Pick the add-ons' state with `--addons <scenario>`, or switch at runtime with `VO_ADDONS NAME=<scenario>`:

@@ -263,7 +263,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self._assert_speeds(printer_root, max_velocity="400", bed_mesh="150")
         self.assertEqual(
             klipper_cfg.resolve_unique_option(printer_cfg, "virtual_sdcard", "on_error_gcode").value,
-            "OPTIMIZED_CANCEL_PRINT_ON_ERROR",
+            "VO_CANCEL_PRINT_ON_ERROR",
         )
         self.assertFalse(klipper_cfg.has_section(printer_cfg, "filament_switch_sensor filament_switch_sensor"))
         self.assertIn(b"\r\n", (printer_root / "config/printer.cfg").read_bytes())
@@ -276,7 +276,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertIn("G1 X175 F5000", (installed / "nozzle_motion.cfg").read_text(encoding="utf-8"))
         # No Smart 5 Box load has been traced, so no Box motion default is saved.
         saved_variables = (printer_root / "config/saved_variables.cfg").read_text(encoding="utf-8")
-        self.assertNotIn("tltg_box_load_fast_length", saved_variables)
+        self.assertNotIn("vo_box_load_fast_length", saved_variables)
         self.assertEqual(
             hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
             "0419d86046b771bdb482a29f862e59518e03dcfa7b8af150b9003190ef474bf3",
@@ -316,7 +316,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self._assert_speeds(printer_root, max_velocity="400", bed_mesh="400", z_tilt="400")
         self.assertEqual(
             klipper_cfg.resolve_unique_option(printer_cfg, "virtual_sdcard", "on_error_gcode").value,
-            "OPTIMIZED_CANCEL_PRINT_ON_ERROR",
+            "VO_CANCEL_PRINT_ON_ERROR",
         )
         self.assertFalse(klipper_cfg.has_section(printer_cfg, "filament_switch_sensor filament_switch_sensor"))
         self.assertIn(b"\r\n", (printer_root / "config/printer.cfg").read_bytes())
@@ -332,9 +332,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         # The Plus 5 gets its own Box motion defaults: a fast push long enough to reach the toolhead sensor.
         saved_variables = (printer_root / "config/saved_variables.cfg").read_text(encoding="utf-8")
         self.assertEqual(
-            klipper_cfg.resolve_unique_option(saved_variables, "Variables", "tltg_box_load_fast_length").value, "850"
+            klipper_cfg.resolve_unique_option(saved_variables, "Variables", "vo_box_load_fast_length").value, "850"
         )
-        self.assertNotIn("tltg_box_load_approach_speed =", saved_variables)
+        self.assertNotIn("vo_box_load_approach_speed =", saved_variables)
         self.assertEqual(
             hashlib.sha256((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes()).hexdigest(),
             SYNC_RESET_DESIRED_HOMING_SHA256,
@@ -357,14 +357,16 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertFalse(installed.exists())
         self.assertEqual((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(), stock_source)
 
-    def test_plus5_update_lowers_speeds_above_400_and_uninstall_restores_the_originals(self):
+    def test_plus5_update_replaces_earlier_release_values_and_uninstall_restores_the_originals(self):
         firmware = "01.01.02.01"
         printer_root, paths, _ = self._fixture(firmware, source_variant="sync-reset")
         cfg = printer_root / "config/printer.cfg"
-        # The earlier release's 565 mm/s probing travel, and an operator's own top speed above 400.
+        # The earlier release's 565 mm/s probing travel and error macro name, and an operator's own top speed
+        # above 400.
         text = cfg.read_text(encoding="utf-8")
         for section in ("z_tilt", "bed_mesh"):
             text = klipper_cfg.set_option_value(text, section, "speed", "565")
+        text = klipper_cfg.set_option_value(text, "virtual_sdcard", "on_error_gcode", "OPTIMIZED_CANCEL_PRINT_ON_ERROR")
         cfg.write_text(klipper_cfg.set_option_value(text, "printer", "max_velocity", "500"), encoding="utf-8")
         write_installed_state(
             printer_root / "config/tltg_optimized_state.yaml",
@@ -376,16 +378,19 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 backup_label="prior-install",
                 installed_at="2026-11-12T00:00:00Z",
                 managed_tree=ManagedTreeState("config/tltg-optimized-macros", ()),
-                patch_ledger=tuple(
-                    PatchLedgerEntry(f"{section}_speed", "config/printer.cfg", section, "speed", "150", "565",
-                                     "applied")
-                    for section in ("z_tilt", "bed_mesh")
+                patch_ledger=(
+                    *(PatchLedgerEntry(f"{section}_speed", "config/printer.cfg", section, "speed", "150", "565",
+                                       "applied")
+                      for section in ("z_tilt", "bed_mesh")),
+                    PatchLedgerEntry("virtual_sdcard_on_error_gcode", "config/printer.cfg", "virtual_sdcard",
+                                     "on_error_gcode", "CANCEL_PRINT", "OPTIMIZED_CANCEL_PRINT_ON_ERROR", "applied"),
                 ),
             ),
         )
 
         self._run_install(paths)
         self._assert_speeds(printer_root, max_velocity="400", bed_mesh="400", z_tilt="400")
+        self.assertEqual(self._on_error_gcode(printer_root), "VO_CANCEL_PRINT_ON_ERROR")
 
         run_uninstall(
             paths,
@@ -396,6 +401,11 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             urlopen=self._fixture_urlopen(printer_root),
         )
         self._assert_speeds(printer_root, max_velocity="500", bed_mesh="150", z_tilt="150")
+        self.assertEqual(self._on_error_gcode(printer_root), "CANCEL_PRINT")
+
+    def _on_error_gcode(self, printer_root):
+        text = (printer_root / "config/printer.cfg").read_text(encoding="utf-8")
+        return klipper_cfg.resolve_unique_option(text, "virtual_sdcard", "on_error_gcode").value
 
     def test_install_leaves_extra_modules_readable_by_klipper(self):
         # Klipper may run as another user than the installer.
@@ -444,17 +454,18 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertFalse(paths.restart_marker_path.exists())
 
     def test_install_initializes_absent_release_defaults_and_preserves_operator_values(self):
-        # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice.
-        for existing, expected in ((None, "1"), ("0", "0")):
-            with self.subTest(existing=existing):
+        # An operator's 0 retention, or a Box motion setting reset to QIDI's value (None), is a choice, also when an
+        # earlier release saved it under its tltg_ name, which Klipper copies to the vo_ name once it restarts.
+        for prefix, existing in (("vo", None), ("vo", "0"), ("tltg", "0")):
+            with self.subTest(prefix=prefix, existing=existing):
                 printer_root, paths, _ = self._fixture("01.01.06.03")
                 saved_variables_path = printer_root / "config/saved_variables.cfg"
                 if existing is not None:
                     text = saved_variables_path.read_text(encoding="utf-8")
                     saved_variables_path.write_text(
                         text
-                        + f"tltg_keep_loaded_between_prints = {existing}\n"
-                        + "tltg_box_load_approach_speed = None\n",
+                        + f"{prefix}_keep_loaded_between_prints = {existing}\n"
+                        + f"{prefix}_box_load_approach_speed = None\n",
                         encoding="utf-8",
                     )
 
@@ -465,9 +476,9 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     klipper_cfg.resolve_unique_option(
                         saved_variables,
                         "Variables",
-                        "tltg_keep_loaded_between_prints",
+                        f"{prefix}_keep_loaded_between_prints",
                     ).value,
-                    expected,
+                    existing or "1",
                 )
                 for name, value in box_enablement.BOX_MOTION_DEFAULTS.items():
                     if existing is None:
@@ -475,8 +486,10 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                             klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value,
                             value,
                         )
-                    elif name != "tltg_box_load_approach_speed":
+                    elif not (prefix == "vo" and name == "vo_box_load_approach_speed"):
                         self.assertNotIn(f"{name} =", saved_variables)
+                if prefix == "tltg":
+                    self.assertNotIn("vo_keep_loaded_between_prints =", saved_variables)
 
     def test_install_updates_box_motion_left_at_earlier_defaults(self):
         # The load pair, the extruder pull-back, and the approach speed are still at earlier defaults; the
@@ -485,12 +498,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
             saved_variables_path.read_text(encoding="utf-8")
-            + "tltg_box_load_fast_speed_1 = 120\n"
-            + "tltg_box_load_fast_speed_2 = 100\n"
-            + "tltg_box_unload_speed_1 = 115\n"
-            + "tltg_box_unload_speed_2 = 90\n"
-            + "tltg_box_unload_extruder_length = 50\n"
-            + "tltg_box_load_approach_speed = 15\n",
+            + "vo_box_load_fast_speed_1 = 120\n"
+            + "vo_box_load_fast_speed_2 = 100\n"
+            + "vo_box_unload_speed_1 = 115\n"
+            + "vo_box_unload_speed_2 = 90\n"
+            + "vo_box_unload_extruder_length = 50\n"
+            + "vo_box_load_approach_speed = 15\n",
             encoding="utf-8",
         )
 
@@ -498,15 +511,15 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
 
         saved_variables = saved_variables_path.read_text(encoding="utf-8")
         for name, value in (
-            ("tltg_box_load_fast_speed_1", "85"),
-            ("tltg_box_load_fast_speed_2", "65"),
-            ("tltg_box_unload_speed_1", "115"),
-            ("tltg_box_unload_speed_2", "90"),
-            ("tltg_box_unload_extruder_length", "55"),
-            ("tltg_box_load_approach_speed", "25"),
+            ("vo_box_load_fast_speed_1", "85"),
+            ("vo_box_load_fast_speed_2", "65"),
+            ("vo_box_unload_speed_1", "115"),
+            ("vo_box_unload_speed_2", "90"),
+            ("vo_box_unload_extruder_length", "55"),
+            ("vo_box_load_approach_speed", "25"),
         ):
             self.assertEqual(klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value, value)
-        self.assertNotIn("tltg_box_load_fast_length =", saved_variables)
+        self.assertNotIn("vo_box_load_fast_length =", saved_variables)
 
     def test_noninteractive_box_reconciliation_adds_missing_mappings_without_replacing_existing_ones(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
@@ -760,7 +773,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         )
         self.assertEqual(
             klipper_cfg.resolve_unique_option(
-                saved_variables, "Variables", "tltg_keep_loaded_between_prints"
+                saved_variables, "Variables", "vo_keep_loaded_between_prints"
             ).value,
             "1",
         )
@@ -795,11 +808,11 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 saved_variables_path = printer_root / "config/saved_variables.cfg"
                 saved_variables_path.write_text(
                     saved_variables_path.read_text(encoding="utf-8")
-                    + "tltg_keep_loaded_between_prints = 1\n",
+                    + "vo_keep_loaded_between_prints = 1\n",
                     encoding="utf-8",
                 )
                 box_enablement.write_saved_variable_verify_marker(
-                    paths, {"tltg_keep_loaded_between_prints": "1"}
+                    paths, {"vo_keep_loaded_between_prints": "1"}
                 )
                 base_urlopen = self._fixture_urlopen(printer_root)
                 klipper = {"halted": True, "restarts": 0, "stray": False}
@@ -1053,7 +1066,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             klipper_cfg.resolve_unique_option(
                 saved_variables,
                 "Variables",
-                "tltg_keep_loaded_between_prints",
+                "vo_keep_loaded_between_prints",
             ).value,
             "1",
         )
@@ -1156,7 +1169,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
             saved_variables_path.read_text(encoding="utf-8").replace(
-                "tltg_keep_loaded_between_prints = 1\n", ""
+                "vo_keep_loaded_between_prints = 1\n", ""
             ),
             encoding="utf-8",
         )
@@ -1181,7 +1194,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             klipper_cfg.resolve_unique_option(
                 saved_variables_path.read_text(encoding="utf-8"),
                 "Variables",
-                "tltg_keep_loaded_between_prints",
+                "vo_keep_loaded_between_prints",
             ).value,
             "1",
         )
@@ -1692,7 +1705,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertEqual((printer_root / "config/printer.cfg").read_bytes(), printer_before)
         self.assertNotEqual(saved_variables_path.read_bytes(), saved_before)
         self.assertIn(
-            b"tltg_keep_loaded_between_prints = 1", saved_variables_path.read_bytes()
+            b"vo_keep_loaded_between_prints = 1", saved_variables_path.read_bytes()
         )
         self.assertFalse(paths.restart_marker_path.exists())
         self.assertFalse((printer_root / "config/tltg_optimized_state.yaml").exists())
@@ -1836,7 +1849,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     klipper_cfg.resolve_unique_option(
                         saved_variables,
                         "Variables",
-                        "tltg_keep_loaded_between_prints",
+                        "vo_keep_loaded_between_prints",
                     ).value,
                     "1",
                 )

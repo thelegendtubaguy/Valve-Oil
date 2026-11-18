@@ -9,7 +9,7 @@ from unittest import mock
 
 from installer.tests.helpers import REPO_ROOT
 
-MODULE = REPO_ROOT / "installer/klipper/tltg/box_spool_roll.py"
+MODULE = REPO_ROOT / "installer/klipper/extras/box_spool_roll.py"
 
 
 class Ffi:

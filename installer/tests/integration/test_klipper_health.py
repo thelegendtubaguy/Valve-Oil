@@ -12,7 +12,7 @@ from installer.tests.helpers import REPO_ROOT
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_klipper_health", REPO_ROOT / "installer/klipper/tltg/klipper_health.py"
+    "tltg_klipper_health", REPO_ROOT / "installer/klipper/extras/klipper_health.py"
 )
 klipper_health = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(klipper_health)

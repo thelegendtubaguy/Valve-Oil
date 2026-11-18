@@ -3,7 +3,7 @@ import { TriangleAlert } from 'lucide-react'
 import { Toggle } from '../ui'
 import { navigate } from '../../lib/router'
 import { useTheme } from '../../lib/theme'
-import { BedSoakColors, bedSoakChangeGrid, bedSoakHeatmapColor, bedSoakPointPosition, bedSoakProblemPoints, type BedSoakMesh, type BedSoakProblemPoint, type BedSoakRun } from '../../qidi/tltg-bed-soak'
+import { BedSoakColors, bedSoakChangeGrid, bedSoakHeatmapColor, bedSoakPointPosition, bedSoakProblemPoints, type BedSoakMesh, type BedSoakProblemPoint, type BedSoakRun } from '../../qidi/vo-bed-soak'
 import { bedSoakClock, bedSoakMeshList, bedSoakMeshName, bedSoakPointName, formatChange } from './bed-soak-format'
 import { meshPreview, type MeshMarker } from './mesh'
 

@@ -8,7 +8,7 @@ This page covers what the optimized configuration changes for the Box.
 
 ## Tool mapping
 
-A normal print end restores the default tool mapping, T0 → 1A, T1 → 1B, and so on. `TLTG_RESET_TOOL_MAPPINGS` restores it while the printer is idle.
+A normal print end restores the default tool mapping, T0 → 1A, T1 → 1B, and so on. `VO_RESET_TOOL_MAPPINGS` restores it while the printer is idle.
 
 ### Printing from the external spool by tool number
 
@@ -56,7 +56,7 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 
 A load pushes filament from the spool to the Box hub, then fast toward the toolhead, then slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back, the Box pull it back to the hub, and then back to its parked position.
 
-The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. Change them in Fluidd's QIDI Box card, or with `TLTG_BOX_MOTION` in the console. Run `TLTG_BOX_MOTION` with no parameters to see the current settings and the motion they give.
+The installer saves this project's defaults, unless you've already saved any of these settings, in which case all of yours are kept. Change them in Fluidd's QIDI Box card, or with `VO_BOX_MOTION` in the console. Run `VO_BOX_MOTION` with no parameters to see the current settings and the motion they give.
 
 **Max 4.** The fast push runs in two stages, and the unload pulls back to the hub in two stages. The fast and unload speeds match QIDI's; the longer fast push, the faster approach, and the shorter extruder pull-back save time. Earlier versions saved faster speeds, 120/100 mm/s for the fast push and 115/120 mm/s for the unload, a 50 mm extruder pull-back, and a 15 mm/s approach. Updating lowers either speed pair to QIDI's speeds if both of its speeds are still at those values, raises a pull-back still at 50 mm to 55 mm and an approach still at 15 mm/s to 25 mm/s, and keeps anything you've changed.
 
@@ -90,20 +90,20 @@ The installer saves this project's defaults, unless you've already saved any of 
 **Smart 5.** The settings are off on the Smart 5, whose Box loads and unloads at QIDI's values, until a Smart 5 Box load has been measured.
 
 ```gcode
-TLTG_BOX_MOTION HUB_SPEED=120 PARK_SPEED=120
+VO_BOX_MOTION HUB_SPEED=120 PARK_SPEED=120
 ```
 
 Settings take effect on the next load or unload, without a restart. The command refuses a combination the Box can't run, or a setting this printer's Box code doesn't use, and says why.
 
 - **One setting back to QIDI's:** `PARAM=vendor`, for example `HUB_SPEED=vendor`.
-- **Everything back to QIDI's,** including slot settings: `TLTG_BOX_MOTION RESET=1`. Updates won't reapply this project's defaults after that.
+- **Everything back to QIDI's,** including slot settings: `VO_BOX_MOTION RESET=1`. Updates won't reapply this project's defaults after that.
 
 ### Per-slot settings
 
 On the Max 4, the fast push, approach, and unload settings can also be set for one slot, which overrides the all-slots setting. For example, to load slot 2 more gently:
 
 ```gcode
-TLTG_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
+VO_BOX_MOTION SLOT=2 FAST_SPEED_1=60 FAST_SPEED_2=60 APPROACH_SPEED=8
 ```
 
 Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the card's 1A is slot 0 and 2A is slot 4. `SLOT=2 FAST_SPEED_1=global` makes slot 2 follow the all-slots setting again, and `SLOT=2 RESET=1` clears all of slot 2's settings.
@@ -111,7 +111,7 @@ Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the car
 ### Choosing values
 
 - **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. On a Plus 5, it reached the sensor about 845 mm into the push. The fast push stops at the toolhead sensor, so set it past the sensor and filament reaches the toolhead at full speed.
-- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If unloads fail with `QDE_004_008` (`Extruder unloading failure.`) and nothing is caught between the Box and the toolhead, set it back to QIDI's with `TLTG_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
+- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If unloads fail with `QDE_004_008` (`Extruder unloading failure.`) and nothing is caught between the Box and the toolhead, set it back to QIDI's with `VO_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
 
 If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
 
@@ -121,7 +121,7 @@ QIDI's eject parks the toolhead over the waste chute before and after the Box pu
 
 ## Cutting the filament
 
-`TLTG_CUT_FILAMENT`, and **Cut** on the QIDI Box card, cuts the filament at the toolhead without heating the nozzle, for example to free Box filament caught in the hub from Fluidd. It homes X and Y first if either isn't homed, then runs the same cutter moves as a filament change. On the Max 4, the cutter cuts cold filament and the extruder sits above the cutter, so the extruder's 4 mm pull-back after the cut moves only filament that never enters the hotend. The piece below the cut stays in the hotend until the next load pushes it out, as after any cut.
+`VO_CUT_FILAMENT`, and **Cut** on the QIDI Box card, cuts the filament at the toolhead without heating the nozzle, for example to free Box filament caught in the hub from Fluidd. It homes X and Y first if either isn't homed, then runs the same cutter moves as a filament change. On the Max 4, the cutter cuts cold filament and the extruder sits above the cutter, so the extruder's 4 mm pull-back after the cut moves only filament that never enters the hotend. The piece below the cut stays in the hotend until the next load pushes it out, as after any cut.
 
 - The nozzle heater isn't changed. Klipper normally refuses every extruder move, pull-backs included, with the nozzle below `min_extrude_temp` (135 °C on the Max 4). During the cut it allows pull-backs and still refuses pushing filament forward.
 - The acceleration and positioning mode are put back afterwards, even if the cut stops with an error.
@@ -147,10 +147,10 @@ EJECT_FILAMENT_CONTROL SLOT=1 COLD=1
 
 ## Moving a slot by hand
 
-`TLTG_BOX_SLOT_JOG` moves a slot's filament toward the toolhead or back toward the spool, for example to back filament off the Box hub or work a tangle loose:
+`VO_BOX_SLOT_JOG` moves a slot's filament toward the toolhead or back toward the spool, for example to back filament off the Box hub or work a tangle loose:
 
 ```gcode
-TLTG_BOX_SLOT_JOG SLOT=1 DISTANCE=-10
+VO_BOX_SLOT_JOG SLOT=1 DISTANCE=-10
 ```
 
 The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected slot 10 mm.
@@ -239,7 +239,7 @@ Setting the external spool to a filament that isn't in QIDI's list is refused wi
 
 If a slot's filament sits at the Box hub but the printer has no slot recorded as loaded, a Box load has QIDI unload the hub first, and QIDI's unload stops with `无法识别到已进料耗材` ("can't identify the loaded filament") and `Step BOX_UNLOAD failed. Pausing flow.` It does the same on every retry. This can happen when a Box disconnects while it feeds newly inserted filament up to the hub.
 
-The printer now remembers which slot fed filament to the hub, in the saved variable `tltg_box_hub_slot`. When that slot, or the only slot holding filament, still has filament at its inlet, the load unloads it and carries on, and the console names the slot.
+The printer now remembers which slot fed filament to the hub, in the saved variable `vo_box_hub_slot`. When that slot, or the only slot holding filament, still has filament at its inlet, the load unloads it and carries on, and the console names the slot.
 
 Otherwise the console says so and lists the slots with filament, and the nozzle is turned off unless a print is running or paused. Follow the filament from the hub back to its slot, then save that slot and continue the load:
 
@@ -286,7 +286,7 @@ Pausing turns the nozzle off. With the Box, **Resume** first moves the toolhead 
 
 ## Runouts during Box loads and unloads
 
-When filament leaves the toolhead sensor during a print, Klipper waits for the command that's running to finish before it handles the runout. A Box unload inside a resume or the print-start load runs within one command, so its runout used to be handled minutes later, once the new filament was already loaded: the print paused and QIDI's auto-reload ran, or, if the print had been cancelled meanwhile, the idle printer paused, homed, and reported `Auto reload failed`. The runout is now handled only if the toolhead sensor still reports no filament and the print is still running unpaused; otherwise the console says `TLTG_FILAMENT_SENSOR: ignoring an earlier toolhead sensor trip` and nothing else happens.
+When filament leaves the toolhead sensor during a print, Klipper waits for the command that's running to finish before it handles the runout. A Box unload inside a resume or the print-start load runs within one command, so its runout used to be handled minutes later, once the new filament was already loaded: the print paused and QIDI's auto-reload ran, or, if the print had been cancelled meanwhile, the idle printer paused, homed, and reported `Auto reload failed`. The runout is now handled only if the toolhead sensor still reports no filament and the print is still running unpaused; otherwise the console says `VO_FILAMENT_SENSOR: ignoring an earlier toolhead sensor trip` and nothing else happens.
 
 ## Connecting, disconnecting, and moving Boxes
 
@@ -311,7 +311,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 QIDI's Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
 - **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `tltg_box485_report.json` and `tltg_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
-- **To write the report yourself,** run `TLTG_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
+- **To write the report yourself,** run `VO_RS_BOX_REPORT`. It says whether RS-485 hardware was found.
 - **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter and logs `Can not find 485 device` each time it's missing. That's normal for USB Boxes. Until RS-485 hardware has been seen, it now looks every 30 seconds instead of every 2, so a newly connected adapter can take up to 30 seconds to be found, and `klippy.log` gets that line once an hour, with a count.
 
 > [!WARNING]

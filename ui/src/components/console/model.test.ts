@@ -44,11 +44,11 @@ describe('console filters stored by Fluidd', () => {
 })
 
 describe('known commands in replies', () => {
-  const known = new Set(['TLTG_BOX_SLOT_JOG', 'SAVE_CONFIG'])
+  const known = new Set(['VO_BOX_SLOT_JOG', 'SAVE_CONFIG'])
   it('makes the commands Klipper knows clickable and leaves other words', () => {
-    expect(segments('// Run TLTG_BOX_SLOT_JOG, then SAVE_CONFIG. NOT_A_COMMAND', known)).toEqual([
+    expect(segments('// Run VO_BOX_SLOT_JOG, then SAVE_CONFIG. NOT_A_COMMAND', known)).toEqual([
       { text: '// Run ' },
-      { text: 'TLTG_BOX_SLOT_JOG', command: 'TLTG_BOX_SLOT_JOG' },
+      { text: 'VO_BOX_SLOT_JOG', command: 'VO_BOX_SLOT_JOG' },
       { text: ', then ' },
       { text: 'SAVE_CONFIG', command: 'SAVE_CONFIG' },
       { text: '. NOT_A_COMMAND' },

@@ -83,6 +83,10 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** install and update set it to the patch's desired value and record the live value as the value uninstall restores
 - **AND** a value at or below the maximum that matches neither the stock nor a prior-managed value is preserved as user-modified
 
+#### Scenario: A value an earlier release set is replaced
+- **WHEN** a guarded option holds the desired value an earlier release recorded in the ownership ledger, such as the print error macro `OPTIMIZED_CANCEL_PRINT_ON_ERROR` that became `VO_CANCEL_PRINT_ON_ERROR` in 26.11.18.2
+- **THEN** install and update set the current desired value, and uninstall restores the stock value
+
 #### Scenario: Guarded section patches keep Klipper's SAVE_CONFIG data
 - **WHEN** install deletes, or uninstall restores, a guarded section in a file with Klipper's `SAVE_CONFIG` block
 - **THEN** the section never includes the block, and uninstall puts the section back above it
@@ -198,15 +202,19 @@ The installer SHALL keep an available QIDI Box usable without claiming ownership
 The installer SHALL initialize absent optimized saved-variable preferences to release defaults without replacing operator-controlled values.
 
 #### Scenario: Absent retention preference receives the installed default
-- **WHEN** install or update finds no `tltg_keep_loaded_between_prints` entry in Klipper saved variables
+- **WHEN** install or update finds no `vo_keep_loaded_between_prints` entry in Klipper saved variables
 - **THEN** it saves `1` through Moonraker only after Klipper is ready, verifies the live value and, when a source-patch restart occurs, verifies it again after the replacement process; existing `0` is preserved as an operator choice
 - **AND** install and upgrade repair missing defaults while idle; already-current automatic-update checks perform this repair only on enrolled printers
 - **AND** the preference remains outside the installed-state ownership ledger
 
 #### Scenario: Existing retention preference is preserved
-- **WHEN** install or update finds an existing `tltg_keep_loaded_between_prints` value, including `0`
+- **WHEN** install or update finds an existing `vo_keep_loaded_between_prints` value, including `0`
 - **THEN** it leaves that value unchanged
 - **AND** uninstall does not remove or reset it
+
+#### Scenario: A preference saved under its earlier name is preserved
+- **WHEN** install or update finds a retention or Box motion setting saved only under its name from before 26.11.18.2, such as `tltg_keep_loaded_between_prints`, which Klipper copies to its `vo_` name when it next starts
+- **THEN** it treats the setting as present and writes no `vo_` default over it
 
 ### Requirement: Recoverable host optimization
 Every install and update SHALL apply the host OS optimizations, leaving only whether QIDI AI detection is turned off to the operator, persist that policy, preserve recoverable preimages, and keep host-operation failures separate from a verified printer-configuration result. System optimizations SHALL remain available through the same packaged install, update, and uninstall flow without requiring a separate package or operator command.
@@ -602,7 +610,7 @@ Install and update SHALL place each bundled package-owned Klipper extra module, 
 - **AND** a modified module is left in place
 
 ### Requirement: QIDI Box motion settings in Fluidd
-Fluidd's Box settings SHALL include a load and unload motion section that shows the feed-motion status and edits settings only through `TLTG_BOX_MOTION`. While QIDI's bundled Fluidd is served, normal install and update SHALL provide it by extending the recognized bundle's Box Config view, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
+Fluidd's Box settings SHALL include a load and unload motion section that shows the feed-motion status and edits settings only through `VO_BOX_MOTION`. While QIDI's bundled Fluidd is served, normal install and update SHALL provide it by extending the recognized bundle's Box Config view, with the same recognition, preservation, service-worker revision, and restoration as the other Fluidd Box patches.
 
 #### Scenario: Motion settings are shown per slot
 - **WHEN** the feed-motion printer object is active
@@ -610,7 +618,7 @@ Fluidd's Box settings SHALL include a load and unload motion section that shows 
 
 #### Scenario: Motion settings are edited through the command
 - **WHEN** an operator applies global or slot settings, or resets them from the section
-- **THEN** Fluidd sends the matching `TLTG_BOX_MOTION` command
+- **THEN** Fluidd sends the matching `VO_BOX_MOTION` command
 - **AND** a refused command's reason is shown in the section
 
 #### Scenario: Editing is unavailable while busy or inactive
@@ -940,7 +948,7 @@ Normal install and update SHALL patch QIDI's Moonraker Spoolman component, indep
 
 #### Scenario: A spool picked in Fluidd is the loaded slot's spool
 - **WHEN** a client sets the active spool through Moonraker's Spoolman endpoint and Klipper reports a loaded slot through `tltg_spoolman`
-- **THEN** Moonraker passes the spool to `TLTG_SPOOLMAN_SLOT` for that slot without delaying the response
+- **THEN** Moonraker passes the spool to `VO_SPOOLMAN_SLOT` for that slot without delaying the response
 - **AND** nothing is sent to Klipper when it has no `tltg_spoolman` object or no loaded slot
 
 #### Scenario: Unrecognized Spoolman sources are preserved

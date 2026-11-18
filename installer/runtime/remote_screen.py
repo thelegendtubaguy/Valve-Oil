@@ -23,7 +23,7 @@ NGINX_QIDI_ROOT = f"\n    root {QIDI_FLUIDD_ROOT};\n"
 NGINX_BUILD_ROOT = f"\n    root {FLUIDD.destination};\n"
 # The package Fluidd ships a gzip copy of each text asset, so nginx sends it instead of compressing every request.
 NGINX_GZIP_STATIC = "    gzip_static on;\n"
-SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_remote_screen.py"
+SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_remote_screen.py"
 # Package-created files start with a marker line so later package versions replace earlier ones.
 SERVER_MARKER = "# tltg-optimized:remote-screen-server\n"
 UNIT_MARKER = "# tltg-optimized:remote-screen-unit\n"

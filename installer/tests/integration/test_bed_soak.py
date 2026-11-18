@@ -13,7 +13,7 @@ from installer.tests.helpers import REPO_ROOT
 
 def _load(name):
     spec = importlib.util.spec_from_file_location(
-        "tltg_" + name, REPO_ROOT / f"installer/klipper/tltg/{name}.py")
+        "tltg_" + name, REPO_ROOT / f"installer/klipper/extras/{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -131,7 +131,7 @@ class Printer:
             "virtual_sdcard": types.SimpleNamespace(is_active=lambda: False),
             "gcode_macro _km_globals": types.SimpleNamespace(
                 variables={"start_extruder_probing_temp": 140}),
-            "gcode_macro _tltg_printer": types.SimpleNamespace(
+            "gcode_macro _vo_printer": types.SimpleNamespace(
                 variables={"z_tilt_staging_x": 15, "z_tilt_staging_y": 202.5}),
         }
         self.events = {}
@@ -244,7 +244,7 @@ class Printer:
             elif word == "_BED_MESH_CALIBRATE":
                 self.mesh = None
                 self.helper.start_probe(None)
-            elif word in ("G28", "Z_TILT_ADJUST", "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT"):
+            elif word in ("G28", "Z_TILT_ADJUST", "_VO_HOME_Z_FROM_SAFE_POINT"):
                 self.advance(10.)
 
     # Test driving
@@ -293,7 +293,7 @@ class BedSoakTest(unittest.TestCase):
         printer = self.printer()
         before = printer.mesh
 
-        printer.command("TLTG_BED_SOAK BED=100 CHAMBER=45")
+        printer.command("VO_BED_SOAK BED=100 CHAMBER=45")
         printer.run_test()
 
         status = printer.soak.get_status()
@@ -327,7 +327,7 @@ class BedSoakTest(unittest.TestCase):
     def test_keep_heating_leaves_the_bed_and_chamber_on(self):
         printer = self.printer()
 
-        printer.command("TLTG_BED_SOAK BED=100 CHAMBER=45 KEEP_HEATING=1")
+        printer.command("VO_BED_SOAK BED=100 CHAMBER=45 KEEP_HEATING=1")
         printer.run_test()
 
         self.assertEqual(printer.heater["heater_bed"].target, 100.)
@@ -337,7 +337,7 @@ class BedSoakTest(unittest.TestCase):
     def test_ends_at_the_time_limit_without_stopping_early(self):
         printer = self.printer(chamber=False)
 
-        printer.command("TLTG_BED_SOAK BED=100 TIME_LIMIT=20 STOP_WHEN_SETTLED=0")
+        printer.command("VO_BED_SOAK BED=100 TIME_LIMIT=20 STOP_WHEN_SETTLED=0")
         printer.run_test()
 
         status = printer.soak.get_status()
@@ -347,19 +347,19 @@ class BedSoakTest(unittest.TestCase):
 
     def test_refusals_leave_the_printer_alone(self):
         printer = self.printer(chamber=False)
-        for line in ("TLTG_BED_SOAK BED=200", "TLTG_BED_SOAK BED=100 CHAMBER=50",
-                     "TLTG_BED_SOAK"):
+        for line in ("VO_BED_SOAK BED=200", "VO_BED_SOAK BED=100 CHAMBER=50",
+                     "VO_BED_SOAK"):
             with self.subTest(line=line), self.assertRaises(CommandError):
                 printer.command(line)
         printer.state = "printing"
         with self.assertRaises(CommandError):
-            printer.command("TLTG_BED_SOAK BED=100")
+            printer.command("VO_BED_SOAK BED=100")
         self.assertEqual(printer.callbacks, [])
         self.assertEqual(printer.scripts, [])
 
     def test_stop_turns_heaters_off_at_once(self):
         printer = self.printer()
-        printer.command("TLTG_BED_SOAK BED=100 CHAMBER=45")
+        printer.command("VO_BED_SOAK BED=100 CHAMBER=45")
         stopped = []
 
         def stop_mid_mesh(gcmd, probe=printer.helper.start_probe):
@@ -380,7 +380,7 @@ class BedSoakTest(unittest.TestCase):
 
     def test_a_heater_changed_elsewhere_ends_the_test_and_is_left_alone(self):
         printer = self.printer()
-        printer.command("TLTG_BED_SOAK BED=100")
+        printer.command("VO_BED_SOAK BED=100")
 
         def change_bed(gcmd, probe=printer.helper.start_probe):
             if printer.heaters_on is not None:
@@ -397,7 +397,7 @@ class BedSoakTest(unittest.TestCase):
     def test_probe_jump_drops_the_mesh_and_corrects_later_heights(self):
         printer = self.printer(jump_at=1500.)
 
-        printer.command("TLTG_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=45")
+        printer.command("VO_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=45")
         printer.run_test()
 
         status = printer.soak.get_status()
@@ -414,7 +414,7 @@ class BedSoakTest(unittest.TestCase):
     def test_heating_up_is_not_mistaken_for_problems(self):
         printer = self.printer()
 
-        printer.command("TLTG_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=30")
+        printer.command("VO_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=30")
         printer.run_test()
 
         records = printer.records()
@@ -424,7 +424,7 @@ class BedSoakTest(unittest.TestCase):
     def test_retried_points_are_flagged_and_reported_for_any_mesh(self):
         printer = self.printer(retry_point=(2, 3))
 
-        printer.command("TLTG_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=15")
+        printer.command("VO_BED_SOAK BED=100 STOP_WHEN_SETTLED=0 TIME_LIMIT=15")
         printer.run_test()
 
         points = printer.records()[-1]["problem_points"]

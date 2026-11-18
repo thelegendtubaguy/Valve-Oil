@@ -14,7 +14,7 @@ ASSIGN_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9_\-. ]*?)\s*([:=])\s*(.*?)\s*$"
 SAVE_CONFIG_MARKER = "#*# <---------------------- SAVE_CONFIG ---------------------->"
 DEFAULT_EXCLUDES = {"fluidd.cfg", "saved_variables.cfg"}
 FORMAT_DIRS = (
-    Path("installer") / "klipper" / "tltg-optimized-macros",
+    Path("installer") / "klipper" / "macros",
     Path("installer") / "klipper" / "printers",
 )
 
@@ -102,13 +102,13 @@ def diff_text(path: Path, before: str, after: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Format TLTG optimized Klipper config files in this repo."
+        description="Format Valve Oil Klipper config files in this repo."
     )
     parser.add_argument(
         "paths",
         nargs="*",
         type=Path,
-        help="Optional config files or directories to format. Defaults to installer/klipper/tltg-optimized-macros/**/*.cfg and installer/klipper/printers/**/*.cfg.",
+        help="Optional config files or directories to format. Defaults to installer/klipper/macros/**/*.cfg and installer/klipper/printers/**/*.cfg.",
     )
     parser.add_argument(
         "--check",

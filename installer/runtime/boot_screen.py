@@ -37,7 +37,7 @@ PLAYER_OPERATION = "boot_animation_player"
 UNIT = "tltg-boot-animation.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 PLAYER_FILE = "/usr/local/lib/tltg_boot_animation.py"
-PLAYER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_boot_animation.py"
+PLAYER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_boot_animation.py"
 PLAYER_MARKER = "# tltg-optimized:boot-animation\n"
 UNIT_MARKER = "# tltg-optimized:boot-animation-unit\n"
 # The player's data line, which the installed copy carries the animation in.

@@ -6,23 +6,23 @@ import { LanOnly } from '../components/settings/LanOnly'
 import { Log } from '../components/settings/Addons'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
 import {
-  TLTG_UPDATE_NOW_BLOCKERS,
-  tltgBrowserTimezone,
-  tltgHourLabel,
-  tltgSentence,
-  tltgUpdateWindowLabel,
-  tltgUpdateWindowValid,
-  type TltgBoardBadge,
-  type TltgBoardNote,
-  type TltgBoardView,
-  type TltgStatusBlocker,
-  type TltgStatusBoard,
-  type TltgStatusPending,
-  type TltgStatusUpdateWindow,
-  type TltgStatusView,
-  type TltgUpdateView,
-  type TltgUpdateWindowHours,
-} from '../qidi/tltg-status'
+  VO_UPDATE_NOW_BLOCKERS,
+  voBrowserTimezone,
+  voHourLabel,
+  voSentence,
+  voUpdateWindowLabel,
+  voUpdateWindowValid,
+  type VoBoardBadge,
+  type VoBoardNote,
+  type VoBoardView,
+  type VoStatusBlocker,
+  type VoStatusBoard,
+  type VoStatusPending,
+  type VoStatusUpdateWindow,
+  type VoStatusView,
+  type VoUpdateView,
+  type VoUpdateWindowHours,
+} from '../qidi/vo-status'
 import {
   autoUpdateDisabled,
   clearAutoUpdateError,
@@ -44,7 +44,7 @@ import {
   type ValveOilState,
 } from '../state/valve-oil'
 
-// The wording is the Fluidd fork's (app.tltg_valve_oil in src/locales/en.yaml there); keep the two in step.
+// The wording is the Fluidd fork's (app.vo_valve_oil in src/locales/en.yaml there); keep the two in step.
 
 const fmtTime = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 /** A time later today as just the time, and one on another day with its date. */
@@ -59,13 +59,13 @@ export function reconnectText(s: ValveOilState) {
   return minutes != null ? reconnectingLong(minutes) : RECONNECTING
 }
 
-const RUNNING: Record<TltgUpdateView['kind'], string> = {
+const RUNNING: Record<VoUpdateView['kind'], string> = {
   update_now: 'Updating…',
   automatic: 'Automatic update running…',
   install: 'The Valve Oil installer is running…',
   other: 'Updating…',
 }
-const RESULT: Record<Exclude<TltgUpdateView['state'], 'running'>, Record<TltgUpdateView['kind'], string>> = {
+const RESULT: Record<Exclude<VoUpdateView['state'], 'running'>, Record<VoUpdateView['kind'], string>> = {
   succeeded: { update_now: 'The update finished', automatic: 'The automatic update finished', install: 'The Valve Oil installer finished', other: 'The update finished' },
   failed: { update_now: 'The update failed', automatic: 'The automatic update failed', install: 'The Valve Oil installer failed', other: 'The update failed' },
   interrupted: {
@@ -76,7 +76,7 @@ const RESULT: Record<Exclude<TltgUpdateView['state'], 'running'>, Record<TltgUpd
   },
 }
 
-const BOARD_BADGE: Record<TltgBoardBadge, string> = {
+const BOARD_BADGE: Record<VoBoardBadge, string> = {
   current: 'Up to date',
   needs_image: 'Update waiting',
   after_firmware: 'Waiting for QIDI firmware',
@@ -86,7 +86,7 @@ const BOARD_BADGE: Record<TltgBoardBadge, string> = {
   touchscreen: 'Update from the touchscreen',
   unknown: 'Not checked',
 }
-const BOARD_TONE: Record<TltgBoardBadge, string> = {
+const BOARD_TONE: Record<VoBoardBadge, string> = {
   current: 'tone-good',
   needs_image: 'tone-accent',
   after_firmware: 'tone-accent',
@@ -103,13 +103,13 @@ const BOARD_BUILD: Record<string, string> = {
   superseded: 'An earlier Valve Oil build',
 }
 
-function boardFirmwareText(board: TltgStatusBoard) {
+function boardFirmwareText(board: VoStatusBoard) {
   const version = board.firmware ? `Firmware ${board.firmware}` : 'Firmware not read'
   const build = board.build ? BOARD_BUILD[board.build] : undefined
   return build ? `${version} · ${build}` : version
 }
 
-const BOARD_NOTE: Record<Exclude<TltgBoardNote, 'after_firmware'>, string> = {
+const BOARD_NOTE: Record<Exclude<VoBoardNote, 'after_firmware'>, string> = {
   unrecognized_bootloader:
     "Valve Oil doesn't recognize this board's bootloader yet, so it doesn't update this board or the printer's QIDI firmware. Report it so a later release can support it.",
   unrecognized_bootloader_box:
@@ -121,7 +121,7 @@ const BOARD_NOTE: Record<Exclude<TltgBoardNote, 'after_firmware'>, string> = {
   held: "Valve Oil leaves this board's firmware as it is.",
 }
 
-function boardExplanation(board: TltgBoardView) {
+function boardExplanation(board: VoBoardView) {
   if (board.note === 'after_firmware')
     return `Valve Oil updates this board in the same update, right after it installs ${board.noteVersion ? `QIDI firmware ${board.noteVersion}` : 'the QIDI firmware update'}.`
   return board.note ? BOARD_NOTE[board.note] : ''
@@ -138,14 +138,14 @@ const UPDATE_NOW_BLOCKED: Record<string, string> = {
 }
 
 // A recovery is shown as the printer says it, as its message names what to run first.
-function blockedText(blockedBy: TltgStatusBlocker[]) {
+function blockedText(blockedBy: VoStatusBlocker[]) {
   if (blockedBy.length === 0) return 'Not available right now.'
   return blockedBy
-    .map((b) => (TLTG_UPDATE_NOW_BLOCKERS.includes(b.code) ? UPDATE_NOW_BLOCKED[b.code] : b.code === 'recovery_required' ? tltgSentence(b.message) : `Not available now: ${b.message}.`))
+    .map((b) => (VO_UPDATE_NOW_BLOCKERS.includes(b.code) ? UPDATE_NOW_BLOCKED[b.code] : b.code === 'recovery_required' ? voSentence(b.message) : `Not available now: ${b.message}.`))
     .join(' ')
 }
 
-function waitingText(item: TltgStatusPending, boards: TltgStatusBoard[]) {
+function waitingText(item: VoStatusPending, boards: VoStatusBoard[]) {
   const current = item.current ? ` (this printer has ${item.current})` : ''
   switch (item.kind) {
     case 'release':
@@ -160,7 +160,7 @@ function waitingText(item: TltgStatusPending, boards: TltgStatusBoard[]) {
   }
 }
 
-function noticeText(view: TltgStatusView) {
+function noticeText(view: VoStatusView) {
   switch (view.notice) {
     // Installing the installed release again says so, rather than "the update".
     case 'auto_off':
@@ -169,7 +169,7 @@ function noticeText(view: TltgStatusView) {
       return `Automatic updates are on, but ${view.reinstall ? "Valve Oil hasn't been installed again yet" : "the update hasn't been installed yet"}: ${view.reasons.join('; ')}.`
     case 'window': {
       const hours = view.updateWindow?.hours
-      const window = `${hours ? tltgUpdateWindowLabel(hours) : ''} ${view.updateWindow?.timezone ?? 'UTC'}`
+      const window = `${hours ? voUpdateWindowLabel(hours) : ''} ${view.updateWindow?.timezone ?? 'UTC'}`
       return view.reinstall
         ? `Automatic updates are on, so Valve Oil will be installed again during the update window, ${window}, while the printer is idle.`
         : `Automatic updates are on, so the update will be installed during the update window, ${window}, while the printer is idle.${view.firmwareWaiting ? " The printer can't be used while it installs." : ''}`
@@ -185,7 +185,7 @@ function noticeText(view: TltgStatusView) {
   }
 }
 
-function confirmText(view: TltgStatusView): { text: string; strong: boolean } {
+function confirmText(view: VoStatusView): { text: string; strong: boolean } {
   const release = view.waiting.find((item) => item.kind === 'release')
   if (view.updateNow.action === 'continue')
     return {
@@ -250,18 +250,18 @@ export function UpdatesScreen() {
 }
 
 // The hours offered when a window is first set, before it's saved.
-const SUGGESTED_HOURS: TltgUpdateWindowHours = { start: 2, end: 6 }
+const SUGGESTED_HOURS: VoUpdateWindowHours = { start: 2, end: 6 }
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
-const sameHours = (a: TltgUpdateWindowHours | null, b: TltgUpdateWindowHours | null) => (a == null || b == null ? a === b : a.start === b.start && a.end === b.end)
+const sameHours = (a: VoUpdateWindowHours | null, b: VoUpdateWindowHours | null) => (a == null || b == null ? a === b : a.start === b.start && a.end === b.end)
 
 /** The hours automatic updates start in, and the timezone they're read in; edits are kept here until saved. */
-function UpdateWindow({ window, disabled, pending, error }: { window: TltgStatusUpdateWindow; disabled: boolean; pending: boolean; error: string }) {
+function UpdateWindow({ window, disabled, pending, error }: { window: VoStatusUpdateWindow; disabled: boolean; pending: boolean; error: string }) {
   // undefined while not edited; null for any time.
-  const [draft, setDraft] = useState<TltgUpdateWindowHours | null | undefined>(undefined)
-  const [browser] = useState(tltgBrowserTimezone)
+  const [draft, setDraft] = useState<VoUpdateWindowHours | null | undefined>(undefined)
+  const [browser] = useState(voBrowserTimezone)
   const hours = draft === undefined ? window.hours : draft
   const changed = draft !== undefined && !sameHours(draft, window.hours)
-  const valid = hours == null || tltgUpdateWindowValid(hours)
+  const valid = hours == null || voUpdateWindowValid(hours)
   // A window saved without a timezone is saved with this browser's.
   const savesBrowserTimezone = window.timezone == null && browser != null
   const wasPending = useRef(pending)
@@ -287,7 +287,7 @@ function UpdateWindow({ window, disabled, pending, error }: { window: TltgStatus
   })()
   // This browser's timezone, when the window is read in another; not while the hours are being edited.
   const offeredTimezone = browser != null && !changed && browser !== (window.timezone ?? 'UTC') ? browser : null
-  const setHours = (change: Partial<TltgUpdateWindowHours>) => setDraft({ ...(hours ?? SUGGESTED_HOURS), ...change })
+  const setHours = (change: Partial<VoUpdateWindowHours>) => setDraft({ ...(hours ?? SUGGESTED_HOURS), ...change })
   const save = () => {
     if (!changed || !valid) return
     void setUpdateWindow({ window: hours, ...(hours && savesBrowserTimezone && browser ? { timezone: browser } : {}) })
@@ -296,7 +296,7 @@ function UpdateWindow({ window, disabled, pending, error }: { window: TltgStatus
     <select className="field w-auto" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))}>
       {HOURS.map((hour) => (
         <option key={hour} value={hour}>
-          {tltgHourLabel(hour)}
+          {voHourLabel(hour)}
         </option>
       ))}
     </select>
@@ -362,7 +362,7 @@ function UpdateWindow({ window, disabled, pending, error }: { window: TltgStatus
   )
 }
 
-function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
+function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
   const [confirm, setConfirm] = useState(false)
   const update = shownUpdate(view, s.dismissed)
   const disabled = updateNowDisabled(s)
@@ -521,7 +521,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: TltgStatusView }) {
   )
 }
 
-function UpdateProgress({ update, recoveryRequired }: { update: TltgUpdateView; recoveryRequired: boolean }) {
+function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; recoveryRequired: boolean }) {
   // null follows the update: the log opens by itself when it fails.
   const [showLog, setShowLog] = useState<boolean | null>(null)
   useEffect(() => setShowLog(null), [update.id])
@@ -572,7 +572,7 @@ function UpdateProgress({ update, recoveryRequired }: { update: TltgUpdateView; 
   )
 }
 
-function BoardsCard({ view }: { view: TltgStatusView }) {
+function BoardsCard({ view }: { view: VoStatusView }) {
   if (view.boards.length === 0) return null
   return (
     <Card title="Boards" icon={<Cpu size={14} />}>

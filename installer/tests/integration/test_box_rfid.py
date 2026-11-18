@@ -11,7 +11,7 @@ from pathlib import Path
 
 from installer.tests.helpers import REPO_ROOT
 
-MODULES = REPO_ROOT / "installer/klipper/tltg"
+MODULES = REPO_ROOT / "installer/klipper/extras"
 sys.path.insert(0, str(MODULES))
 try:
     spec = importlib.util.spec_from_file_location("tltg_box_rfid", MODULES / "box_rfid.py")
@@ -479,8 +479,6 @@ class BoxRfidTests(unittest.TestCase):
         self.module()
         with self.assertRaises(CommandError):
             self.printer.commands["VO_BOX_RFID_REPORT"](Gcmd(SLOT=7, SECONDS=1))
-        # The command's name before 26.11.16.1 still works.
-        self.assertEqual(self.printer.commands["TLTG_BOX_RFID_REPORT"], self.printer.commands["VO_BOX_RFID_REPORT"])
 
     def test_test_tool_writes_only_blank_and_qidi_tags_and_reads_them_back(self):
         test = lambda **params: self.printer.commands["VO_BOX_RFID_TEST"](Gcmd(SLOT=7, **params))

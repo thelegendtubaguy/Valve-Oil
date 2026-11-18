@@ -41,7 +41,7 @@ def _load():
         lambda positions, method: [sum(p[i] for p in positions) / len(positions) for i in range(3)])
     try:
         spec = importlib.util.spec_from_file_location(
-            "extras.tltg_klipper_fixes", REPO_ROOT / "installer/klipper/tltg/klipper_fixes.py")
+            "extras.tltg_klipper_fixes", REPO_ROOT / "installer/klipper/extras/klipper_fixes.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -180,7 +180,7 @@ class HeaterTest(unittest.TestCase):
 
     def test_output_stops_when_the_main_loop_stops(self) -> None:
         heater = self.Heater()
-        heater._tltg_mainthread_time = 105.
+        heater._vo_mainthread_time = 105.
 
         klipper_fixes._heater_set_pwm(heater, 100., 1.)
         klipper_fixes._heater_set_pwm(heater, 106., 1.)

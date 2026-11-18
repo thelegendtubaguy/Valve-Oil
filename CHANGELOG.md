@@ -20,6 +20,10 @@
 - Valve Oil UI's **Updates** screen lists the installer's logs, each install's, update's, uninstall's, and backup restore's, to view or download, and says how the last install was started and how it ended.
 - **Use QIDI Box** is in Valve Oil UI's Box settings, beside the print dialog's switch, to choose whether prints load from the Box or use the external spool. The installer no longer asks about it.
 - See [Valve Oil UI](docs/valve-oil-ui.md).
+- Valve Oil's commands are named `VO_` now instead of `TLTG_`, such as `VO_BOX_MOTION` and `VO_BED_SOAK`, and its print macros `VO_` instead of `OPTIMIZED_`, except those the slicer packs call, so sliced files and slicer profiles don't change. The earlier names still work for now: each runs the new command and says its new name. See [Settings and commands](docs/settings.md#commands).
+- Saved settings are named `vo_` now instead of `tltg_`, such as `vo_keep_loaded_between_prints`. The first time Klipper starts after the update, every setting you saved is saved under its new name too, with the same value; set them by their new names from then on. See [Settings and commands](docs/settings.md#saved-settings).
+- A macro's category, color, or hiding set in Fluidd's or Valve Oil UI's macro settings stays with its earlier name, so a renamed macro needs it set again.
+- Klipper's startup message and printer warnings name Valve Oil instead of TLTG Optimized.
 
 ## 26.11.18.1
 - New: an update window for automatic updates. Choose the hours they start in, such as 02:00 to 05:00, with **Update window** under the **Automatic updates** switch in Fluidd's **Valve Oil** settings or on Valve Oil UI's **Updates** screen, or with `~/valve-oil/auto-update.sh --window 2-5`. Outside the window the hourly check still shows what's waiting, and the printer warning says it will be installed during the window. Hours are whole hours, and a window can run past midnight. Without one, automatic updates start at any hour, as before. **Update now** and `./install.sh` ignore the window. See [Update window](docs/install.md#update-window).

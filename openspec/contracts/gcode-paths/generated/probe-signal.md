@@ -11,7 +11,7 @@ Contract: `openspec/contracts/gcode-paths/probe-signal.path.json`
 
 Condition: `Python helper owns admission, sampling, console prompts, and response assessment`
 
-Source: `installer/klipper/tltg-optimized-macros/helpers.cfg:8-9`
+Source: `installer/klipper/macros/helpers.cfg:8-9`
 
 Direct visible macro calls in branch slice:
 
@@ -19,7 +19,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `_TLTG_TEST_PROBE CONFIRM={params.CONFIRM|default(0)}`
+- `_VO_TEST_PROBE CONFIRM={params.CONFIRM|default(0)}`
 
 Forbidden patterns:
 
@@ -30,4 +30,4 @@ Forbidden patterns:
 
 ## Macro scope
 
-- `installer/klipper/tltg-optimized-macros/helpers.cfg`
+- `installer/klipper/macros/helpers.cfg`

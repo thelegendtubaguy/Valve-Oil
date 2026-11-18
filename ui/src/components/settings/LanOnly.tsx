@@ -6,7 +6,7 @@ import { QIDI_LAN_MODE_KEY, QIDI_LAN_MODE_SECTION, qidiLanModeFromConfig, qidiLa
 import { Notice } from './common'
 
 /**
- * QIDI's LAN only mode, the same setting as the touchscreen's LAN Only switch, as the Fluidd fork's TltgQidiLanOnly.vue
+ * QIDI's LAN only mode, the same setting as the touchscreen's LAN Only switch, as the Fluidd fork's VoQidiLanOnly.vue
  * has it. Shown only when the printer's Moonraker has QIDI's settings table.
  */
 export function LanOnly({ className = '' }: { className?: string }) {

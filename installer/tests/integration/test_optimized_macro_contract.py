@@ -17,7 +17,7 @@ from installer.tests.integration.test_macro_call_graph import (
 )
 
 
-OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "tltg-optimized-macros"
+OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "macros"
 MAX4_MACRO_ROOT = PRINTER_MACRO_ROOT / "max4"
 NEWEST_STOCK = {
     "max4": REPO_ROOT / "installer/stock/qidi-max4-defaults/firmwares/01.01.07.01",
@@ -76,7 +76,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("[screws_tilt_adjust]", profile)
         self.assertIn("screw_thread: CW-M4", profile)
 
-        probe_gcode = self._macro_gcode("TLTG_PROBE_ACCURACY_CENTER")
+        probe_gcode = self._macro_gcode("VO_PROBE_ACCURACY_CENTER")
         self.assertIn("G1 X{profile.bed_center_x} Y{profile.bed_center_y} F24000", probe_gcode)
         self.assertIn("PROBE_ACCURACY SAMPLES={samples}", probe_gcode)
         self.assertNotIn("params.X", probe_gcode)
@@ -84,18 +84,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("params.Z", probe_gcode)
         self.assertNotIn("params.BED", probe_gcode)
 
-        screws_gcode = self._macro_gcode("TLTG_CORNER_BED_SCREW_CHECK")
+        screws_gcode = self._macro_gcode("VO_CORNER_BED_SCREW_CHECK")
         self.assertIn("Z_TILT_ADJUST", screws_gcode)
         self.assertIn("SCREWS_TILT_CALCULATE", screws_gcode)
         self.assertNotIn("params.", screws_gcode)
 
     def test_probe_signal_check_cannot_issue_motion_heating_or_calibration_commands(self):
-        gcode = self._macro_gcode("TLTG_TEST_PROBE")
+        gcode = self._macro_gcode("VO_TEST_PROBE")
         commands = set(re.findall(r"^\s*([A-Za-z_][A-Za-z_0-9]*)(?=\s|$)", gcode, re.MULTILINE))
         self.assertTrue(commands)
         self.assertLessEqual(
             {command.upper() for command in commands},
-            {"_TLTG_TEST_PROBE"},
+            {"_VO_TEST_PROBE"},
         )
 
     def test_exhaust_fan_leaves_the_chamber_heater_on(self):
@@ -105,7 +105,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("M141", gcode)
 
     def test_cancel_on_error_reenables_bed_mesh_without_moving(self):
-        gcode = self._macro_gcode("OPTIMIZED_CANCEL_PRINT_ON_ERROR")
+        gcode = self._macro_gcode("VO_CANCEL_PRINT_ON_ERROR")
         self.assertIn("G31", gcode)
         self.assertLess(gcode.index("G31"), gcode.index("CLEAR_PAUSE"))
 
@@ -135,8 +135,8 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("SET_PIN PIN=polar_cooler", pause)
         self.assertNotIn("ENABLE_SMART_PIN PIN=polar_cooler", pause)
 
-        self.assertIn("M106 P4 S{polar_cooler}", self._macro_gcode("OPTIMIZED_M1004"))
-        self.assertIn("M106 P4 S0", self._macro_gcode("OPTIMIZED_CANCEL_PRINT_ON_ERROR"))
+        self.assertIn("M106 P4 S{polar_cooler}", self._macro_gcode("VO_M1004"))
+        self.assertIn("M106 P4 S0", self._macro_gcode("VO_CANCEL_PRINT_ON_ERROR"))
         stock_start_end = stock_root / "klipper-macros-qd/start_end.cfg"
         self.assertIn(
             "M106 P4 S{polar_cooler}",
@@ -183,19 +183,19 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 sensor = (PRINTER_MACRO_ROOT / printer / "printer_profile.cfg").read_text(encoding="utf-8")
                 self.assertIn("[filament_switch_sensor filament_switch_sensor]", sensor)
                 self.assertIn("pause_on_runout: False", sensor)
-                self.assertIn("runout_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_RUNOUT", sensor)
-                self.assertIn("insert_gcode:\n  OPTIMIZED_FILAMENT_SENSOR_INSERTED", sensor)
+                self.assertIn("runout_gcode:\n  VO_FILAMENT_SENSOR_RUNOUT", sensor)
+                self.assertIn("insert_gcode:\n  VO_FILAMENT_SENSOR_INSERTED", sensor)
                 self.assertIn(f"switch_pin: {pin}", sensor)
 
         text = (OPTIMIZED_MACRO_ROOT / "filament.cfg").read_text(encoding="utf-8")
 
-        control = self._macro_gcode("TLTG_FILAMENT_SENSOR")
+        control = self._macro_gcode("VO_FILAMENT_SENSOR")
         self.assertIn("variable_pause_enabled: 1", text)
-        self.assertIn("SET_GCODE_VARIABLE MACRO=TLTG_FILAMENT_SENSOR VARIABLE=pause_enabled VALUE={pause_enabled}", control)
+        self.assertIn("SET_GCODE_VARIABLE MACRO=VO_FILAMENT_SENSOR VARIABLE=pause_enabled VALUE={pause_enabled}", control)
         self.assertIn("ENABLE=0 or ENABLE=1", control)
         self.assertIn("QIDI Box runout handling remains enabled.", control)
 
-        runout = self._macro_gcode("OPTIMIZED_FILAMENT_SENSOR_RUNOUT")
+        runout = self._macro_gcode("VO_FILAMENT_SENSOR_RUNOUT")
         self.assertIn("TOOLHEAD SENSOR TRIPPED", runout)
         self.assertIn("box_enabled", runout)
         self.assertIn("AUTO_RELOAD_FILAMENT", runout)
@@ -216,7 +216,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("filament_switch_sensor'].filament_detected", runout)
         self.assertIn('printer.print_stats.state == "printing" and not printer.pause_resume.is_paused', runout)
 
-        inserted = self._macro_gcode("OPTIMIZED_FILAMENT_SENSOR_INSERTED")
+        inserted = self._macro_gcode("VO_FILAMENT_SENSOR_INSERTED")
         self.assertIn("TOOLHEAD SENSOR UNTRIPPED", inserted)
         self.assertIn("M118 Filament detected", inserted)
 
@@ -244,7 +244,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             return [
                 line.replace("F{opt.trash_travel_speed_xy}", "F{km.travel_speed_xy}")
                 for line in lines
-                if not line.startswith("M204") and "_tltg_optimized_globals" not in line
+                if not line.startswith("M204") and "_vo_globals" not in line
             ]
 
         stock_root = NEWEST_STOCK["max4"] / "config/klipper-macros-qd"
@@ -265,7 +265,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 self.assertEqual(accel, "M204 S10000", line)
 
     def test_plus5_cut_presses_the_cutter_once(self):
-        for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
+        for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _VO_CUT_FILAMENT_MOTION"):
             with self.subTest(section=section):
                 motion = PRINTER_MACRO_ROOT / "plus5/nozzle_motion.cfg"
                 gcode = self._expand_cutter_strike(motion, self._section_gcode(motion, section))
@@ -278,7 +278,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         # _VO_CUTTER_STRIKE lets the pull-back through with the nozzle cold and leaves the cutter after an error,
         # so neither can leave the toolhead pressed against the cutter.
         for printer in NEWEST_STOCK:
-            for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _OPTIMIZED_CUT_FILAMENT_MOTION"):
+            for section in ("gcode_macro CUT_FILAMENT_1", "gcode_macro _VO_CUT_FILAMENT_MOTION"):
                 with self.subTest(printer=printer, section=section):
                     gcode = self._section_gcode(PRINTER_MACRO_ROOT / printer / "nozzle_motion.cfg", section)
                     self.assertEqual(len(re.findall(r"^\s*_VO_CUTTER_STRIKE EXIT_X=\S+ EXIT_F=\S+\s*$", gcode, re.M)), 1)
@@ -318,7 +318,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         macros, duplicates = parse_macro_definitions(installed_macro_files("plus5"))
         self.assertFalse(duplicates)
         for axis in ("X", "Y"):
-            home = "\n".join(line for _, line in macros[f"_OPTIMIZED_HOME_{axis}_AND_BACKOFF"].gcode_lines)
+            home = "\n".join(line for _, line in macros[f"_VO_HOME_{axis}_AND_BACKOFF"].gcode_lines)
             self.assert_ordered(
                 home,
                 "SET_TMC_CURRENT STEPPER=stepper_x CURRENT={homing_current}",
@@ -331,18 +331,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
         full_home = homing_override[:homing_override.index("{% if xy_home %}")]
         self.assert_ordered(
             full_home,
-            "_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
-            "_OPTIMIZED_HOME_Y_AND_BACKOFF",
-            "_OPTIMIZED_HOME_X_AND_BACKOFF",
-            "_OPTIMIZED_RESTORE_XY_HOMING_STATE",
-            "_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW",
+            "_VO_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
+            "_VO_HOME_Y_AND_BACKOFF",
+            "_VO_HOME_X_AND_BACKOFF",
+            "_VO_RESTORE_XY_HOMING_STATE",
+            "_VO_HOME_Z_FROM_SAFE_POINT_RAW",
         )
         # As on the Max 4, X and Y don't move before they home, and Y homes once.
-        self.assertEqual(full_home.count("_OPTIMIZED_HOME_Y_AND_BACKOFF"), 1)
-        prep = "\n".join(line for _, line in macros["_OPTIMIZED_PREP_XY_HOME"].gcode_lines)
+        self.assertEqual(full_home.count("_VO_HOME_Y_AND_BACKOFF"), 1)
+        prep = "\n".join(line for _, line in macros["_VO_PREP_XY_HOME"].gcode_lines)
         self.assertNotRegex(prep, r"G[01] [^\n]*[XY]")
         self.assertGreater(
-            homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
+            homing_override.index("_VO_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error")
         )
 
     def test_nozzle_moves_stay_inside_the_printers_travel(self):
@@ -393,9 +393,9 @@ class OptimizedMacroContractTests(unittest.TestCase):
         del bodies["_VO_CUTTER_STRIKE_MOTION"]
         # Pure-motion entry points the common macros and slicer packs call.
         calls = {
-            "OPTIMIZED_WIPE_NOZZLE_DROP": ["_OPTIMIZED_WIPE_NOZZLE", "_OPTIMIZED_CHUTE_DROP"],
-            "_OPTIMIZED_FINISH_START_SCRAPE": ["OPTIMIZED_MOVE_TO_TRASH", "OPTIMIZED_WIPE_NOZZLE_DROP"],
-            "OPTIMIZED_MOVE_TO_TRASH": ["_OPTIMIZED_MOVE_TO_TRASH_MOTION"],
+            "VO_WIPE_NOZZLE_DROP": ["_VO_WIPE_NOZZLE", "_VO_CHUTE_DROP"],
+            "_VO_FINISH_START_SCRAPE": ["OPTIMIZED_MOVE_TO_TRASH", "VO_WIPE_NOZZLE_DROP"],
+            "OPTIMIZED_MOVE_TO_TRASH": ["_VO_MOVE_TO_TRASH_MOTION"],
         }
 
         def check(name, start, end):
@@ -501,25 +501,25 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 )
 
     def test_tool_mapping_lifecycle_preserves_active_prints_and_resets_idle_state(self):
-        ensure = self._macro_gcode("_TLTG_ENSURE_TOOL_MAPPINGS")
+        ensure = self._macro_gcode("_VO_ENSURE_TOOL_MAPPINGS")
         self.assertIn("active_tool_count = [box_count * 4, 16]|min", ensure)
         self.assertIn("for tool in range(active_tool_count)", ensure)
         self.assertIn("current = svv[variable]|default('')|string|trim", ensure)
         self.assertIn("{% if not current %}", ensure)
         self.assertIn("SAVE_VARIABLE VARIABLE={variable} VALUE='\"slot{tool}\"'", ensure)
 
-        reset = self._macro_gcode("_TLTG_RESET_TOOL_MAPPINGS")
+        reset = self._macro_gcode("_VO_RESET_TOOL_MAPPINGS")
         self.assertIn("for tool in range(16)", reset)
         self.assertIn("exists = variable in svv", reset)
         self.assertIn("(exists and current != expected) or (not exists and tool < active_tool_count)", reset)
         self.assertIn("SAVE_VARIABLE VARIABLE={variable} VALUE='\"{expected}\"'", reset)
         self.assertIn("params.REPORT|default(0)|int", reset)
 
-        public_reset = self._macro_gcode("TLTG_RESET_TOOL_MAPPINGS")
+        public_reset = self._macro_gcode("VO_RESET_TOOL_MAPPINGS")
         self.assertIn('printer.idle_timeout.state|string == "Printing"', public_reset)
         self.assertIn("printer.virtual_sdcard|default({})", public_reset)
         self.assertIn("printer.pause_resume.is_paused", public_reset)
-        self.assertIn("_TLTG_RESET_TOOL_MAPPINGS REPORT=1", public_reset)
+        self.assertIn("_VO_RESET_TOOL_MAPPINGS REPORT=1", public_reset)
         self.assertNotIn("SAVE_VARIABLE", public_reset)
 
         start_prep = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
@@ -527,7 +527,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("tool_slot = mapped_tool_slot if mapped_tool_slot else 'slot' ~ tool", start_prep)
         self.assert_ordered(
             start_prep,
-            "_TLTG_ENSURE_TOOL_MAPPINGS",
+            "_VO_ENSURE_TOOL_MAPPINGS",
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_END_NOZZLE_COOLDOWN_START VARIABLE=reset_tool_mappings VALUE=0",
             "SAVE_VARIABLE VARIABLE=retained_tool_ready VALUE=0",
             "{% if reuse_loaded %}",
@@ -537,7 +537,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         end_prep = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
         self.assert_ordered(
             end_prep,
-            "OPTIMIZED_UNLOAD_FILAMENT T={tool} CLEANUP=0",
+            "VO_UNLOAD_FILAMENT T={tool} CLEANUP=0",
             "{% endif %}",
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_END_NOZZLE_COOLDOWN_START VARIABLE=reset_tool_mappings VALUE=1",
         )
@@ -550,10 +550,10 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assert_ordered(
             cooldown,
             "M104 S0",
-            "OPTIMIZED_END_FAN_COOLDOWN S={exhaust_speed} T={exhaust_duration}",
+            "VO_END_FAN_COOLDOWN S={exhaust_speed} T={exhaust_duration}",
             "{% if reset_tool_mappings %}",
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_END_NOZZLE_COOLDOWN_START VARIABLE=reset_tool_mappings VALUE=0",
-            "_TLTG_RESET_TOOL_MAPPINGS",
+            "_VO_RESET_TOOL_MAPPINGS",
         )
 
         for relative_path in (
@@ -563,34 +563,34 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "qidistudio_gcode/end.gcode",
         ):
             slicer_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            self.assertNotIn("_TLTG_ENSURE_TOOL_MAPPINGS", slicer_gcode)
-            self.assertNotIn("_TLTG_RESET_TOOL_MAPPINGS", slicer_gcode)
-            self.assertNotIn("TLTG_RESET_TOOL_MAPPINGS", slicer_gcode)
+            self.assertNotIn("_VO_ENSURE_TOOL_MAPPINGS", slicer_gcode)
+            self.assertNotIn("_VO_RESET_TOOL_MAPPINGS", slicer_gcode)
+            self.assertNotIn("VO_RESET_TOOL_MAPPINGS", slicer_gcode)
 
         cancel_gcode = (OPTIMIZED_MACRO_ROOT / "cancel.cfg").read_text(encoding="utf-8")
-        self.assertNotIn("_TLTG_RESET_TOOL_MAPPINGS", cancel_gcode)
-        self.assertNotIn("TLTG_RESET_TOOL_MAPPINGS", cancel_gcode)
+        self.assertNotIn("_VO_RESET_TOOL_MAPPINGS", cancel_gcode)
+        self.assertNotIn("VO_RESET_TOOL_MAPPINGS", cancel_gcode)
 
     def test_optimized_g29_always_calibrates_kamp_mesh(self):
-        gcode = self._macro_gcode("OPTIMIZED_G29_ZSAFE")
+        gcode = self._macro_gcode("VO_G29_ZSAFE")
         self.assertIn("BED_MESH_CLEAR", gcode)
-        self.assertIn("_OPTIMIZED_G29_HOME_Z_OR_FULL", gcode)
+        self.assertIn("_VO_G29_HOME_Z_OR_FULL", gcode)
         self.assertIn("BED_MESH_CALIBRATE PROFILE=kamp", gcode)
         self.assertNotIn("bedmesh_before_print", gcode)
         self.assertNotIn("BED_MESH_PROFILE LOAD=default", gcode)
         self.assertNotIn("BED_MESH_CALIBRATE PROFILE=default", gcode)
 
-        z_home_gcode = self._macro_gcode("_OPTIMIZED_G29_HOME_Z_OR_FULL")
-        self.assertIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT", z_home_gcode)
+        z_home_gcode = self._macro_gcode("_VO_G29_HOME_Z_OR_FULL")
+        self.assertIn("_VO_HOME_Z_FROM_SAFE_POINT", z_home_gcode)
         self.assertNotIn("G28.6245197 Z", z_home_gcode)
 
     def test_start_mesh_preparation_uses_optional_saved_profile(self):
-        helper = self._macro_gcode("_OPTIMIZED_PREPARE_PRINT_MESH")
+        helper = self._macro_gcode("_VO_PREPARE_PRINT_MESH")
         self.assertIn(
-            "profile = printer.save_variables.variables.tltg_start_bed_mesh_profile|default('')|string",
+            "profile = printer.save_variables.variables.vo_start_bed_mesh_profile|default('')|string",
             helper,
         )
-        self.assertNotIn("tltg_start_bed_mesh_profile|default('')|string|trim", helper)
+        self.assertNotIn("vo_start_bed_mesh_profile|default('')|string|trim", helper)
         self.assertIn("command_profile = profile|replace", helper)
         self.assertGreaterEqual(helper.count("|replace("), 2)
 
@@ -619,7 +619,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "G31",
             "SET_STEPPER_ENABLE STEPPER=extruder enable=0",
             "BED_MESH_CLEAR",
-            "_OPTIMIZED_G29_HOME_Z_OR_FULL",
+            "_VO_G29_HOME_Z_OR_FULL",
             "BED_MESH_CALIBRATE PROFILE=kamp",
             "SAVE_VARIABLE VARIABLE=profile_name VALUE='\"kamp\"'",
             "G4 P500",
@@ -628,7 +628,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("BED_MESH_PROFILE LOAD=", adaptive)
 
         start = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
-        self.assertEqual(start.count("_OPTIMIZED_PREPARE_PRINT_MESH"), 3)
+        self.assertEqual(start.count("_VO_PREPARE_PRINT_MESH"), 3)
         self.assertNotIn("BED_MESH_CALIBRATE", start)
         self.assertNotIn("BED_MESH_PROFILE LOAD=", start)
         for branch in (
@@ -641,7 +641,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 "Z_TILT_ADJUST",
                 "M400",
                 "SET_PRINT_SUB_STATUS SUB_STATUS=auto_bed_adjust",
-                "_OPTIMIZED_PREPARE_PRINT_MESH",
+                "_VO_PREPARE_PRINT_MESH",
                 "M1002 A1",
                 "ENABLE_ALL_SENSOR",
             )
@@ -656,7 +656,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             self.assertEqual(gcode.count("OPTIMIZED_START_PRINT_FILAMENT_PREP"), 1)
             self.assertIn(expected_call, gcode)
             self.assertNotIn("BED_MESH_PROFILE", gcode)
-            self.assertNotIn("tltg_start_bed_mesh_profile", gcode)
+            self.assertNotIn("vo_start_bed_mesh_profile", gcode)
 
     def test_z_home_uses_fast_randomized_center_target(self):
         globals_text = (OPTIMIZED_MACRO_ROOT / "globals.cfg").read_text(encoding="utf-8")
@@ -665,42 +665,42 @@ class OptimizedMacroContractTests(unittest.TestCase):
         travel = re.search(r"^variable_move_to_z_travel_speed_xy: (\d+)$", globals_text, re.M)
         self.assertLessEqual(int(travel.group(1)), 565 * 60)
 
-        move_gcode = self._macro_gcode("_OPTIMIZED_MOVE_TO_Z_HOME_POINT")
+        move_gcode = self._macro_gcode("_VO_MOVE_TO_Z_HOME_POINT")
         self.assertEqual(move_gcode.count("range(-radius, radius + 1)|random"), 2)
         self.assertIn("center_x + (range(-radius, radius + 1)|random)", move_gcode)
         self.assertIn("center_y + (range(-radius, radius + 1)|random)", move_gcode)
         self.assertIn("G1 X{target_x} Y{target_y} F{opt.move_to_z_travel_speed_xy}", move_gcode)
 
     def test_safe_z_home_raw_path_is_not_reentrant(self):
-        public_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT")
+        public_gcode = self._macro_gcode("_VO_HOME_Z_FROM_SAFE_POINT")
         self.assertIn("G28 Z", public_gcode)
         self.assertNotIn("G28.6245197 Z", public_gcode)
-        self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW", public_gcode)
+        self.assertNotIn("_VO_HOME_Z_FROM_SAFE_POINT_RAW", public_gcode)
 
-        raw_gcode = self._macro_gcode("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW")
-        self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL"))
+        raw_gcode = self._macro_gcode("_VO_HOME_Z_FROM_SAFE_POINT_RAW")
+        self.assertLess(raw_gcode.index("G28.6245197 Z"), raw_gcode.index("_VO_RESTORE_DEFAULT_ACCEL"))
 
         optimized_text = "\n".join(path.read_text(encoding="utf-8") for path in installed_macro_files("max4"))
         self.assertEqual(optimized_text.count("G28.6245197 Z"), 1)
 
     def test_homing_holds_unshaped_printers_below_max_accel(self):
         homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
-        self.assertGreater(homing_override.index("_OPTIMIZED_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error"))
-        restore_xy = self._macro_gcode("_OPTIMIZED_RESTORE_XY_HOMING_STATE")
-        self.assertTrue(restore_xy.rstrip().endswith("_OPTIMIZED_RESTORE_INPUT_SHAPER"))
+        self.assertGreater(homing_override.index("_VO_RESTORE_DEFAULT_ACCEL WARN=1"), homing_override.rindex("action_raise_error"))
+        restore_xy = self._macro_gcode("_VO_RESTORE_XY_HOMING_STATE")
+        self.assertTrue(restore_xy.rstrip().endswith("_VO_RESTORE_INPUT_SHAPER"))
         full_home = homing_override[:homing_override.index("{% if xy_home %}")]
-        self.assertLess(full_home.index("_OPTIMIZED_RESTORE_XY_HOMING_STATE"), full_home.index("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"))
-        restore = self._macro_gcode("_OPTIMIZED_RESTORE_DEFAULT_ACCEL")
+        self.assertLess(full_home.index("_VO_RESTORE_XY_HOMING_STATE"), full_home.index("_VO_HOME_Z_FROM_SAFE_POINT_RAW"))
+        restore = self._macro_gcode("_VO_RESTORE_DEFAULT_ACCEL")
         self.assertIn("{% if status.input_shaper.saved and not status.input_shaper.unshaped_axes %}", restore)
         self.assertIn("[status.max_accel|float, opt.unshaped_accel|float]|min", restore)
 
         homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
-        self.assertEqual(homing_override.count("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
-        self.assertNotIn("\n      _OPTIMIZED_HOME_Z_FROM_SAFE_POINT\n", f"\n{homing_override}\n")
+        self.assertEqual(homing_override.count("_VO_HOME_Z_FROM_SAFE_POINT_RAW"), 2)
+        self.assertNotIn("\n      _VO_HOME_Z_FROM_SAFE_POINT\n", f"\n{homing_override}\n")
 
     def test_homing_prep_does_not_nudge_xy_before_raw_homing(self):
         homing_override = self._section_gcode(MAX4_MACRO_ROOT / "homing.cfg", "homing_override")
-        self.assertIn("_OPTIMIZED_PREP_XY_HOME SET_Z=1 MOVE_Z=5", homing_override)
+        self.assertIn("_VO_PREP_XY_HOME SET_Z=1 MOVE_Z=5", homing_override)
         self.assertNotIn("MOVE_X=", homing_override)
         self.assertNotIn("MOVE_Y=", homing_override)
 
@@ -710,7 +710,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             cut_gcode,
             'printer.print_stats.state == "printing" and printer.tltg_macro_status.vendor_flow',
             "{% if not vendor_flow_cuts %}",
-            "_OPTIMIZED_CUT_FILAMENT_MOTION",
+            "_VO_CUT_FILAMENT_MOTION",
         )
         self.assert_ordered(
             cut_gcode,
@@ -722,17 +722,17 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "printer.toolhead.estimated_print_time - handoff < 2",
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE=-1.0",
             "{% if not skip_for_vendor_flow %}",
-            "_OPTIMIZED_MOVE_TO_TRASH_MOTION",
+            "_VO_MOVE_TO_TRASH_MOTION",
             "{% endif %}",
         )
         cut_motion = self._expand_cutter_strike(
-            MAX4_MACRO_ROOT / "nozzle_motion.cfg", self._macro_gcode("_OPTIMIZED_CUT_FILAMENT_MOTION")
+            MAX4_MACRO_ROOT / "nozzle_motion.cfg", self._macro_gcode("_VO_CUT_FILAMENT_MOTION")
         )
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", cut_motion)
         self.assertNotIn("G4 P2000", cut_motion)
         self.assert_ordered(
             cut_motion,
-            "SAVE_GCODE_STATE NAME=optimized_cut_filament_state",
+            "SAVE_GCODE_STATE NAME=vo_cut_filament_state",
             "G90",
             "M204 S10000",
             "SET_STEPPER_ENABLE STEPPER=extruder enable=0",
@@ -743,18 +743,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "G1 E-4 F1800",
             "G1 X15 F8000",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
-            "RESTORE_GCODE_STATE NAME=optimized_cut_filament_state",
+            "RESTORE_GCODE_STATE NAME=vo_cut_filament_state",
         )
 
-        move_gcode = self._macro_gcode("_OPTIMIZED_MOVE_TO_TRASH_MOTION")
+        move_gcode = self._macro_gcode("_VO_MOVE_TO_TRASH_MOTION")
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", move_gcode)
         self.assert_ordered(
             move_gcode,
-            "SAVE_GCODE_STATE NAME=optimized_move_to_trash_state",
+            "SAVE_GCODE_STATE NAME=vo_move_to_trash_state",
             "G90",
             "M204 S10000",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
-            "RESTORE_GCODE_STATE NAME=optimized_move_to_trash_state",
+            "RESTORE_GCODE_STATE NAME=vo_move_to_trash_state",
         )
 
     def test_end_filament_prep_uses_explicit_relative_extrusion_for_e_only_moves(self):
@@ -763,18 +763,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
             end_gcode,
             "SET_GCODE_VARIABLE MACRO=OPTIMIZED_END_PRINT_FILAMENT_PREP VARIABLE=retained VALUE=0",
             "DISABLE_ALL_SENSOR",
-            "SAVE_GCODE_STATE NAME=optimized_end_print_filament_prep_state",
+            "SAVE_GCODE_STATE NAME=vo_end_print_filament_prep_state",
             "M83",
             "G1 E-3 F1800",
-            "RESTORE_GCODE_STATE NAME=optimized_end_print_filament_prep_state",
-            "OPTIMIZED_UNLOAD_FILAMENT T={tool} CLEANUP=0",
+            "RESTORE_GCODE_STATE NAME=vo_end_print_filament_prep_state",
+            "VO_UNLOAD_FILAMENT T={tool} CLEANUP=0",
         )
 
-        unload_gcode = self._macro_gcode("OPTIMIZED_UNLOAD_FILAMENT")
+        unload_gcode = self._macro_gcode("VO_UNLOAD_FILAMENT")
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", unload_gcode)
         self.assert_ordered(
             unload_gcode,
-            "SAVE_GCODE_STATE NAME=optimized_unload_filament_state",
+            "SAVE_GCODE_STATE NAME=vo_unload_filament_state",
             "G90",
             "M83",
             '{% if printer.tltg_macro_status.vendor_flow %}',
@@ -786,14 +786,14 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "G1 E25 F300",
             "{% endif %}",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
-            "RESTORE_GCODE_STATE NAME=optimized_unload_filament_state",
+            "RESTORE_GCODE_STATE NAME=vo_unload_filament_state",
         )
 
 
     def test_filament_retention_uses_saved_preference(self):
         preference_lookup = (
             "keep_loaded_between_prints = "
-            "svv.tltg_keep_loaded_between_prints|default(0)|int == 1"
+            "svv.vo_keep_loaded_between_prints|default(0)|int == 1"
         )
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
         end_gcode = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
@@ -815,7 +815,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "qidistudio_gcode/end.gcode",
         ):
             slicer_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-            self.assertNotIn("tltg_keep_loaded_between_prints", slicer_gcode)
+            self.assertNotIn("vo_keep_loaded_between_prints", slicer_gcode)
 
     def test_retained_filament_tracks_active_box_sync_slot(self):
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
@@ -856,7 +856,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
             "PRINT_END",
         )
-        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", orca_end_gcode)
+        self.assertNotIn("VO_END_FAN_COOLDOWN", orca_end_gcode)
 
         qidistudio_end_gcode = (REPO_ROOT / "qidistudio_gcode/end.gcode").read_text(
             encoding="utf-8"
@@ -873,35 +873,35 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
         self.assertNotIn("activate_air_filtration_on_completion", qidistudio_end_gcode)
         self.assertNotIn("complete_print_exhaust_fan_speed", qidistudio_end_gcode)
-        self.assertNotIn("OPTIMIZED_END_FAN_COOLDOWN", qidistudio_end_gcode)
+        self.assertNotIn("VO_END_FAN_COOLDOWN", qidistudio_end_gcode)
 
         cooldown_start = self._macro_gcode("OPTIMIZED_END_NOZZLE_COOLDOWN_START")
         self.assert_ordered(
             cooldown_start,
             "M106 S255",
             "exhaust_speed = params.EXHAUST_SPEED|default(0)|int",
-            "OPTIMIZED_DISABLE_BOX_HEATER",
+            "VO_DISABLE_BOX_HEATER",
             "M141 S0",
             "M140 S0",
             "M104 S0",
-            "OPTIMIZED_END_FAN_COOLDOWN S={exhaust_speed} T={exhaust_duration}",
-            "_TLTG_RESET_TOOL_MAPPINGS",
+            "VO_END_FAN_COOLDOWN S={exhaust_speed} T={exhaust_duration}",
+            "_VO_RESET_TOOL_MAPPINGS",
         )
 
         staged_wipe = self._macro_gcode("OPTIMIZED_END_STAGED_NOZZLE_WIPE")
         self.assert_ordered(
             staged_wipe,
             "TEMPERATURE_WAIT SENSOR={extruder} MAXIMUM={first_wipe_temp}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP",
+            "VO_WIPE_NOZZLE_DROP",
             "TEMPERATURE_WAIT SENSOR={extruder} MAXIMUM={final_wipe_temp}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP",
+            "VO_WIPE_NOZZLE_DROP",
             "G1 Y-{pull_forward_y} F6000",
         )
 
         end_prep = self._macro_gcode("OPTIMIZED_END_PRINT_FILAMENT_PREP")
-        self.assertIn("OPTIMIZED_UNLOAD_FILAMENT T={tool} CLEANUP=0", end_prep)
+        self.assertIn("VO_UNLOAD_FILAMENT T={tool} CLEANUP=0", end_prep)
 
-        cleanup_alias = self._macro_gcode("OPTIMIZED_END_NOZZLE_CLEANUP")
+        cleanup_alias = self._macro_gcode("VO_END_NOZZLE_CLEANUP")
         self.assert_ordered(
             cleanup_alias,
             "OPTIMIZED_MOVE_TO_TRASH",
@@ -917,40 +917,40 @@ class OptimizedMacroContractTests(unittest.TestCase):
             retained_gcode,
             "G1 Z20 F480",
             "OPTIMIZED_MOVE_TO_TRASH",
-            "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
-            "OPTIMIZED_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
-            "OPTIMIZED_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
-            "OPTIMIZED_WIPE_NOZZLE_DROP",
+            "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
+            "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
+            "VO_WAIT_HOTEND S={reuse_nozzle_target} STATUS=clear_nozzle",
+            "VO_WIPE_NOZZLE_DROP",
             "Z_TILT_ADJUST",
         )
 
     def test_start_reports_live_bed_temperature_before_each_z_tilt(self):
-        report_gcode = self._macro_gcode("_OPTIMIZED_REPORT_BED_TEMP")
+        report_gcode = self._macro_gcode("_VO_REPORT_BED_TEMP")
         self.assertIn(
             "M118 Bed temp wait reached.  Target: {printer.heater_bed.target|round(1)} Actual: {printer.heater_bed.temperature|round(1)}",
             report_gcode,
         )
 
         start_gcode = self._macro_gcode("OPTIMIZED_START_PRINT_FILAMENT_PREP")
-        self.assertEqual(start_gcode.count("_OPTIMIZED_REPORT_BED_TEMP"), 3)
+        self.assertEqual(start_gcode.count("_VO_REPORT_BED_TEMP"), 3)
         self.assertEqual(start_gcode.count("Z_TILT_ADJUST"), 3)
         for branch in start_gcode.split("Z_TILT_ADJUST")[:-1]:
-            self.assertTrue(branch.rstrip().endswith("_OPTIMIZED_REPORT_BED_TEMP"))
+            self.assertTrue(branch.rstrip().endswith("_VO_REPORT_BED_TEMP"))
 
     def test_print_start_cleaning_preserves_stages_geometry_and_caller_boundaries(self):
         globals_text = (OPTIMIZED_MACRO_ROOT / "globals.cfg").read_text(encoding="utf-8")
         self.assertIn("variable_trash_final_approach_speed_xy: 3500", globals_text)
         self.assertIn("variable_rear_scrape_orient_speed_xy: 24000", globals_text)
 
-        move_to_trash = self._macro_gcode("_OPTIMIZED_MOVE_TO_TRASH_MOTION")
+        move_to_trash = self._macro_gcode("_VO_MOVE_TO_TRASH_MOTION")
         self.assertEqual(move_to_trash.count("F{opt.trash_final_approach_speed_xy}"), 4)
         self.assertNotIn("F3500", move_to_trash)
 
-        mixed_wipe = self._macro_gcode("_OPTIMIZED_START_PRE_SCRAPE_WIPE")
+        mixed_wipe = self._macro_gcode("_VO_START_PRE_SCRAPE_WIPE")
         self.assert_ordered(
             mixed_wipe,
             "saved_accel = printer.toolhead.max_accel|float",
-            "SAVE_GCODE_STATE NAME=optimized_start_pre_scrape_wipe_state",
+            "SAVE_GCODE_STATE NAME=vo_start_pre_scrape_wipe_state",
             "G90",
             "M204 S10000",
             "{% for i in range(2) %}",
@@ -963,24 +963,24 @@ class OptimizedMacroContractTests(unittest.TestCase):
             "{% endfor %}",
             "M400",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
-            "RESTORE_GCODE_STATE NAME=optimized_start_pre_scrape_wipe_state",
+            "RESTORE_GCODE_STATE NAME=vo_start_pre_scrape_wipe_state",
         )
         for forbidden in ("G1 E", "G1 Y", "G1 Z", "M104", "M109", "G4 "):
             self.assertNotIn(forbidden, mixed_wipe)
 
-        fast_wipe = self._macro_gcode("_OPTIMIZED_WIPE_NOZZLE")
+        fast_wipe = self._macro_gcode("_VO_WIPE_NOZZLE")
         self.assert_ordered(
             fast_wipe,
-            "SAVE_GCODE_STATE NAME=optimized_wipe_nozzle_state",
+            "SAVE_GCODE_STATE NAME=vo_wipe_nozzle_state",
             "{% for i in range(4) %}",
             "G1 X176 F12000",
             "G1 X163 F12000",
             "{% endfor %}",
             "G1 X180 F12000",
             "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
-            "RESTORE_GCODE_STATE NAME=optimized_wipe_nozzle_state",
+            "RESTORE_GCODE_STATE NAME=vo_wipe_nozzle_state",
         )
-        self.assertNotIn("_OPTIMIZED_START_PRE_SCRAPE_WIPE", fast_wipe)
+        self.assertNotIn("_VO_START_PRE_SCRAPE_WIPE", fast_wipe)
 
         # QIDI 01.01.07.01 flows no longer call the compiled chute cleanup commands, so the
         # optimized package must not depend on them surviving future firmware.
@@ -993,7 +993,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
             for vendor_cleanup in ("CLEAR_FLUSH", "CLEAR_OOZE"):
                 self.assertNotIn(vendor_cleanup, text, path.name)
 
-        scrape = self._macro_gcode("_OPTIMIZED_REAR_BED_SCRAPE")
+        scrape = self._macro_gcode("_VO_REAR_BED_SCRAPE")
         self.assertIn("saved_accel = printer.toolhead.max_accel|float", scrape)
         self.assert_ordered(
             scrape,
@@ -1030,21 +1030,21 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assert_ordered(
             box_gcode,
             "BOX_PRINT_START EXTRUDER={tool} HOTENDTEMP={purge_temp}",
-            "OPTIMIZED_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target} PRE_SCRAPE=1",
+            "VO_EXTRUSION_AND_FLUSH PURGETEMP={purge_temp} CHAMBER={chamber_target} PRE_SCRAPE=1",
             "{% if purge_temp > scrape_target %}",
             "TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purge_temp}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED",
+            "VO_WIPE_NOZZLE_DROP PATTERN=MIXED",
             "{% if purge_temp - 30 > scrape_target %}",
             "TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={purge_temp - 30}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED",
+            "VO_WIPE_NOZZLE_DROP PATTERN=MIXED",
             "TEMPERATURE_WAIT SENSOR=extruder MAXIMUM={scrape_maximum}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED",
-            "_OPTIMIZED_REAR_BED_SCRAPE",
-            "_OPTIMIZED_FINISH_START_SCRAPE",
-            "OPTIMIZED_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
+            "VO_WIPE_NOZZLE_DROP PATTERN=MIXED",
+            "_VO_REAR_BED_SCRAPE",
+            "_VO_FINISH_START_SCRAPE",
+            "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
             "Z_TILT_ADJUST",
         )
-        self.assertEqual(box_gcode.count("OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED"), 3)
+        self.assertEqual(box_gcode.count("VO_WIPE_NOZZLE_DROP PATTERN=MIXED"), 3)
         self.assertEqual(box_gcode.count("{% if purge_temp > scrape_target %}"), 1)
         self.assertEqual(box_gcode.count("{% if purge_temp - 30 > scrape_target %}"), 1)
         self.assertNotIn("G1 E250", box_gcode)
@@ -1054,22 +1054,22 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 "{% elif box_enabled %}"
             )
         ]
-        self.assertIn("OPTIMIZED_WIPE_NOZZLE_DROP", retained_gcode)
+        self.assertIn("VO_WIPE_NOZZLE_DROP", retained_gcode)
         for forbidden in (
             "PATTERN=MIXED",
-            "_OPTIMIZED_REAR_BED_SCRAPE",
-            "_OPTIMIZED_FINISH_START_SCRAPE",
+            "_VO_REAR_BED_SCRAPE",
+            "_VO_FINISH_START_SCRAPE",
         ):
             self.assertNotIn(forbidden, retained_gcode)
 
-        purge = self._macro_gcode("OPTIMIZED_EXTRUSION_AND_FLUSH")
+        purge = self._macro_gcode("VO_EXTRUSION_AND_FLUSH")
         self.assertIn("pre_scrape = params.PRE_SCRAPE|default(0)|int == 1", purge)
         self.assert_ordered(
             purge,
             "{% if pre_scrape %}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED",
+            "VO_WIPE_NOZZLE_DROP PATTERN=MIXED",
             "{% else %}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP",
+            "VO_WIPE_NOZZLE_DROP",
             "{% endif %}",
         )
         self.assertIn("G1 E10 F300", purge)
@@ -1077,18 +1077,18 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertIn("G1 E60 F300", purge)
 
         for unchanged_caller in (
-            "OPTIMIZED_UNLOAD_FILAMENT",
+            "VO_UNLOAD_FILAMENT",
             "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
         ):
             caller = self._macro_gcode(unchanged_caller)
-            self.assertIn("OPTIMIZED_WIPE_NOZZLE_DROP", caller)
+            self.assertIn("VO_WIPE_NOZZLE_DROP", caller)
             self.assertNotIn("PATTERN=MIXED", caller)
         for slicer_change in (
             "orcaslicer_gcode/change_filament.gcode",
             "qidistudio_gcode/change_filament.gcode",
         ):
             self.assertNotIn(
-                "_OPTIMIZED_START_PRE_SCRAPE_WIPE",
+                "_VO_START_PRE_SCRAPE_WIPE",
                 (REPO_ROOT / slicer_change).read_text(encoding="utf-8"),
             )
 
@@ -1098,45 +1098,45 @@ class OptimizedMacroContractTests(unittest.TestCase):
             start_gcode.index("M118 Starting without QIDI Box filament prep") :
         ]
         self.assertIn(
-            "OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}", no_box_gcode
+            "VO_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}", no_box_gcode
         )
         self.assertNotIn("CLEAR_NOZZLE", no_box_gcode)
         self.assert_ordered(
             no_box_gcode,
-            "OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}",
+            "VO_WIPE_AND_SCRAPE_NOZZLE TARGET={scrape_target}",
             "Z_TILT_ADJUST",
             "M400",
-            "_OPTIMIZED_PREPARE_PRINT_MESH",
+            "_VO_PREPARE_PRINT_MESH",
         )
         self.assertNotIn("BED_MESH_CALIBRATE", no_box_gcode)
 
-        cleanup = self._macro_gcode("OPTIMIZED_WIPE_AND_SCRAPE_NOZZLE")
+        cleanup = self._macro_gcode("VO_WIPE_AND_SCRAPE_NOZZLE")
         self.assertNotIn("G1 E", cleanup)
-        self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT", cleanup)
-        self.assertNotIn("_OPTIMIZED_HOME_Z_FROM_SAFE_POINT_RAW", cleanup)
+        self.assertNotIn("_VO_HOME_Z_FROM_SAFE_POINT", cleanup)
+        self.assertNotIn("_VO_HOME_Z_FROM_SAFE_POINT_RAW", cleanup)
         self.assert_ordered(
             cleanup,
             'box_available = printer.tltg_macro_status.box_available',
-            "OPTIMIZED_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle",
+            "VO_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle",
             "TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}",
             "{% if box_available %}",
-            "OPTIMIZED_WIPE_NOZZLE_DROP PATTERN=MIXED",
+            "VO_WIPE_NOZZLE_DROP PATTERN=MIXED",
             "{% endif %}",
-            "_OPTIMIZED_REAR_BED_SCRAPE",
-            "_OPTIMIZED_FINISH_START_SCRAPE",
+            "_VO_REAR_BED_SCRAPE",
+            "_VO_FINISH_START_SCRAPE",
         )
-        self.assertEqual(cleanup.count("OPTIMIZED_WIPE_NOZZLE_DROP"), 1)
+        self.assertEqual(cleanup.count("VO_WIPE_NOZZLE_DROP"), 1)
 
-        finish = self._macro_gcode("_OPTIMIZED_FINISH_START_SCRAPE")
+        finish = self._macro_gcode("_VO_FINISH_START_SCRAPE")
         self.assert_ordered(
             finish,
             'box_available = printer.tltg_macro_status.box_available',
             "{% if box_available %}",
             "OPTIMIZED_MOVE_TO_TRASH",
-            "OPTIMIZED_WIPE_NOZZLE_DROP",
+            "VO_WIPE_NOZZLE_DROP",
             "{% endif %}",
         )
-        self.assertEqual(finish.count("OPTIMIZED_WIPE_NOZZLE_DROP"), 1)
+        self.assertEqual(finish.count("VO_WIPE_NOZZLE_DROP"), 1)
         self.assertNotIn("PATTERN=MIXED", finish)
         self.assertNotIn("CLEAR_NOZZLE", finish)
         self.assertNotIn("CLEAR_OOZE", finish)
@@ -1171,7 +1171,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_macro_status", REPO_ROOT / "installer/klipper/tltg/macro_status.py"
+    "tltg_macro_status", REPO_ROOT / "installer/klipper/extras/macro_status.py"
 )
 macro_status = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(macro_status)
@@ -1273,7 +1273,7 @@ class MacroStatusTest(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_printer_warnings", REPO_ROOT / "installer/klipper/tltg/printer_warnings.py"
+    "tltg_printer_warnings", REPO_ROOT / "installer/klipper/extras/printer_warnings.py"
 )
 printer_warnings = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(printer_warnings)
@@ -1288,7 +1288,7 @@ class PrinterWarningsTest(unittest.TestCase):
         objects = {
             "tltg_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper,
                                          saved_shaper_freq=lambda axis: (saved or {}).get(axis, 0.)),
-            "gcode_macro _tltg_optimized_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
+            "gcode_macro _vo_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
         }
         handlers = {}
 
@@ -1368,7 +1368,7 @@ class PrinterWarningsTest(unittest.TestCase):
                 pass
 
             def lookup_object(self, name, default=None):
-                return globals_macro if name == "gcode_macro _tltg_optimized_globals" else default
+                return globals_macro if name == "gcode_macro _vo_globals" else default
 
         warnings = printer_warnings.PrinterWarnings(Printer())
         clock = [100.]
@@ -1459,7 +1459,7 @@ class PrinterWarningsTest(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_chamber_exhaust_guard", REPO_ROOT / "installer/klipper/tltg/chamber_exhaust_guard.py"
+    "tltg_chamber_exhaust_guard", REPO_ROOT / "installer/klipper/extras/chamber_exhaust_guard.py"
 )
 chamber_exhaust_guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(chamber_exhaust_guard)
@@ -1597,7 +1597,7 @@ class ChamberExhaustGuardTest(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_velocity_limit", REPO_ROOT / "installer/klipper/tltg/velocity_limit.py"
+    "tltg_velocity_limit", REPO_ROOT / "installer/klipper/extras/velocity_limit.py"
 )
 velocity_limit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(velocity_limit)
@@ -1679,14 +1679,14 @@ class VelocityLimitTest(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_pause_timeout", REPO_ROOT / "installer/klipper/tltg/pause_timeout.py"
+    "tltg_pause_timeout", REPO_ROOT / "installer/klipper/extras/pause_timeout.py"
 )
 pause_timeout = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pause_timeout)
 
 
 class PauseTimeoutTest(unittest.TestCase):
-    """A paused print's idle timeout is tltg_pause_timeout_hours, 72 by
+    """A paused print's idle timeout is vo_pause_timeout_hours, 72 by
     default, and a paused print is cancelled when it runs out."""
 
     def printer(self, variables=None, cancel_fails=False):
@@ -1724,7 +1724,7 @@ class PauseTimeoutTest(unittest.TestCase):
                 if cancel_fails:
                     raise RuntimeError("Must home axis first")
                 pause_resume.is_paused = False
-            elif script == "OPTIMIZED_CANCEL_PRINT_ON_ERROR":
+            elif script == "VO_CANCEL_PRINT_ON_ERROR":
                 pause_resume.is_paused = False
 
         commands = {"PAUSE": vendor_pause}
@@ -1782,14 +1782,14 @@ class PauseTimeoutTest(unittest.TestCase):
         return sim
 
     def test_pause_keeps_qidis_72_hours_by_default(self) -> None:
-        for variables in ({}, {"tltg_pause_timeout_hours": 0},
-                          {"tltg_pause_timeout_hours": "soon"}):
+        for variables in ({}, {"vo_pause_timeout_hours": 0},
+                          {"vo_pause_timeout_hours": "soon"}):
             sim = self.printer(variables)
             sim.pause()
             self.assertEqual(sim.timeout, 72 * 3600.)
 
     def test_pause_uses_the_saved_hours(self) -> None:
-        sim = self.printer({"tltg_pause_timeout_hours": 1.5})
+        sim = self.printer({"vo_pause_timeout_hours": 1.5})
         sim.pause()
         self.assertEqual(sim.timeout, 5400.)
         sim.ran.clear()
@@ -1810,7 +1810,7 @@ class PauseTimeoutTest(unittest.TestCase):
         sim.pause()
         with self.assertLogs(level="ERROR"):
             sim.idle()
-        self.assertEqual(sim.ran[-1], "OPTIMIZED_CANCEL_PRINT_ON_ERROR")
+        self.assertEqual(sim.ran[-1], "VO_CANCEL_PRINT_ON_ERROR")
         self.assertFalse(sim.pause_resume.is_paused)
 
     def test_idle_timeout_without_a_paused_print_cancels_nothing(self) -> None:
@@ -1820,7 +1820,7 @@ class PauseTimeoutTest(unittest.TestCase):
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_update_lights", REPO_ROOT / "installer/klipper/tltg/update_lights.py"
+    "tltg_update_lights", REPO_ROOT / "installer/klipper/extras/update_lights.py"
 )
 update_lights = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(update_lights)

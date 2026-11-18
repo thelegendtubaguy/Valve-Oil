@@ -134,7 +134,7 @@ body:
       description: |
         Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
         - `klippy.log`, taken right after the problem, before restarting Klipper. For a lost Box connection, it includes the `serial-history mcu_boxN:` lines and each Box's reset reason.
-        - With RS-485 hardware: `~/printer_data/logs/tltg_box485_report.json`, written by `TLTG_RS_BOX_REPORT`.
+        - With RS-485 hardware: `~/printer_data/logs/tltg_box485_report.json`, written by `VO_RS_BOX_REPORT`.
         - Photos of where the filament stopped, and a screenshot of the QIDI Box card.
     validations:
       required: true

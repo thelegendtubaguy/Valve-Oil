@@ -9,7 +9,7 @@ from installer.tests.helpers import REPO_ROOT
 
 def load_module():
     spec = importlib.util.spec_from_file_location(
-        "tltg_box_feed_motion", REPO_ROOT / "installer/klipper/tltg/box_feed_motion.py"
+        "tltg_box_feed_motion", REPO_ROOT / "installer/klipper/extras/box_feed_motion.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -171,7 +171,7 @@ class BoxFeedMotionTests(unittest.TestCase):
     def test_plus5_settings_answer_qidis_lookups(self):
         _module, printer, motion = self.start(PLUS5_BUILD)
 
-        printer.gcode.run("TLTG_BOX_MOTION", HUB_SPEED=120, PARK_SPEED=110, FAST_LENGTH=900, FAST_SPEED=130,
+        printer.gcode.run("VO_BOX_MOTION", HUB_SPEED=120, PARK_SPEED=110, FAST_LENGTH=900, FAST_SPEED=130,
                           APPROACH_SPEED=30, UNLOAD_SPEED=140)
         self.assertEqual(self.lookup(printer, "extruder_load_length_1_speed", 85), 120)
         self.assertEqual(self.lookup(printer, "extruder_unload_length_2_speed", 80), 110)
@@ -180,13 +180,13 @@ class BoxFeedMotionTests(unittest.TestCase):
         self.assertEqual(self.lookup(printer, "extruder_load_length_3_speed", 25), 30)
         self.assertEqual(self.lookup(printer, "extruder_unload_length_1_speed", 100), 140)
 
-        printer.gcode.run("TLTG_BOX_MOTION", FAST_LENGTH="vendor", HUB_SPEED="default")
+        printer.gcode.run("VO_BOX_MOTION", FAST_LENGTH="vendor", HUB_SPEED="default")
         self.assertEqual(self.lookup(printer, "extruder_load_length_2", 720), 720)
         self.assertEqual(self.lookup(printer, "extruder_load_length_1_speed", 85), 85)
 
         for params in ({"SLOT": "0", "HUB_SPEED": 100}, {"FAST_SPEED_1": 90}):
             with self.subTest(params=params), self.assertRaises(CommandError):
-                printer.gcode.run("TLTG_BOX_MOTION", **params)
+                printer.gcode.run("VO_BOX_MOTION", **params)
 
     def test_max4_staged_load_takes_the_saved_approach_speed(self):
         _module, printer, motion = self.start(MAX4_BUILD)
@@ -195,7 +195,7 @@ class BoxFeedMotionTests(unittest.TestCase):
         stepper.do_home_three_steps(ENDSTOPS_E, 550, 380, 240, 85, 65, 10, 100, False)
         self.assertEqual(stepper.calls[-1][1][1:8], (550, 380, 240, 85, 65, 10, 100))
 
-        printer.gcode.run("TLTG_BOX_MOTION", APPROACH_SPEED=25)
+        printer.gcode.run("VO_BOX_MOTION", APPROACH_SPEED=25)
         stepper.do_home_three_steps(ENDSTOPS_E, 550, 380, 240, 85, 65, 10, 100, False)
         _kind, args = stepper.calls[-1]
         self.assertEqual(args[6], 25)
@@ -206,7 +206,7 @@ class BoxFeedMotionTests(unittest.TestCase):
         _module, printer, motion = self.start(MAX4_BUILD)
 
         self.assertEqual(self.lookup(printer, "extruder_load_length_1_speed", 85), 85)
-        printer.gcode.run("TLTG_BOX_MOTION", HUB_SPEED=120, PARK_SPEED=100)
+        printer.gcode.run("VO_BOX_MOTION", HUB_SPEED=120, PARK_SPEED=100)
         self.assertEqual(self.lookup(printer, "extruder_load_length_1_speed", 85), 120)
         self.assertEqual(self.lookup(printer, "extruder_unload_length_2_speed", 80), 100)
         # The Max 4's load lengths stay with its three-stage home.
@@ -217,9 +217,9 @@ class BoxFeedMotionTests(unittest.TestCase):
         self.assertIn("park_speed", status["global_only"])
         self.assertNotIn("fast_speed_1", status["global_only"])
         with self.assertRaises(CommandError):
-            printer.gcode.run("TLTG_BOX_MOTION", SLOT="0", PARK_SPEED=90)
+            printer.gcode.run("VO_BOX_MOTION", SLOT="0", PARK_SPEED=90)
         with self.assertRaises(CommandError):
-            printer.gcode.run("TLTG_BOX_MOTION", FAST_SPEED=90)
+            printer.gcode.run("VO_BOX_MOTION", FAST_SPEED=90)
 
     def test_unknown_build_stays_inactive(self):
         _module, printer, motion = self.start("0" * 64)

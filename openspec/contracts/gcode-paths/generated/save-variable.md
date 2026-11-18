@@ -11,7 +11,7 @@ Contract: `openspec/contracts/gcode-paths/save-variable.path.json`
 
 Condition: `a client saves enable_box while print start's external-tool marker is set`
 
-Source: `installer/klipper/tltg-optimized-macros/offset.cfg:39-41`
+Source: `installer/klipper/macros/offset.cfg:39-41`
 
 Direct visible macro calls in branch slice:
 
@@ -19,8 +19,8 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `printer.save_variables.variables.tltg_box_off_for_external_tool|default(0)|int == 1 %}`
-- `_TLTG_SAVE_VARIABLE_BASE VARIABLE=tltg_box_off_for_external_tool VALUE=0`
+- `printer.save_variables.variables.vo_box_off_for_external_tool|default(0)|int == 1 %}`
+- `_VO_SAVE_VARIABLE_BASE VARIABLE=vo_box_off_for_external_tool VALUE=0`
 - `{% endif %}`
 
 Forbidden patterns:
@@ -33,7 +33,7 @@ Forbidden patterns:
 
 Condition: `all variable saves; warn only for a numeric zero z_offset request`
 
-Source: `installer/klipper/tltg-optimized-macros/offset.cfg:42-53`
+Source: `installer/klipper/macros/offset.cfg:42-53`
 
 Direct visible macro calls in branch slice:
 
@@ -42,7 +42,7 @@ Direct visible macro calls in branch slice:
 Ordered invariants:
 
 - `action_respond_info(`
-- `TLTG_Z_OFFSET_ZERO_REQUEST`
+- `VO_Z_OFFSET_ZERO_REQUEST`
 - `svv.z_offset|default(none)`
 - `printer.gcode_move.homing_origin.z`
 - `stats.state|default(none)`
@@ -52,7 +52,7 @@ Ordered invariants:
 - `offset.captured_z_offset_valid`
 - `offset.captured_z_offset, rawparams`
 - `{% endif %}`
-- `_TLTG_SAVE_VARIABLE_BASE {rawparams}`
+- `_VO_SAVE_VARIABLE_BASE {rawparams}`
 
 Forbidden patterns:
 
@@ -66,4 +66,4 @@ Forbidden patterns:
 
 ## Macro scope
 
-- `installer/klipper/tltg-optimized-macros/offset.cfg`
+- `installer/klipper/macros/offset.cfg`

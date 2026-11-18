@@ -6,19 +6,19 @@ Run these from Fluidd's console or macro controls after installing and restartin
 
 | Command | What it does |
 |---|---|
-| [`TLTG_TEST_PROBE CONFIRM=1`](#nozzle-load-cell-check) | Checks that the nozzle load cell responds to light pressure. No motion. |
-| `TLTG_PROBE_ACCURACY_CENTER [SAMPLES=20]` | Homes, moves to the bed center (`X195 Y195` on the Max 4) at `Z10`, and runs Klipper's `PROBE_ACCURACY`. |
-| `TLTG_CORNER_BED_SCREW_CHECK` | Homes, runs `Z_TILT_ADJUST`, then `SCREWS_TILT_CALCULATE`. |
+| [`VO_TEST_PROBE CONFIRM=1`](#nozzle-load-cell-check) | Checks that the nozzle load cell responds to light pressure. No motion. |
+| `VO_PROBE_ACCURACY_CENTER [SAMPLES=20]` | Homes, moves to the bed center (`X195 Y195` on the Max 4) at `Z10`, and runs Klipper's `PROBE_ACCURACY`. |
+| `VO_CORNER_BED_SCREW_CHECK` | Homes, runs `Z_TILT_ADJUST`, then `SCREWS_TILT_CALCULATE`. |
 | `SCREWS_TILT_CALCULATE` | Klipper's bed screw adjustment helper. |
-| `TLTG_RESET_TOOL_MAPPINGS` | Restores QIDI Box tool-to-slot mappings to T0 → 1A, T1 → 1B, and so on. Idle only. |
-| [`TLTG_FILAMENT_SENSOR ENABLE=0`](#external-spool-runout-sensor) | Stops the external spool's runout sensor from pausing prints. |
-| [`TLTG_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds. |
-| [`TLTG_BED_SOAK BED=100 CHAMBER=60`](#bed-soak-test) | Measures how long the bed and chamber take to reach temperature and the bed to stop moving. |
+| `VO_RESET_TOOL_MAPPINGS` | Restores QIDI Box tool-to-slot mappings to T0 → 1A, T1 → 1B, and so on. Idle only. |
+| [`VO_FILAMENT_SENSOR ENABLE=0`](#external-spool-runout-sensor) | Stops the external spool's runout sensor from pausing prints. |
+| [`VO_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds. |
+| [`VO_BED_SOAK BED=100 CHAMBER=60`](#bed-soak-test) | Measures how long the bed and chamber take to reach temperature and the bed to stop moving. |
 | [`SHAPER_CALIBRATE SWEEPING_PERIOD=0`](#input-shaper-calibration) | Input shaper calibration with QIDI's resonance test instead of the newer sweeping one, for one run. |
 
 ## Nozzle load-cell check
 
-`TLTG_TEST_PROBE CONFIRM=1` checks that the nozzle load cell responds to light pressure. It does not move, home, heat, or change calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field.
+`VO_TEST_PROBE CONFIRM=1` checks that the nozzle load cell responds to light pressure. It does not move, home, heat, or change calibration. In Fluidd's macro controls, enter `1` in the `CONFIRM` field.
 
 **Before you start:** the printer must be idle with all heaters off, and the nozzle and bed below 40 °C. Make sure you can reach the nozzle and it's clear of the bed. **Do not home to prepare for this test.**
 
@@ -35,13 +35,13 @@ The result is one of:
 - `INCONCLUSIVE`: there was not enough difference between pressing and not pressing to tell, or the test stopped early.
 
 > [!WARNING]
-> **A detected response does not verify the homing trigger or certify safe homing.** For any other result, do not press harder, and do not home or probe until the cause is understood. `QUERY_PROBE` cannot check this sensor. `TLTG_PROBE_ACCURACY_CENTER` and `TLTG_CORNER_BED_SCREW_CHECK` both home, so they are not safe tests for a suspected failed sensor.
+> **A detected response does not verify the homing trigger or certify safe homing.** For any other result, do not press harder, and do not home or probe until the cause is understood. `QUERY_PROBE` cannot check this sensor. `VO_PROBE_ACCURACY_CENTER` and `VO_CORNER_BED_SCREW_CHECK` both home, so they are not safe tests for a suspected failed sensor.
 
 ## External spool runout sensor
 
 ```gcode
-TLTG_FILAMENT_SENSOR ENABLE=0
-TLTG_FILAMENT_SENSOR ENABLE=1
+VO_FILAMENT_SENSOR ENABLE=0
+VO_FILAMENT_SENSOR ENABLE=1
 ```
 
 `ENABLE=0` stops the external spool from pausing the print when its runout sensor trips. The toolhead sensor still reports its events and the external spool's runout status. `ENABLE=1` turns automatic pausing back on. The setting goes back to enabled when Klipper restarts. QIDI Box runout handling stays on either way.
@@ -51,7 +51,7 @@ TLTG_FILAMENT_SENSOR ENABLE=1
 
 The console shows when the toolhead sensor trips and whether it will pause.
 
-![Filament sensor console output](../.github/images/tltg-filament-sensor-console.png)
+![Filament sensor console output](../.github/images/vo-filament-sensor-console.png)
 
 ## X/Y step-loss monitor
 
@@ -60,7 +60,7 @@ On the Max 4, X and Y are driven by QIDI's closed-loop motors. Each has an encod
 The step-loss monitor asks both motors how far behind they are several times a second and pauses the print when one slips. It's **off by default**; turn it on from Fluidd's console:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_step_loss_monitor VALUE=1
+SAVE_VARIABLE VARIABLE=vo_step_loss_monitor VALUE=1
 ```
 
 Set it back to `0` to turn it off. Both take effect without a restart.
@@ -71,7 +71,7 @@ Set it back to `0` to turn it off. Both take effect without a restart.
 - When a motor slips during a print, the print pauses. The console shows `!! The stepper_x motor slipped 14 step cycles (10.9 mm of belt): the toolhead is no longer where Klipper thinks it is. Home X and Y before moving it again. The print is paused.`, and Fluidd's red warning banner shows how far each motor has slipped in total since X and Y were homed.
 - When a motor slips during print start, before the first layer, the print is cancelled at once and the message ends `The print is cancelled.` Print start runs as one long command, heating, leveling, and meshing included, and a pause would wait for all of it, with the toolhead out of place for the rest of the leveling and the mesh. The cancel stops the bed or chamber wait at once, as Fluidd's **Cancel** does.
 - A slip with no print running shows the same message without pausing.
-- The warning stays until X and Y are homed again. Klipper's position is wrong after a slip, so don't resume a paused print unless a shifted layer doesn't matter; cancel it and home instead, or run `TLTG_STEP_LOSS_CORRECT` first (below).
+- The warning stays until X and Y are homed again. Klipper's position is wrong after a slip, so don't resume a paused print unless a shifted layer doesn't matter; cancel it and home instead, or run `VO_STEP_LOSS_CORRECT` first (below).
 
 **How it tells a slip from normal motion:** a motor that slips falls behind by whole steps of 4 motor steps, 0.78 mm of belt each, and stays there. Normal printing moves leave a motor at most about 0.1 mm behind, and it catches up once the move ends. The monitor reports a slip once a motor is three quarters of a step cycle (0.59 mm of belt) away from where it stood after homing, on two checks in a row. A slip of less than one step cycle isn't detected.
 
@@ -86,7 +86,7 @@ A motor that slips falls behind by whole step cycles, and it reports exactly how
 Recovery is **off by default** and needs the step-loss monitor on as well:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_step_loss_recovery VALUE=1
+SAVE_VARIABLE VARIABLE=vo_step_loss_recovery VALUE=1
 ```
 
 With it on, the first slip in a print after print start doesn't pause it. The console says `!! The stepper_x motor slipped 7 step cycles (5.5 mm of belt). Correcting the toolhead position and continuing the print.`, then:
@@ -102,7 +102,7 @@ What it can't fix:
 
 During print start, a slip still cancels the print; with recovery on, the position is corrected before the cancel's moves.
 
-Outside a print, run `TLTG_STEP_LOSS_CORRECT` from the console to correct the position after a slip instead of homing: it waits for the toolhead to stop, reads the motors, and moves Klipper's X/Y position by the slip reported since X and Y were last homed or corrected. It doesn't move the toolhead.
+Outside a print, run `VO_STEP_LOSS_CORRECT` from the console to correct the position after a slip instead of homing: it waits for the toolhead to stop, reads the motors, and moves Klipper's X/Y position by the slip reported since X and Y were last homed or corrected. It doesn't move the toolhead.
 
 ## Input shaper calibration
 
@@ -121,7 +121,7 @@ On a Max 4 in good shape, two runs of each test per axis recommended `mzv` at 41
 To run QIDI's test instead, for example to compare the two:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_resonance_sweep VALUE=0
+SAVE_VARIABLE VARIABLE=vo_resonance_sweep VALUE=0
 ```
 
 Set it back to `1` for the newer test. The setting applies from the next calibration, including the one on the printer's screen, without a restart.
@@ -130,7 +130,7 @@ For a single run, add these to `SHAPER_CALIBRATE` or `TEST_RESONANCES`:
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `SWEEPING_PERIOD=` | `1.2`, or `0` while `tltg_resonance_sweep` is `0` | Seconds for each slow back-and-forth. `0` runs QIDI's test. |
+| `SWEEPING_PERIOD=` | `1.2`, or `0` while `vo_resonance_sweep` is `0` | Seconds for each slow back-and-forth. `0` runs QIDI's test. |
 | `SWEEPING_ACCEL=` | `400` | Acceleration of the slow back-and-forth, in mm/s². |
 | `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 and the Plus 5, lowered to `147` for the newer test on the Plus 5 and `94` on the Smart 5 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
 
@@ -143,7 +143,7 @@ The bed and the frame keep moving for a while after the bed reaches its temperat
 Run it from the **Bed soak** card under **Bed mesh** on Fluidd's Tune page, or from the console:
 
 ```gcode
-TLTG_BED_SOAK BED=100 CHAMBER=60
+VO_BED_SOAK BED=100 CHAMBER=60
 ```
 
 | Parameter | Default | What it does |
@@ -168,7 +168,7 @@ Each mesh also shows how far the whole bed has moved up or down since the first 
 
 **Problem points.** A point the probe had to retry is marked and left out of that mesh's numbers. Once the bed is at temperature, so is a point whose change since the previous mesh is more than 15 µm out of line with the points around it. If every reading then suddenly shifts, which shows as the bed center moving more than 15 µm further during one mesh than during the meshes either side, that mesh isn't used and the meshes after it are corrected. While the bed heats it moves too much and too unevenly for these checks; on a Max 4 heating to 100 °C, its center rose about 150 µm in uneven steps over 10 minutes. A point marked in more than one mesh, or a shift, puts a warning at the top of the results. Check the build plate for debris and run the test again.
 
-Stop the test with **Stop** on the card, which turns the heaters off at once, or `TLTG_BED_SOAK_STOP`, which waits for the mesh in progress. The test also ends if a print starts, a heater's target is changed outside the test, or homing or probing fails. When it ends, the nozzle heater turns off, the bed and chamber turn off unless you asked to keep them heating, and the mesh you had loaded before is loaded again. The test saves no mesh profile and leaves no config save pending.
+Stop the test with **Stop** on the card, which turns the heaters off at once, or `VO_BED_SOAK_STOP`, which waits for the mesh in progress. The test also ends if a print starts, a heater's target is changed outside the test, or homing or probing fails. When it ends, the nozzle heater turns off, the bed and chamber turn off unless you asked to keep them heating, and the mesh you had loaded before is loaded again. The test saves no mesh profile and leaves no config save pending.
 
 Each run is saved in `tltg_bed_soak/` in Fluidd's configuration files, named by start time and temperatures, for example `20261110-195948-bed100-chamber50.jsonl`. The card's **Past runs** tab lists, compares, and deletes them.
 

@@ -1,5 +1,5 @@
-// Valve Oil's update status, from the status service beside Moonraker (src/qidi/tltg-status.ts). The polling and
-// request handling follow the Fluidd fork's TltgValveOilSettings.vue, kept outside React here so the app shell can
+// Valve Oil's update status, from the status service beside Moonraker (src/qidi/vo-status.ts). The polling and
+// request handling follow the Fluidd fork's VoValveOilSettings.vue, kept outside React here so the app shell can
 // keep saying an update is running while Moonraker and Klipper are down for it.
 //
 // The service is asked once when the page opens and whenever Moonraker or Klipper goes away, then polled while the
@@ -7,26 +7,26 @@
 import { createStore, useStore } from '../lib/store'
 import { client, printer } from './printer'
 import {
-  parseTltgStatus,
-  parseTltgStatusJob,
-  tltgStatusApiBase,
-  tltgStatusPollFailure,
-  tltgStatusPollInterval,
-  tltgStatusRequest,
-  TltgStatusRequestError,
-  tltgStatusView,
-  tltgShownUpdate,
-  tltgSupportBundle,
-  TLTG_STATUS_RECONNECT_PATIENCE_MS,
-  type TltgStatus,
-  type TltgStatusBlocker,
-  type TltgStatusView,
-  type TltgUpdateView,
-  type TltgUpdateWindowHours,
-} from '../qidi/tltg-status'
+  parseVoStatus,
+  parseVoStatusJob,
+  voStatusApiBase,
+  voStatusPollFailure,
+  voStatusPollInterval,
+  voStatusRequest,
+  VoStatusRequestError,
+  voStatusView,
+  voShownUpdate,
+  voSupportBundle,
+  VO_STATUS_RECONNECT_PATIENCE_MS,
+  type VoStatus,
+  type VoStatusBlocker,
+  type VoStatusView,
+  type VoUpdateView,
+  type VoUpdateWindowHours,
+} from '../qidi/vo-status'
 
 export type ValveOilState = {
-  status: TltgStatus | null
+  status: VoStatus | null
   /** The service answered that it isn't there, or with something this page doesn't understand. */
   unavailable: boolean
   failures: number
@@ -42,7 +42,7 @@ export type ValveOilState = {
   updateNowPending: boolean
   updateNowError: string
   /** Why the printer refused Update now, when it said. */
-  updateNowBlockedBy: TltgStatusBlocker[]
+  updateNowBlockedBy: VoStatusBlocker[]
   dismissed: string[]
   supportPending: boolean
   supportError: string
@@ -105,12 +105,12 @@ const patch = (changes: Partial<ValveOilState>) => valveOil.set((s) => ({ ...s, 
 
 // Valve Oil UI talks only to the Moonraker of the web server that served it. In development the dev server proxies
 // /tltg-status to the printer or the fake (vite.config.ts), so the page's own origin is used there too.
-const apiBase = () => tltgStatusApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
+const apiBase = () => voStatusApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
 
 async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>) {
   const base = apiBase()
-  if (!base) throw new TltgStatusRequestError(0, 'Not connected to this printer')
-  return tltgStatusRequest(base, path, { method, token: null, signal, body })
+  if (!base) throw new VoStatusRequestError(0, 'Not connected to this printer')
+  return voStatusRequest(base, path, { method, token: null, signal, body })
 }
 
 // ---- polling ----
@@ -136,10 +136,10 @@ function schedule() {
   timer = undefined
   if (!wanted()) return
   const s = valveOil.get()
-  timer = setTimeout(poll, tltgStatusPollInterval(s.status, s.reconnectingSince != null))
+  timer = setTimeout(poll, voStatusPollInterval(s.status, s.reconnectingSince != null))
 }
 
-function applyStatus(status: TltgStatus) {
+function applyStatus(status: VoStatus) {
   patch({ status, unavailable: false, failures: 0, reconnectingSince: null, expectUpdate: status.busy })
   saveUpdating(status.busy)
 }
@@ -148,7 +148,7 @@ function onPollFailed() {
   const s = valveOil.get()
   const failures = s.failures + 1
   const now = Date.now()
-  const outcome = tltgStatusPollFailure({ hasStatus: s.status != null, failures, updating: updating(s) })
+  const outcome = voStatusPollFailure({ hasStatus: s.status != null, failures, updating: updating(s) })
   if (outcome === 'reconnecting') patch({ failures, now, reconnectingSince: s.reconnectingSince ?? now })
   else if (outcome === 'unavailable') patch({ failures, now, status: null, unavailable: true, reconnectingSince: null })
   else patch({ failures, now })
@@ -161,7 +161,7 @@ export async function poll() {
   const controller = new AbortController()
   abortController = controller
   try {
-    const status = parseTltgStatus(await request('/status', 'GET', controller.signal))
+    const status = parseVoStatus(await request('/status', 'GET', controller.signal))
     if (controller.signal.aborted) return
     // A body this page doesn't understand, such as a newer schema, means the status isn't available.
     if (status) applyStatus(status)
@@ -206,7 +206,7 @@ export async function setAutoUpdate(enabled: boolean) {
   if (autoUpdateDisabled(s) || enabled === s.status?.auto_update.enabled) return
   patch({ autoUpdateRequest: enabled, autoUpdateError: '' })
   try {
-    const status = parseTltgStatus(await request('/auto-update', 'POST', undefined, { enabled }))
+    const status = parseVoStatus(await request('/auto-update', 'POST', undefined, { enabled }))
     if (status) applyStatus(status)
   } catch (e) {
     patch({ autoUpdateError: e instanceof Error ? e.message : String(e) })
@@ -217,11 +217,11 @@ export async function setAutoUpdate(enabled: boolean) {
 }
 
 /** Saves the update window or its timezone: any of {"window": {...} | null, "timezone": "<IANA name>"}. */
-export async function setUpdateWindow(body: { window?: TltgUpdateWindowHours | null; timezone?: string }) {
+export async function setUpdateWindow(body: { window?: VoUpdateWindowHours | null; timezone?: string }) {
   if (autoUpdateDisabled(valveOil.get())) return
   patch({ windowPending: true, windowError: '' })
   try {
-    const status = parseTltgStatus(await request('/auto-update', 'POST', undefined, body))
+    const status = parseVoStatus(await request('/auto-update', 'POST', undefined, body))
     if (status) applyStatus(status)
   } catch (e) {
     patch({ windowError: e instanceof Error ? e.message : String(e) })
@@ -237,7 +237,7 @@ export async function updateNow() {
   if (updateNowDisabled(valveOil.get())) return
   patch({ updateNowPending: true, updateNowError: '', updateNowBlockedBy: [] })
   try {
-    const job = parseTltgStatusJob(await request('/update-now', 'POST'))
+    const job = parseVoStatusJob(await request('/update-now', 'POST'))
     patch({ expectUpdate: true })
     saveUpdating(true)
     const status = valveOil.get().status
@@ -245,7 +245,7 @@ export async function updateNow() {
   } catch (e) {
     patch({
       updateNowError: e instanceof Error ? e.message : String(e),
-      updateNowBlockedBy: e instanceof TltgStatusRequestError && e.status === 409 ? e.blockedBy : [],
+      updateNowBlockedBy: e instanceof VoStatusRequestError && e.status === 409 ? e.blockedBy : [],
     })
   } finally {
     patch({ updateNowPending: false })
@@ -271,13 +271,13 @@ export function dismissUpdate(id: string) {
  */
 export async function reportProblem() {
   const s = valveOil.get()
-  const url = s.status ? tltgStatusView(s.status).supportIssueUrl : null
+  const url = s.status ? voStatusView(s.status).supportIssueUrl : null
   const base = apiBase()
   if (!url || !base || s.supportPending) return
   window.open(url, '_blank', 'noopener,noreferrer')
   patch({ supportPending: true, supportError: '' })
   try {
-    const { blob, name } = await tltgSupportBundle(base)
+    const { blob, name } = await voSupportBundle(base)
     const objectUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = objectUrl
@@ -302,28 +302,28 @@ export const reconnecting = (s: ValveOilState) => s.reconnectingSince != null
 export const autoUpdateDisabled = (s: ValveOilState) => s.status?.auto_update.enabled == null || s.autoUpdateRequest != null || s.windowPending || reconnecting(s)
 
 export const updateNowDisabled = (s: ValveOilState) => {
-  const view = s.status ? tltgStatusView(s.status) : null
+  const view = s.status ? voStatusView(s.status) : null
   return view == null || !view.updateNow.offered || !view.updateNow.allowed || s.updateNowPending || reconnecting(s)
 }
 
 /** How long the printer hasn't answered during an update, in minutes, once that's unusually long; otherwise null. */
 export const reconnectingLongMinutes = (s: ValveOilState): number | null => {
   const waited = s.reconnectingSince != null ? s.now - s.reconnectingSince : 0
-  return waited >= TLTG_STATUS_RECONNECT_PATIENCE_MS ? Math.floor(waited / 60000) : null
+  return waited >= VO_STATUS_RECONNECT_PATIENCE_MS ? Math.floor(waited / 60000) : null
 }
 
 export function useValveOil(): ValveOilState {
   return useStore(valveOil, (s) => s)
 }
 
-export function useValveOilView(): TltgStatusView | null {
+export function useValveOilView(): VoStatusView | null {
   const status = useStore(valveOil, (s) => s.status)
-  return status ? tltgStatusView(status) : null
+  return status ? voStatusView(status) : null
 }
 
 /** The update to show: a running one always, a finished one until it's closed, and a success for a day at most. */
-export function shownUpdate(view: TltgStatusView | null, dismissed: string[]): TltgUpdateView | null {
-  return tltgShownUpdate(view?.update ?? null, dismissed)
+export function shownUpdate(view: VoStatusView | null, dismissed: string[]): VoUpdateView | null {
+  return voShownUpdate(view?.update ?? null, dismissed)
 }
 
 /** Whether an update is running, or the printer went quiet during one: what the app shell warns about. */

@@ -151,20 +151,20 @@ export function install(fake) {
 
   function save(next) {
     slots = next
-    set('save_variables', { variables: { ...vars(), tltg_spoolman_spools: { ...slots } } })
+    set('save_variables', { variables: { ...vars(), vo_spoolman_spools: { ...slots } } })
     sync()
   }
 
   fake.status((status) => {
-    status.save_variables.variables.tltg_spoolman_spools = { ...slots }
+    status.save_variables.variables.vo_spoolman_spools = { ...slots }
     status.tltg_spoolman = { loaded_slot: null, spools: { ...slots } }
     queueMicrotask(sync)
   })
 
-  fake.commands({ TLTG_SPOOLMAN_SLOT: 'Set or list the Spoolman spool for each QIDI Box slot', ...(enabled ? { VO_SPOOLMAN: 'Fake: take Spoolman away (CONNECTED=0) or back' } : {}) })
+  fake.commands({ VO_SPOOLMAN_SLOT: 'Set or list the Spoolman spool for each QIDI Box slot', ...(enabled ? { VO_SPOOLMAN: 'Fake: take Spoolman away (CONNECTED=0) or back' } : {}) })
 
   fake.gcode(async (C, p) => {
-    if (C === 'TLTG_SPOOLMAN_SLOT') {
+    if (C === 'VO_SPOOLMAN_SLOT') {
       if (p.RESET === '1') {
         save({})
         pushConsole("// Spoolman: cleared every slot's spool. The active spool no longer follows the loaded slot.")
@@ -172,7 +172,7 @@ export function install(fake) {
       }
       if (p.SPOOL == null) {
         const keys = Object.keys(slots).sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
-        if (!keys.length) pushConsole("// Spoolman: no slot has a spool, so the active spool doesn't follow the loaded slot. Set one with TLTG_SPOOLMAN_SLOT SLOT=<n> SPOOL=<id>.")
+        if (!keys.length) pushConsole("// Spoolman: no slot has a spool, so the active spool doesn't follow the loaded slot. Set one with VO_SPOOLMAN_SLOT SLOT=<n> SPOOL=<id>.")
         else {
           const loaded = loadedSlot()
           const lines = ['Spoolman spools:', ...keys.map((k) => `${label(Number(k.slice(4)))}: spool ${slots[k]}`)]
@@ -184,8 +184,8 @@ export function install(fake) {
       }
       const spool = Number(p.SPOOL)
       let slot = p.SLOT != null ? Number(p.SLOT) : loadedSlot()
-      if (!Number.isInteger(spool) || spool < 0) throw rpcError(`Error on 'TLTG_SPOOLMAN_SLOT': SPOOL must have minimum of 0`)
-      if (p.SLOT != null && !(Number.isInteger(slot) && slot >= 0 && slot <= EXTERNAL_SLOT)) throw rpcError(`Error on 'TLTG_SPOOLMAN_SLOT': SLOT must be between 0 and 16`)
+      if (!Number.isInteger(spool) || spool < 0) throw rpcError(`Error on 'VO_SPOOLMAN_SLOT': SPOOL must have minimum of 0`)
+      if (p.SLOT != null && !(Number.isInteger(slot) && slot >= 0 && slot <= EXTERNAL_SLOT)) throw rpcError(`Error on 'VO_SPOOLMAN_SLOT': SLOT must be between 0 and 16`)
       if (slot == null) throw rpcError('Spoolman: no slot is recorded as loaded; name one with SLOT=')
       const next = { ...slots }
       if (spool) next[`slot${slot}`] = spool

@@ -1,6 +1,6 @@
 // QIDI Box extras beyond the core fake's Box: Valve Oil's turn spools while heating (tltg_box_spool_roll), spool
 // tags the Box read (info_from_rfid), the active tool (extrude_state), per-slot load and unload motion
-// (TLTG_BOX_MOTION SLOT=), and QIDI's filament list (qidi_filament_config/filament-0.4.json) that the Filaments tab
+// (VO_BOX_MOTION SLOT=), and QIDI's filament list (qidi_filament_config/filament-0.4.json) that the Filaments tab
 // reads and writes back whole.
 
 // More of QIDI's 01.01.07.01 filament list, beside the core fake's seven. Fields as the real file has them.
@@ -129,7 +129,7 @@ export function install(fake) {
     const [cmd, ...rest] = line.trim().split(/\s+/)
     const C = (cmd ?? '').toUpperCase()
     const p = Object.fromEntries(rest.filter((r) => r.includes('=')).map((r) => r.split('=')).map(([k, ...v]) => [k.toUpperCase(), v.join('=').replace(/^"|"$/g, '')]))
-    if (C !== 'TLTG_BOX_MOTION') return false
+    if (C !== 'VO_BOX_MOTION') return false
     const m = st().tltg_box_feed_motion
     if (st().print_stats.state === 'printing' || st().print_stats.state === 'paused') throw rpcError('Box motion settings can be changed while the printer is not printing')
     if (p.SLOT == null) {

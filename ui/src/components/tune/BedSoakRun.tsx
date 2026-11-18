@@ -11,9 +11,9 @@ import {
   bedSoakStartTemps,
   type BedSoakRun,
   type BedSoakTemp,
-  type TltgBedSoakMilestones,
-  type TltgBedSoakState,
-} from '../../qidi/tltg-bed-soak'
+  type VoBedSoakMilestones,
+  type VoBedSoakState,
+} from '../../qidi/vo-bed-soak'
 import { BedSoakRunCharts } from './BedSoakRunCharts'
 import { BedSoakHeatmap } from './BedSoakHeatmap'
 import { bedSoakClock, bedSoakDuration, bedSoakPointName, bedSoakStateLabel, bedSoakTargets, fmtDateTime } from './bed-soak-format'
@@ -26,7 +26,7 @@ export function useChamberTemp() {
 }
 
 /** A run, live or saved: what it's doing or was, its milestones, charts, and change map. */
-export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { run: BedSoakRun | null; status?: TltgBedSoakState | null; live?: boolean; liveTemps?: BedSoakTemp[]; file?: string }) {
+export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { run: BedSoakRun | null; status?: VoBedSoakState | null; live?: boolean; liveTemps?: BedSoakTemp[]; file?: string }) {
   const bedNow = usePrinter((s) => s.status.heater_bed?.temperature as number | undefined)
   const chamberNow = useChamberTemp()
   const isLive = !!live && !!status
@@ -40,7 +40,7 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
     timeLimit: s?.time_limit ?? null,
   }
   const speedLimit = status?.limits?.speed ?? run?.settings.limits.speed ?? 0.002
-  const milestones: TltgBedSoakMilestones = isLive ? status!.milestones : run ? bedSoakMilestones(run) : { bed: null, chamber: null, chamber_max: null, settled: null, ready: null }
+  const milestones: VoBedSoakMilestones = isLive ? status!.milestones : run ? bedSoakMilestones(run) : { bed: null, chamber: null, chamber_max: null, settled: null, ready: null }
   const temps = (() => {
     const t = run?.temps ?? []
     const lastT = t.length ? t[t.length - 1][0] : -Infinity

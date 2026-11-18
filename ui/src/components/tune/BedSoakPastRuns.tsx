@@ -3,7 +3,7 @@ import { CircleCheck, Download, FolderOpen, Trash2, TriangleAlert } from 'lucide
 import { confirm } from '../ui'
 import { attempt } from '../toast'
 import { client } from '../../state/printer'
-import { BED_SOAK_FOLDER, BED_SOAK_ROOT, BedSoakColors, BedSoakRunColors, bedSoakMilestones, bedSoakProblemPoints, type BedSoakRun } from '../../qidi/tltg-bed-soak'
+import { BED_SOAK_FOLDER, BED_SOAK_ROOT, BedSoakColors, BedSoakRunColors, bedSoakMilestones, bedSoakProblemPoints, type BedSoakRun } from '../../qidi/vo-bed-soak'
 import { BedSoakChart, type BedSoakChartSeries } from './BedSoakChart'
 import { bedSoakClock, bedSoakDuration, bedSoakStateLabel, bedSoakTargetsShort, fmtDateTime } from './bed-soak-format'
 

@@ -20,10 +20,10 @@ function part(name, cx, cy, w, h) {
 }
 
 const MACROS = {
-  TLTG_TEST_PROBE: { description: 'Test the nozzle probe at the bed center', gcode: '{% set samples = params.SAMPLES|default(5)|int %}\n{% set speed = params.SPEED|default(3)|float %}\n_TLTG_TEST_PROBE SAMPLES={samples}' },
-  TLTG_PROBE_ACCURACY_CENTER: { description: 'Probe accuracy at the bed center', gcode: '{% set s = params.SAMPLES|default(10)|int %}\nPROBE_ACCURACY SAMPLES={s}' },
-  TLTG_CORNER_BED_SCREW_CHECK: { description: 'Probe each bed screw and report the turns', gcode: 'G28' },
-  TLTG_FILAMENT_SENSOR: { description: 'Turn the toolhead filament sensor on or off', gcode: '{% set enable = params.ENABLE|default(1)|int %}' },
+  VO_TEST_PROBE: { description: 'Test the nozzle probe at the bed center', gcode: '{% set samples = params.SAMPLES|default(5)|int %}\n{% set speed = params.SPEED|default(3)|float %}\n_VO_TEST_PROBE SAMPLES={samples}' },
+  VO_PROBE_ACCURACY_CENTER: { description: 'Probe accuracy at the bed center', gcode: '{% set s = params.SAMPLES|default(10)|int %}\nPROBE_ACCURACY SAMPLES={s}' },
+  VO_CORNER_BED_SCREW_CHECK: { description: 'Probe each bed screw and report the turns', gcode: 'G28' },
+  VO_FILAMENT_SENSOR: { description: 'Turn the toolhead filament sensor on or off', gcode: '{% set enable = params.ENABLE|default(1)|int %}' },
   CLEAR_NOZZLE: { description: 'G-Code macro', gcode: 'G28\nG1 X100' },
   LED_ON: { description: 'G-Code macro', gcode: 'SET_PIN PIN=caselight VALUE=1' },
   LED_OFF: { description: 'G-Code macro', gcode: 'SET_PIN PIN=caselight VALUE=0' },
@@ -100,7 +100,7 @@ export function install(fake) {
     'output_pin beeper': { pwm: false, value: 0, shutdown_value: 0 },
     'output_pin polar_cooler': { pwm: false, value: 0, shutdown_value: 0 },
     'neopixel rgb': { chain_count: 3, color_order: ['GRB'], initial_red: 0, initial_green: 0, initial_blue: 0 },
-    'filament_switch_sensor filament_switch_sensor': { pause_on_runout: false, runout_gcode: '\nOPTIMIZED_FILAMENT_SENSOR_RUNOUT', insert_gcode: '\nOPTIMIZED_FILAMENT_SENSOR_INSERTED' },
+    'filament_switch_sensor filament_switch_sensor': { pause_on_runout: false, runout_gcode: '\nVO_FILAMENT_SENSOR_RUNOUT', insert_gcode: '\nVO_FILAMENT_SENSOR_INSERTED' },
     stepper_z: { position_min: -5, position_max: 342 },
     z_tilt: { retries: 5, retry_tolerance: 0.0075 },
     screws_tilt_adjust: { screw_thread: 'CW-M4' },
@@ -134,8 +134,8 @@ export function install(fake) {
     SET_PRINT_STATS_INFO: 'Pass slicer info like layer act and total to klipper',
     SET_PAUSE_NEXT_LAYER: 'Enable a pause if the next layer is reached',
     SET_PAUSE_AT_LAYER: 'Enable/disable a pause if a given layer number is reached',
-    TLTG_TEST_PROBE: 'Test the nozzle probe at the bed center',
-    TLTG_PROBE_ACCURACY_CENTER: 'Probe accuracy at the bed center',
+    VO_TEST_PROBE: 'Test the nozzle probe at the bed center',
+    VO_PROBE_ACCURACY_CENTER: 'Probe accuracy at the bed center',
   })
 
   const setFan = (name, speed) => set(`fan_generic ${name}`, { speed, rpm: speed * (SPEED_TO_RPM[name] ?? 4000) })

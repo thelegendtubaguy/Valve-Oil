@@ -67,10 +67,10 @@ ALLOWED_DIRECTORIES = [
     "LICENSES",
     "chelper",
     "installer/runtime",
-    "installer/klipper/tltg-optimized-macros",
+    "installer/klipper/macros",
     "installer/klipper/printers",
     "installer/klipper/qidi",
-    "installer/klipper/tltg",
+    "installer/klipper/extras",
     "installer/stock",
     "installer/system",
 ]

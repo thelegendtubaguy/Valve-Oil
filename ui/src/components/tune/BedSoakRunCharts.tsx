@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { BedSoakColors, type BedSoakRun, type BedSoakTemp, type TltgBedSoakMilestones } from '../../qidi/tltg-bed-soak'
+import { BedSoakColors, type BedSoakRun, type BedSoakTemp, type VoBedSoakMilestones } from '../../qidi/vo-bed-soak'
 import { BedSoakChart, type BedSoakChartEvent, type BedSoakChartSeries } from './BedSoakChart'
 import { bedSoakClock, bedSoakMeshName } from './bed-soak-format'
 
 /** Temperature, bed movement, and still-moving charts of one run, on one time axis with a shared crosshair. */
-export function BedSoakRunCharts({ run, temps, milestones, elapsed }: { run: BedSoakRun; temps: BedSoakTemp[]; milestones: TltgBedSoakMilestones; elapsed?: number }) {
+export function BedSoakRunCharts({ run, temps, milestones, elapsed }: { run: BedSoakRun; temps: BedSoakTemp[]; milestones: VoBedSoakMilestones; elapsed?: number }) {
   const [hoverX, setHoverX] = useState<number | null>(null)
   const speedLimit = (run.settings.limits.speed ?? 0.002) * 1000
   const used = run.meshes.filter((m) => m.used)

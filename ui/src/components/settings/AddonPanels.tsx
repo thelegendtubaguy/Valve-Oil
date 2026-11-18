@@ -2,24 +2,24 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { confirm, Dialog, Spinner } from '../ui'
 import {
-  parseTltgAddonLinkCode,
-  parseTltgTailscaleStatus,
-  parseTltgZerotierStatus,
-  tltgServerUrlValid,
-  tltgZerotierNetworkIdValid,
-  TLTG_OBICO_CLOUD,
-  type TltgAddon,
-  type TltgAddonLinkCode,
-  type TltgAddonPanelAction,
-  type TltgTailscaleStatus,
-  type TltgZerotierNetworkState,
-  type TltgZerotierStatus,
-} from '../../qidi/tltg-addons'
+  parseVoAddonLinkCode,
+  parseVoTailscaleStatus,
+  parseVoZerotierStatus,
+  voServerUrlValid,
+  voZerotierNetworkIdValid,
+  VO_OBICO_CLOUD,
+  type VoAddon,
+  type VoAddonLinkCode,
+  type VoAddonPanelAction,
+  type VoTailscaleStatus,
+  type VoZerotierNetworkState,
+  type VoZerotierStatus,
+} from '../../qidi/vo-addons'
 import { addonsRequest } from '../../state/addons'
 import { fmtDateTime, fmtTime, KV, Notice } from './common'
 
-// The status panels of the Fluidd fork's add-ons (TltgOctoEverywhereStatus, TltgObicoStatus, TltgTailscaleStatus,
-// TltgZerotierStatus), with their wording.
+// The status panels of the Fluidd fork's add-ons (VoOctoEverywhereStatus, VoObicoStatus, VoTailscaleStatus,
+// VoZerotierStatus), with their wording.
 
 const SERVICE: Record<string, { label: string; cls: string }> = {
   active: { label: 'Running', cls: 'text-good' },
@@ -31,10 +31,10 @@ const SERVICE: Record<string, { label: string; cls: string }> = {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const isIpv4 = (address: string) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(address)
-const unavailableText = (addon: TltgAddon) => (typeof addon.status?.unavailable === 'string' ? addon.status.unavailable : '')
-const path = (addon: TltgAddon, action: string) => `/addons/${encodeURIComponent(addon.id)}/${action}`
+const unavailableText = (addon: VoAddon) => (typeof addon.status?.unavailable === 'string' ? addon.status.unavailable : '')
+const path = (addon: VoAddon, action: string) => `/addons/${encodeURIComponent(addon.id)}/${action}`
 
-function Panel({ addon, children }: { addon: TltgAddon; children?: ReactNode }) {
+function Panel({ addon, children }: { addon: VoAddon; children?: ReactNode }) {
   const state = addon.service?.active ?? 'unknown'
   const service = SERVICE[state] ?? { label: state, cls: 'text-warn' }
   return (
@@ -82,13 +82,13 @@ function LinkedChip() {
 const Code = ({ children }: { children: ReactNode }) => <div className="code my-1 text-center text-[28px] font-semibold tracking-[0.2em]">{children}</div>
 
 // ---- OctoEverywhere ----
-export function OctoEverywherePanel({ addon }: { addon: TltgAddon }) {
+export function OctoEverywherePanel({ addon }: { addon: VoAddon }) {
   const status = addon.status
   const unavailable = unavailableText(addon)
   const connected = status?.connected === true
   const linked = status?.linked === true
   const linkUrl = typeof status?.link_url === 'string' && /^https:\/\//.test(status.link_url) ? status.link_url : ''
-  const [code, setCode] = useState<{ link: TltgAddonLinkCode; expiresAt: number } | null>(null)
+  const [code, setCode] = useState<{ link: VoAddonLinkCode; expiresAt: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [codeError, setCodeError] = useState('')
 
@@ -106,7 +106,7 @@ export function OctoEverywherePanel({ addon }: { addon: TltgAddon }) {
     setLoading(true)
     setCodeError('')
     try {
-      const link = parseTltgAddonLinkCode(await addonsRequest(path(addon, 'link-code'), 'POST'))
+      const link = parseVoAddonLinkCode(await addonsRequest(path(addon, 'link-code'), 'POST'))
       setCode(null)
       if (!link) return setCodeError("OctoEverywhere didn't return a link code.")
       setCode({ link, expiresAt: link.expires_in > 0 ? Date.now() + link.expires_in * 1000 : 0 })
@@ -173,10 +173,10 @@ export function OctoEverywherePanel({ addon }: { addon: TltgAddon }) {
 }
 
 // ---- Obico ----
-export function ObicoPanel({ addon, disabled, onAction }: { addon: TltgAddon; disabled: boolean; onAction: (a: TltgAddonPanelAction) => void }) {
+export function ObicoPanel({ addon, disabled, onAction }: { addon: VoAddon; disabled: boolean; onAction: (a: VoAddonPanelAction) => void }) {
   const status = addon.status
   const server = typeof status?.server === 'string' ? status.server : ''
-  const serverUrl = tltgServerUrlValid(server) ? server : ''
+  const serverUrl = voServerUrlValid(server) ? server : ''
   const cloud = status?.cloud === true
   const linked = status?.linked === true
   const discovering = status?.discovering === true
@@ -261,7 +261,7 @@ export function ObicoPanel({ addon, disabled, onAction }: { addon: TltgAddon; di
 function ObicoServerDialog({ cloud, server, onClose, onSave }: { cloud: boolean; server: string; onClose: () => void; onSave: (server: string) => void }) {
   const [choice, setChoice] = useState<'cloud' | 'self_hosted'>(cloud ? 'cloud' : 'self_hosted')
   const [input, setInput] = useState(cloud ? '' : server)
-  const valid = choice === 'cloud' || tltgServerUrlValid(input)
+  const valid = choice === 'cloud' || voServerUrlValid(input)
   return (
     <Dialog
       open
@@ -272,7 +272,7 @@ function ObicoServerDialog({ cloud, server, onClose, onSave }: { cloud: boolean;
           <button className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(choice === 'cloud' ? TLTG_OBICO_CLOUD : input.trim())}>
+          <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(choice === 'cloud' ? VO_OBICO_CLOUD : input.trim())}>
             Use this server
           </button>
         </>
@@ -290,7 +290,7 @@ function ObicoServerDialog({ cloud, server, onClose, onSave }: { cloud: boolean;
       {choice === 'self_hosted' && (
         <div className="mt-3 grid gap-1">
           <input className="field code" autoFocus spellCheck={false} placeholder="http://192.168.1.10:3334" value={input} onChange={(e) => setInput(e.target.value)} aria-label="Obico server" />
-          {input.trim() !== '' && !tltgServerUrlValid(input) && <div className="text-[12px] text-bad">Enter an http or https address, such as http://192.168.1.10:3334.</div>}
+          {input.trim() !== '' && !voServerUrlValid(input) && <div className="text-[12px] text-bad">Enter an http or https address, such as http://192.168.1.10:3334.</div>}
         </div>
       )}
     </Dialog>
@@ -301,7 +301,7 @@ function ObicoServerDialog({ cloud, server, onClose, onSave }: { cloud: boolean;
  * What the last request answered, shown until the add-ons list is read again; panels for add-ons whose actions answer
  * with the new status (Tailscale's log in and out, ZeroTier's join and leave).
  */
-function useAnswered<T>(addon: TltgAddon, parse: (v: unknown) => T | null) {
+function useAnswered<T>(addon: VoAddon, parse: (v: unknown) => T | null) {
   const [answered, setAnswered] = useState<T | null>(null)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
@@ -330,7 +330,7 @@ function useAnswered<T>(addon: TltgAddon, parse: (v: unknown) => T | null) {
 }
 
 // ---- Tailscale ----
-const TAILSCALE_STATE: Record<TltgTailscaleStatus['state'], { label: string; cls: string }> = {
+const TAILSCALE_STATE: Record<VoTailscaleStatus['state'], { label: string; cls: string }> = {
   running: { label: 'Connected', cls: 'text-good' },
   starting: { label: 'Starting', cls: 'text-info' },
   needs_login: { label: 'Not logged in', cls: 'text-warn' },
@@ -338,8 +338,8 @@ const TAILSCALE_STATE: Record<TltgTailscaleStatus['state'], { label: string; cls
   stopped: { label: 'Disconnected', cls: 'text-warn' },
 }
 
-export function TailscalePanel({ addon }: { addon: TltgAddon }) {
-  const { status, unavailable, working, error, run } = useAnswered(addon, parseTltgTailscaleStatus)
+export function TailscalePanel({ addon }: { addon: VoAddon }) {
+  const { status, unavailable, working, error, run } = useAnswered(addon, parseVoTailscaleStatus)
   const logOut = async () => {
     if (await confirm({ title: 'Log out of Tailscale', body: 'Log this printer out of Tailscale? It leaves your tailnet until you log it in again.', confirm: 'Log out', danger: true })) run('logout')
   }
@@ -425,7 +425,7 @@ export function TailscalePanel({ addon }: { addon: TltgAddon }) {
 }
 
 // ---- ZeroTier ----
-const NETWORK_STATE: Record<TltgZerotierNetworkState, { label: string; cls: string }> = {
+const NETWORK_STATE: Record<VoZerotierNetworkState, { label: string; cls: string }> = {
   ok: { label: 'Connected', cls: 'text-good' },
   requesting_configuration: { label: 'Joining', cls: 'text-info' },
   access_denied: { label: 'Waiting for approval', cls: 'text-warn' },
@@ -435,7 +435,7 @@ const NETWORK_STATE: Record<TltgZerotierNetworkState, { label: string; cls: stri
   authentication_required: { label: 'Needs a browser sign-in', cls: 'text-bad' },
 }
 
-function networkMessage(state: TltgZerotierNetworkState, node: string) {
+function networkMessage(state: VoZerotierNetworkState, node: string) {
   switch (state) {
     case 'ok':
       return "Devices on this network can open Fluidd at the address above, and reach the printer's other services, such as SSH."
@@ -450,10 +450,10 @@ function networkMessage(state: TltgZerotierNetworkState, node: string) {
   }
 }
 
-export function ZerotierPanel({ addon }: { addon: TltgAddon }) {
-  const { status, unavailable, working, error, run } = useAnswered<TltgZerotierStatus>(addon, parseTltgZerotierStatus)
+export function ZerotierPanel({ addon }: { addon: VoAddon }) {
+  const { status, unavailable, working, error, run } = useAnswered<VoZerotierStatus>(addon, parseVoZerotierStatus)
   const [networkId, setNetworkId] = useState('')
-  const idValid = tltgZerotierNetworkIdValid(networkId)
+  const idValid = voZerotierNetworkIdValid(networkId)
 
   const join = async () => {
     if (!idValid || working) return

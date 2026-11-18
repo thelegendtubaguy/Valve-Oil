@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("install smoke test did not create state file")
         module_targets = {
             plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
-                REPO_ROOT / f"installer/klipper/tltg/{name}.py"
+                REPO_ROOT / f"installer/klipper/extras/{name}.py"
             for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
                          "box_heater_refresh", "klipper_health", "macro_status", "printer_warnings", "klipper_fixes", "save_variables_fast",
                          "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",

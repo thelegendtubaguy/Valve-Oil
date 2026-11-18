@@ -182,7 +182,7 @@ Harnessed `slot_sync()` saved the owning stepper's slot name regardless of its `
 
 ### Retraction past the slot inlet
 
-**Runtime-confirmed (2026-10-30, `.07.01`, two USB Boxes, slot 0, `TLTG_BOX_SLOT_JOG` on a private motion queue, idle, nozzle cold).** Slot 1B was loaded to the toolhead, so the hub sensor stayed occupied throughout. Slot 0 started from where it rested with filament at its inlet; its distance from park was not measured.
+**Runtime-confirmed (2026-10-30, `.07.01`, two USB Boxes, slot 0, `VO_BOX_SLOT_JOG` on a private motion queue, idle, nozzle cold).** Slot 1B was loaded to the toolhead, so the hub sensor stayed occupied throughout. Slot 0 started from where it rested with filament at its inlet; its distance from park was not measured.
 
 - Slot 0 retracted in 10–50 mm moves at 20–40 mm/s. The operator saw its filament move back, and `runout_button` stayed `0` until it read `1` after about 1860 mm in total.
 - At that point the operator found the filament tip out of the slot feeder. Driving the slot 100 mm forward in 10 mm moves did not return filament to the inlet sensor.

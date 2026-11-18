@@ -1,7 +1,7 @@
 """Valve Oil owns box.cfg for USB QIDI Boxes: the Box monitor, its udev rule and unit, and the firmware update's write.
 
 Valve Oil's patch of the reviewed touchscreen app builds (qidiclient_firmware_popup.py) stops the app from writing
-box.cfg and restarting Klipper whenever the Boxes it finds change. installer/system/tltg_box_monitor.py takes that over:
+box.cfg and restarting Klipper whenever the Boxes it finds change. installer/system/vo_box_monitor.py takes that over:
 a udev rule starts tltg-box-monitor.service when a USB Box connects or disconnects, and the monitor writes box.cfg in
 QIDI's layout, numbering each Box from a record so it keeps its slots on another port, and restarts Klipper only while
 the printer is idle. A QIDI firmware update resets box.cfg; the update writes it again before its board step, so the
@@ -24,7 +24,7 @@ UNIT = "tltg-box-monitor.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 MONITOR_FILE = "/usr/local/lib/tltg_box_monitor.py"
 RULE_FILE = "/etc/udev/rules.d/99-tltg-box-monitor.rules"
-MONITOR_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_box_monitor.py"
+MONITOR_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_box_monitor.py"
 MONITOR_MARKER = "# tltg-optimized:box-monitor\n"
 UNIT_MARKER = "# tltg-optimized:box-monitor-unit\n"
 RULE_MARKER = "# tltg-optimized:box-monitor-rule\n"

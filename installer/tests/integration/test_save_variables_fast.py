@@ -12,7 +12,7 @@ from installer.tests.helpers import REPO_ROOT
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_save_variables_fast", REPO_ROOT / "installer/klipper/tltg/save_variables_fast.py"
+    "tltg_save_variables_fast", REPO_ROOT / "installer/klipper/extras/save_variables_fast.py"
 )
 save_variables_fast = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(save_variables_fast)
@@ -26,7 +26,7 @@ INITIAL = (
     "retry_step = None\n"
     "runout_0 = 0\n"
     "slot3 = 2\n"
-    "tltg_spoolman_spools = {'slot0': 1, 'slot1': 2}\n"
+    "vo_spoolman_spools = {'slot0': 1, 'slot1': 2}\n"
     "\n"
 )
 
@@ -207,6 +207,45 @@ class SaveVariableCommandTest(unittest.TestCase):
             fast.cmd_SAVE_VARIABLE(Command({"VARIABLE": name, "VALUE": value}))
             BoxExtras(qidi_vars).save_variable(name, ast.literal_eval(value))
             self.assertEqual(state(save_vars), state(qidi_vars))
+
+
+class EarlierNamesTest(unittest.TestCase):
+    """Settings saved under tltg_ names before 26.11.18.2 carry over to their vo_ names."""
+
+    def test_copies_each_tltg_variable_to_its_unsaved_vo_name(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        path = root / "saved_variables.cfg"
+        path.write_text(
+            "[Variables]\n"
+            "enable_box = 1\n"
+            "tltg_box_load_fast_speed_1 = 90\n"
+            "tltg_keep_loaded_between_prints = 0\n"
+            "tltg_spoolman_spools = {'slot0': 4}\n"
+            "tltg_start_bed_mesh_profile = 'default'\n"
+            "tltg_staggered_start_heating_dwell_seconds = 12.5\n"
+            "vo_keep_loaded_between_prints = 1\n"
+            "\n",
+            encoding="utf-8",
+        )
+        self.addCleanup(lambda: [p.unlink() for p in root.iterdir()] and root.rmdir())
+        save_vars = SaveVariables(str(path))
+        fast = object.__new__(save_variables_fast.SaveVariablesFast)
+        fast.save_vars = save_vars
+
+        fast._copy_earlier_names()
+
+        reread = SaveVariables(str(path)).allVariables
+        self.assertEqual(reread, save_vars.allVariables)
+        self.assertEqual(reread["vo_box_load_fast_speed_1"], 90)
+        self.assertEqual(reread["vo_spoolman_spools"], {"slot0": 4})
+        self.assertEqual(reread["vo_start_bed_mesh_profile"], "default")
+        self.assertEqual(reread["vo_staggered_start_heating_dwell_seconds"], 12.5)
+        # A vo_ setting already saved is the operator's; the tltg_ ones stay for earlier releases.
+        self.assertEqual(reread["vo_keep_loaded_between_prints"], 1)
+        self.assertEqual(reread["tltg_keep_loaded_between_prints"], 0)
+        written = path.read_text(encoding="utf-8")
+        fast._copy_earlier_names()
+        self.assertEqual(path.read_text(encoding="utf-8"), written)
 
 
 if __name__ == "__main__":

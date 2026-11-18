@@ -14,7 +14,7 @@ SERVER_OPERATION = "status_service_server"
 UNIT = "tltg-status.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 SERVER_FILE = "/usr/local/lib/tltg_status.py"
-SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_status.py"
+SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_status.py"
 LISTEN_PORT = 7133
 
 # Package-created files start with a marker line so later package versions replace earlier ones.

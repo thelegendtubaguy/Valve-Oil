@@ -11,7 +11,7 @@ from unittest import mock
 from installer.tests.helpers import REPO_ROOT
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_cold_cut", REPO_ROOT / "installer/klipper/tltg/cold_cut.py"
+    "tltg_cold_cut", REPO_ROOT / "installer/klipper/extras/cold_cut.py"
 )
 cold_cut = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cold_cut)
@@ -19,7 +19,7 @@ spec.loader.exec_module(cold_cut)
 # Klipper's greenlet, which only names the running command here.
 sys.modules.setdefault("greenlet", types.SimpleNamespace(getcurrent=lambda: None))
 spec = importlib.util.spec_from_file_location(
-    "tltg_box_flow_recovery", REPO_ROOT / "installer/klipper/tltg/box_flow_recovery.py"
+    "tltg_box_flow_recovery", REPO_ROOT / "installer/klipper/extras/box_flow_recovery.py"
 )
 box_flow_recovery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(box_flow_recovery)
@@ -234,20 +234,20 @@ class ColdCutCommandTest(unittest.TestCase):
     def run_cut(self, printer):
         make(printer)
         gcmd = GCmd()
-        printer.handlers["TLTG_CUT_FILAMENT"](gcmd)
+        printer.handlers["VO_CUT_FILAMENT"](gcmd)
         return gcmd
 
     def test_cuts_cold_after_homing_and_restores_state(self) -> None:
         printer = Printer(25.)
         gcmd = self.run_cut(printer)
         self.assertEqual(printer.scripts[:3], [
-            "SAVE_GCODE_STATE NAME=tltg_cut_filament",
+            "SAVE_GCODE_STATE NAME=vo_cut_filament",
             "G28 O X Y",
-            "_OPTIMIZED_CUT_FILAMENT_MOTION",
+            "_VO_CUT_FILAMENT_MOTION",
         ])
         self.assertEqual(printer.scripts[-2:], [
             "G1 X15.000 F8000.000",
-            "SET_VELOCITY_LIMIT ACCEL=20000.000\nRESTORE_GCODE_STATE NAME=tltg_cut_filament",
+            "SET_VELOCITY_LIMIT ACCEL=20000.000\nRESTORE_GCODE_STATE NAME=vo_cut_filament",
         ])
         self.assertEqual(printer.moves, [-4.])
         self.assertEqual(gcmd.messages, ["Filament cut."])
@@ -259,7 +259,7 @@ class ColdCutCommandTest(unittest.TestCase):
         with self.assertRaises(CommandError):
             self.run_cut(printer)
         self.assertEqual(printer.scripts[-1],
-                         "SET_VELOCITY_LIMIT ACCEL=20000.000\nRESTORE_GCODE_STATE NAME=tltg_cut_filament")
+                         "SET_VELOCITY_LIMIT ACCEL=20000.000\nRESTORE_GCODE_STATE NAME=vo_cut_filament")
         with self.assertRaises(CommandError):
             printer.move(-4.)
 

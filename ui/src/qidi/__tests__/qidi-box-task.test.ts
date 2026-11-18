@@ -28,7 +28,7 @@ const printer = (overrides: {
     variables: {
       box_count: 1,
       last_load_slot: overrides.lastLoadSlot ?? 'slot16',
-      tltg_box_hub_slot: overrides.hubSlot ?? '',
+      vo_box_hub_slot: overrides.hubSlot ?? '',
       slot_sync: overrides.slotSync ?? 'slot-1'
     }
   },

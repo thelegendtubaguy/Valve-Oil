@@ -51,7 +51,8 @@ def _above_maximum(current: str, maximum: float | None) -> bool:
 
 
 def _prior_managed_value(current: str, prior_state, patch: PatchSpec) -> bool:
-    # Values earlier releases set. The Plus 5 had 565 mm/s probing travel before its 400 mm/s limit.
+    # Values earlier releases set. The Plus 5 had 565 mm/s probing travel before its 400 mm/s limit, and the error
+    # macro was OPTIMIZED_CANCEL_PRINT_ON_ERROR before 26.11.18.2.
     prior_values = {
         "stepper_x_homing_speed": ("100",),
         "stepper_y_homing_speed": ("100",),
@@ -59,6 +60,7 @@ def _prior_managed_value(current: str, prior_state, patch: PatchSpec) -> bool:
         "stepper_y_homing_retract_speed": ("1000.0",),
         "z_tilt_speed": ("600", "565"),
         "bed_mesh_speed": ("600", "565"),
+        "virtual_sdcard_on_error_gcode": ("OPTIMIZED_CANCEL_PRINT_ON_ERROR",),
     }.get(patch.id, ())
     if current not in prior_values or prior_state is None:
         return False

@@ -22,7 +22,7 @@ from installer.tests.helpers import temp_path
 
 
 def _load_server():
-    path = Path(__file__).resolve().parents[2] / "system/tltg_status.py"
+    path = Path(__file__).resolve().parents[2] / "system/vo_status.py"
     module_spec = importlib.util.spec_from_file_location("tltg_status_under_test", path)
     module = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(module)
@@ -85,7 +85,7 @@ class StatusServiceTests(unittest.TestCase):
             return cls.processes[-1]
 
         server.start_update_now = start
-        server.MACRO_GLOBALS.write_text('[gcode_macro _tltg_optimized_globals]\nvariable_package_version: "26.11.11.3"\n')
+        server.MACRO_GLOBALS.write_text('[gcode_macro _vo_globals]\nvariable_package_version: "26.11.11.3"\n')
         server.FIRMWARE_MANIFEST.write_text(json.dumps({"SOC": {"version": "01.01.06.02"}}))
         server.Handler.jobs = server.Jobs()
         cls.server = server

@@ -26,7 +26,7 @@ from .sudo import run_sudo
 # configuration under printer_data/config, and no Moonraker update manager entries. The one exception is an add-on
 # that needs a kernel module QIDI's kernel lacks: the package's build of the module and the script that loads it go in a
 # root-owned directory under SYSTEM_ROOT, since root loads them.
-ROOT = "/home/qidi/tltg-addons"
+ROOT = "/home/qidi/vo-addons"
 SYSTEM_ROOT = "/usr/local/lib/tltg-addons"
 MODULE_LOADER = "load-modules.sh"
 OSRELEASE = "/proc/sys/kernel/osrelease"
@@ -205,7 +205,7 @@ OCTOEVERYWHERE = AddonDefinition(
 
 # Obico's own installer also installs system packages, adds a Moonraker update-manager section, and keeps its
 # configuration in printer_data/config; the plugin itself adds an include to printer.cfg. Here it runs from its own
-# environment through Valve Oil's launcher (installer/system/tltg_obico.py), which stops the printer.cfg change, picks
+# environment through Valve Oil's launcher (installer/system/vo_obico.py), which stops the printer.cfg change, picks
 # the plugin's Janus build for QIDI's Debian, and reports the link code for Fluidd.
 OBICO_CLOUD = "https://app.obico.io"
 OBICO_CONFIG = "moonraker-obico.cfg"
@@ -266,7 +266,7 @@ OBICO = AddonDefinition(
             "logging": {"level": "INFO"},
         },
     },
-    files={OBICO_LAUNCHER: OBICO_LAUNCHER},
+    files={OBICO_LAUNCHER: "vo_obico.py"},
     exclusive_group=REMOTE_ACCESS,
     link_settings=(OBICO_CONFIG, "server", "url", "auth_token"),
 )

@@ -177,8 +177,8 @@ variable_purge_length: 40
 gcode:
 `
 
-const TLTG_GLOBALS = `# Valve Oil's optimized macros. Installer-managed: changes here are replaced on the next install.
-[gcode_macro _TLTG_GLOBALS]
+const VO_GLOBALS = `# Valve Oil's optimized macros. Installer-managed: changes here are replaced on the next install.
+[gcode_macro _VO_GLOBALS]
 variable_version: "26.11.16.1"
 variable_heat_soak_minutes: 0
 gcode:
@@ -373,9 +373,9 @@ export function install(fake) {
   file('config', 'klipper-macros-qd/start_end.cfg', START_END, 10)
   file('config', 'klipper-macros-qd/filament.cfg', FILAMENT_CFG, 10)
   file('config', 'klipper-macros-qd/globals.cfg', QD_GLOBALS, 10)
-  file('config', 'tltg-optimized-macros/globals.cfg', TLTG_GLOBALS, 1)
+  file('config', 'tltg-optimized-macros/globals.cfg', VO_GLOBALS, 1)
   file('config', 'tltg-optimized-macros/cooling.cfg', COOLING, 1)
-  file('config', 'tltg-optimized-macros/start_print.cfg', START_END.replace('PRINT_START]', 'TLTG_PRINT_START]'), 1)
+  file('config', 'tltg-optimized-macros/start_print.cfg', START_END.replace('PRINT_START]', 'VO_PRINT_START]'), 1)
   file('config', 'KAMP/Adaptive_Meshing.cfg', '[gcode_macro _KAMP_Settings]\nvariable_mesh_margin: 0\ngcode:\n', 60)
   // The core serves this one (the Box screen reads it); listed here, content left to it.
   file('config', 'qidi_filament_config/filament-0.4.json', null, 5)

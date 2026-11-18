@@ -105,7 +105,7 @@ def _ensure_not_printing(moonraker_url: str, *, urlopen=urllib.request.urlopen) 
     """Refuse while a print is running or paused, or Klipper is running G-code, such as a calibration, which
     idle_timeout reports as "Printing": building an add-on's environment takes the CPU and memory those need. A heater
     that is on doesn't count. A stopped Moonraker or Klipper can't be printing, so an unknown state doesn't block.
-    installer/system/tltg_addons.py busy_state reads the same answer the same way."""
+    installer/system/vo_addons.py busy_state reads the same answer the same way."""
     base = moonraker_url.split("?", 1)[0]
     try:
         with urlopen(f"{base}?print_stats=state&idle_timeout=state", timeout=5) as response:

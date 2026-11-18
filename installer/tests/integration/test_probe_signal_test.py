@@ -8,7 +8,7 @@ from installer.tests.helpers import REPO_ROOT
 
 
 spec = importlib.util.spec_from_file_location(
-    "tltg_probe_test", REPO_ROOT / "installer/klipper/tltg/probe_test.py"
+    "tltg_probe_test", REPO_ROOT / "installer/klipper/extras/probe_test.py"
 )
 probe_test = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe_test)
@@ -105,7 +105,7 @@ class Printer:
             self.respond_raw(vendor_line(line) if isinstance(line, int) else line)
 
     def run(self):
-        self.commands["_TLTG_TEST_PROBE"](self.gcmd)
+        self.commands["_VO_TEST_PROBE"](self.gcmd)
         return self.check.result
 
     def messages(self):

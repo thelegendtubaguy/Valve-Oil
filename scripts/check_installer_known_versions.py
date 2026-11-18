@@ -27,7 +27,7 @@ def main() -> int:
         if (target.board_version("closed_loop") is None) != (target.closed_loop_image is None):
             raise SystemExit(f"{printer.id}: target firmware {target.version} closed_loop_image doesn't match its "
                              "closed-loop drivers")
-    globals_text = (REPO_ROOT / "installer/klipper/tltg-optimized-macros/globals.cfg").read_text(
+    globals_text = (REPO_ROOT / "installer/klipper/macros/globals.cfg").read_text(
         encoding="utf-8"
     )
     match = re.search(r'^variable_package_version:\s*["\']?([^"\'\n]+)["\']?\s*$', globals_text, re.MULTILINE)

@@ -104,14 +104,14 @@ def maybe_initialize_filament_retention(
     written: dict[str, str] | None = None,
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
-    variables = read_live_saved_variables(paths, urlopen=urlopen)
-    if "tltg_keep_loaded_between_prints" in variables:
+    variables = with_earlier_names(read_live_saved_variables(paths, urlopen=urlopen))
+    if "vo_keep_loaded_between_prints" in variables:
         reporter.debug(event="filament_retention_default.preserved")
         return False
     saved = save_live_variables(
         paths,
-        {"tltg_keep_loaded_between_prints": "1"},
-        missing_only=frozenset({"tltg_keep_loaded_between_prints"}),
+        {"vo_keep_loaded_between_prints": "1"},
+        missing_only=frozenset({"vo_keep_loaded_between_prints"}),
         urlopen=urlopen,
     )
     if written is not None:
@@ -127,18 +127,18 @@ def maybe_initialize_filament_retention(
 # setting exists. A setting saved as None (QIDI's value) counts as present.
 # The Max 4 approaches the toolhead sensor at the Plus 5's 25 mm/s.
 BOX_MOTION_DEFAULTS = {
-    "tltg_box_load_fast_length": "950",
-    "tltg_box_load_fast_speed_1": "85",
-    "tltg_box_load_fast_speed_2": "65",
-    "tltg_box_load_approach_speed": "25",
-    "tltg_box_unload_speed_1": "65",
-    "tltg_box_unload_speed_2": "85",
-    "tltg_box_unload_extruder_length": "55",
+    "vo_box_load_fast_length": "950",
+    "vo_box_load_fast_speed_1": "85",
+    "vo_box_load_fast_speed_2": "65",
+    "vo_box_load_approach_speed": "25",
+    "vo_box_unload_speed_1": "65",
+    "vo_box_unload_speed_2": "85",
+    "vo_box_unload_extruder_length": "55",
 }
 # The Plus 5's Box code loads with one fast move. QIDI's 720 mm stopped about
 # 125 mm short of the toolhead sensor, leaving the rest to its 25 mm/s fallback.
 PLUS5_BOX_MOTION_DEFAULTS = {
-    "tltg_box_load_fast_length": "850",
+    "vo_box_load_fast_length": "850",
 }
 # No Smart 5 Box load has been traced yet, so it keeps QIDI's values.
 BOX_MOTION_DEFAULTS_BY_PRINTER = {
@@ -151,21 +151,21 @@ BOX_MOTION_DEFAULTS_BY_PRINTER = {
 # setting changed is the operator's.
 PREVIOUS_BOX_MOTION_DEFAULTS = {
     "max4": (
-        {"tltg_box_load_fast_speed_1": "120", "tltg_box_load_fast_speed_2": "100"},
-        {"tltg_box_unload_speed_1": "115", "tltg_box_unload_speed_2": "120"},
-        {"tltg_box_unload_extruder_length": "50"},
-        {"tltg_box_load_approach_speed": "15"},
+        {"vo_box_load_fast_speed_1": "120", "vo_box_load_fast_speed_2": "100"},
+        {"vo_box_unload_speed_1": "115", "vo_box_unload_speed_2": "120"},
+        {"vo_box_unload_extruder_length": "50"},
+        {"vo_box_load_approach_speed": "15"},
     ),
     "plus5": (),
     "smart5": (),
 }
 BOX_MOTION_SETTINGS = frozenset(BOX_MOTION_DEFAULTS) | {
-    "tltg_box_load_accel",
-    "tltg_box_unload_accel",
-    "tltg_box_load_fast_speed",
-    "tltg_box_unload_speed",
-    "tltg_box_hub_speed",
-    "tltg_box_park_speed",
+    "vo_box_load_accel",
+    "vo_box_unload_accel",
+    "vo_box_load_fast_speed",
+    "vo_box_unload_speed",
+    "vo_box_hub_speed",
+    "vo_box_park_speed",
 }
 
 
@@ -188,7 +188,7 @@ def maybe_initialize_box_motion(
     urlopen: UrlOpenFn = urllib.request.urlopen,
 ) -> bool:
     printer = _box_motion_printer(paths)
-    if read_live_saved_variable_names(paths, urlopen=urlopen) & BOX_MOTION_SETTINGS:
+    if with_earlier_names(read_live_saved_variable_names(paths, urlopen=urlopen)) & BOX_MOTION_SETTINGS:
         return _update_previous_box_motion_defaults(
             paths=paths, printer=printer, reporter=reporter, written=written, urlopen=urlopen
         )
@@ -209,7 +209,7 @@ def maybe_initialize_box_motion(
 
 
 def _update_previous_box_motion_defaults(*, paths, printer, reporter, written, urlopen) -> bool:
-    variables = read_live_saved_variables(paths, urlopen=urlopen)
+    variables = with_earlier_names(read_live_saved_variables(paths, urlopen=urlopen))
     defaults = BOX_MOTION_DEFAULTS_BY_PRINTER[printer]
     updated = {
         name: defaults[name]
@@ -391,6 +391,18 @@ def detect_required_tool_slot_opportunity(
         box_count=box_count,
         gaps=gaps,
     )
+
+
+def with_earlier_names(variables):
+    """Adds each tltg_ variable under its vo_ name when that isn't saved, as Klipper does when it next starts.
+
+    Saved variables were named tltg_ before 26.11.18.2. The installer saves defaults before Klipper restarts with the
+    module that copies them (save_variables_fast), so a setting saved only under its tltg_ name is the operator's.
+    """
+    earlier = {name: "vo_" + name[len("tltg_"):] for name in variables if name.startswith("tltg_")}
+    if isinstance(variables, Mapping):
+        return {**{new: variables[old] for old, new in earlier.items()}, **variables}
+    return frozenset(variables) | frozenset(earlier.values())
 
 
 def read_live_saved_variables(

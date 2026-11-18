@@ -1,26 +1,26 @@
-// Valve Oil's add-ons (src/qidi/tltg-addons.ts), from the add-ons service the printer's nginx serves at
-// /tltg-addons/api. The polling, dismissal, and request handling follow the Fluidd fork's TltgAddonsSettings.vue; the
+// Valve Oil's add-ons (src/qidi/vo-addons.ts), from the add-ons service the printer's nginx serves at
+// /tltg-addons/api. The polling, dismissal, and request handling follow the Fluidd fork's VoAddonsSettings.vue; the
 // service is polled only while the Add-ons settings are shown.
 import { createStore, useStore } from '../lib/store'
 import { client } from './printer'
 import {
-  parseTltgAddonsJob,
-  parseTltgAddonsList,
-  tltgAddonsApiBase,
-  tltgAddonsPollInterval,
-  tltgAddonsRequest,
-  TltgAddonsRequestError,
-  type TltgAddon,
-  type TltgAddonAction,
-  type TltgAddonJob,
-  type TltgAddonsList,
-} from '../qidi/tltg-addons'
+  parseVoAddonsJob,
+  parseVoAddonsList,
+  voAddonsApiBase,
+  voAddonsPollInterval,
+  voAddonsRequest,
+  VoAddonsRequestError,
+  type VoAddon,
+  type VoAddonAction,
+  type VoAddonJob,
+  type VoAddonsList,
+} from '../qidi/vo-addons'
 
 export type AddonsState = {
-  list: TltgAddonsList | null
+  list: VoAddonsList | null
   unavailable: boolean
   failures: number
-  pendingAction: { addon: string; action: TltgAddonAction } | null
+  pendingAction: { addon: string; action: VoAddonAction } | null
   actionErrors: Record<string, string>
   dismissedJobs: string[]
 }
@@ -51,13 +51,13 @@ export function useAddons() {
 
 // Valve Oil UI talks only to the web server that served it. In development the dev server proxies /tltg-addons to the
 // printer or the fake, so the page's own origin is used there too.
-const apiBase = () => tltgAddonsApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
+const apiBase = () => voAddonsApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
 
 /** Calls the add-ons API; panels use it for their own actions, such as a link code or joining a network. */
 export function addonsRequest(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>): Promise<unknown> {
   const base = apiBase()
-  if (!base) return Promise.reject(new TltgAddonsRequestError(0, 'Not connected to this printer'))
-  return tltgAddonsRequest(base, path, { method, token: null, signal, body })
+  if (!base) return Promise.reject(new VoAddonsRequestError(0, 'Not connected to this printer'))
+  return voAddonsRequest(base, path, { method, token: null, signal, body })
 }
 
 // ---- polling ----
@@ -76,10 +76,10 @@ function stop() {
 
 function schedule() {
   clearTimeout(timer)
-  if (watchers > 0 && !document.hidden) timer = setTimeout(poll, tltgAddonsPollInterval(addons.get().list))
+  if (watchers > 0 && !document.hidden) timer = setTimeout(poll, voAddonsPollInterval(addons.get().list))
 }
 
-function setList(list: TltgAddonsList) {
+function setList(list: VoAddonsList) {
   patch({ list, unavailable: false, failures: 0 })
   onJobState()
 }
@@ -111,7 +111,7 @@ export async function poll() {
   const controller = new AbortController()
   abortController = controller
   try {
-    const list = parseTltgAddonsList(await addonsRequest('/addons', 'GET', controller.signal))
+    const list = parseVoAddonsList(await addonsRequest('/addons', 'GET', controller.signal))
     if (controller.signal.aborted) return
     if (list) setList(list)
     else onPollFailed()
@@ -147,11 +147,11 @@ export function actionsDisabled(s: AddonsState) {
 }
 
 // Only one remote-access add-on can be installed; the service names the installed one in the way.
-export const installBlocked = (addon: TltgAddon) => addon.state === 'not_installed' && addon.blocked_by.length > 0
+export const installBlocked = (addon: VoAddon) => addon.state === 'not_installed' && addon.blocked_by.length > 0
 
-export const hasStatusPanel = (addon: TltgAddon) => addon.state !== 'not_installed' && (addon.status != null || addon.service != null)
+export const hasStatusPanel = (addon: VoAddon) => addon.state !== 'not_installed' && (addon.status != null || addon.service != null)
 
-export function jobFor(s: AddonsState, addon: TltgAddon): TltgAddonJob | null {
+export function jobFor(s: AddonsState, addon: VoAddon): VoAddonJob | null {
   const job = s.list?.job
   return job && job.addon === addon.id && (job.state === 'running' || !s.dismissedJobs.includes(job.id)) ? job : null
 }
@@ -169,14 +169,14 @@ export function dismissJob(id: string) {
 }
 
 /** Starts an install, update, remove, or relink. The caller confirms a remove first. */
-export async function runAddonAction(addon: TltgAddon, action: TltgAddonAction, body?: Record<string, unknown>) {
+export async function runAddonAction(addon: VoAddon, action: VoAddonAction, body?: Record<string, unknown>) {
   const s = addons.get()
   if (actionsDisabled(s) || (action === 'install' && installBlocked(addon))) return
   const actionErrors = { ...s.actionErrors }
   delete actionErrors[addon.id]
   patch({ pendingAction: { addon: addon.id, action }, actionErrors })
   try {
-    const job = parseTltgAddonsJob(await addonsRequest(`/addons/${encodeURIComponent(addon.id)}/${action}`, 'POST', undefined, body))
+    const job = parseVoAddonsJob(await addonsRequest(`/addons/${encodeURIComponent(addon.id)}/${action}`, 'POST', undefined, body))
     const list = addons.get().list
     if (job && list) setList({ ...list, busy: job.state === 'running' || list.busy, job })
   } catch (e) {

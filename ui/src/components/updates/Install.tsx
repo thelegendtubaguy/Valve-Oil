@@ -5,19 +5,19 @@ import { Notice } from '../settings/common'
 import type { LogFile } from '../system/Logs'
 import { fmtSize } from '../system/bits'
 import { client, usePrinter } from '../../state/printer'
-import { TLTG_RUN_LOG_NAME, type TltgProgressOrigin, type TltgStatusProgress } from '../../qidi/tltg-status'
+import { VO_RUN_LOG_NAME, type VoProgressOrigin, type VoStatusProgress } from '../../qidi/vo-status'
 
 // The System screen's log viewer, loaded when a log is opened.
 const LogViewer = lazy(() => import('../system/Logs').then((m) => ({ default: m.LogViewer })))
 
-const ORIGIN: Record<TltgProgressOrigin, string> = {
+const ORIGIN: Record<VoProgressOrigin, string> = {
   ssh: 'Started over SSH',
   usb: 'Started from a USB drive',
   automatic: 'Started by automatic updates',
   firmware_update: 'Continuing after the QIDI firmware update',
 }
 
-const ORIGIN_SHORT: Record<TltgProgressOrigin, string> = {
+const ORIGIN_SHORT: Record<VoProgressOrigin, string> = {
   ssh: 'over SSH',
   usb: 'from a USB drive',
   automatic: 'by automatic updates',
@@ -39,7 +39,7 @@ function fmtElapsed(ms: number) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
-export function installTitle(p: TltgStatusProgress) {
+export function installTitle(p: VoStatusProgress) {
   const to = p.to_version ? ` ${p.to_version}` : ''
   if (p.from_version && p.to_version && p.from_version !== p.to_version) return `Updating Valve Oil from ${p.from_version} to ${p.to_version}`
   if (p.from_version) return `Installing Valve Oil${to} again`
@@ -47,7 +47,7 @@ export function installTitle(p: TltgStatusProgress) {
 }
 
 /** "Step 4 of 9: System changes", for the banner on other screens. */
-export function installStepText(p: TltgStatusProgress) {
+export function installStepText(p: VoStatusProgress) {
   const step = p.index > 0 ? p.steps[p.index - 1] : null
   return step ? `Step ${p.index} of ${p.steps.length}: ${step}` : 'Checking the printer'
 }
@@ -74,7 +74,7 @@ function loadDismissed(): string | null {
  * The install running now, step by step, as the touchscreen shows it, whether it was started over SSH, from a USB drive,
  * or by automatic updates. An install that stopped stays here for a day, with its log, until it's closed.
  */
-export function InstallStepsCard({ progress }: { progress: TltgStatusProgress | null }) {
+export function InstallStepsCard({ progress }: { progress: VoStatusProgress | null }) {
   const [dismissed, setDismissed] = useState(loadDismissed)
   const [viewing, setViewing] = useState(false)
   const running = progress?.state === 'running'
@@ -188,7 +188,7 @@ const runKind = (name: string) => {
  * The log of each install, update, uninstall, and backup restore, from Moonraker's logs folder where the installer
  * keeps its newest ten, with how the last install was started and how it ended.
  */
-export function InstallerLogsCard({ progress }: { progress: TltgStatusProgress | null }) {
+export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | null }) {
   const [files, setFiles] = useState<LogFile[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -209,7 +209,7 @@ export function InstallerLogsCard({ progress }: { progress: TltgStatusProgress |
   useEffect(() => {
     if (conn === 'open') load()
   }, [conn, load, progress?.state, progress?.started_at])
-  const logs = useMemo(() => (files ?? []).filter((f) => TLTG_RUN_LOG_NAME.test(f.filename)).sort((a, b) => b.modified - a.modified), [files])
+  const logs = useMemo(() => (files ?? []).filter((f) => VO_RUN_LOG_NAME.test(f.filename)).sort((a, b) => b.modified - a.modified), [files])
 
   return (
     <Card
@@ -262,7 +262,7 @@ export function InstallerLogsCard({ progress }: { progress: TltgStatusProgress |
 }
 
 /** How the last install was started and how it ended, or nothing while one runs or none was recorded. */
-function LastInstall({ progress }: { progress: TltgStatusProgress | null }) {
+function LastInstall({ progress }: { progress: VoStatusProgress | null }) {
   if (!progress || progress.state === 'running') return null
   const when = parseTime(progress.finished_at ?? progress.started_at)
   const how = progress.origin ? ` ${ORIGIN_SHORT[progress.origin]}` : ''

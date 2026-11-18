@@ -63,7 +63,7 @@ BANNED_SLICER_COMMANDS = {
 
 BANNED_SLICER_SNIPPETS = {
     "BED_MESH_PROFILE": "Print-start bed-mesh selection is controlled by persistent Klipper state, not slicer G-code.",
-    "TLTG_START_BED_MESH_PROFILE": "Print-start bed-mesh selection is controlled by persistent Klipper state, not slicer G-code.",
+    "VO_START_BED_MESH_PROFILE": "Print-start bed-mesh selection is controlled by persistent Klipper state, not slicer G-code.",
 }
 
 QIDISTUDIO_BANNED_SNIPPETS = {
@@ -173,7 +173,7 @@ def validate_repo(
     # Each printer's packs may call that printer's own macros as well as the common ones.
     for printer in PRINTER_PACK_FOLDERS:
         macros = iter_macro_names(
-            repo_root / "installer" / "klipper" / "tltg-optimized-macros",
+            repo_root / "installer" / "klipper" / "macros",
             repo_root / "installer" / "klipper" / "printers" / printer,
         )
         files = iter_slicer_files(repo_root, printer)

@@ -115,12 +115,12 @@ const COMMANDS = {
   SHAPER_CALIBRATE: 'Simular to TEST_RESONANCES but suggest input shaper config',
   TEST_RESONANCES: 'Runs the resonance test for a specifed axis',
   SET_INPUT_SHAPER: 'Set cartesian parameters for input shaper',
-  TLTG_PROBE_ACCURACY_CENTER: 'Homes and runs probe accuracy sampling at the bed center.',
-  TLTG_TEST_PROBE: 'Guided cold, motion-free nozzle load-cell response check; requires CONFIRM=1.',
-  TLTG_CORNER_BED_SCREW_CHECK: 'Homes, runs Z tilt, then reports bed screw turn adjustments.',
-  TLTG_BED_SOAK: 'Measure how long the bed takes to heat and stop moving',
-  TLTG_BED_SOAK_STOP: 'Stop the bed soak test',
-  TLTG_SAVE_CONFIG_QD: 'Save pending SAVE_CONFIG values without blocking Klipper',
+  VO_PROBE_ACCURACY_CENTER: 'Homes and runs probe accuracy sampling at the bed center.',
+  VO_TEST_PROBE: 'Guided cold, motion-free nozzle load-cell response check; requires CONFIRM=1.',
+  VO_CORNER_BED_SCREW_CHECK: 'Homes, runs Z tilt, then reports bed screw turn adjustments.',
+  VO_BED_SOAK: 'Measure how long the bed takes to heat and stop moving',
+  VO_BED_SOAK_STOP: 'Stop the bed soak test',
+  VO_SAVE_CONFIG_QD: 'Save pending SAVE_CONFIG values without blocking Klipper',
 }
 
 export function install(fake) {
@@ -288,7 +288,7 @@ export function install(fake) {
   async function loadCellCheck(p) {
     const t = st().tltg_probe_test
     if (t.active) throw rpcError('A load-cell response check is already running.')
-    if (p.CONFIRM !== '1') throw rpcError('Make sure the cold nozzle is accessible and clear of the bed, without homing. Then run TLTG_TEST_PROBE CONFIRM=1.')
+    if (p.CONFIRM !== '1') throw rpcError('Make sure the cold nozzle is accessible and clear of the bed, without homing. Then run VO_TEST_PROBE CONFIRM=1.')
     set('tltg_probe_test', { active: true, result: null, metrics: {} })
     pushConsole('// Load-cell response check: the printer will not move, heat, or change calibration. Do not home or jog during the test. Press lightly only when prompted; never force the nozzle.')
     for (const [instruction, reminder, cue] of [
@@ -303,7 +303,7 @@ export function install(fake) {
     }
     const metrics = { change: 1840, required_change: 212, noise: 26.4, release_error: 38 }
     set('tltg_probe_test', { active: false, result: 'RESPONSE_DETECTED', metrics })
-    pushConsole('// TLTG_TEST_PROBE RESPONSE_DETECTED: Your load cell readings look correct. The signal changed under light pressure and returned to baseline on release.')
+    pushConsole('// VO_TEST_PROBE RESPONSE_DETECTED: Your load cell readings look correct. The signal changed under light pressure and returned to baseline on release.')
     pushConsole(`// Signal change ${metrics.change} counts (needed ${metrics.required_change}); baseline noise ${Math.round(metrics.noise)}; release error ${metrics.release_error}.`)
     pushConsole('// This checks the sensor signal only; it does not verify the homing trigger.')
   }
@@ -497,12 +497,12 @@ export function install(fake) {
   async function startSoak(p) {
     if (soak.state === 'running') throw rpcError('A bed soak test is already running')
     if (st().print_stats?.state === 'printing') throw rpcError("A bed soak test can't run during a print")
-    if (!p.BED) throw rpcError('TLTG_BED_SOAK needs BED=')
+    if (!p.BED) throw rpcError('VO_BED_SOAK needs BED=')
     const bed = Number(p.BED)
     const chamber = Number(p.CHAMBER ?? 0) || null
     const count = Number(p.PROBE_COUNT ?? 5)
     if (bed > 120) throw rpcError(`BED=${bed} is outside that heater's limits (up to 120)`)
-    if (count < 3 || count > 11) throw rpcError(`Error on 'TLTG_BED_SOAK': PROBE_COUNT must have a minimum of 3`)
+    if (count < 3 || count > 11) throw rpcError(`Error on 'VO_BED_SOAK': PROBE_COUNT must have a minimum of 3`)
     const settings = { bed, chamber, nozzle: 140, probe_count: count, time_limit: Number(p.TIME_LIMIT ?? 90), stop_when_settled: (p.STOP_WHEN_SETTLED ?? '1') !== '0', keep_heating: p.KEEP_HEATING === '1' }
     const started = Date.now() / 1000
     const name = fileName(Math.round(started), bed, chamber)
@@ -683,7 +683,7 @@ export function install(fake) {
         await saveConfig()
         return true
       case 'SAVE_CONFIG_QD':
-      case 'TLTG_SAVE_CONFIG_QD':
+      case 'VO_SAVE_CONFIG_QD':
         pushConsole('// fake: printer.cfg written without restarting')
         return true
       case 'Z_TILT_ADJUST':
@@ -692,7 +692,7 @@ export function install(fake) {
       case 'SCREWS_TILT_CALCULATE':
         await screwsTilt()
         return true
-      case 'TLTG_CORNER_BED_SCREW_CHECK':
+      case 'VO_CORNER_BED_SCREW_CHECK':
         await home()
         await zTilt()
         await screwsTilt()
@@ -709,11 +709,11 @@ export function install(fake) {
         requireHomed()
         await probeAccuracy(Number(p.SAMPLES ?? 10))
         return true
-      case 'TLTG_PROBE_ACCURACY_CENTER':
+      case 'VO_PROBE_ACCURACY_CENTER':
         await home()
         await probeAccuracy(Number(p.SAMPLES ?? 20))
         return true
-      case 'TLTG_TEST_PROBE':
+      case 'VO_TEST_PROBE':
         await loadCellCheck(p)
         return true
       case 'PROBE_CALIBRATE':
@@ -760,10 +760,10 @@ export function install(fake) {
       case 'SHAPER_CALIBRATE':
         await shaperCalibrate(p.AXIS)
         return true
-      case 'TLTG_BED_SOAK':
+      case 'VO_BED_SOAK':
         await startSoak(p)
         return true
-      case 'TLTG_BED_SOAK_STOP':
+      case 'VO_BED_SOAK_STOP':
         if (soak.state !== 'running') throw rpcError('No bed soak test is running')
         soakRun.stop = 'after_mesh'
         publishSoak({ stop_requested: true })

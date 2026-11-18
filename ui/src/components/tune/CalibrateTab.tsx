@@ -28,7 +28,7 @@ export function CalibrateTab() {
         </div>
         <div className="grid content-start gap-3.5">
           <ProbeCard />
-          {has('TLTG_TEST_PROBE') && <LoadCellCard />}
+          {has('VO_TEST_PROBE') && <LoadCellCard />}
         </div>
         {has('SHAPER_CALIBRATE') && (
           <div className="grid content-start gap-3.5 lg:col-span-2 2xl:col-span-1">
@@ -78,7 +78,7 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
   const toolhead = useObject('toolhead')
   const list = tiltScrews(settings.screws_tilt_adjust, sta)
   const hasResults = list.some((s) => s.adjust != null)
-  const corner = has('TLTG_CORNER_BED_SCREW_CHECK')
+  const corner = has('VO_CORNER_BED_SCREW_CHECK')
   const thread = settings.screws_tilt_adjust?.screw_thread as string | undefined
   return (
     <Card title="Bed leveling" icon={<Scale size={14} />}>
@@ -105,7 +105,7 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
             {sta.max_deviation != null && <span className={`pill ${sta.error ? 'tone-bad' : 'tone-muted'}`}>Max deviation {Number(sta.max_deviation).toFixed(3)} mm</span>}
             <span className="flex-1" />
             {corner ? (
-              <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run('TLTG_CORNER_BED_SCREW_CHECK')}>
+              <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run('VO_CORNER_BED_SCREW_CHECK')}>
                 Check bed screws
               </button>
             ) : (
@@ -237,7 +237,7 @@ function ProbeCard() {
   const log = useStore(calibrationLog, (l) => l)
   const acc = useMemo(() => lastProbeAccuracy(log), [log])
   const [samples, setSamples] = useState(20)
-  const center = has('TLTG_PROBE_ACCURACY_CENTER')
+  const center = has('VO_PROBE_ACCURACY_CENTER')
   const manual = !!useObject('manual_probe').is_active
   return (
     <Card title="Probe" icon={<Ruler size={14} />}>
@@ -249,7 +249,7 @@ function ProbeCard() {
         </label>
         <span className="flex-1" />
         {center ? (
-          <button className="btn btn-primary" disabled={busy} onClick={() => run(`TLTG_PROBE_ACCURACY_CENTER SAMPLES=${samples}`)}>
+          <button className="btn btn-primary" disabled={busy} onClick={() => run(`VO_PROBE_ACCURACY_CENTER SAMPLES=${samples}`)}>
             Run at bed center
           </button>
         ) : (
@@ -309,7 +309,7 @@ const LOAD_CELL_RESULTS: Record<string, { text: string; tone: string }> = {
   INCONCLUSIVE: { text: 'There was not enough difference between pressing and not pressing to tell, or the test stopped early.', tone: 'tone-warn' },
 }
 
-/** TLTG_TEST_PROBE: a guided, motion-free check that the nozzle load cell responds to light pressure. */
+/** VO_TEST_PROBE: a guided, motion-free check that the nozzle load cell responds to light pressure. */
 function LoadCellCard() {
   const t = useObject('tltg_probe_test')
   const { busy } = usePrinterFlags()
@@ -337,7 +337,7 @@ function LoadCellCard() {
         confirm: 'Start the check',
       })
     )
-      run('TLTG_TEST_PROBE CONFIRM=1')
+      run('VO_TEST_PROBE CONFIRM=1')
   }
   return (
     <Card title="Nozzle load-cell check" icon={<Hand size={14} />}>

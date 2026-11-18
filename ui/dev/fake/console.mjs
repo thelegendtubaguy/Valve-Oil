@@ -45,7 +45,7 @@ const HELP = {
   ACCEPT: '',
   ABORT: '',
   TESTZ: '',
-  _TLTG_BOX_STATE: 'G-Code macro',
+  _VO_BOX_STATE: 'G-Code macro',
   VO_KLIPPY_SHUTDOWN: 'Fake: shut Klipper down for SECONDS (30), as an MCU error does',
 }
 
@@ -77,7 +77,7 @@ export function install(fake) {
     ['response', '// Unknown command:"FOO_BAR"'],
     ['response', '// action:notification Filament runout on 1B'],
     ['response', '!! Code:QDE_004_002; Message:Filament not detected at the toolhead.'],
-    ['response', '// Run TLTG_BOX_SLOT_JOG to back the filament out, then try again.'],
+    ['response', '// Run VO_BOX_SLOT_JOG to back the filament out, then try again.'],
   ]
   state.console.unshift(...seed.map(([type, message], i) => ({ type, message, time: t0 + i * 20 })))
 

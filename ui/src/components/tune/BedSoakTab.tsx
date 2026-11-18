@@ -3,7 +3,7 @@ import { ArrowLeft, Flame, Square } from 'lucide-react'
 import { Card, Segmented, Spinner, confirm } from '../ui'
 import { attempt } from '../toast'
 import { client, useObject, usePrinter } from '../../state/printer'
-import { BED_SOAK_FOLDER, BED_SOAK_PATH, BED_SOAK_ROOT, parseBedSoakFilename, parseBedSoakRun, type BedSoakRun, type BedSoakTemp, type TltgBedSoakState } from '../../qidi/tltg-bed-soak'
+import { BED_SOAK_FOLDER, BED_SOAK_PATH, BED_SOAK_ROOT, parseBedSoakFilename, parseBedSoakRun, type BedSoakRun, type BedSoakTemp, type VoBedSoakState } from '../../qidi/vo-bed-soak'
 import { BedSoakSetup } from './BedSoakSetup'
 import { BedSoakRunView, useChamberTemp } from './BedSoakRun'
 import { BedSoakPastRuns, type BedSoakRunEntry } from './BedSoakPastRuns'
@@ -31,7 +31,7 @@ async function readRun(path: string): Promise<BedSoakRun | null> {
 
 /** The fork's Bed soak card: setup or the run in progress, and past runs. */
 export function BedSoakTab() {
-  const status = useObject('tltg_bed_soak') as unknown as TltgBedSoakState
+  const status = useObject('tltg_bed_soak') as unknown as VoBedSoakState
   const filesRev = usePrinter((s) => s.filesRev)
   const bedNow = usePrinter((s) => s.status.heater_bed?.temperature as number | undefined)
   const chamberNow = useChamberTemp()

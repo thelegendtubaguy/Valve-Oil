@@ -5,11 +5,11 @@ hours from `start` up to `end` that wrap past midnight when `end` is earlier, an
 Without a window an enrolled check acts at any hour, as before windows existed. The printers keep their clocks in UTC,
 so an install that finds no timezone saved looks one up from the printer's public address (TIMEZONE_LOOKUPS); Valve Oil
 UI and Fluidd save the browser's instead when the operator sets a window, and auto-update.sh --timezone saves the one
-given. Without a timezone the window is read in UTC. The status service (installer/system/tltg_status.py) reads and
+given. Without a timezone the window is read in UTC. The status service (installer/system/vo_status.py) reads and
 writes the same file.
 
 The light hold: an automatic run that is about to restart Klipper, install, or start a firmware update while the
-chamber light is off writes LIGHTS_HOLD_FILE, and until it expires tltg_update_lights (installer/klipper/tltg/
+chamber light is off writes LIGHTS_HOLD_FILE, and until it expires tltg_update_lights (installer/klipper/extras/
 update_lights.py) turns the light off again whenever Klipper starts, as the stock `[output_pin caselight]` starts it on.
 It expires on its own (LIGHTS_HOLD_SECONDS) because a QIDI firmware update and the reboot an install schedules end after
 the run that started them.

@@ -399,7 +399,7 @@ class InstallerCompatibilityTests(unittest.TestCase):
             for relative in (
                 "installer/package.yaml",
                 "installer/supported_upgrade_sources.yaml",
-                "installer/klipper/tltg-optimized-macros/globals.cfg",
+                "installer/klipper/macros/globals.cfg",
             ):
                 (root / relative).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(REPO_ROOT / relative, root / relative)
@@ -410,7 +410,7 @@ class InstallerCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(
                 changed,
-                ["installer/package.yaml", "installer/klipper/tltg-optimized-macros/globals.cfg"],
+                ["installer/package.yaml", "installer/klipper/macros/globals.cfg"],
             )
             self.assertEqual(envelope_path.read_bytes(), before)
 

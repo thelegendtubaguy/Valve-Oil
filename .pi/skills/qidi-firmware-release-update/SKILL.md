@@ -127,7 +127,7 @@ When implementation is requested:
 ### Runtime behavior changes
 
 - Review active stock macros before carrying vendor behavior into optimized macros.
-- If QIDI changes cancel ordering, compare `CANCEL_PRINT` and `OPTIMIZED_CANCEL_PRINT_ON_ERROR`; preserve optimized no-park/no-toolhead-move semantics unless the user approves movement.
+- If QIDI changes cancel ordering, compare `CANCEL_PRINT` and `VO_CANCEL_PRINT_ON_ERROR`; preserve optimized no-park/no-toolhead-move semantics unless the user approves movement.
 - If QIDI changes filament names, update `openspec/observations/qidi-box/material-metadata.md` and tests that assert official material metadata; do not rename unrelated stock tables such as `drying.conf` unless QIDI changed them upstream.
 - If QIDI changes start-print behavior, follow the start-print path contract in `AGENTS.md` before editing start-path sources.
 

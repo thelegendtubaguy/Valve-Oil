@@ -141,7 +141,7 @@ To remove everything instead, see [Uninstall](install.md#uninstall).
 When a Box drops off its USB link with `Lost communication with MCU 'mcu_boxN'`, nothing records why by default. The Box link monitor does. It's **off by default**; turn it on from Fluidd's console:
 
 ```gcode
-SAVE_VARIABLE VARIABLE=tltg_box_link_monitor VALUE=1
+SAVE_VARIABLE VARIABLE=vo_box_link_monitor VALUE=1
 ```
 
 It writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`. Set the variable back to `0` to stop recording; this takes effect without a restart.

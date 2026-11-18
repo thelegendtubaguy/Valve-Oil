@@ -1,4 +1,4 @@
-// Valve Oil's Box load and unload motion: reads tltg_box_feed_motion and edits only through TLTG_BOX_MOTION, as the
+// Valve Oil's Box load and unload motion: reads tltg_box_feed_motion and edits only through VO_BOX_MOTION, as the
 // fork's QidiBoxMotion does. Each printer publishes its own settings (the Plus 5 has no per-slot overrides).
 import { useState } from 'react'
 import { confirm, SectionLabel } from '../ui'
@@ -132,7 +132,7 @@ export function BoxMotion() {
   const apply = (scope: string) => {
     const params = changes(scope)
     if (!params?.length) return
-    run(scope, `TLTG_BOX_MOTION${scope === 'global' ? '' : ` SLOT=${qidiBoxSlotNumber(scope)}`} ${params.join(' ')}`)
+    run(scope, `VO_BOX_MOTION${scope === 'global' ? '' : ` SLOT=${qidiBoxSlotNumber(scope)}`} ${params.join(' ')}`)
   }
   const toggle = (key: string) => {
     if (open) {
@@ -219,7 +219,7 @@ export function BoxMotion() {
             </div>
           )}
           <div className="flex flex-wrap justify-end gap-2">
-            <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run('global', 'TLTG_BOX_MOTION RESET=1', 'Reset all Box motion settings and every slot override to vendor values?')}>
+            <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run('global', 'VO_BOX_MOTION RESET=1', 'Reset all Box motion settings and every slot override to vendor values?')}>
               Reset
             </button>
             <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges('global')} onClick={() => apply('global')}>
@@ -255,7 +255,7 @@ export function BoxMotion() {
                         <button
                           className="btn btn-sm btn-ghost"
                           disabled={locked}
-                          onClick={() => run(key, `TLTG_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, `Clear every override for slot ${qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0)}?`)}
+                          onClick={() => run(key, `VO_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, `Clear every override for slot ${qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0)}?`)}
                         >
                           Reset slot
                         </button>

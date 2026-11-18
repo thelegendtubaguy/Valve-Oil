@@ -13,7 +13,7 @@ SERVER_OPERATION = "addons_service_server"
 UNIT = "tltg-addons.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 SERVER_FILE = "/usr/local/lib/tltg_addons.py"
-SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/tltg_addons.py"
+SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_addons.py"
 LISTEN_PORT = 7131
 
 # Package-created files start with a marker line so later package versions replace earlier ones.

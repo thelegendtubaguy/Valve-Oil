@@ -18,15 +18,15 @@
 
 - **In Fluidd:** with a slot loaded, choose **Change spool** on the Spoolman card. The spool becomes that slot's spool, and the console shows, for example, `Spoolman: 1B is spool 12.` With no Box slot loaded, it becomes the external spool's spool.
 - **In Valve Oil UI:** the same, with **Change spool** on the Spoolman card on Home or the Box screen, which also lists each slot's spool.
-- **In the console:** `TLTG_SPOOLMAN_SLOT SLOT=<n> SPOOL=<id>` sets any slot's spool without loading it. Slots are numbered from 0, the same as `TLTG_BOX_MOTION SLOT=`, so 1A is slot 0 and 2A is slot 4. The external spool is slot 16. Spool IDs are shown in Spoolman.
+- **In the console:** `VO_SPOOLMAN_SLOT SLOT=<n> SPOOL=<id>` sets any slot's spool without loading it. Slots are numbered from 0, the same as `VO_BOX_MOTION SLOT=`, so 1A is slot 0 and 2A is slot 4. The external spool is slot 16. Spool IDs are shown in Spoolman.
 
 | Command | What it does |
 |---|---|
-| `TLTG_SPOOLMAN_SLOT` | Lists each slot's spool and the loaded slot. |
-| `TLTG_SPOOLMAN_SLOT SLOT=5 SPOOL=12` | Makes spool 12 slot 2B's spool. |
-| `TLTG_SPOOLMAN_SLOT SLOT=5 SPOOL=0` | Clears slot 2B's spool. |
-| `TLTG_SPOOLMAN_SLOT SPOOL=12` | Makes spool 12 the loaded slot's spool. |
-| `TLTG_SPOOLMAN_SLOT RESET=1` | Clears every slot's spool. |
+| `VO_SPOOLMAN_SLOT` | Lists each slot's spool and the loaded slot. |
+| `VO_SPOOLMAN_SLOT SLOT=5 SPOOL=12` | Makes spool 12 slot 2B's spool. |
+| `VO_SPOOLMAN_SLOT SLOT=5 SPOOL=0` | Clears slot 2B's spool. |
+| `VO_SPOOLMAN_SLOT SPOOL=12` | Makes spool 12 the loaded slot's spool. |
+| `VO_SPOOLMAN_SLOT RESET=1` | Clears every slot's spool. |
 
 The spools are saved, so they survive restarts and updates.
 

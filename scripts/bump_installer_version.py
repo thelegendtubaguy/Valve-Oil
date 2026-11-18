@@ -20,7 +20,7 @@ from installer.runtime.models import Manifest
 
 PACKAGE_PATH = Path("installer/package.yaml")
 UPGRADE_SOURCES_PATH = Path("installer/supported_upgrade_sources.yaml")
-GLOBALS_PATH = Path("installer/klipper/tltg-optimized-macros/globals.cfg")
+GLOBALS_PATH = Path("installer/klipper/macros/globals.cfg")
 SAFE_VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]*$")
 
 

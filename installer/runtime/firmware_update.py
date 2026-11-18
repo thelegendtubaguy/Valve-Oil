@@ -360,7 +360,7 @@ def _deliverability_blockers(paths, printer, admission) -> tuple[Blocker, ...]:
 
 
 # What each record of an unfinished board or installer operation asks the operator to run, as a recovery_required
-# blocker's message. installer/system/tltg_status.py says the same for update now.
+# blocker's message. installer/system/vo_status.py says the same for update now.
 RECOVERY_STEPS = (
     (safety.MAINBOARD_RECOVERY_MARKER, "a mainboard firmware write wasn't verified; run ./mainboard-firmware.sh rescue "
                                        "first"),
@@ -379,7 +379,7 @@ RESUME_RECOVERY_MARKERS = tuple(marker for marker, _ in RECOVERY_STEPS)
 
 def resume_blocker(paths) -> Blocker | None:
     """What has to run before a recorded firmware update can be continued, saying what to run; None when nothing.
-    The CLI, Update now, and the unit all ask this before stopping anything; installer/system/tltg_status.py's
+    The CLI, Update now, and the unit all ask this before stopping anything; installer/system/vo_status.py's
     update_now.blocked_by says the same while a firmware update is recorded."""
     root = paths.printer_data_root
     steps = [step for marker, step in RECOVERY_STEPS if marker in RESUME_RECOVERY_MARKERS and (root / marker).exists()]

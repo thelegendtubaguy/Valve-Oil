@@ -185,7 +185,7 @@ install:
   # The common macros install together with the detected printer's `macros` folder; the two may not share a file.
   managed_tree:
     id: optimized_macro_tree
-    source: "klipper/tltg-optimized-macros"
+    source: "klipper/macros"
     destination: "config/tltg-optimized-macros"
     mode: mirror
     required_files:
@@ -228,6 +228,7 @@ install:
       - "resonance_sweep.cfg"
       - "bed_soak.cfg"
       - "update_lights.cfg"
+      - "renamed_commands.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -237,95 +238,98 @@ install:
 
   extra_modules:
     - id: box_link_monitor
-      source: "klipper/tltg/box_link_monitor.py"
+      source: "klipper/extras/box_link_monitor.py"
       destination: "klippy/extras/tltg_box_link_monitor.py"
     - id: box_mcu_temperature
-      source: "klipper/tltg/box_mcu_temperature.py"
+      source: "klipper/extras/box_mcu_temperature.py"
       destination: "klippy/extras/tltg_box_mcu_temperature.py"
     - id: background_save_config
-      source: "klipper/tltg/background_save_config.py"
+      source: "klipper/extras/background_save_config.py"
       destination: "klippy/extras/tltg_background_save_config.py"
     - id: box_heater_refresh
-      source: "klipper/tltg/box_heater_refresh.py"
+      source: "klipper/extras/box_heater_refresh.py"
       destination: "klippy/extras/tltg_box_heater_refresh.py"
     - id: klipper_health
-      source: "klipper/tltg/klipper_health.py"
+      source: "klipper/extras/klipper_health.py"
       destination: "klippy/extras/tltg_klipper_health.py"
     - id: macro_status
-      source: "klipper/tltg/macro_status.py"
+      source: "klipper/extras/macro_status.py"
       destination: "klippy/extras/tltg_macro_status.py"
     - id: printer_warnings
-      source: "klipper/tltg/printer_warnings.py"
+      source: "klipper/extras/printer_warnings.py"
       destination: "klippy/extras/tltg_printer_warnings.py"
     - id: klipper_fixes
-      source: "klipper/tltg/klipper_fixes.py"
+      source: "klipper/extras/klipper_fixes.py"
       destination: "klippy/extras/tltg_klipper_fixes.py"
     - id: save_variables_fast
-      source: "klipper/tltg/save_variables_fast.py"
+      source: "klipper/extras/save_variables_fast.py"
       destination: "klippy/extras/tltg_save_variables_fast.py"
     - id: box_feed_motion
-      source: "klipper/tltg/box_feed_motion.py"
+      source: "klipper/extras/box_feed_motion.py"
       destination: "klippy/extras/tltg_box_feed_motion.py"
     - id: box_eject
-      source: "klipper/tltg/box_eject.py"
+      source: "klipper/extras/box_eject.py"
       destination: "klippy/extras/tltg_box_eject.py"
     - id: box_filament_guard
-      source: "klipper/tltg/box_filament_guard.py"
+      source: "klipper/extras/box_filament_guard.py"
       destination: "klippy/extras/tltg_box_filament_guard.py"
     - id: box_loaded_slot
-      source: "klipper/tltg/box_loaded_slot.py"
+      source: "klipper/extras/box_loaded_slot.py"
       destination: "klippy/extras/tltg_box_loaded_slot.py"
     - id: box_slot_jog
-      source: "klipper/tltg/box_slot_jog.py"
+      source: "klipper/extras/box_slot_jog.py"
       destination: "klippy/extras/tltg_box_slot_jog.py"
     - id: box_spool_roll
-      source: "klipper/tltg/box_spool_roll.py"
+      source: "klipper/extras/box_spool_roll.py"
       destination: "klippy/extras/tltg_box_spool_roll.py"
     - id: box_rfid
-      source: "klipper/tltg/box_rfid.py"
+      source: "klipper/extras/box_rfid.py"
       destination: "klippy/extras/tltg_box_rfid.py"
     - id: filament_catalog
-      source: "klipper/tltg/filament_catalog.py"
+      source: "klipper/extras/filament_catalog.py"
       destination: "klippy/extras/tltg_filament_catalog.py"
     - id: box_flow_recovery
-      source: "klipper/tltg/box_flow_recovery.py"
+      source: "klipper/extras/box_flow_recovery.py"
       destination: "klippy/extras/tltg_box_flow_recovery.py"
     - id: cold_cut
-      source: "klipper/tltg/cold_cut.py"
+      source: "klipper/extras/cold_cut.py"
       destination: "klippy/extras/tltg_cold_cut.py"
     - id: box485_monitor
-      source: "klipper/tltg/box485_monitor.py"
+      source: "klipper/extras/box485_monitor.py"
       destination: "klippy/extras/tltg_box485_monitor.py"
     - id: spoolman
-      source: "klipper/tltg/spoolman.py"
+      source: "klipper/extras/spoolman.py"
       destination: "klippy/extras/tltg_spoolman.py"
     - id: probe_test
-      source: "klipper/tltg/probe_test.py"
+      source: "klipper/extras/probe_test.py"
       destination: "klippy/extras/tltg_probe_test.py"
     - id: chamber_exhaust_guard
-      source: "klipper/tltg/chamber_exhaust_guard.py"
+      source: "klipper/extras/chamber_exhaust_guard.py"
       destination: "klippy/extras/tltg_chamber_exhaust_guard.py"
     - id: step_loss_monitor
-      source: "klipper/tltg/step_loss_monitor.py"
+      source: "klipper/extras/step_loss_monitor.py"
       destination: "klippy/extras/tltg_step_loss_monitor.py"
     - id: velocity_limit
-      source: "klipper/tltg/velocity_limit.py"
+      source: "klipper/extras/velocity_limit.py"
       destination: "klippy/extras/tltg_velocity_limit.py"
     - id: resonance_sweep
-      source: "klipper/tltg/resonance_sweep.py"
+      source: "klipper/extras/resonance_sweep.py"
       destination: "klippy/extras/tltg_resonance_sweep.py"
     - id: pause_timeout
-      source: "klipper/tltg/pause_timeout.py"
+      source: "klipper/extras/pause_timeout.py"
       destination: "klippy/extras/tltg_pause_timeout.py"
     - id: update_lights
-      source: "klipper/tltg/update_lights.py"
+      source: "klipper/extras/update_lights.py"
       destination: "klippy/extras/tltg_update_lights.py"
     - id: probe_report
-      source: "klipper/tltg/probe_report.py"
+      source: "klipper/extras/probe_report.py"
       destination: "klippy/extras/tltg_probe_report.py"
     - id: bed_soak
-      source: "klipper/tltg/bed_soak.py"
+      source: "klipper/extras/bed_soak.py"
       destination: "klippy/extras/tltg_bed_soak.py"
+    - id: renamed_commands
+      source: "klipper/extras/renamed_commands.py"
+      destination: "klippy/extras/vo_renamed_commands.py"
 
   source_patches:
     - id: qidi_homing
@@ -536,10 +540,10 @@ patches:
       variants:
         - firmwares: ["01.01.06.03"]
           expected: "CANCEL_PRINT"
-          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+          desired: "VO_CANCEL_PRINT_ON_ERROR"
         - firmwares: ["01.01.06.04", "01.01.06.05", "01.01.07.01", "01.01.02.01", "smart5-01.01.02.01"]
           expected: "CANCEL_PRINT"
-          desired: "OPTIMIZED_CANCEL_PRINT_ON_ERROR"
+          desired: "VO_CANCEL_PRINT_ON_ERROR"
 
     - id: hotend_fan_tachometer_poll_interval
       file: "config/printer.cfg"

@@ -4,7 +4,7 @@ import { Choices, MenuButton, Spinner, Stepper, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { runGcode, usePrinter } from '../../state/printer'
 import { usePresets } from '../../state/presets'
-import { BED_SOAK_SETTLED_MESHES, bedSoakMilestones, bedSoakStartCommand, type BedSoakRun, type TltgBedSoakState } from '../../qidi/tltg-bed-soak'
+import { BED_SOAK_SETTLED_MESHES, bedSoakMilestones, bedSoakStartCommand, type BedSoakRun, type VoBedSoakState } from '../../qidi/vo-bed-soak'
 import { bedSoakDuration, fmtDate } from './bed-soak-format'
 import { useChamberTemp } from './BedSoakRun'
 import { usePrinterFlags } from './hooks'
@@ -13,7 +13,7 @@ import { usePrinterFlags } from './hooks'
 const WARM = 35
 
 /** The fork's bed soak setup: targets, mesh size, time limit, and how the test ends. */
-export function BedSoakSetup({ status, runs }: { status: TltgBedSoakState; runs: { started: number; run: BedSoakRun }[] }) {
+export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: { started: number; run: BedSoakRun }[] }) {
   const settings = usePrinter((s) => s.settings)
   const ready = usePrinter((s) => s.klippy === 'ready')
   const bedNow = usePrinter((s) => s.status.heater_bed?.temperature as number | undefined)

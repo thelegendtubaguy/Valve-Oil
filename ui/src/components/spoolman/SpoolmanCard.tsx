@@ -45,9 +45,9 @@ function SpoolmanCardBody({ className, showSlots }: { className: string; showSlo
   const activeId = useSpoolman((s) => s.activeSpool)
   const url = useSpoolman((s) => s.url)
   const diagnostic = useSpoolman((s) => s.socketDiagnostic)
-  const tltg = usePrinter((s) => s.status.tltg_spoolman)
+  const spoolmanModule = usePrinter((s) => s.status.tltg_spoolman)
   const klippyReady = usePrinter((s) => s.klippy === 'ready')
-  const perSlot = useMemo(() => slotSpools(tltg), [tltg])
+  const perSlot = useMemo(() => slotSpools(spoolmanModule), [spoolmanModule])
   const spools = useMemo(() => new Map(raw.map((s) => [s.id, toSpool(s)])), [raw])
   const active = connected && activeId != null ? spools.get(activeId) : undefined
   const [open, setOpen] = useState(false)
