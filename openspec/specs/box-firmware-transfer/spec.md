@@ -76,11 +76,20 @@ A Box or mainboard flash SHALL be reported as installed only when a full applica
 - **THEN** verification fails regardless of acknowledgements or version
 
 ### Requirement: Unrecognized builds are captured without reset
-When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, SHALL ask the operator to attach only that summary to a support issue, and MUST NOT reset, erase, or program that board.
+When readback finds a Box or mainboard bootloader or application that is not admitted, the tool SHALL keep a private read-only capture and a shareable summary without flash binaries or MCU unique identifiers, SHALL give the operator a link to the printer-support issue form with the printer, its firmware, and that summary's hashes filled in, and MUST NOT reset, erase, or program that board. A Box SHALL be read whatever version it reports, since the reported version is not admission evidence.
 
 #### Scenario: Unrecognized bootloader
 - **WHEN** a board's bootloader matches no admitted build
-- **THEN** that board is reported as not changed with the summary's location and where to open a support issue, and no reset, erase, or programming command is sent to it
+- **THEN** that board is reported as not changed with the summary's location and the filled-in support issue link, and no reset, erase, or programming command is sent to it
+
+#### Scenario: Box reporting a version no admitted image has
+- **WHEN** `box-firmware.sh install` runs for a USB Box that reports a version none of the manifest's images has, such as its board maker's own build
+- **THEN** the Box is read like any other and flashed only if its bootloader and application are admitted
+- **AND** when they are not, the output also says to update that Box from the touchscreen's firmware page when its version differs from the one the printer's QIDI firmware carries, and `box-firmware.sh status` says to do that and then run `install` for that Box
+
+#### Scenario: Operator's own Box install
+- **WHEN** an operator's `box-firmware.sh install` flashes a Box, finds it current, or finds it not admitted on a printer with an admission record
+- **THEN** the admission record, the printer warnings, and the Valve Oil status show that Box as an install would have recorded it: current and no longer waiting, or not admitted with its warning and support issue link
 
 ### Requirement: Unverified flashes block until rescue
 When programming may have begun and readback has not verified the board, the flow SHALL leave Klipper and the touchscreen stopped and keep a pending record that blocks every installer operation except that board's rescue. Rescue SHALL program QIDI's stock application from a verified backup or the printer's update folder through the waiting bootloader and verify it by readback before restoring services and clearing the record.

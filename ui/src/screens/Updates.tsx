@@ -5,6 +5,7 @@ import { Notice } from '../components/settings/common'
 import { LanOnly } from '../components/settings/LanOnly'
 import { Log } from '../components/settings/Addons'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
+import { client } from '../state/printer'
 import {
   VO_UPDATE_NOW_BLOCKERS,
   voBrowserTimezone,
@@ -111,10 +112,10 @@ function boardFirmwareText(board: VoStatusBoard) {
 
 const BOARD_NOTE: Record<Exclude<VoBoardNote, 'after_firmware'>, string> = {
   unrecognized_bootloader:
-    "Valve Oil doesn't recognize this board's bootloader yet, so it doesn't update this board or the printer's QIDI firmware. Report it so a later release can support it.",
+    "Valve Oil doesn't recognize this board's bootloader yet, so it doesn't update this board or the printer's QIDI firmware. Open a support issue so a later release can support it.",
   unrecognized_bootloader_box:
-    "Valve Oil doesn't recognize this Box's bootloader yet, so it leaves this Box as it is and keeps updating the rest of the printer. Report it so a later release can support it.",
-  unrecognized_firmware: "This board runs firmware Valve Oil doesn't recognize, so Valve Oil leaves it as it is. A later release that recognizes it will update it.",
+    "Valve Oil doesn't recognize this Box's bootloader yet, so it leaves this Box as it is and keeps updating the rest of the printer. Open a support issue so a later release can support it.",
+  unrecognized_firmware: "This board runs firmware Valve Oil doesn't recognize, so Valve Oil leaves it as it is. Open a support issue so a later release can support it.",
   unknown: "Valve Oil hasn't been able to read this board's firmware yet.",
   held_box: "This Box was put back on QIDI's firmware. Valve Oil leaves it there until you install the next Valve Oil release.",
   held_closed_loop: "Valve Oil left the closed-loop motor drivers on their firmware. Update them from the touchscreen's firmware page.",
@@ -572,6 +573,34 @@ function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; re
   )
 }
 
+// The report the installer leaves in Klipper's log folder for a board it can't support yet, as the printer warnings
+// name it (installer/runtime/board_firmware.py).
+const boardReportFile = (id: string) =>
+  id === 'thr' ? 'tltg_thr_firmware.json' : id === 'mcu' ? 'tltg_mainboard_firmware.json' : `tltg_box_firmware_${id}.json`
+
+/** What reporting a board Valve Oil can't support yet takes: the prefilled issue, what the form still asks, and the report. */
+function BoardSupport({ board, url }: { board: VoBoardView; url: string }) {
+  const report = boardReportFile(board.id)
+  return (
+    <div className="tone-warn mt-2 grid gap-1.5 rounded-xl px-3 py-2.5">
+      <b className="text-ink">Open a support issue for {board.name}</b>
+      <ol className="list-decimal grid gap-0.5 pl-5 text-ink-2">
+        <li>Open the issue. The form comes with this printer, its QIDI firmware, and {board.name}'s report filled in.</li>
+        <li>Say how {board.name} got its firmware: it came with the printer, you bought it on its own, or QIDI sent it as a replacement.</li>
+        <li>If the form's report says it was too long for the link, download the report and attach it.</li>
+      </ol>
+      <div className="flex flex-wrap gap-2">
+        <a className="btn btn-sm" href={url} target="_blank" rel="noopener noreferrer">
+          Open a support issue <ExternalLink size={13} />
+        </a>
+        <a className="btn btn-sm btn-ghost" href={client.fileUrl('logs', report)} download={report}>
+          <Download size={13} /> Download the report
+        </a>
+      </div>
+    </div>
+  )
+}
+
 function BoardsCard({ view }: { view: VoStatusView }) {
   if (view.boards.length === 0) return null
   return (
@@ -594,7 +623,9 @@ function BoardsCard({ view }: { view: VoStatusView }) {
                   {board.shownDetail && <div className={`[overflow-wrap:anywhere] ${explanation ? 'mt-0.5 text-[12px] text-ink-3' : ''}`}>{board.shownDetail}</div>}
                 </div>
               )}
-              {board.reportUrl && (
+              {board.reportUrl && (board.state === 'unrecognized_bootloader' || board.state === 'unrecognized_firmware') ? (
+                <BoardSupport board={board} url={board.reportUrl} />
+              ) : board.reportUrl && (
                 <a className="btn btn-sm mt-2" href={board.reportUrl} target="_blank" rel="noopener noreferrer">
                   Report this board <ExternalLink size={13} />
                 </a>

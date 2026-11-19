@@ -358,16 +358,17 @@ function Warnings() {
           <div className="min-w-0 text-ink [overflow-wrap:anywhere]">
             <b>{w.title}</b>
             {w.message && <span className="text-ink-2"> {w.message}</span>}
-            {/* A board's issue link (checked by voPrinterWarnings), and the Updates screen for Valve Oil's update warnings. */}
+            {/* A board's issue link (checked by voPrinterWarnings). */}
             {w.url && (
               <>
                 {' '}
                 <a href={w.url} target="_blank" rel="noopener noreferrer" className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  Report this board
+                  Open a support issue
                 </a>
               </>
             )}
-            {w.id.startsWith('valve_oil_') && route !== 'updates' && (
+            {/* Valve Oil's update warnings, and a board it can't support yet, whose Boards entry says what to report. */}
+            {(w.id.startsWith('valve_oil_') || w.id.includes('_firmware_unsupported')) && route !== 'updates' && (
               <>
                 {' '}
                 <a href={href('updates')} className="font-semibold whitespace-nowrap text-accent-ink underline">

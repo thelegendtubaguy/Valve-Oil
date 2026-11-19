@@ -20,7 +20,7 @@ from .auto_update import LOCK_HELD_ENV
 from .board_guard import critical_window, detached
 from .board_images import BOARD_MANIFESTS, board_manifest_path, installed_printer, pinned_for_installed_printer, runs_target_firmware
 from .box_firmware import (SERVICES, _write_image, admitted_backup, pending_record, start_recorded_services,
-                           unsupported_board_note, usb_path_for_serial)
+                           support_message, tool_finding, usb_path_for_serial)
 from .errors import InstallerError
 from .fs_atomic import atomic_write_text, fsync_directory
 from .path_safety import ensure_runtime_path_has_no_symlink_components
@@ -318,7 +318,9 @@ def run_mainboard_firmware(
                 reporter.line("Mainboard: reading and admitting its bootloader and firmware...")
                 snapshot = command("snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
                 if snapshot.returncode == protocol.UNSUPPORTED:
-                    outcome, kind = "not changed: " + unsupported_board_note(before / "report.json"), "not_admitted"
+                    # An install reads the mainboard again and records it; this only says what to do.
+                    status, found_printer = tool_finding(paths, "mcu", before / "report.json", publish=False)
+                    outcome, kind = "not changed: " + support_message(status, found_printer), "not_admitted"
                 else:
                     boot, app = protocol.load_backup(before, manifest)
                     current = protocol.image_identity(app, manifest)

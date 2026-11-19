@@ -1220,6 +1220,56 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertNotIn("box3", {board.id for board in valve_oil_status.load_status(paths).boards})
         self.assertFalse((paths.printer_data_root / "logs/tltg_box_firmware_box3.json").exists())
 
+    def test_box_firmware_install_reads_a_box_on_firmware_no_release_knows_and_shows_its_support_issue_everywhere(self):
+        paths, printer, reporter = self.fixture({"thr": ("admitted", "patched"), "mcu": ("admitted", "patched"),
+                                                 "box1": ("admitted", "patched")}, existing=True)
+        self.deliver(paths, printer, reporter, *self.preflight(paths, printer, reporter))
+        # A Box still on its board maker's build, which QIDI's update never replaced, reports a version no image has.
+        printer.boards["box1"] = ("admitted", "KLP_MCU_MKS_V1_1.1.1")
+        _, pending = self.update_check(paths, printer, reporter, enrolled=False)
+        self.assertIn("box1", pending)
+
+        def box_firmware_sh(action):
+            return box_firmware.run_box_firmware(paths=paths, reporter=reporter, action=action, boxes=[1],
+                                                 input_stream=io.StringIO("FLASH\n"), **self.seams(printer))
+
+        box_firmware_sh("status")
+        self.assertIn("./box-firmware.sh install --box 1", reporter.stream.getvalue())
+        reads = len(printer.snapshots)
+        self.assertEqual(box_firmware_sh("install"), 0)
+        # It was read, never programmed (Boards fails on any transfer), and the services run again.
+        self.assertEqual((printer.snapshots[reads:], printer.states), (["box1"], printer.original))
+        output = reporter.stream.getvalue()
+        self.assertNotIn("SECRETSERIAL", output)
+        self.assertIn("touchscreen's firmware page", output)
+        link = output.split()[-1]
+        self.assertLessEqual(len(link), board_firmware.MAX_ISSUE_URL)
+        fields = parse_qs(urlsplit(link).query)
+        self.assertEqual((fields["template"], fields["printer"], fields["firmware"], fields["box"]),
+                         (["printer-support.yml"], ["QIDI Max 4"], ["01.01.07.01"], ["One USB Box"]))
+        self.assertEqual(json.loads(fields["board_report"][0])["application_sha256"], UNKNOWN)
+        self.assertNotIn("hostname-secret", unquote(link))
+        # Fluidd's and the Valve Oil UI's warning, and the Valve Oil UI's board list, carry the same link now, and the
+        # Box is no longer listed as waiting.
+        warning = json.loads((paths.printer_data_root / "logs/tltg_box_firmware_box1.json").read_text())
+        self.assertEqual(warning["issue_url"], link)
+        self.assertIn("touchscreen's firmware page", warning["note"])
+        status = valve_oil_status.load_status(paths)
+        box = next(board for board in status.boards if board.id == "box1")
+        self.assertEqual((box.state, box.issue_url), ("unrecognized_firmware", link))
+        self.assertIn("touchscreen's firmware page", box.detail)
+        self.assertNotIn("box1", {item.board for item in status.pending})
+        # Update checks don't stop the printer to read it again.
+        reads, stops = len(printer.snapshots), printer.stops
+        flashed, pending = self.update_check(paths, printer, reporter, enrolled=True)
+        self.assertEqual((flashed, pending, len(printer.snapshots), printer.stops), ([], {}, reads, stops))
+        # Updated from the touchscreen and flashed, it is current at once, and its warning goes.
+        printer.boards["box1"] = ("admitted", "patched")
+        box_firmware_sh("install")
+        self.assertFalse((paths.printer_data_root / "logs/tltg_box_firmware_box1.json").exists())
+        box = next(board for board in valve_oil_status.load_status(paths).boards if board.id == "box1")
+        self.assertEqual((box.state, box.issue_url), ("current", None))
+
     def test_issue_links_fit_github(self):
         url, shortened = board_firmware.issue_link(
             printer_name="QIDI Plus 5", firmware="01.01.02.01", box_count=2, details="é" * 5000, output="x" * 5000,

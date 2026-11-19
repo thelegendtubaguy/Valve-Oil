@@ -88,6 +88,8 @@ export function install(fake) {
   addLog('crowsnest.log', '[cs] crowsnest - A webcam Service for multiple Cams and Stream Services.\n[cs] V4L2 Control: Device /dev/video0 found\n[cs] ustreamer: Streaming on port 8080\n', 3600)
   addLog('tltg_box_link.log', 'box link: connected to Box 1 (USB)\nbox link: connected to Box 2 (USB)\nbox link: heartbeat ok\n', 60)
   addLog('tltg_boot_animation.log', 'boot animation installed\n', 86400 * 3)
+  // The report the installer leaves for a Box it can't support yet, which the updates scenario `boards` warns about.
+  addLog('tltg_box_firmware_box1.json', JSON.stringify({ board: 'Box 1', application: 'unrecognized', supported_bootloader: false, bootloader_sha256: '0'.repeat(64), application_sha256: '1'.repeat(64), version: '1.0.2' }, null, 2) + '\n', 600)
   setInterval(() => {
     const k = logs.get('klippy.log')
     const t = now()

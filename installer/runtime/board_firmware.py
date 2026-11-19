@@ -562,14 +562,18 @@ def link_report(status: BoardStatus) -> dict | None:
 
 
 def describe(status: BoardStatus) -> str:
+    return f"{status.label}: {_finding(status)}"
+
+
+def _finding(status: BoardStatus) -> str:
     # The board's identity is its hashes; the version string it reports is not shown or linked.
     if status.state == UNRECOGNIZED_BOOTLOADER:
-        return f"{status.label}: its bootloader is not supported yet (bootloader SHA-256 {status.bootloader_sha256})."
+        return f"its bootloader is not supported yet (bootloader SHA-256 {status.bootloader_sha256})."
     if status.state == UNRECOGNIZED_FIRMWARE:
-        return f"{status.label}: its firmware is not recognized (application SHA-256 {status.application_sha256})."
+        return f"its firmware is not recognized (application SHA-256 {status.application_sha256})."
     if status.state == UNREAD:
-        return f"{status.label}: could not be read. {status.detail or ''}".strip()
-    return f"{status.label}: {status.state.replace('_', ' ')}."
+        return f"could not be read. {status.detail or ''}".strip()
+    return f"{status.state.replace('_', ' ')}."
 
 
 def printer_details(paths) -> str:
@@ -650,13 +654,15 @@ def with_issue_links(paths, admission: BoardAdmission, *, printer, box_count: in
     if not admission.unadmitted:
         return admission
     details = printer_details(paths)
+    # A board tool run on a printer or firmware this release doesn't support leaves the printer for the form to ask.
+    name = printer.display_name if printer is not None else ""
     boards = []
     for status in admission.boards:
         if status.state in UNADMITTED_STATES:
-            output = (f"Valve Oil {admission.package_version} on {printer.display_name} firmware {admission.firmware}:\n"
+            output = (f"Valve Oil {admission.package_version} on {name or 'a printer'} firmware {admission.firmware}:\n"
                       + describe(status))
             report_path = (os.path.relpath(status.report, paths.printer_data_root.parent) if status.report else None)
-            url, _ = issue_link(printer_name=printer.display_name, firmware=admission.firmware, box_count=box_count,
+            url, _ = issue_link(printer_name=name, firmware=admission.firmware, box_count=box_count,
                                 details=details, output=output, report=link_report(status), report_path=report_path)
             status = replace(status, issue_url=url)
         boards.append(status)
@@ -697,8 +703,10 @@ def _log_report_name(status: BoardStatus) -> str:
 
 
 def box_note(status: BoardStatus, printer) -> str | None:
+    """For a Box this release doesn't admit that reports another version than QIDI's firmware carries, such as the
+    board maker's own build on a Box QIDI's update never reached: updating it from the touchscreen may be all it needs."""
     target = printer.target_firmware.board_version("box")
-    if status.kind == "box" and status.state == UNRECOGNIZED_BOOTLOADER and status.version not in (None, target):
+    if status.kind == "box" and status.state in UNADMITTED_STATES and status.version not in (None, target):
         return (f"QIDI firmware {printer.target_firmware.version} carries Box firmware {target}; update this Box from "
                 "the touchscreen's firmware page.")
     return None
@@ -712,15 +720,8 @@ def publish_warnings(paths, admission: BoardAdmission, *, printer) -> None:
         names = set(os.listdir(logs))
     except OSError:
         return
-    wanted = {}
-    for status in admission.boards:
-        if status.state in UNADMITTED_STATES:
-            report = _read_report(status) or {}
-            payload = {**report, "board": status.label, "issue_url": status.issue_url}
-            note = box_note(status, printer)
-            if note:
-                payload["note"] = note
-            wanted[_log_report_name(status)] = payload
+    wanted = {_log_report_name(status): _warning_payload(status, printer) for status in admission.boards
+              if status.state in UNADMITTED_STATES}
     # Kept: reports of boards not read this run, and of Boxes still waiting for the Box flow, which removes its own
     # report once the Box has the Valve Oil firmware.
     keep = {_log_report_name(status) for status in admission.boards
@@ -732,12 +733,24 @@ def publish_warnings(paths, admission: BoardAdmission, *, printer) -> None:
             except OSError:
                 pass
     for name, payload in wanted.items():
-        target = logs / name
-        try:
-            ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
-            atomic_write_text(target, json.dumps(payload, indent=2) + "\n", mode=0o644)
-        except (OSError, InstallerError):
-            pass
+        _write_warning(paths, name, payload)
+
+
+def _warning_payload(status: BoardStatus, printer) -> dict:
+    payload = {**(_read_report(status) or {}), "board": status.label, "issue_url": status.issue_url}
+    note = box_note(status, printer) if printer is not None else None
+    if note:
+        payload["note"] = note
+    return payload
+
+
+def _write_warning(paths, name: str, payload: dict) -> None:
+    target = _log_dir(paths) / name
+    try:
+        ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
+        atomic_write_text(target, json.dumps(payload, indent=2) + "\n", mode=0o644)
+    except (OSError, InstallerError):
+        pass
 
 
 def record_board_admission(paths, admission: BoardAdmission, *, printer) -> None:
@@ -747,6 +760,120 @@ def record_board_admission(paths, admission: BoardAdmission, *, printer) -> None
     atomic_write_text(target, admission.to_json(), mode=0o644)
     publish_warnings(paths, admission, printer=printer)
     _settle_shaper_marker(paths)
+
+
+# ---- board tools run on their own -----------------------------------------------------------------------------------
+
+
+def _tool_context(paths):
+    """(manifest, printer, firmware) for box-firmware.sh or mainboard-firmware.sh; printer is None, and firmware the
+    version QIDI's manifest names, when this release doesn't support the printer's firmware."""
+    from .firmware import detect_firmware_version_best_effort, detect_supported_firmware_best_effort
+    from .manifest import ManifestValidationError, load_manifest
+
+    try:
+        manifest = load_manifest(paths.installer_root / "package.yaml")
+    except (OSError, ManifestValidationError):
+        manifest = None
+    found = detect_supported_firmware_best_effort(paths.firmware_manifest_path, manifest) if manifest else None
+    if found is not None:
+        return manifest, found[0], found[1]
+    return manifest, None, detect_firmware_version_best_effort(paths.firmware_manifest_path) or "unknown"
+
+
+def _from_report(board: str, report_path: Path) -> BoardStatus:
+    """A board whose read its tool found unadmitted (the snapshot's exit status), from the read's report."""
+    try:
+        report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        report = None
+    report = report if isinstance(report, dict) else {}
+    return BoardStatus(board, UNRECOGNIZED_FIRMWARE if report.get("supported_bootloader") else UNRECOGNIZED_BOOTLOADER,
+                       version=report.get("version"), application="unrecognized",
+                       bootloader_sha256=report.get("bootloader_sha256"),
+                       application_sha256=report.get("application_sha256"), report=str(report_path))
+
+
+def record_tool_findings(paths, findings: dict[str, Path | None]) -> tuple[dict[str, BoardStatus], object]:
+    """Keep what `box-firmware.sh install` found as an install keeps what it reads, so the printer warnings, the Valve
+    Oil status, and the update check show it now instead of after the next install or check.
+
+    `findings` maps each Box the tool read ("box<N>") to the read's report.json when the Box isn't admitted, or to None
+    when it is on its pinned image now. A board found unadmitted gets its prefilled support issue and its
+    printer warning; one on its pinned image is current, and no longer listed as waiting. Without an admission record
+    for this printer (Valve Oil not installed by a release that reads the boards) only the warnings are written.
+    Returns (the unadmitted boards' statuses with their links, the printer or None).
+    """
+    from . import valve_oil_status
+
+    manifest, printer, firmware = _tool_context(paths)
+    box_count = len(discover_boxes(paths))
+    found = {name: _from_report(name, path) for name, path in findings.items() if path is not None}
+    previous = load_board_admission(paths) if printer is not None else None
+    if previous is None or previous.printer != printer.id:
+        return _linked(paths, found.values(), manifest=manifest, printer=printer, firmware=firmware,
+                       box_count=box_count), printer
+    boards = {status.board: status for status in previous.boards}
+    pinned = pinned_board_image(paths.bundle_root, printer, "box")
+    for name in findings:
+        if name in found:
+            boards[name] = found[name]
+        else:
+            prior = boards.get(name)
+            boards[name] = BoardStatus(name, CURRENT, version=pinned.version, application=pinned.build,
+                                       bootloader_sha256=prior.bootloader_sha256 if prior else None)
+    order = [status.board for status in previous.boards]
+    order += sorted((name for name in findings if name not in order), key=lambda name: (len(name), name))
+    admission = with_issue_links(paths, replace(previous, boards=tuple(boards[name] for name in order)),
+                                 printer=printer, box_count=box_count)
+    record_board_admission(paths, admission, printer=printer)
+    if valve_oil_status.status_path(paths).is_file():
+        entries = []
+        for entry in valve_oil_status.boards_from_admission(admission, checked_at=valve_oil_status.now()):
+            if entry.id in findings:
+                note = box_note(admission.board(entry.id), printer)
+                entries.append(replace(entry, pinned=pinned.version, detail=note or entry.detail))
+        valve_oil_status.record_boards(paths, entries)
+        for name in findings:
+            valve_oil_status.clear_pending(paths, kind=valve_oil_status.BOARD, board=name)
+    return {name: admission.board(name) for name in found}, printer
+
+
+def tool_finding(paths, board: str, report_path: Path, *, publish: bool) -> tuple[BoardStatus, object]:
+    """A board a board tool's read found unadmitted, with its prefilled support issue, without recording it: for the Box
+    flow run by an install, which records the boards itself (`publish` writes the Box's printer warning), and for
+    mainboard-firmware.sh, whose findings an install reads again. Returns (the board's status, the printer or None)."""
+    manifest, printer, firmware = _tool_context(paths)
+    statuses = _linked(paths, [_from_report(board, report_path)], manifest=manifest, printer=printer,
+                       firmware=firmware, box_count=len(discover_boxes(paths)), publish=publish)
+    return statuses[board], printer
+
+
+def _linked(paths, statuses, *, manifest, printer, firmware, box_count, publish=True) -> dict[str, BoardStatus]:
+    admission = with_issue_links(paths, BoardAdmission(
+        package_version=manifest.package.version if manifest else "unknown", printer=getattr(printer, "id", ""),
+        firmware=firmware, target_firmware=printer.target_firmware.version if printer is not None else "",
+        new_install=False, boards=tuple(statuses)), printer=printer, box_count=box_count)
+    for status in admission.boards if publish else ():
+        _write_warning(paths, _log_report_name(status), _warning_payload(status, printer))
+    return {status.board: status for status in admission.boards}
+
+
+def support_message(status: BoardStatus, printer) -> str:
+    """What a board tool tells the operator about a board it left as it is: what its read found, what may fix it, and
+    the prefilled support issue to open, with what the form still asks. The link comes last, so nothing runs into it."""
+    parts = [_finding(status)]
+    note = box_note(status, printer) if printer is not None else None
+    if note:
+        parts.append(note)
+    if status.report:
+        parts.append(f"Its shareable report is {status.report}, also {_log_report_name(status)} in the Logs of Fluidd "
+                     "and Valve Oil; keep the .bin files beside it private.")
+    parts.append(("If it still isn't supported after that, open" if note else "To get it supported, open")
+                 + " this prefilled support issue. It fills in the printer, its firmware, and the board's report; "
+                 "the form also asks how the board got its firmware: "
+                 + (status.issue_url or ISSUE_FORM + "?template=" + ISSUE_TEMPLATE))
+    return " ".join(parts)
 
 
 # ---- delivery ------------------------------------------------------------------------------------------------------

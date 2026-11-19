@@ -184,12 +184,13 @@ The update check SHALL notice a configured USB Box that is not on its pinned fir
 
 #### Scenario: Box with firmware the release does not recognize
 - **WHEN** a USB Box has an admitted bootloader and firmware the release does not recognize
-- **THEN** the Box is left unchanged with a printer warning, and a release that recognizes it flashes it
+- **THEN** the Box is left unchanged with a printer warning that gives the filled-in issue link, and a release that recognizes it flashes it
+- **AND** when the Box reports a version other than the one the target firmware carries, the warning says to update that Box from the touchscreen's firmware page
 
 #### Scenario: Box with a bootloader the release does not admit
 - **WHEN** a USB Box has a bootloader the release does not admit
 - **THEN** the Box is left unchanged, a printer warning says what to do and gives the filled-in issue link, and firmware delivery continues for the rest of the printer
-- **AND** when a delivered firmware changes the Box version, the warning says to update that Box from the touchscreen's firmware page
+- **AND** when the Box reports a version other than the one the target firmware carries, the warning says to update that Box from the touchscreen's firmware page
 - **AND** update checks don't read that Box again until it reports another version or a release admits what was found
 
 #### Scenario: Box restored to QIDI's firmware

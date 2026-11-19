@@ -130,6 +130,8 @@ EOF
 
 **Static-recovered.** The application's `USB BOOT` check at `0x2000FC00` is in its own reset handler (`0x0800d9f4`), so ROM DFU entry needs a running application.
 
+**Runtime-confirmed (operator report, 2026-11-18, one Max 4 USB Box):** the Box reported `KLP_MCU_MKS_V1_1.1.1` to Klipper, a version outside QIDI's `02.03.01.xx` numbering. It was not read, so its bootloader and application hashes are unknown. The touchscreen's firmware update moved it to QIDI's `02.03.01.21`; then this project's flasher read it as QIDI's stock image behind an admitted bootloader, and flashed and verified its build. The version string suggests the board maker's (Makerbase) own Klipper build. Whether Boxes ship with it, and which QIDI firmware packages flash it on their own, is **Unresolved**.
+
 ## Watchdog and fault posture
 
 **Static-recovered.** The USB image starts the independent watchdog during init: `IWDG->KR = 0x5555`, `PR = 0`, `RLR = 0x0FFF`, `KR = 0xCCCC`, giving roughly 512 ms at the ~32 kHz LSI. A reload (`KR = 0xAAAA`) runs from the task loop.

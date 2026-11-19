@@ -23,7 +23,6 @@ from .board_guard import critical_window, detached
 from .board_images import BOARD_MANIFESTS, runs_target_firmware
 from .errors import InstallerError
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
-from .naming import REPOSITORY_URL
 from .path_safety import ensure_runtime_path_has_no_symlink_components
 from .safety import BOX_RECOVERY_MARKER, ensure_no_pending_firmware
 from .sudo import authenticate_sudo, run_sudo
@@ -39,7 +38,6 @@ APP_RETURN_SECONDS = 30
 BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
 SERIAL_LINE = re.compile(r"^serial\s*[:=]\s*(\S+)")
 WARNING = "Box firmware: keep the printer and every Box powered on until this finishes."
-SUPPORT_ISSUE_URL = REPOSITORY_URL + "/issues/new?template=printer-support.yml"
 # Klipper's printer warnings show a Fluidd banner for each, and Fluidd's Logs offers it for download.
 LOG_REPORT = re.compile(r"^tltg_box_firmware_box(\d+)\.json$")
 # A Box on QIDI's image of an earlier version: the flash changes its version, which the installed Klipper may not
@@ -108,6 +106,12 @@ def _versions(paths, boxes, urlopen) -> dict[str, str | None]:
     return {box.name: (status.get(f"mcu {box.name}") or {}).get("mcu_version") for box in boxes}
 
 
+def _known_versions(manifest: dict) -> set[str]:
+    """The versions of every image the manifest names: the ones this release can flash a Box from or to."""
+    return {manifest["box"]["stock_version"], manifest["box"]["patched_version"], *_superseded_versions(manifest),
+            *_predecessor_versions(manifest)}
+
+
 def _superseded_versions(manifest: dict) -> set[str]:
     return {entry["version"] for entry in manifest["box"].get("superseded", ())}
 
@@ -129,25 +133,19 @@ def _describe(version: str | None, manifest: dict) -> str:
         return "QIDI stock firmware (" + version + ")"
     if version is None:
         return "not connected or Klipper not ready"
-    return "unsupported firmware (" + version + ")"
+    return "firmware Valve Oil doesn't know (" + version + ")"
 
 
-def unsupported_board_note(report: Path) -> str:
-    return ("its bootloader or firmware is not supported yet. To get it supported, open an issue at "
-            + SUPPORT_ISSUE_URL + " and attach only " + str(report) + ". Keep the .bin files beside it private.")
+def unknown_version_hint(box: Box) -> str:
+    """For `status`: what to do about a Box reporting a version no image in the manifest has."""
+    return (f"{box.label}: if the touchscreen's firmware page offers a Box update, install it first; QIDI's update "
+            f"replaces firmware the Box may have shipped with. Then run ./box-firmware.sh install --box {box.number}. "
+            "It reads the Box first and flashes it only if this release supports what it finds; if not, it leaves the "
+            "Box as it is and gives you a prefilled support issue to open.")
 
 
 def _log_report(paths, number: int) -> Path:
     return paths.printer_data_root / "logs" / f"tltg_box_firmware_box{number}.json"
-
-
-def _publish_unsupported(paths, box: Box, report: Path) -> None:
-    target = _log_report(paths, box.number)
-    try:
-        ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
-        atomic_write_text(target, report.read_text(encoding="utf-8"), mode=0o644)
-    except (OSError, InstallerError):
-        pass
 
 
 def _clear_unsupported(paths, numbers) -> None:
@@ -337,6 +335,9 @@ def run_box_firmware(
             reporter.line("No USB QIDI Box is configured in box.cfg.")
         for box in configured:
             reporter.line(f"{box.label} ({box.name}): {_describe(versions[box.name], manifest)}")
+        for box in configured:
+            if versions[box.name] is not None and versions[box.name] not in _known_versions(manifest):
+                reporter.line(unknown_version_hint(box))
         if marker.exists():
             reporter.line("A Box firmware operation did not finish; run ./box-firmware.sh rescue --box N. Record: " + str(marker))
         return 0
@@ -416,16 +417,16 @@ def run_box_firmware(
                     _clear_unsupported(paths, [box.number])
             elif box.usb is None or (version is None and not services_stopped):
                 previous[box.name], kinds[box.name] = "skipped: not connected", "skipped"
-            elif version is not None and version not in {manifest["box"]["stock_version"], manifest["box"]["patched_version"],
-                                                         *_superseded_versions(manifest), *_predecessor_versions(manifest)}:
-                previous[box.name], kinds[box.name] = "skipped: unsupported firmware", "not_admitted"
+            # A Box reporting a version this release doesn't know is read like any other: admission is by hash, and a
+            # Box it can't flash gets its support issue from what the read found.
             elif version in _predecessor_versions(manifest) and not runs_target_firmware(paths, "box", firmware):
                 previous[box.name], kinds[box.name] = "not changed: " + _WAITING, "waiting"
             elif automatic and (capture := _unsupported_capture(backup_root, box, manifest)) is not None:
                 # Reading it again would only stop Klipper and save the same capture.
-                previous[box.name] = "skipped by automatic updates, as an earlier capture found: " + unsupported_board_note(capture)
+                status, printer = tool_finding(paths, f"box{box.number}", capture, publish=True)
+                previous[box.name] = ("skipped by automatic updates, as an earlier read found: "
+                                      + support_message(status, printer))
                 kinds[box.name] = "not_admitted"
-                _publish_unsupported(paths, box, capture)
             else:
                 plan.append((box, box.usb))
                 if version in _superseded_versions(manifest) | _predecessor_versions(manifest) and stock_image is None:
@@ -436,6 +437,10 @@ def run_box_firmware(
                                                + manifest["box"]["stock_version"] + " from the Box firmware backups "
                                                "or ~/update; none was found. No Box firmware was changed.")
         if not plan:
+            if action == "install" and not confirmed:
+                # Boxes found on this firmware by the version they report: current, and no longer waiting.
+                record_tool_findings(paths, {f"box{box.number}": None for box in selected
+                                             if kinds.get(box.name) == "current"})
             for box in selected:
                 reporter.line(f"{box.label}: {previous[box.name]}")
             reporter.line("Nothing to flash.")
@@ -507,6 +512,8 @@ def run_box_firmware(
     # is being written and not yet verified; it names one of them for the rescue command.
     lock = threading.Lock()
     programming: dict[str, str] = {}
+    # Each Box whose read found it unadmitted -> that read's report.
+    captures: dict[str, Path] = {}
 
     def save(phase=None, **fields):
         with lock:
@@ -563,11 +570,10 @@ def run_box_firmware(
             reporter.line(f"{box.label}: reading and admitting its bootloader and firmware...")
             snapshot = command(box_dir, "snapshot", "--usb", usb, "--output-dir", before, allow=(protocol.UNSUPPORTED,))
             if snapshot.returncode == protocol.UNSUPPORTED:
-                results[box.name] = "not changed: " + unsupported_board_note(before / "report.json")
+                # What to tell the operator, and the printer warning, follow once every Box is done.
+                with lock:
+                    captures[box.name] = before / "report.json"
                 kinds[box.name] = "not_admitted"
-                if target == "patched":
-                    with lock:
-                        _publish_unsupported(paths, box, before / "report.json")
                 return
             image = admit(box, before)
             if image is None:
@@ -615,6 +621,8 @@ def run_box_firmware(
             raise BoxFirmwareError("Box firmware operation failed: " + str(failure) + ". Recovery files: " + str(directory)) from failure
         start_recorded_services(states, run=session, password=password, paths=paths, urlopen=urlopen, sleep=sleep, clock=clock,
                                 marker=marker, subject=SUBJECT, error=BoxFirmwareError)
+    _report_findings(paths, action=action, confirmed=confirmed, configured=configured, kinds=kinds, captures=captures,
+                     results=results)
     labels = {box.name: box.label for box in configured}
     for name, outcome in results.items():
         reporter.line(f"{labels.get(name, name)}: {outcome}")
@@ -624,6 +632,47 @@ def run_box_firmware(
     if failure is not None:
         raise BoxFirmwareError("Box firmware operation stopped on a Box before anything was written to it: " + str(failure))
     return 0
+
+
+# board_firmware imports this module, so these import it when called.
+def record_tool_findings(paths, findings):
+    from .board_firmware import record_tool_findings as record
+    return record(paths, findings)
+
+
+def tool_finding(paths, board, report, *, publish):
+    from .board_firmware import tool_finding as finding
+    return finding(paths, board, report, publish=publish)
+
+
+def support_message(status, printer):
+    from .board_firmware import support_message as message
+    return message(status, printer)
+
+
+def _report_findings(paths, *, action, confirmed, configured, kinds, captures, results) -> None:
+    """Give each Box a read found unadmitted its prefilled support issue. An operator's own install also keeps what it
+    found, as an install does, so the printer warnings, the Valve Oil UI, and the update check show it now: a Box it
+    flashed or found current is no longer waiting, and an unadmitted one gets its warning. An install records the boards
+    itself, so here only the Box's warning is written; restore writes none."""
+    numbers = {box.name: f"box{box.number}" for box in configured}
+    if action == "install" and not confirmed:
+        findings = {numbers[name]: captures.get(name) for name, kind in kinds.items()
+                    if name in numbers and kind in ("flashed", "current", "not_admitted") and
+                    (kind != "not_admitted" or name in captures)}
+        try:
+            statuses, printer = record_tool_findings(paths, findings)
+        except (OSError, InstallerError) as exc:
+            # The Boxes are as the results say; only keeping the record failed, and the next install or check reads
+            # them again.
+            results.update({name: text + f" (not recorded for the warnings: {exc})" for name, text in results.items()})
+        else:
+            for name in captures:
+                results[name] = "not changed: " + support_message(statuses[numbers[name]], printer)
+            return
+    for name, report in captures.items():
+        status, printer = tool_finding(paths, numbers[name], report, publish=action == "install")
+        results[name] = "not changed: " + support_message(status, printer)
 
 
 def _settle_holds(paths, action, confirmed, release, selected, kinds) -> None:
