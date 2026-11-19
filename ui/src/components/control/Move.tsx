@@ -212,12 +212,11 @@ function Position() {
 }
 
 // ---- calibration tools, manual probe, bed screws ----
-type Tool = { name: string; label?: string; disabled?: boolean } | null
+type Tool = { name: string; label?: string; disabled?: boolean; homeFirst?: boolean } | null
 
 function useTools(): Tool[] {
   const settings = usePrinter((s) => s.settings)
   const objects = usePrinter((s) => s.objects)
-  const homed = usePrinter((s) => s.status.toolhead?.homed_axes === 'xyz')
   const probing = usePrinter((s) => s.status.manual_probe?.is_active === true)
   const macro = (...names: string[]) => names.map((n) => objects.find((o) => o.toLowerCase() === `gcode_macro ${n.toLowerCase()}`)).find(Boolean)?.slice(12)
   const description = (name: string) => {
@@ -228,9 +227,9 @@ function useTools(): Tool[] {
   const park = macro('PARK_TOOLHEAD', 'TOOLHEAD_PARK', 'G27')
   const clean = macro('CLEAN_NOZZLE', 'NOZZLE_CLEAN', 'WIPE_NOZZLE', 'NOZZLE_WIPE', 'G12')
   if (clean) tools.push({ name: clean.toUpperCase(), label: clean.toLowerCase() === 'g12' ? `G12 (${description(clean) ?? 'Clean nozzle'})` : undefined })
-  if (park) tools.push({ name: park.toUpperCase(), label: park.toLowerCase() === 'g27' ? `G27 (${description(park) ?? 'Park toolhead'})` : undefined, disabled: !homed })
+  if (park) tools.push({ name: park.toUpperCase(), label: park.toLowerCase() === 'g27' ? `G27 (${description(park) ?? 'Park toolhead'})` : undefined, homeFirst: true })
   if (tools.length) tools.push(null)
-  const calib = (name: string) => tools.push({ name, disabled: !homed || probing })
+  const calib = (name: string) => tools.push({ name, homeFirst: true, disabled: probing })
   if (settings.bed_screws) calib('BED_SCREWS_ADJUST')
   if (settings.bed_tilt) calib('BED_TILT_CALIBRATE')
   if (settings.delta_calibrate) calib('DELTA_CALIBRATE')
@@ -246,11 +245,12 @@ function useTools(): Tool[] {
   return tools
 }
 
-/** The Tools menu in the page header: the printer's calibration commands, as Fluidd's toolhead card offers them. */
+/** The Tools menu in the page header: the printer's calibration commands, as Fluidd's toolhead card offers them. Tools that need the printer homed home it first. */
 export function ToolsMenu() {
   const tools = useTools()
+  const homed = usePrinter((s) => s.status.toolhead?.homed_axes === 'xyz')
   const printing = usePrinting()
-  const items = tools.map((t) => (t ? { label: <span className="code">{t.label ?? t.name}</span>, onSelect: () => send(t.name), disabled: t.disabled } : null))
+  const items = tools.map((t) => (t ? { label: <span className="code">{t.label ?? t.name}</span>, onSelect: () => send(t.homeFirst && !homed ? `G28\n${t.name}` : t.name), disabled: t.disabled } : null))
   return (
     <MenuButton
       className="btn btn-sm"
