@@ -11,7 +11,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from .errors import ActivePrintError, FreeSpaceError, HeaterOnError, InstallerError, KlipperBusyError, PrinterStateError, RecoveryRequiredError
+from .errors import (ActivePrintError, FreeSpaceError, HeaterOnError, InstallerError, KlipperBusyError, KlipperNotReadyError,
+                     PrinterStateError, RecoveryRequiredError)
 
 DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
@@ -110,6 +111,7 @@ def ensure_printer_idle(
     timeout: int = 5,
     urlopen: UrlOpenFn = urllib.request.urlopen,
     wait_seconds: float = 0.0,
+    allow_halted: bool = False,
 ) -> str:
     """Return the idle printer state; an unknown state is retried for wait_seconds, as while Moonraker restarts or
     while QIDI's touchscreen app restarts Klipper as it starts (it does after a QIDI package was installed).
@@ -117,6 +119,10 @@ def ensure_printer_idle(
     A heater with a target counts as busy: restarting Klipper or rebooting the host stops the heater updates, and the
     MCU then shuts itself down, so Klipper comes back with "Can not update MCU ... config as it is shutdown" until a
     firmware restart. Heating outside a print, such as a preheat, leaves print_stats at standby.
+
+    A Klipper halted on an error raises KlipperNotReadyError: it isn't printing, but nothing should be installed,
+    updated, or rebooted onto it. Only the operations that can repair it pass allow_halted (an install over an existing
+    Valve Oil, uninstall, restore), and then get "error".
     """
     deadline = time.monotonic() + wait_seconds
     while True:
@@ -130,8 +136,14 @@ def ensure_printer_idle(
             return state
         except PrinterStateError:
             # A Klipper halted on an error has no print state and cannot be printing.
-            if klipper_halted(url, urlopen=urlopen):
-                return "error"
+            try:
+                state, state_message = klipper_state(url, urlopen=urlopen)
+            except PrinterStateError:
+                state, state_message = None, ""
+            if state == "error":
+                if allow_halted:
+                    return "error"
+                raise KlipperNotReadyError(state, state_message)
             if time.monotonic() >= deadline:
                 raise
             time.sleep(2.0)
@@ -221,6 +233,48 @@ def _finite(value) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(value)
     return float(value)
+
+
+def klipper_state(url: str, *, timeout: int = 5, urlopen: UrlOpenFn = urllib.request.urlopen) -> tuple[str, str]:
+    """Klipper's state and state_message from Moonraker's /printer/info; PrinterStateError when it can't be read."""
+    from .process_restart import printer_info_url
+
+    try:
+        with urlopen(printer_info_url(url), timeout=timeout) as response:
+            result = json.load(response)["result"]
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise PrinterStateError() from exc
+    state = result.get("state") if isinstance(result, dict) else None
+    if not isinstance(state, str) or not state:
+        # QIDI's Moonraker can answer with a late reply to another request while Klipper starts.
+        raise PrinterStateError()
+    message = result.get("state_message")
+    return state, message if isinstance(message, str) else ""
+
+
+def ensure_klipper_ready(
+    url: str,
+    *,
+    urlopen: UrlOpenFn = urllib.request.urlopen,
+    wait_seconds: float = 0.0,
+    sleep=time.sleep,
+    clock=time.monotonic,
+) -> None:
+    """Raise unless Klipper reports ready. A Klipper still starting, or a state that can't be read, is read again for
+    wait_seconds; error and shutdown stay until someone fixes them, so they raise KlipperNotReadyError at once."""
+    deadline = clock() + wait_seconds
+    while True:
+        try:
+            state, state_message = klipper_state(url, urlopen=urlopen)
+        except PrinterStateError:
+            state, state_message = None, ""
+        if state == "ready":
+            return
+        if state in ("error", "shutdown") or clock() >= deadline:
+            if state is None:
+                raise PrinterStateError()
+            raise KlipperNotReadyError(state, state_message)
+        sleep(2.0)
 
 
 def klipper_halted(url: str, *, urlopen: UrlOpenFn = urllib.request.urlopen) -> bool:

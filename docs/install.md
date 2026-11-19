@@ -14,6 +14,8 @@ Running it with `sudo` works the same: the installer switches to `qidi` and asks
 
 The installer checks which printer it's on and its firmware (see [Supported printers](../README.md#supported-printers)), the printer's state, and free space before writing anything, and makes a backup of your configuration first.
 
+A new install needs a printer that works on QIDI's firmware as it is: when Klipper isn't ready, such as stopped with a config error, the installer says so with Klipper's error and installs nothing. Fix the error first. See [Klipper is stopped with an error](troubleshooting.md#the-installer-stopped).
+
 Before it changes anything, it reads the bootloader and firmware of the toolhead board (THR), the mainboard, and each USB QIDI Box, without changing them, to check that this release supports them. It reads them all at the same time, and says `Reading the THR, mainboard, and USB Box firmware without changing it. Klipper and the touchscreen stop for under a minute.` A new install reads every board. An update reads only the boards that aren't already on Valve Oil's firmware. A new install with a board this release doesn't support is refused; see [Boards Valve Oil doesn't support yet](#boards-valve-oil-doesnt-support-yet).
 
 On a printer with an older QIDI firmware this release updates from, it updates the QIDI firmware first, without asking, and that update installs Valve Oil itself, as a `--yes` install does, without the questions below. See [QIDI firmware updates](#qidi-firmware-updates).
@@ -28,7 +30,7 @@ It doesn't ask about anything else:
 - **QIDI Box support:** a new install that finds QIDI Boxes turns Box support on. Later installs and updates leave it as you set it, so switching to the external spool for prints started from Fluidd or a slicer stays your choice.
 - **Tool-to-slot mappings:** a tool with no slot gets the slot with its number, and mappings you've set are left as they are.
 - **Restarting Klipper:** every install ends by restarting Klipper once the printer is idle.
-- **Rebooting:** when the [OS optimizations](#os-optimizations) need a reboot, the printer reboots about 5 seconds after the install finishes.
+- **Rebooting:** when the [OS optimizations](#os-optimizations) need a reboot, the printer reboots about 5 seconds after the install finishes, once Klipper is ready.
 
 The summary also lists the board firmware it will flash, whether it updates the QIDI firmware first, and, on a printer with configs copied in by hand from before the installer existed, that those are backed up and reset to QIDI's first.
 
@@ -118,6 +120,7 @@ Every install and update applies these, including on printers where an earlier i
 When an install or update turns on zram swap, the CPU setting, the service priorities, or the storage repair, they take effect straight away, and the printer then reboots by itself, never during a print, to confirm they start at boot:
 
 - An install reboots the printer about 5 seconds after it finishes, without asking, unless a print is running or paused or a heater is on. It checks again just before rebooting, and waits up to 5 minutes for a printer whose Klipper is still starting.
+- No reboot follows a run that left Klipper not ready, such as stopped with an error or shut down, or still waiting to restart onto the installed files. The installer says `The printer was not restarted:` and why, and the reboot waits for the next install that finishes. A reboot you approve during an uninstall doesn't wait for Klipper.
 - An automatic update reboots only once Klipper has been idle for 10 minutes: no print running or paused, no command running, the toolhead still, and every heater, including the Box dryers, off. Until then, each hourly check tries again.
 
 ### Zram swap
@@ -218,7 +221,7 @@ This applies to the touchscreen apps Valve Oil has reviewed: Max 4 firmware `01.
 Every install schedules Valve Oil's update check, 5 minutes after the printer starts or an install finishes, and then every hour. What it does depends on whether automatic updates are on:
 
 - **Off:** it only looks. When a new Valve Oil release, a QIDI firmware update, or board firmware is waiting, the printer warning says `Automatic updates are off, so run the Valve Oil installer to install it.` It installs, stops, and flashes nothing. Install what's waiting by running the install command, or with **Update now**.
-- **On:** it installs what's waiting by itself while the printer is idle: no print running or paused and every heater target 0. That includes a new Valve Oil release, the [QIDI firmware update](#qidi-firmware-updates), and Valve Oil's board firmware, such as for a USB Box connected since the last release. To read or flash a board, it stops Klipper and the touchscreen for a few minutes, and for longer to flash a Box or update the QIDI firmware. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes. Keep the printer and every Box powered on while an update runs. When something can't install yet, the warning says why: `Automatic updates are on, but it hasn't been installed yet:` followed by the reason, such as a print running or a heater on.
+- **On:** it installs what's waiting by itself while the printer is idle: Klipper ready, no print running or paused, and every heater target 0. That includes a new Valve Oil release, the [QIDI firmware update](#qidi-firmware-updates), and Valve Oil's board firmware, such as for a USB Box connected since the last release. To read or flash a board, it stops Klipper and the touchscreen for a few minutes, and for longer to flash a Box or update the QIDI firmware. Each update runs the same checks as a normal install, applies the [OS optimizations](#os-optimizations), and reboots the printer when they need it, once Klipper has been idle for 10 minutes. Keep the printer and every Box powered on while an update runs. When something can't install yet, the warning says why: `Automatic updates are on, but it hasn't been installed yet:` followed by the reason, such as a print running or a heater on.
 
 A board the update check tried and couldn't bring to Valve Oil's firmware isn't tried again by later checks until it reports another firmware version; the next install tries again.
 

@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from installer.runtime import board_firmware, box_firmware, mainboard_firmware, update_check, valve_oil_status
+from installer.runtime import board_firmware, box_firmware, host_reboot, mainboard_firmware, runner, update_check, valve_oil_status
 from installer.runtime.board_images import BOARD_MANIFESTS as BOARD_MANIFEST_PATHS
 from installer.runtime.auto_update import LOCK_HELD_ENV
 from installer.runtime.board_images import managed_boards, pinned_board_image
@@ -94,6 +94,8 @@ class Printer:
         self.chamber = 0
 
     def urlopen(self, url, timeout=5):
+        if url.endswith("/printer/info"):
+            return io.BytesIO(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
         status = {"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
                   "idle_timeout": {"state": "Ready"},
                   "heaters": {"available_heaters": ["extruder", "heater_bed", "heater_generic chamber"]},
@@ -692,6 +694,8 @@ class Boards:
 
     def urlopen(self, url, timeout=5):
         from urllib.parse import unquote, urlsplit
+        if url.endswith("/printer/info"):
+            return io.BytesIO(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
         status = {}
         for item in urlsplit(url).query.split("&"):
             name = unquote(item.split("=", 1)[0])
@@ -1049,10 +1053,12 @@ class BoardAdmissionTests(unittest.TestCase):
         paths, printer, reporter = self.fixture({"thr": ("unknown", "stock"), "mcu": ("admitted", "stock")})
         env = build_env(paths.printer_data_root, moonraker_url=paths.moonraker_url)
         preflight = lambda **kwargs: board_firmware.board_preflight(**kwargs, **self.seams(printer))
+        ready = lambda paths: runner.ensure_klipper_ready_for_new_install(paths, urlopen=printer.urlopen)
 
         def install(*flags):
             output = io.StringIO()
             with patch("installer.runtime.cli.board_preflight", side_effect=preflight), \
+                    patch("installer.runtime.cli.ensure_klipper_ready_for_new_install", side_effect=ready), \
                     patch("installer.runtime.cli.run_install") as run_install, \
                     patch("installer.runtime.cli.deliver_board_firmware") as deliver, \
                     patch("installer.runtime.cli.repair_installer_ownership"), \
@@ -1092,15 +1098,29 @@ class BoardAdmissionTests(unittest.TestCase):
         printer.print_state = "printing"
         code, block, _, _ = install()
         self.assertEqual((code, block), (0, None))
+        # An install that leaves Klipper still to restart onto its files doesn't reboot; the reboot stays pending.
+        printer.print_state = "standby"
+        boot_id = paths.printer_data_root / "boot-id"
+        boot_id.write_text("boot-one\n", encoding="utf-8")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        paths.restart_marker_path.write_text("{}", encoding="utf-8")
+        host_reboot.recommend_reboot(paths)
+        code, _, _, output = install()
+        self.assertEqual(code, 0)
+        self.assertIn("The printer was not restarted: Klipper hasn't restarted onto the installed files yet", output)
+        self.assertTrue(host_reboot.reboot_recommended(paths))
 
     def test_an_attended_install_asks_everything_first_then_runs_without_input(self):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock")})
         env = build_env(paths.printer_data_root, moonraker_url=paths.moonraker_url)
         preflight = lambda **kwargs: board_firmware.board_preflight(**kwargs, **self.seams(printer))
+        ready = lambda paths: runner.ensure_klipper_ready_for_new_install(paths, urlopen=printer.urlopen)
 
         def install(answers):
             output = io.StringIO()
             with patch("installer.runtime.cli.board_preflight", side_effect=preflight), \
+                    patch("installer.runtime.cli.ensure_klipper_ready_for_new_install", side_effect=ready), \
                     patch("installer.runtime.cli.run_install") as run_install, \
                     patch("installer.runtime.cli.deliver_board_firmware") as deliver, \
                     patch("installer.runtime.cli.repair_installer_ownership"), \

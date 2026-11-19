@@ -119,7 +119,9 @@ class Session:
         if not self._update_folder_restored:
             self._restore_update_folder()
         try:
-            safety.ensure_printer_idle(self.paths.moonraker_url, urlopen=self.urlopen, wait_seconds=60.0)
+            # The install itself refuses a halted Klipper unless Valve Oil is installed and may be what halted it.
+            safety.ensure_printer_idle(self.paths.moonraker_url, urlopen=self.urlopen, wait_seconds=60.0,
+                                       allow_halted=True)
         except ActivePrintError as exc:
             return self._busy(exc)
         except PrinterStateError:

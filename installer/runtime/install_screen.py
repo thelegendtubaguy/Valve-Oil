@@ -158,7 +158,8 @@ def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw, require
         return None
     try:
         if require_idle:
-            safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+            # A halted Klipper is the install's to refuse or repair (runner.run_install).
+            safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, allow_halted=True)
         password = authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
     except (InstallerError, SudoError):
         return None  # the install's own checks say why
