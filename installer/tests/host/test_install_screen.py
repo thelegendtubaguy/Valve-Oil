@@ -242,6 +242,11 @@ class TouchScreenTests(unittest.TestCase):
         self.assertEqual(portrait.to_upright(295, 714), (85, 295))
         self.assertEqual(portrait.to_upright(44, 758), (41, 44))
 
+    def test_the_log_screen_has_no_log_button(self):
+        # Every other screen's Log opens the log; on the log itself it would answer nothing.
+        screen, fields = touch_ui.EXAMPLES["17-log"]
+        self.assertEqual(tuple(touch_ui.compose(screen, **fields).buttons), ("close",))
+
     def test_a_tap_on_a_turned_panel_is_reported_on_release_inside_its_button(self):
         geometry = touch_ui.PORTRAIT
         panel, framebuffer = self.panel(geometry)

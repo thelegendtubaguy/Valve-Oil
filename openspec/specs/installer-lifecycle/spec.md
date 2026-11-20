@@ -135,6 +135,11 @@ The installer SHALL deploy firmware-scoped Klipper source only from validated pr
 - **AND** the payload is verified against the selected release before installed state commits
 - **AND** unknown, escaped, symlinked, tampered, or cross-firmware provenance fails before mutation
 
+#### Scenario: Unrecorded managed source is taken over
+- **WHEN** a managed source target holds this release's payload or an earlier release's recorded payload for the detected firmware, and installed state has no entry for it, as after a power cut stopped the install that wrote it
+- **THEN** the install proceeds as over recorded prior-managed source, retaining as its original QIDI's file for that firmware from the release's hash-checked copy
+- **AND** uninstall restores that original
+
 #### Scenario: Source restoration preserves drift
 - **WHEN** rollback, restore, or uninstall processes managed source
 - **THEN** unchanged installer-owned content may return to its retained preimage
@@ -249,6 +254,8 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 - **AND** unowned, unknown, or user-modified state is preserved and reported
 - **AND** operation failure rolls back journaled host work without deleting a verified configuration install
 - **AND** incomplete host compensation retains a recovery blocker and does not report the overall operation as complete
+- **AND** host backups are flushed to storage before a journal or installed state names them
+- **AND** a touchscreen GIF backup that is missing or no longer matches its recorded hash is never restored and never blocks recovery, install, or uninstall; that GIF keeps whatever the touchscreen has
 - **AND** when compensation fails, the reported error names the failure that started it as well as the compensation's own failure, and the retained recovery record keeps that original failure, so the later run that finishes or retries the compensation reports it too
 
 #### Scenario: Uninstall follows the operator's host-state decision

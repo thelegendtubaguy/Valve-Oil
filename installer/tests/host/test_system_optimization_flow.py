@@ -1303,6 +1303,33 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, output.getvalue())
         self.assertFalse(_journal_path(paths).exists())
 
+    def test_pending_journal_recovers_past_a_gif_backup_a_power_cut_emptied(self):
+        paths, manifest, env, root = self._host_context()
+        calls = {"fail": True}
+        base_run = fake_host_run(root)
+        def run(command, **kwargs):
+            actual = command[4:] if command[:4] == ["sudo", "-S", "-p", ""] else command
+            if calls["fail"] and actual in (["systemctl", "disable", "--now", "bluetooth"], ["systemctl", "enable", "xl2tpd"],
+                                            ["systemctl", "start", "xl2tpd"], ["systemctl", "enable", "--now", "xl2tpd"]):
+                return CompletedProcess(command, 1, stdout="failed")
+            return base_run(command, **kwargs)
+        ledger = {"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}, "restore_preimages": {}, "actions": []}
+        selected = ("qidiclient_static_gifs", "service_xl2tpd", "service_bluetooth")
+        with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
+            with self.assertRaises(SystemOptimizationRecoveryError):
+                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", block_qidi_updates=True, run=run, urlopen=moonraker_urlopen())
+        gifs = json.loads(_journal_path(paths).read_text(encoding="utf-8"))["preimages"]["qidiclient_static_gifs"]
+        damaged, *intact = gifs["replaced"]
+        (Path(gifs["backup_dir"]) / damaged).write_bytes(b"")
+        access = root / gifs["destination"].lstrip("/")
+        calls["fail"] = False
+
+        self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
+
+        self.assertFalse(_journal_path(paths).exists())
+        for relative in intact:
+            self.assertEqual((access / relative).read_bytes(), (Path(gifs["backup_dir"]) / relative).read_bytes())
+
     def test_rockchip_drift_journal_never_replays_after_interrupt(self):
         paths, manifest, env, root = self._installed_host_context()
         state = load_installed_state(paths.printer_data_root / manifest.state_file)

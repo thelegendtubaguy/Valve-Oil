@@ -66,6 +66,7 @@ from installer.tests.helpers import (
     build_env,
     homing_fixture_bytes,
     homing_smart5_fixture_bytes,
+    homing_sync_reset_26_11_18_1_bytes,
     homing_sync_reset_fixture_bytes,
     moonraker_urlopen,
     snapshot_tree,
@@ -199,6 +200,31 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(entry.firmware, firmware)
                 self.assertEqual(entry.original_bytes, stock_source)
                 self.assertEqual(entry.original_sha256, hashlib.sha256(stock_source).hexdigest())
+
+    def test_install_takes_over_a_patched_source_an_unfinished_install_never_recorded(self):
+        # A power cut can stop an install after it patched homing.py and before it wrote its state.
+        for left_by, homing in (("26.11.18.1", homing_sync_reset_26_11_18_1_bytes()),
+                                ("this release", (REPO_ROOT / "installer/klipper/qidi/homing-sync-reset.py").read_bytes())):
+            with self.subTest(left_by=left_by):
+                printer_root, paths, stock_source = self._fixture("01.01.07.01", source_variant="sync-reset")
+                homing_path = paths.managed_klipper_root / "klippy/extras/homing.py"
+                homing_path.write_bytes(homing)
+
+                self._run_install(paths)
+
+                self.assertEqual(hashlib.sha256(homing_path.read_bytes()).hexdigest(),
+                                 SYNC_RESET_DESIRED_HOMING_SHA256)
+                state = load_installed_state(printer_root / "config/tltg_optimized_state.yaml")
+                self.assertEqual([entry.original_bytes for entry in state.source_patches], [stock_source])
+                run_uninstall(
+                    paths,
+                    self.manifest,
+                    self.compatibility,
+                    PlainReporter(io.StringIO()),
+                    input_stream=io.StringIO("Y\n"),
+                    urlopen=self._fixture_urlopen(printer_root),
+                )
+                self.assertEqual(homing_path.read_bytes(), stock_source)
 
     def test_install_refuses_firmware_whose_soc_file_names_another_printer(self):
         for firmware, other_prefix in (("01.01.07.01", "QD_PLUS5_SOC_"), ("01.01.02.01", "QD_MAX4_SOC_")):

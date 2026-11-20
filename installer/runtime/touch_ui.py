@@ -22,7 +22,8 @@ pairs drawn as one paragraph; tone is "plain", "muted", "good", "warn", or "bad"
 str uses the tone the screen gives that paragraph. **text** is drawn bold in the brightest ink. "\\n" breaks a line.
 Rows are (label, value) or (label, value, note) tuples; the note is drawn smaller and dimmer after the value.
 
-Screens (mockup id in screens.html; fields; buttons, in order, besides "log" for the header's Log button):
+Screens (mockup id in screens.html; fields; buttons, in order, besides "log" for the header's Log button on every screen
+but the log itself):
     checking             01-checking. text, note (default "Checking the printer…", "Nothing has been changed yet.").
     found                02-welcome, 02b-firmware-first. title, rows, text (muted), firmware_first. quit, start.
     question             03-auto-updates, 04-ai-detection. title, text (first paragraph plain, the rest muted),
@@ -252,10 +253,11 @@ def _header(s: _Screen, quit_chip: bool) -> None:
         x += c.text(x, _baseline(14, 44, sep), "|", sep, INK_3, BG) + 12
         c.text(x, _baseline(14, 44, hdr), str(where), hdr, INK_2, BG, clip=440)
     chip = s.font("chip")
-    right = 776.0
-    log_width = 2 + 32 + 18 + 8 + chip.measure("Log")
-    left = right - log_width
-    _chip(s, "log", left, log_width, "Log", icon="list")
+    left = 776.0
+    if s.id != "log":  # the log screen is already showing the log
+        log_width = 2 + 32 + 18 + 8 + chip.measure("Log")
+        left -= log_width
+        _chip(s, "log", left, log_width, "Log", icon="list")
     if quit_chip:
         quit_width = 2 + 32 + chip.measure("Quit")
         left = left - 12 - quit_width
@@ -263,7 +265,8 @@ def _header(s: _Screen, quit_chip: bool) -> None:
     step = f.get("header_step")
     if step:
         font = s.font("hdr_tnum")
-        c.text(left - 12 - 6 - font.measure(str(step)), _baseline(14, 44, font), str(step), font, INK_2, BG)
+        gap = 12 + 6 if left < 776.0 else 0  # beside a chip, or at the right margin on the log screen
+        c.text(left - gap - font.measure(str(step)), _baseline(14, 44, font), str(step), font, INK_2, BG)
 
 
 def _chip(s: _Screen, button_id: str, x: float, width: float, label: str, icon: str | None = None) -> None:
@@ -657,7 +660,7 @@ def buttons_for(screen_id: str, fields: dict) -> tuple[str, ...]:
             ids.append(action.id)
     if screen_id == "backups":
         ids += [f"backup_{index}" for index in range(len(list(fields.get("rows") or ())[:4]))]
-    return tuple(ids) + ("log",)
+    return tuple(ids) + (() if screen_id == "log" else ("log",))
 
 
 def compose(screen_id: str, **fields) -> Composition:

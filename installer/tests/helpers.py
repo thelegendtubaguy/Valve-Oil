@@ -54,6 +54,21 @@ def homing_sync_reset_fixture_bytes() -> bytes:
     ).read_bytes()
 
 
+def homing_sync_reset_26_11_18_1_bytes() -> bytes:
+    """homing.py as Valve Oil 26.11.18.1 patched QIDI's sync-reset file, rebuilt from QIDI's copy."""
+    value = homing_sync_reset_fixture_bytes()
+    for script, dwell in ((b'x_script = "', b"P100"), (b'y_script = "', b"P100"),
+                          (b'x_recover_script = "', b"P50"), (b'y_recover_script = "', b"P50")):
+        start = value.index(script)
+        end = value.index(b"\n", start)
+        value = value[:start] + value[start:end].replace(b"P200", dwell) + value[end:]
+    first_home = b"rail.get_endstops()]\r\n        self.toolhead.dwell(1)"
+    assert value.count(first_home) == 1
+    return value.replace(first_home, (
+        b'rail.get_endstops()]\r\n        self.toolhead.dwell(\r\n            .25 if rails[0].get_name() in '
+        b'("stepper_x", "stepper_y")\r\n            else 1)'))
+
+
 def load_source(module_name: str, path: Path, *, stand_ins: dict | None = None):
     """Import the file at `path` as `module_name`. `stand_ins` are sys.modules entries, such as the Klipper modules
     the file imports, that exist only while it is imported."""

@@ -272,7 +272,8 @@ def run_install(
         except (CompatibilityValidationError, SourcePatchError) as exc:
             raise PreviousPackageValidationError() from exc
     source_results = tuple(
-        classify_install_source_patch(paths=paths, patch=patch, firmware=detected_firmware, prior_state=prior_state)
+        classify_install_source_patch(paths=paths, patch=patch, firmware=detected_firmware, prior_state=prior_state,
+                                     upgrade_sources=compatibility)
         for patch in manifest.install.source_patches
     )
     started_at = utc_now()

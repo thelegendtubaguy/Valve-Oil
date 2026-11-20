@@ -21,6 +21,8 @@ from .path_safety import ensure_external_path_has_no_symlink_components
 
 
 EXTRA_MODULE_MODE = 0o644
+# QIDI's own copies of patched sources, named <stem>-<sha256><suffix>, under the installer root.
+STOCK_SOURCE_DIR = "klipper/qidi/stock"
 
 
 class SourcePatchError(ValueError):
@@ -118,6 +120,7 @@ def classify_install_source_patch(
     patch: SourcePatchSpec,
     firmware: str,
     prior_state: InstalledState | None,
+    upgrade_sources: UpgradeSources,
 ) -> SourcePatchResult:
     variants = source_patch_variants_for_firmware(patch, firmware)
     for variant in variants:
@@ -154,6 +157,13 @@ def classify_install_source_patch(
                 firmware=firmware,
                 destination=patch.destination,
                 desired_sha256=variant.desired_sha256,
+                install_result="noop_desired",
+            )
+        elif prior is None and len(desired_matches) == 1:
+            # Patched by an install that never recorded it, such as one a power cut stopped; record QIDI's file
+            # so uninstall and later versions can still restore it.
+            retained = _bundled_original(
+                paths, patch, variant, firmware=firmware, mode=stat.S_IMODE(target.stat().st_mode),
                 install_result="noop_desired",
             )
         return SourcePatchResult(
@@ -203,6 +213,14 @@ def classify_install_source_patch(
             prior_variant,
             original,
         )
+
+    if prior is None:
+        adopted = _adopt_unrecorded_earlier_output(
+            paths, patch, variants, firmware=firmware, live_hash=live_hash,
+            mode=stat.S_IMODE(target.stat().st_mode), upgrade_sources=upgrade_sources,
+        )
+        if adopted is not None:
+            return adopted
 
     accepted = sorted(
         {
@@ -282,6 +300,72 @@ def _variant_for_original(
         ),
         None,
     )
+
+
+def _bundled_original(
+    paths: RuntimePaths,
+    patch: SourcePatchSpec,
+    variant: SourcePatchVariantSpec,
+    *,
+    firmware: str,
+    mode: int,
+    install_result: str,
+) -> SourcePatchState | None:
+    """QIDI's file that `variant` patches, from the copy the bundle ships under its SHA-256, if it ships one."""
+    destination = PurePosixPath(patch.destination)
+    source = (
+        paths.installer_root
+        / STOCK_SOURCE_DIR
+        / f"{destination.stem}-{variant.expected_sha256}{destination.suffix}"
+    )
+    if source.is_symlink() or not source.is_file():
+        return None
+    original = source.read_bytes()
+    if sha256_bytes(original) != variant.expected_sha256:
+        raise SourcePatchError(f"Bundled QIDI source hash does not match: {source.name}")
+    return SourcePatchState(
+        patch.id,
+        patch.destination,
+        firmware,
+        variant.expected_sha256,
+        variant.desired_sha256,
+        mode,
+        original,
+        install_result,
+    )
+
+
+def _adopt_unrecorded_earlier_output(
+    paths: RuntimePaths,
+    patch: SourcePatchSpec,
+    variants: tuple[SourcePatchVariantSpec, ...],
+    *,
+    firmware: str,
+    live_hash: str,
+    mode: int,
+    upgrade_sources: UpgradeSources,
+) -> SourcePatchResult | None:
+    """An earlier Valve Oil's patched file with no install state behind it, such as after a power cut stopped
+    that install: replace it like a recorded one, with QIDI's file from the bundle as its original."""
+    stock_hashes = {
+        entry.original_sha256
+        for entry in upgrade_sources.source_patches
+        if entry.id == patch.id
+        and entry.destination == patch.destination
+        and entry.firmware == firmware
+        and entry.desired_sha256 == live_hash
+    }
+    candidates = [variant for variant in variants if variant.expected_sha256 in stock_hashes]
+    # Two QIDI files patched to the same bytes leave nothing to tell which one to restore.
+    if len({variant.expected_sha256 for variant in candidates}) != 1:
+        return None
+    variant = candidates[0]
+    original = _bundled_original(
+        paths, patch, variant, firmware=firmware, mode=mode, install_result="prior_managed"
+    )
+    if original is None:
+        return None
+    return SourcePatchResult(patch.id, patch.destination, "prior_managed", variant, original)
 
 
 def _prior_entry(

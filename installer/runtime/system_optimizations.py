@@ -54,7 +54,7 @@ from . import boot_screen
 from . import box_config
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
-from .fs_atomic import atomic_delete, atomic_write_text
+from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
 from .host_reboot import HostRebootError, clear_host_reboot_marker, read_host_reboot_marker, recommend_reboot, write_host_reboot_marker
 from .interaction import confirm_yes, prompt_yes
 from .models import (
@@ -2801,10 +2801,11 @@ def _capture_gifs_preimage(*, paths: RuntimePaths, spec: SystemOptimizationsSpec
                 }
                 backup = backup_root / relative
                 backup.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_existing, backup)
+                _copy_backup(source_existing, backup)
                 replaced.append(relative)
             else:
                 created.append(relative)
+    _sync_backup_dirs(backup_root, paths)
     return {
         "backup_dir": str(backup_root),
         "destination": spec.qidiclient_static_gifs.destination,
@@ -2814,6 +2815,23 @@ def _capture_gifs_preimage(*, paths: RuntimePaths, spec: SystemOptimizationsSpec
         "restart_service": spec.qidiclient_static_gifs.restart_service,
     }
 
+
+
+def _copy_backup(source: Path, backup: Path) -> None:
+    """Copy `source` to `backup` and flush it, so a journal written next never names a backup a power cut emptied."""
+    shutil.copy2(source, backup)
+    with backup.open("rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def _sync_backup_dirs(directory: Path, paths: RuntimePaths) -> None:
+    """Flush `directory`'s folders and the folders above it up to printer_data, which the backup may have created."""
+    for current, _, _ in os.walk(directory):
+        fsync_directory(Path(current))
+    for parent in directory.parents:
+        fsync_directory(parent)
+        if parent == paths.printer_data_root:
+            break
 
 
 def _apply_gifs(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, sudo_password: str | None, run, preimage: dict[str, Any], restarts: _ServiceRestarts) -> None:
@@ -2983,14 +3001,18 @@ def _operation_matches_preimage(
         return all(current.get(key) == preimage.get(key) for key in ("exists", "enabled", "active"))
     if operation_id == "qidiclient_static_gifs":
         destination = _map_path(root, str(preimage.get("destination", "")))
-        backups = Path(str(preimage.get("backup_dir", "")))
+        files = preimage.get("files") if isinstance(preimage.get("files"), dict) else {}
+        lost = set(_lost_gif_backups(preimage))
         try:
             return all(
-                (destination / relative).is_file()
-                and (destination / relative).read_bytes() == (backups / relative).read_bytes()
+                relative in lost
+                or (
+                    (destination / relative).is_file()
+                    and _sha256_file(destination / relative) == str(files.get(relative, {}).get("sha256"))
+                )
                 for relative in preimage.get("replaced", [])
             ) and all(not (destination / relative).exists() for relative in preimage.get("created", []))
-        except OSError:
+        except (OSError, AttributeError):
             return False
     if operation_id == ROCKCHIP_ROOT_SYNC_OPERATION:
         dropin = preimage.get("dropin")
@@ -3066,10 +3088,11 @@ def _restore_gifs(preimage: dict[str, Any], *, root: Path, sudo_password: str | 
     backup_dir = Path(preimage["backup_dir"])
     destination = _map_path(root, preimage["destination"])
     metadata = preimage.get("files", {}) if isinstance(preimage.get("files"), dict) else {}
+    lost = set(_lost_gif_backups(preimage))
     for relative in preimage.get("replaced", []):
         backup = backup_dir / relative
         target = destination / relative
-        if not backup.exists():
+        if relative in lost:
             continue
         file_metadata = metadata.get(relative, {}) if isinstance(metadata.get(relative), dict) else {}
         mode = str(file_metadata.get("mode", "0644"))
@@ -3096,6 +3119,29 @@ def _restore_gifs(preimage: dict[str, Any], *, root: Path, sudo_password: str | 
         restarts.request(str(preimage["restart_service"]))
 
 
+def _lost_gif_backups(preimage: dict[str, Any]) -> list[str]:
+    """Replaced GIFs whose backup is missing or no longer holds QIDI's file, such as after a power cut emptied it.
+    They are left as they are; the install writes its still images over them."""
+    backup_dir = Path(str(preimage.get("backup_dir", "")))
+    files = preimage.get("files") if isinstance(preimage.get("files"), dict) else {}
+    lost = []
+    for relative in preimage.get("replaced", []):
+        backup = backup_dir / relative
+        metadata = files.get(relative)
+        try:
+            intact = (
+                isinstance(metadata, dict)
+                and not backup.is_symlink()
+                and backup.is_file()
+                and _sha256_file(backup) == metadata.get("sha256")
+            )
+        except OSError:
+            intact = False
+        if not intact:
+            lost.append(relative)
+    return lost
+
+
 def _capture_file(path: str, *, paths: RuntimePaths, root: Path) -> dict[str, Any]:
     mapped = _map_path(root, path)
     preimage: dict[str, Any] = {"path": path, "exists": mapped.exists() or mapped.is_symlink()}
@@ -3108,9 +3154,8 @@ def _capture_file(path: str, *, paths: RuntimePaths, root: Path) -> dict[str, An
     backup_root.mkdir(parents=True, exist_ok=True)
     backup_path = backup_root / path.lstrip("/")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(mapped, backup_path)
-    with backup_path.open("rb") as handle:
-        os.fsync(handle.fileno())
+    _copy_backup(mapped, backup_path)
+    _sync_backup_dirs(backup_path.parent, paths)
     stat = mapped.stat()
     preimage.update({
         "type": "file",
@@ -4594,7 +4639,13 @@ def _validate_gif_preimage(preimage: dict[str, Any], *, spec: SystemOptimization
         if not isinstance(metadata, dict) or set(metadata) != {"mode", "uid", "gid", "sha256"}:
             raise StateValidationError("GIF restoration metadata is invalid.")
         _validate_file_metadata({"mode": metadata["mode"], "uid": metadata["uid"], "gid": metadata["gid"]})
-        _validate_managed_backup(backup_dir / relative, str(metadata["sha256"]), paths)
+        if not _is_sha256(str(metadata["sha256"])):
+            raise StateValidationError("GIF restoration metadata is invalid.")
+        try:
+            (backup_dir / relative).resolve().relative_to(root)
+        except (OSError, ValueError) as exc:
+            raise StateValidationError("GIF backup escapes the managed backup root.") from exc
+        # A backup a power cut damaged isn't an error here: it is never restored (_lost_gif_backups).
 
 
 def _ledger_with_policy(ledger: dict[str, Any] | None, policy: dict[str, str]) -> dict[str, Any]:
