@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Box as BoxIcon, Camera, ChevronRight, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { Card, HoldButton, Segmented } from '../components/ui'
 import { LivePreview } from '../components/gcode-preview/LivePreview'
@@ -29,7 +29,8 @@ const area = (name: string): CSSProperties => ({ gridArea: name })
 
 /**
  * Home is a cockpit: on a desktop it fills the screen in three columns (the job and heaters, the camera and
- * temperatures, the Box and console); on a tablet it's two columns and on a phone one.
+ * temperatures, the Box and console), and scrolls when a window is too short for them; on a tablet it's two columns
+ * and on a phone one.
  */
 export function HomeScreen() {
   const job = useJob()
@@ -335,24 +336,47 @@ function CameraOrLayers({ cam }: { cam: Webcam | null }) {
   )
   if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} />
   return (
-    <section className="card grow relative p-2.5!" style={area('cam')}>
+    <section className="card grow relative p-2.5! wide:min-h-[280px]" style={area('cam')}>
       {toggle}
       <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
     </section>
   )
 }
 
+/** Full screen for the camera: the browser's, or where a page element can't have it (iPhone), the whole page. */
+function useFullScreen() {
+  const box = useRef<HTMLDivElement>(null)
+  const [native, setNative] = useState(false)
+  const [page, setPage] = useState(false)
+  useEffect(() => {
+    const onChange = () => setNative(document.fullscreenElement != null && document.fullscreenElement === box.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+  useEffect(() => {
+    if (!page) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPage(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [page])
+  const toggle = () => {
+    if (native) void document.exitFullscreen?.()
+    else if (page) setPage(false)
+    else if (document.fullscreenEnabled && box.current?.requestFullscreen) box.current.requestFullscreen().catch(() => setPage(true))
+    else setPage(true)
+  }
+  return { box, page, full: native || page, toggle }
+}
+
 function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
   const [failed, setFailed] = useState(false)
-  const [full, setFull] = useState(false)
+  const fs = useFullScreen()
   const src = new URL(cam.stream_url, client.httpBase + '/').toString()
   const transform = [cam.flip_horizontal ? 'scaleX(-1)' : '', cam.flip_vertical ? 'scaleY(-1)' : '', cam.rotation ? `rotate(${cam.rotation}deg)` : ''].join(' ')
+  const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
   return (
-    <section className="card grow p-2.5!" style={area('cam')}>
-      <div
-        className={`relative overflow-hidden bg-[#14161b] ${full ? 'fixed inset-0 z-80 rounded-none' : 'aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'}`}
-        onDoubleClick={() => setFull((f) => !f)}
-      >
+    <section className="card grow p-2.5! wide:min-h-[280px]" style={area('cam')}>
+      <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} onDoubleClick={fs.toggle}>
         {!failed ? (
           <img src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
         ) : (
@@ -365,10 +389,10 @@ function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
         <div className="absolute top-2.5 left-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
           {cam.name}
         </div>
-        <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={() => setFull((f) => !f)}>
-          {full ? 'Close' : 'Full screen'}
+        <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
+          {fs.full ? 'Close' : 'Full screen'}
         </button>
-        {!full && toggle}
+        {!fs.full && toggle}
       </div>
     </section>
   )

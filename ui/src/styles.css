@@ -289,14 +289,16 @@
       grid-template-areas: "job cam" "thermals chart" "motion box" "details health" "files console"; }
   }
   @media (min-width: 100rem) {
-    .cockpit { height: 100%; min-height: 740px; grid-template-areas: none;
+    .cockpit { min-height: max(100%, 740px); grid-template-areas: none;
       grid-template-columns: minmax(320px, 370px) minmax(0, 1fr) minmax(340px, 410px); }
     .cockpit .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
     .cockpit .strip { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
     /* Area names place cards on phones and tablets; inside the desktop columns they'd make stray grid tracks. */
     .cockpit .col > *, .cockpit .strip > * { grid-area: auto !important; }
-    .cockpit .grow { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-    .cockpit .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; }
+    /* Cards share out the screen's height but keep what they need, so a short window scrolls instead of squeezing them.
+       A card's scrolling body (the console, recent files) counts only its own minimum toward that. */
+    .cockpit .grow { flex: 1 1 0; min-height: auto; display: flex; flex-direction: column; }
+    .cockpit .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; contain: size; }
   }
   .row-k { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 5px 0; }
   .row-k + .row-k { border-top: 1px solid var(--line); }
