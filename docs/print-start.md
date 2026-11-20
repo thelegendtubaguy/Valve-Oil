@@ -46,6 +46,10 @@ Set the filament profile's chamber **Target** and **Minimal** temperatures. With
 
 A Minimal of `0`, QIDI Studio, and older start G-code all keep the usual wait for 3 °C below the target.
 
+## Exhaust fan at print start and end
+
+With no chamber target, print start turns the exhaust fan on at full speed after the purge or nozzle cleaning. With this project's OrcaSlicer start G-code, it turns off again before the print begins. During the print it runs only when a filament in the print has **Activate air filtration** and **During print** on, at the highest of those filaments' **During print** speeds. After the print, it runs at the **On completion** speed only when the last filament has **Activate air filtration** and **On completion** both on. QIDI Studio sets the exhaust fan for the print itself, and its end G-code doesn't run the exhaust after the print.
+
 ## Exhaust fan while heating the chamber
 
 Turning on the exhaust fan (`M106 P3`) no longer turns off the chamber heater. QIDI's turned it off, so a filament profile with its exhaust fan (air filtration) on during the print stopped heating the chamber as soon as the exhaust fan came on, without saying so. The heater now keeps its target, and when the exhaust fan turns on while the chamber heats, the console warns:

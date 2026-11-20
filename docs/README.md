@@ -5,7 +5,7 @@
 ## Using it
 
 - [Installing, updating, and uninstalling](install.md): dry run, boards Valve Oil doesn't support yet, OS optimizations, slicer start G-code, QIDI firmware updates, automatic updates
-- [Print start and end](print-start.md): what's faster, saved bed mesh, minimum chamber temperature, exhaust fan with a heated chamber, staggered heating, keeping filament loaded, long pauses
+- [Print start and end](print-start.md): what's faster, saved bed mesh, minimum chamber temperature, exhaust fan at start and end and with a heated chamber, staggered heating, keeping filament loaded, long pauses
 - [QIDI Box](qidi-box.md): load and unload speed, eject, stuck and failed loads, Box heater, editing QIDI's filament list, spool tags from Anycubic, Elegoo, Bambu Lab, Creality, TigerTag, and OpenTag3D, writing spool tags, RS-485 Boxes
 - [Spoolman](spoolman.md): setting it up, a spool for each Box slot
 - [Fluidd](fluidd.md): installing this project's Fluidd build, the Printer screen service, restarting the touchscreen app. For using Fluidd itself, see [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd).

@@ -164,8 +164,8 @@ Otherwise, copy the machine G-code into your slicer by hand from the folder for 
 
 | Slicer | QIDI Max 4 | QIDI Plus 5 | QIDI Smart 5 |
 |---|---|---|---|
-| OrcaSlicer | [`orcaslicer_gcode/`](../orcaslicer_gcode/) | [`orcaslicer_gcode/plus5/`](../orcaslicer_gcode/plus5/) | [`orcaslicer_gcode/smart5/`](../orcaslicer_gcode/smart5/) |
-| QIDI Studio | [`qidistudio_gcode/`](../qidistudio_gcode/) | [`qidistudio_gcode/plus5/`](../qidistudio_gcode/plus5/) | [`qidistudio_gcode/smart5/`](../qidistudio_gcode/smart5/) |
+| OrcaSlicer | [`orcaslicer_gcode/max4/`](../orcaslicer_gcode/max4/) | [`orcaslicer_gcode/plus5/`](../orcaslicer_gcode/plus5/) | [`orcaslicer_gcode/smart5/`](../orcaslicer_gcode/smart5/) |
+| QIDI Studio | [`qidistudio_gcode/max4/`](../qidistudio_gcode/max4/) | [`qidistudio_gcode/plus5/`](../qidistudio_gcode/plus5/) | [`qidistudio_gcode/smart5/`](../qidistudio_gcode/smart5/) |
 
 The two do the same thing; only their placeholder syntax differs. Files sliced with QIDI's stock G-code still print normally after installing, without the faster start.
 

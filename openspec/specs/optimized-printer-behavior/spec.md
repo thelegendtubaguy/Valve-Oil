@@ -151,6 +151,11 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **THEN** retained Box state is invalidated and Box load or purge actions are not called
 - **AND** non-extruding rear cleaning uses the same cable-chain orientation and stock Y395–Y397 scrape footprint before common print preparation
 
+#### Scenario: Exhaust fan is off when printing begins
+- **WHEN** print start has turned the exhaust fan on at full speed after the purge or nozzle cleaning because there is no chamber target
+- **THEN** OrcaSlicer start G-code ends by turning the exhaust fan off
+- **AND** OrcaSlicer's own exhaust command, written after the start G-code when a used filament has air filtration on during the print, still sets the print's exhaust speed
+
 #### Scenario: Prime line remains first-layer aware
 - **WHEN** common preparation completes
 - **THEN** the prime line uses available room ahead of first-layer bounds or a fixed safe fallback
@@ -343,7 +348,7 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **THEN** the toolhead reaches the chute, filament preparation and heater shutdown occur, and staged cooling and wiping complete before print end
 - **AND** bed lowering follows the shared slicer rule
 - **AND** delayed fan shutdown cannot turn off a fan used by a new or paused print
-- **AND** OrcaSlicer may apply configured completion exhaust while QIDI Studio passes zero and omits unsupported indexed completion-air placeholders
+- **AND** OrcaSlicer applies the configured completion exhaust only when the last filament has both air filtration and its on-completion option on, while QIDI Studio passes zero and omits unsupported indexed completion-air placeholders
 
 #### Scenario: Error cancellation is motion-free
 - **WHEN** optimized error cancellation executes

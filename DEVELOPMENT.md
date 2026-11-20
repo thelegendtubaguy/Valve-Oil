@@ -16,7 +16,7 @@ Every push to `dev` publishes a fresh installer to the [`prerelease`](https://gi
    ```
 
 3. **Answer No to automatic updates.** They follow stable releases and would replace your dev install. If they're already on, run `~/valve-oil/auto-update.sh --disable-systemd`.
-4. Copy the slicer G-code from the `dev` branch: [`orcaslicer_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/orcaslicer_gcode) or [`qidistudio_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/qidistudio_gcode).
+4. Copy the slicer G-code from your printer's folder (`max4`, `plus5`, or `smart5`) on the `dev` branch: [`orcaslicer_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/orcaslicer_gcode) or [`qidistudio_gcode/`](https://github.com/thelegendtubaguy/valve-oil/tree/dev/qidistudio_gcode).
 
 Run both again to pick up newer dev changes.
 

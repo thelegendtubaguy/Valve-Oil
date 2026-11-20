@@ -10,7 +10,7 @@
 - Keep `config/` stock-mapped except redactions, approved comment translation, generated state blocks, and minimal include wiring. Never tune `config/printer.cfg` or `config/klipper-macros-qd/*.cfg`. Put changes where they belong:
   - stock values: guarded `installer/package.yaml patches.*`, or a guarded host-file patch under `installer/runtime/` when the file is QIDI-generated with varying sections (e.g. `config/box.cfg`);
   - Klipper behavior: `installer/klipper/macros/`, with printer-specific homing, cutter/wiper/chute moves, and positions in `installer/klipper/printers/<printer>/` (same macro names on every printer; the installer layers the detected printer's folder onto the common macros);
-  - slicer behavior: `orcaslicer_gcode/` and `qidistudio_gcode/`;
+  - slicer behavior: `orcaslicer_gcode/<printer>/` and `qidistudio_gcode/<printer>/`;
   - Valve Oil UI, the web interface served at `/valve-oil/` beside Fluidd: `ui/`;
   - installer/runtime metadata: `installer/`.
 

@@ -7,7 +7,7 @@ Contract: `openspec/contracts/gcode-paths/start-print.path.json`
 
 ### OrcaSlicer start
 
-Path: `orcaslicer_gcode/start.gcode`
+Path: `orcaslicer_gcode/max4/start.gcode`
 
 Ordered invariants:
 
@@ -30,6 +30,7 @@ Ordered invariants:
 - `G1 X178 E20 F1200`
 - `G1 X173 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
+- `M106 P3 S0`
 
 Forbidden patterns:
 
@@ -47,7 +48,7 @@ G29.0`
 
 ### QIDI Studio start
 
-Path: `qidistudio_gcode/start.gcode`
+Path: `qidistudio_gcode/max4/start.gcode`
 
 Ordered invariants:
 

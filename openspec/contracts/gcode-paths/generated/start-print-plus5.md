@@ -30,6 +30,7 @@ Ordered invariants:
 - `G1 X140 E20 F1200`
 - `G1 X135 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
+- `M106 P3 S0`
 
 Forbidden patterns:
 

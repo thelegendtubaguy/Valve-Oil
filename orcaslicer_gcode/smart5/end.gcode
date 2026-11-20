@@ -2,7 +2,7 @@ SET_PRINT_MAIN_STATUS MAIN_STATUS=print_end
 G0 Z{min(max_print_height, max_layer_z + 3)} F600
 OPTIMIZED_MOVE_TO_TRASH
 OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]
-{if activate_air_filtration_on_completion[current_extruder]}
+{if activate_air_filtration[current_extruder] and activate_air_filtration_on_completion[current_extruder]}
 OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}
 {else}
 OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0

@@ -474,7 +474,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                     run(path.name, path.read_text(encoding="utf-8"), None)
 
     def test_slicer_filament_change_serves_both_box_command_surfaces(self):
-        for pack in ("orcaslicer_gcode", "qidistudio_gcode", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5",
+        for pack in ("orcaslicer_gcode/max4", "qidistudio_gcode/max4", "orcaslicer_gcode/plus5", "qidistudio_gcode/plus5",
                      "orcaslicer_gcode/smart5", "qidistudio_gcode/smart5"):
             with self.subTest(pack=pack):
                 text = (REPO_ROOT / pack / "change_filament.gcode").read_text(encoding="utf-8")
@@ -557,10 +557,10 @@ class OptimizedMacroContractTests(unittest.TestCase):
         )
 
         for relative_path in (
-            "orcaslicer_gcode/start.gcode",
-            "qidistudio_gcode/start.gcode",
-            "orcaslicer_gcode/end.gcode",
-            "qidistudio_gcode/end.gcode",
+            "orcaslicer_gcode/max4/start.gcode",
+            "qidistudio_gcode/max4/start.gcode",
+            "orcaslicer_gcode/max4/end.gcode",
+            "qidistudio_gcode/max4/end.gcode",
         ):
             slicer_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
             self.assertNotIn("_VO_ENSURE_TOOL_MAPPINGS", slicer_gcode)
@@ -648,8 +648,8 @@ class OptimizedMacroContractTests(unittest.TestCase):
 
     def test_slicer_start_keeps_mesh_selection_printer_side(self):
         expected_calls = {
-            "orcaslicer_gcode/start.gcode": "OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature] CHAMBER_MIN_TEMP={chamber_minimal_temperature[initial_tool]}",
-            "qidistudio_gcode/start.gcode": "OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]",
+            "orcaslicer_gcode/max4/start.gcode": "OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature] CHAMBER_MIN_TEMP={chamber_minimal_temperature[initial_tool]}",
+            "qidistudio_gcode/max4/start.gcode": "OPTIMIZED_START_PRINT_FILAMENT_PREP EXTRUDER=[initial_no_support_extruder] FIRSTLAYERTEMP=[nozzle_temperature_initial_layer] PURGETEMP={nozzle_temperature_range_high[initial_tool]} BEDTEMP=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperatures]",
         }
         for relative_path, expected_call in expected_calls.items():
             gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -809,10 +809,10 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("variable_keep_loaded_between_prints", globals_text)
 
         for relative_path in (
-            "orcaslicer_gcode/start.gcode",
-            "qidistudio_gcode/start.gcode",
-            "orcaslicer_gcode/end.gcode",
-            "qidistudio_gcode/end.gcode",
+            "orcaslicer_gcode/max4/start.gcode",
+            "qidistudio_gcode/max4/start.gcode",
+            "orcaslicer_gcode/max4/end.gcode",
+            "qidistudio_gcode/max4/end.gcode",
         ):
             slicer_gcode = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
             self.assertNotIn("vo_keep_loaded_between_prints", slicer_gcode)
@@ -840,40 +840,43 @@ class OptimizedMacroContractTests(unittest.TestCase):
         self.assertNotIn("SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{tool_slot}\"'", end_gcode)
 
     def test_end_sequence_waits_for_staged_hotend_cooldown_before_wiping(self):
-        orca_end_gcode = (REPO_ROOT / "orcaslicer_gcode/end.gcode").read_text(
-            encoding="utf-8"
-        )
-        self.assert_ordered(
-            orca_end_gcode,
-            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
-            "OPTIMIZED_MOVE_TO_TRASH",
-            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
-            "{if activate_air_filtration_on_completion[current_extruder]}",
-            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
-            "{else}",
-            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
-            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
-            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
-            "PRINT_END",
-        )
-        self.assertNotIn("VO_END_FAN_COOLDOWN", orca_end_gcode)
+        for folder in ("max4", "plus5", "smart5"):
+            orca_path = REPO_ROOT / "orcaslicer_gcode" / folder / "end.gcode"
+            with self.subTest(file=orca_path.relative_to(REPO_ROOT).as_posix()):
+                orca_end_gcode = orca_path.read_text(encoding="utf-8")
+                # Completion exhaust runs only when the filament has air filtration on as well as
+                # "On completion", as OrcaSlicer's own end-of-print exhaust command does.
+                self.assert_ordered(
+                    orca_end_gcode,
+                    "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+                    "OPTIMIZED_MOVE_TO_TRASH",
+                    "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+                    "{if activate_air_filtration[current_extruder] and activate_air_filtration_on_completion[current_extruder]}",
+                    "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED={complete_print_exhaust_fan_speed[current_extruder] * 255 / 100}",
+                    "{else}",
+                    "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+                    "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+                    "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+                    "PRINT_END",
+                )
+                self.assertNotIn("VO_END_FAN_COOLDOWN", orca_end_gcode)
 
-        qidistudio_end_gcode = (REPO_ROOT / "qidistudio_gcode/end.gcode").read_text(
-            encoding="utf-8"
-        )
-        self.assert_ordered(
-            qidistudio_end_gcode,
-            "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
-            "OPTIMIZED_MOVE_TO_TRASH",
-            "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
-            "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
-            "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
-            "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
-            "PRINT_END",
-        )
-        self.assertNotIn("activate_air_filtration_on_completion", qidistudio_end_gcode)
-        self.assertNotIn("complete_print_exhaust_fan_speed", qidistudio_end_gcode)
-        self.assertNotIn("VO_END_FAN_COOLDOWN", qidistudio_end_gcode)
+            qidistudio_path = REPO_ROOT / "qidistudio_gcode" / folder / "end.gcode"
+            with self.subTest(file=qidistudio_path.relative_to(REPO_ROOT).as_posix()):
+                qidistudio_end_gcode = qidistudio_path.read_text(encoding="utf-8")
+                self.assert_ordered(
+                    qidistudio_end_gcode,
+                    "G0 Z{min(max_print_height, max_layer_z + 3)} F600",
+                    "OPTIMIZED_MOVE_TO_TRASH",
+                    "OPTIMIZED_END_PRINT_FILAMENT_PREP T=[current_extruder]",
+                    "OPTIMIZED_END_NOZZLE_COOLDOWN_START EXHAUST_SPEED=0",
+                    "G1 Z{min(max_print_height, max_print_height / 2 + 10)} F600",
+                    "OPTIMIZED_END_STAGED_NOZZLE_WIPE",
+                    "PRINT_END",
+                )
+                self.assertNotIn("activate_air_filtration_on_completion", qidistudio_end_gcode)
+                self.assertNotIn("complete_print_exhaust_fan_speed", qidistudio_end_gcode)
+                self.assertNotIn("VO_END_FAN_COOLDOWN", qidistudio_end_gcode)
 
         cooldown_start = self._macro_gcode("OPTIMIZED_END_NOZZLE_COOLDOWN_START")
         self.assert_ordered(
@@ -986,8 +989,8 @@ class OptimizedMacroContractTests(unittest.TestCase):
         # optimized package must not depend on them surviving future firmware.
         for path in (
             *installed_macro_files("max4"),
-            *sorted((REPO_ROOT / "orcaslicer_gcode").glob("*.gcode")),
-            *sorted((REPO_ROOT / "qidistudio_gcode").glob("*.gcode")),
+            *sorted((REPO_ROOT / "orcaslicer_gcode/max4").glob("*.gcode")),
+            *sorted((REPO_ROOT / "qidistudio_gcode/max4").glob("*.gcode")),
         ):
             text = path.read_text(encoding="utf-8")
             for vendor_cleanup in ("CLEAR_FLUSH", "CLEAR_OOZE"):
@@ -1084,8 +1087,8 @@ class OptimizedMacroContractTests(unittest.TestCase):
             self.assertIn("VO_WIPE_NOZZLE_DROP", caller)
             self.assertNotIn("PATTERN=MIXED", caller)
         for slicer_change in (
-            "orcaslicer_gcode/change_filament.gcode",
-            "qidistudio_gcode/change_filament.gcode",
+            "orcaslicer_gcode/max4/change_filament.gcode",
+            "qidistudio_gcode/max4/change_filament.gcode",
         ):
             self.assertNotIn(
                 "_VO_START_PRE_SCRAPE_WIPE",

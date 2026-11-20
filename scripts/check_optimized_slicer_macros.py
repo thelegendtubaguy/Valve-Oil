@@ -98,17 +98,17 @@ def build_dynamic_prefixes(macros: set[str]) -> set[str]:
     return prefixes
 
 
-# Each printer's slicer packs: the Max 4's at the top of each pack folder, other printers' in a subfolder.
-PRINTER_PACK_FOLDERS = {"max4": "", "plus5": "plus5", "smart5": "smart5"}
+# Each printer's slicer packs live in a subfolder of each pack folder named for the printer.
+PRINTERS = ("max4", "plus5", "smart5")
 
 
 def iter_slicer_files(repo_root: Path = REPO_ROOT, printer: str | None = None) -> list[Path]:
     files: list[Path] = []
-    for name, folder in PRINTER_PACK_FOLDERS.items():
+    for name in PRINTERS:
         if printer is not None and name != printer:
             continue
         for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
-            directory = repo_root / pack / folder
+            directory = repo_root / pack / name
             if directory.exists():
                 files.extend(sorted(directory.glob("*.gcode")))
     return files
@@ -171,7 +171,7 @@ def validate_repo(
     checked_files: list[Path] = []
     all_macros: set[str] = set()
     # Each printer's packs may call that printer's own macros as well as the common ones.
-    for printer in PRINTER_PACK_FOLDERS:
+    for printer in PRINTERS:
         macros = iter_macro_names(
             repo_root / "installer" / "klipper" / "macros",
             repo_root / "installer" / "klipper" / "printers" / printer,
@@ -180,6 +180,13 @@ def validate_repo(
         failures.extend(_validate_files(repo_root, files, macros))
         checked_files.extend(files)
         all_macros |= macros
+    # Every pack file belongs to one printer's folder; anything else would go unchecked.
+    for pack in ("orcaslicer_gcode", "qidistudio_gcode"):
+        for path in sorted((repo_root / pack).rglob("*.gcode")):
+            if path not in checked_files:
+                failures.append(
+                    f"{path.relative_to(repo_root)}: slicer G-code outside a printer folder ({', '.join(PRINTERS)})"
+                )
     return failures, checked_files, all_macros
 
 
@@ -218,7 +225,7 @@ def main() -> int:
     failures, checked_files, macros = validate_repo(REPO_ROOT)
 
     if failures:
-        print("Optimized slicer G-code references unknown commands:", file=sys.stderr)
+        print("Optimized slicer G-code check failed:", file=sys.stderr)
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
         return 1

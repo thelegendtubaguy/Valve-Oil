@@ -70,3 +70,5 @@ G92 E0
 M82
 ; Mark printer status as actively printing after startup completes.
 SET_PRINT_MAIN_STATUS MAIN_STATUS=printing
+; Turn the exhaust fan off after the purge. OrcaSlicer writes its own M106 P3 right after this when a filament has air filtration on during the print.
+M106 P3 S0
