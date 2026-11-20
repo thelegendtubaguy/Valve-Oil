@@ -2942,6 +2942,10 @@ def _restore_guarded_file(guarded: _GuardedFilePatch, preimage: dict[str, Any], 
         run_sudo_ignore_failure(["systemctl", "disable", "--now", "--no-reload", guarded.service_unit], run=run, password=sudo_password or "")
         restarts.unit_removed(guarded.service_unit)
     _restore_file_preimage(preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, durable=guarded.binary is not None)
+    unit = PurePosixPath(str(preimage.get("path", "")))
+    if not preimage.get("exists") and unit.parent == PurePosixPath("/etc/systemd/system") and unit.suffix in {".service", ".timer"}:
+        # A removed unit whose last run failed stays listed as failed until the next boot otherwise.
+        run_sudo_ignore_failure(["systemctl", "reset-failed", unit.name], run=run, password=sudo_password or "")
     if guarded.service_unit:
         restarts.reload_units()
     elif guarded.restart_service:

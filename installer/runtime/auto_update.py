@@ -216,6 +216,7 @@ def remove_auto_update_units(*, environ: dict[str, str] | None, run: RunFn, pass
     for name in owned:
         _run_sudo_ignore_failure(["rm", "-f", str(directory / name)], run=run, password=password or "")
     _run_sudo_ignore_failure(["systemctl", "daemon-reload"], run=run, password=password or "")
+    _run_sudo_ignore_failure(["systemctl", "reset-failed", *owned], run=run, password=password or "")
 
 
 def settle_installed_bundle(paths: RuntimePaths, environ: dict[str, str]) -> None:

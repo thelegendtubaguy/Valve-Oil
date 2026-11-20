@@ -6,7 +6,7 @@ import signal
 import sys
 import threading
 import traceback
-from contextlib import contextmanager, nullcontext, suppress
+from contextlib import ExitStack, contextmanager, nullcontext, suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -27,8 +27,8 @@ from .box_enablement import maybe_reconcile_tool_slots_after_box_count_change
 from .backup import BackupArchiveError
 from .compatibility import CompatibilityValidationError, load_supported_upgrade_sources, validate_manifest_compatibility
 from .demo import resolve_demo_tui_delay_seconds, run_demo
-from .errors import (ActivePrintError, InstallerError, KlipperNotReadyError, OperationCancelled, PrinterStateError,
-                     RecoveryRequiredError)
+from .errors import (ActivePrintError, InstallerError, KlipperNotReadyError, LockAcquisitionError, OperationCancelled,
+                     PrinterStateError, RecoveryRequiredError)
 from .host_reboot import (
     HostRebootError,
     maybe_schedule_recommended_reboot,
@@ -287,7 +287,15 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
             return 0
 
         if args.mode == "auto-update-check":
-            with acquire(paths.lock_path):
+            with ExitStack() as held:
+                try:
+                    held.enter_context(acquire(paths.lock_path))
+                except LockAcquisitionError:
+                    # An install, uninstall, or update is running; the next hourly check sees what it leaves. A
+                    # failed run here would only mark the service failed.
+                    reporter.line(messages.AUTO_UPDATE_SKIPPED_ANOTHER_RUN)
+                    reporter.debug(event="cli.complete", mode=args.mode, return_code=0, action="skipped-locked")
+                    return 0
                 reporter.debug(
                     event="cli.lock.acquired",
                     mode=args.mode,

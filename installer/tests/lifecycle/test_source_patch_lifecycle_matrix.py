@@ -44,6 +44,7 @@ from installer.runtime.auto_update import (
     state_path,
 )
 from installer.runtime.cli import main
+from installer.runtime.locking import acquire
 from installer.runtime.backup import load_backup_snapshot, snapshot_runtime_tree
 from installer.runtime.bootstrap import copy_bundle
 from installer.runtime.cli import resolve_runtime_paths
@@ -1446,6 +1447,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 mock.patch("installer.runtime.cli.maybe_schedule_recommended_reboot", side_effect=forbidden):
             self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
                                   stream=io.StringIO()), 0)
+            # A check that finds an install, uninstall, or update running skips without failing its service.
+            skipped = io.StringIO()
+            with acquire(paths.lock_path), mock.patch("installer.runtime.cli.run_auto_update_check", side_effect=forbidden):
+                self.assertEqual(main(["auto-update", "--run", "--plain"], bundle_root=REPO_ROOT, environ=env,
+                                      stream=skipped), 0)
+            self.assertIn(messages.AUTO_UPDATE_SKIPPED_ANOTHER_RUN, skipped.getvalue())
 
         self.assertFalse(any(url.endswith(".tar.gz") for url in state["opened"]))
         self.assertEqual(json.loads(state_path(paths).read_text(encoding="utf-8"))["latest_checksum"], "2" * 64)
