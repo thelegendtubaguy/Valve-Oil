@@ -24,10 +24,13 @@ Ordered invariants:
 - `G1 X{first_layer_print_min[0]+45} Y{first_layer_print_min[1]-10} F20000`
 - `G1 X218 Y0 F20000`
 - `M109 S[nozzle_temperature_initial_layer]`
-- `G1 E6 F300`
-- `G1 X{first_layer_print_min[0]+5} E20 F1200`
+- `G1 F{min(300, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60)}`
+- `G1 E6`
+- `G1 F{min(1200, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*2)}`
+- `G1 X{first_layer_print_min[0]+5} E20`
+- `G1 F{min(6000, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*6.25)}`
 - `G1 X{first_layer_print_min[0]} E0.8`
-- `G1 X178 E20 F1200`
+- `G1 X178 E20`
 - `G1 X173 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
 - `M106 P3 S0`
@@ -45,6 +48,8 @@ Forbidden patterns:
 - `M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperature]
 G29.0`
+- `G1 E6 F300`
+- `E20 F1200`
 
 ### QIDI Studio start
 
@@ -65,10 +70,13 @@ Ordered invariants:
 - `G1 X{first_layer_print_min[0]+45} Y{first_layer_print_min[1]-10} F20000`
 - `G1 X218 Y0 F20000`
 - `M109 S[nozzle_temperature_initial_layer]`
-- `G1 E6 F300`
-- `G1 X{first_layer_print_min[0]+5} E20 F1200`
+- `G1 F{min(300, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60)}`
+- `G1 E6`
+- `G1 F{min(1200, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*2)}`
+- `G1 X{first_layer_print_min[0]+5} E20`
+- `G1 F{min(6000, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*6.25)}`
 - `G1 X{first_layer_print_min[0]} E0.8`
-- `G1 X178 E20 F1200`
+- `G1 X178 E20`
 - `G1 X173 E0.8`
 - `SET_PRINT_MAIN_STATUS MAIN_STATUS=printing`
 
@@ -85,6 +93,8 @@ Forbidden patterns:
 - `M140 S[bed_temperature_initial_layer_single]
 M141 S[chamber_temperatures]
 G29.0`
+- `G1 E6 F300`
+- `E20 F1200`
 
 ## Branches
 
