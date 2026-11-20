@@ -7,7 +7,7 @@ import unittest
 import zipfile
 
 from installer.tests.helpers import temp_path
-from installer.tests.usb_harness import FakePrinter, make_bundle, moonraker
+from installer.tests.usb_harness import STARTING_PNG, FakePrinter, make_bundle, moonraker
 from scripts import usb_drive_image
 
 ZIP = "QD_MAX4_ValveOil_test.zip"
@@ -26,7 +26,8 @@ class UsbHandoffTests(unittest.TestCase):
         bundle = bundle or make_bundle(root / "bundle.tar.gz")
         printer_zip = usb_drive_image.printer_zip(
             printer_id="max4", zip_name=ZIP, deb=usb_drive_image.build_deb("test"), deb_file=DEB,
-            bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), restore_sets=sets)
+            bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), restore_sets=sets,
+            starting_png=STARTING_PNG)
         printer.put_on_drive(ZIP, printer_zip, bundle)
         return printer
 
@@ -62,16 +63,46 @@ class UsbHandoffTests(unittest.TestCase):
             "-I", "-S", str(printer.home / "valve-oil/installer/runtime/bootstrap.py"), "usb", "--drive",
             str(printer.drive)])
         self.assertTrue((printer.home / "valve-oil/install.sh").is_file())
-        self.assertIn(f"dpkg --purge {usb_drive_image.HANDOFF_PACKAGE}", printer.calls())
+        calls = printer.calls()
+        self.assertIn(f"dpkg --purge {usb_drive_image.HANDOFF_PACKAGE}", calls)
+        # Valve Oil's starting screen replaces the restarted app before anything else waits, and the installer finds
+        # the app stopped for it to take over.
+        self.assertLess(calls.index("systemctl stop qidi-client.service"), calls.index(f"draw {printer.run_dir}/starting.png"))
+        self.assertLess(calls.index(f"draw {printer.run_dir}/starting.png"),
+                        calls.index(f"dpkg --purge {usb_drive_image.HANDOFF_PACKAGE}"))
+        self.assertNotIn("systemctl start qidi-client.service", calls)
+        self.assertTrue(printer.touchscreen_stopped.is_file())
         sudoers = (printer.sudoers / "valve-oil-usb-install").read_text()
         self.assertIn(f"{printer.printer_data.owner()} ALL=(ALL) NOPASSWD: ALL", sudoers)
         self.assertIn(f"r {printer.sudoers}/valve-oil-usb-install",
                       (printer.tmpfiles / "valve-oil-usb-install.conf").read_text())
 
-        # The unit's ExecStopPost.
-        subprocess.run(printer.unit_command()[:2] + ["cleanup"], env=printer.env(), check=True)
+        # The unit's ExecStopPost, after an installer that never took the app over, starts it.
+        printer.cleanup()
         self.assertFalse((printer.sudoers / "valve-oil-usb-install").exists())
         self.assertFalse((printer.tmpfiles / "valve-oil-usb-install.conf").exists())
+        self.assertIn("systemctl start qidi-client.service", printer.calls())
+        self.assertFalse(printer.touchscreen_stopped.exists())
+
+    def test_the_app_comes_back_when_the_starting_screen_cannot_be_drawn_and_not_after_the_installer_took_it(self):
+        for case in ("not drawn", "taken over"):
+            with self.subTest(case):
+                printer = self.printer()
+                printer.offline_update(ZIP)
+                if case == "not drawn":
+                    (printer.fake / "screen-exit").write_text("1")
+
+                with moonraker("ready") as url:
+                    launched = printer.launch(moonraker_url=url)
+
+                self.assertEqual(launched.returncode, 0, printer.log.read_text())
+                self.assertIsNotNone(printer.exec_arguments())
+                if case == "taken over":
+                    printer.touchscreen_stopped.unlink()  # what install_screen.held does
+                started = printer.calls().count("systemctl start qidi-client.service")
+                self.assertEqual(started, 1 if case == "not drawn" else 0)
+                printer.cleanup()
+                self.assertEqual(printer.calls().count("systemctl start qidi-client.service"), started)
 
     def test_a_firmware_without_a_set_or_with_a_corrupt_set_restores_nothing_and_still_starts_the_installer(self):
         cases = {"no-set": "01.01.06.05", "bad-set": "01.01.07.01"}
@@ -119,6 +150,7 @@ class UsbHandoffTests(unittest.TestCase):
                 self.assertNotEqual(launched.returncode, 0)
                 self.assertIsNone(printer.exec_arguments())
                 self.assertIn("systemctl start qidi-client.service", printer.calls())
+                self.assertFalse(printer.touchscreen_stopped.exists())
                 self.assertFalse((printer.sudoers / "valve-oil-usb-install").exists())
                 self.assertFalse((printer.home / "valve-oil").exists())
                 logs = list((printer.drive / "valve-oil/logs").iterdir())

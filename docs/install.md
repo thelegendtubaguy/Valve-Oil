@@ -39,7 +39,7 @@ You can install Valve Oil without SSH or a computer at the printer, from the tou
 1. Download `valve-oil-usb-<version>.zip` from the [latest release](https://github.com/thelegendtubaguy/valve-oil/releases/latest).
 2. Extract it to the top folder of a USB drive formatted FAT32. The drive then has a `QD_Update` folder and a `valve-oil` folder. The same drive works on the Max 4, the Plus 5, and the Smart 5.
 3. Plug the drive into the printer. On the touchscreen, open **Firmware → Offline Update** and choose the Valve Oil package. Each printer lists only its own.
-4. QIDI's app installs the package and restarts. About a minute later the touchscreen shows Valve Oil's installer, which checks the printer and shows what it found.
+4. QIDI's app installs the package and restarts. A few seconds later the touchscreen shows Valve Oil's installer, which starts, copies QIDI's system package back from the drive, and reads the printer's boards before it shows what it found. On the Smart 5 that takes about two minutes, and the screen says which of these it's doing.
 5. Answer its questions, check the summary, and tap **Install**. Nothing changes before that tap, and **Quit** on any screen before it gives the touchscreen back to QIDI's app.
 6. The install runs by itself and shows each step and the time so far. Keep the printer, and every QIDI Box, on.
 7. When it's done, take the drive out. The printer restarts by itself. **Restart now** restarts it with the drive left in, which is harmless: the drive's package runs only when someone chooses it on the Offline Update page.

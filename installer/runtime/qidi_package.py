@@ -653,18 +653,20 @@ class SocRestore:
 
 
 def restore_soc_package_from_drive(paths, manifest, *, environ, sudo, reporter,
-                                   disk_usage=shutil.disk_usage) -> SocRestore:
+                                   disk_usage=shutil.disk_usage, copy_started=None) -> SocRestore:
     """Put QIDI's system package file back in QIDI's update folder from the target package on the USB drive.
 
     A USB run's hand-off restores QIDI's manifest and board images but not the system package file the manifest names.
     On the target firmware, this extracts that file, and only it, from the drive's package once the package matches
     its pinned size and SHA-256 and its manifest names the same file, and moves it into the folder owned by root with
     mode 0644, as QIDI's unzip leaves it. sudo(command) runs a command as root and returns its CompletedProcess.
+    copy_started(), when given, is called once the drive holds the package, before it is checked and copied.
     Never raises for a missing drive or a write that fails: the result says what happened, and leaves the folder as
     it was unless it is RESTORED.
     """
     try:
-        return _restore_soc(paths, manifest, environ=environ, sudo=sudo, reporter=reporter, disk_usage=disk_usage)
+        return _restore_soc(paths, manifest, environ=environ, sudo=sudo, reporter=reporter, disk_usage=disk_usage,
+                            copy_started=copy_started)
     except (OSError, InstallerError, subprocess.SubprocessError, zipfile.BadZipFile, zipfile.LargeZipFile,
             EOFError, RuntimeError) as exc:
         message = getattr(exc, "message", None) or str(exc) or type(exc).__name__
@@ -673,7 +675,7 @@ def restore_soc_package_from_drive(paths, manifest, *, environ, sudo, reporter,
         return SocRestore(FAILED, message)
 
 
-def _restore_soc(paths, manifest, *, environ, sudo, reporter, disk_usage) -> SocRestore:
+def _restore_soc(paths, manifest, *, environ, sudo, reporter, disk_usage, copy_started=None) -> SocRestore:
     try:
         detected = detect_firmware(paths.firmware_manifest_path)
     except FirmwareDetectionError:
@@ -702,6 +704,8 @@ def _restore_soc(paths, manifest, *, environ, sudo, reporter, disk_usage) -> Soc
     if info is None:
         return _restore_result(reporter, NO_DRIVE_COPY, f"QIDI's system package file {name} wasn't put back in QIDI's "
                                f"update folder: the USB drive has no {where}", file=name, shown=source is not None)
+    if copy_started is not None:
+        copy_started()
     try:
         if not stat.S_ISREG(info.st_mode):
             raise PackageError("not a file", code=UNVERIFIED)

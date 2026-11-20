@@ -1252,6 +1252,11 @@ Each release SHALL publish one USB drive image that an operator extracts to a US
 - **WHEN** an operator starts the USB installer on a supported printer without Valve Oil and confirms the summary
 - **THEN** the printer ends with the same installed state as an SSH install with the same answers, and the finish screen says what to do next
 
+#### Scenario: Valve Oil takes the touchscreen when QIDI's app restarts
+- **WHEN** QIDI's app has installed the drive's package and restarted
+- **THEN** the touchscreen shows Valve Oil's starting screen within seconds, before the bundle is unpacked or Klipper is ready, and keeps showing Valve Oil's screens until the operator quits or the run ends
+- **AND** QIDI's app starts again when the starting screen can't be drawn, or when the installer ends or never starts without having taken the app over
+
 #### Scenario: One drive for every printer
 - **WHEN** the same drive is plugged into a Max 4, a Plus 5, or a Smart 5
 - **THEN** that printer's offline update page lists only the Valve Oil package for that printer

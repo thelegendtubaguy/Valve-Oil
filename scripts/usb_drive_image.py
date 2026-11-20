@@ -12,6 +12,9 @@ installer/usb/postinst; and valve-oil-restore/, which the postinst reads and the
     zip                      this zip's name, by which the postinst finds the drive in the mount table
     valve-oil.tar.gz.sha256  the bundle's SHA-256
     launch.sh                installer/usb/launch.sh, which the postinst starts as its own systemd unit
+    update_screen.py         installer/runtime/update_screen.py, with which launch.sh draws starting.png
+    starting.png             the screen launch.sh shows from the app's restart until the installer draws its own
+                             (touch_ui.starting_screen, for the printer and package version)
     <set>/                   QIDI's firmware_manifest.json and board images for each package of each supported
                              firmware (package.yaml restore_sets), with SHA256SUMS
 
@@ -39,6 +42,7 @@ if str(REPO_ROOT) not in sys.path:
 from installer.runtime.naming import ARCHIVE_NAME
 
 USB_SOURCE = REPO_ROOT / "installer/usb"
+UPDATE_SCREEN = REPO_ROOT / "installer/runtime/update_screen.py"
 HANDOFF_PACKAGE = "valve-oil-usb-handoff"
 # Higher than any QIDI version, so QIDI's app always counts the package as an update; it compares only after it has
 # emptied its update folder and unzipped the package there.
@@ -259,9 +263,17 @@ def _write(archive: zipfile.ZipFile, name: str, data: bytes, *, mode: int = 0o64
     archive.writestr(info, data)
 
 
+def starting_screen(printer, version: str) -> bytes:
+    """The starting screen launch.sh shows on `printer` for Valve Oil `version`, with the installer's first footer."""
+    from installer.runtime import touch_ui
+
+    return touch_ui.starting_screen(where=printer.display_name, footer=f"Valve Oil {version} · USB installer")
+
+
 def printer_zip(*, printer_id: str, zip_name: str, deb: bytes, deb_file: str, bundle_sha256: str,
-                restore_sets: list[tuple[str, dict[str, bytes]]]) -> bytes:
-    """One printer's zip: the 99.99.99.99 manifest, the hand-off package, and valve-oil-restore/ with each set."""
+                restore_sets: list[tuple[str, dict[str, bytes]]], starting_png: bytes | None = None) -> bytes:
+    """One printer's zip: the 99.99.99.99 manifest, the hand-off package, and valve-oil-restore/ with each set and,
+    given starting_png, the starting screen."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         _write(archive, "firmware_manifest.json", soc_manifest(deb_file).encode())
@@ -270,6 +282,9 @@ def printer_zip(*, printer_id: str, zip_name: str, deb: bytes, deb_file: str, bu
         _write(archive, f"{HANDOFF_FOLDER}/zip", f"{zip_name}\n".encode())
         _write(archive, f"{HANDOFF_FOLDER}/{ARCHIVE_NAME}.sha256", f"{bundle_sha256}  {ARCHIVE_NAME}\n".encode())
         _write(archive, f"{HANDOFF_FOLDER}/launch.sh", (USB_SOURCE / "launch.sh").read_bytes(), mode=0o755)
+        if starting_png is not None:
+            _write(archive, f"{HANDOFF_FOLDER}/update_screen.py", UPDATE_SCREEN.read_bytes())
+            _write(archive, f"{HANDOFF_FOLDER}/starting.png", starting_png, compress=zipfile.ZIP_STORED)
         for set_name, files in restore_sets:
             sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items())
             for name, data in files.items():
@@ -301,7 +316,9 @@ def build_image(manifest, *, bundle_archive: Path, image: Path, label: str, cach
                     for restore_set in printer.restore_sets]
             _write(archive, f"{QD_UPDATE}/{zip_name}",
                    printer_zip(printer_id=printer.id, zip_name=zip_name, deb=deb, deb_file=deb_file,
-                               bundle_sha256=bundle_sha256, restore_sets=sets), compress=zipfile.ZIP_STORED)
+                               bundle_sha256=bundle_sha256, restore_sets=sets,
+                               starting_png=starting_screen(printer, manifest.package.version)),
+                   compress=zipfile.ZIP_STORED)
         info = zipfile.ZipInfo(BUNDLE_ON_DRIVE, date_time=ZIP_TIMESTAMP)
         info.external_attr = 0o100644 << 16
         with bundle_archive.open("rb") as source, archive.open(info, "w", force_zip64=True) as destination:

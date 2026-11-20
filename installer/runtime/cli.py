@@ -617,6 +617,8 @@ def _install_held(args, hold, *, paths, manifest, reporter, env, input_stream, i
     firmware = None
     # Every board is read before anything changes; a new install with a board this release doesn't admit stops
     # here.
+    if front_end is not None and not args.dry_run:
+        front_end.reading_boards()
     printer, admission = board_preflight(
         paths=paths, reporter=reporter, manifest=manifest, dry_run=args.dry_run,
         input_stream=input_stream, environ=env,

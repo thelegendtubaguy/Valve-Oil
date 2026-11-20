@@ -16,7 +16,9 @@ the update starts the app when it ends, and neither the install nor the watcher 
 having changed anything and the install carries on for the current firmware, the install takes them again (retake).
 
 Nothing is stopped and no screen is shown for a dry run, while a print runs or is paused or a heater is on, when the app
-isn't running, or when sudo or the watcher can't be started. The install a firmware update runs (firmware_update.py)
+isn't running, or when sudo or the watcher can't be started. The USB installer's launcher stops the app itself, to show
+its starting screen, and leaves a marker saying so: given it (stopped_marker), the hold takes over the stopped app and
+starts it at the end as if it had stopped it. The install a firmware update runs (firmware_update.py)
 finds the app stopped and the update's screen showing: its restarts of the app wait too, and the update starts the app.
 """
 from __future__ import annotations
@@ -80,12 +82,13 @@ def recovery_records(paths) -> tuple[Path, ...]:
 
 @contextmanager
 def held(*, paths, reporter, environ, input_stream=None, run=subprocess.run, urlopen=urllib.request.urlopen,
-         draw=update_screen.draw, require_idle: bool = True, progress_screen: bool = True):
+         draw=update_screen.draw, require_idle: bool = True, progress_screen: bool = True,
+         stopped_marker: Path | None = None):
     """Hold the touchscreen app stopped, with Valve Oil's install screen showing, for the block, which gets a Hold.
 
     require_idle False takes the screen while the printer is busy too: the USB installer (usb_install.py) draws its
     own screens from the first one, including the one that says the printer is busy. progress_screen False leaves the
-    drawing to the caller."""
+    drawing to the caller. stopped_marker, when it exists, says the app is stopped for this hold to take over."""
     global _held, _marker
     if environ.get(safety.FIRMWARE_UPDATE_RUN_ENV):
         # The firmware update stopped the app and shows its own screen; it starts the app when it ends.
@@ -98,7 +101,8 @@ def held(*, paths, reporter, environ, input_stream=None, run=subprocess.run, url
 
     def take():
         return _take(paths=paths, reporter=reporter, environ=environ, input_stream=input_stream, run=run,
-                     urlopen=urlopen, draw=draw if progress_screen else _no_draw, require_idle=require_idle)
+                     urlopen=urlopen, draw=draw if progress_screen else _no_draw, require_idle=require_idle,
+                     stopped_marker=stopped_marker)
 
     marker = paths.printer_data_root / MARKER
     password = take()
@@ -148,13 +152,16 @@ def _no_draw(*args, **kwargs) -> bool:
     return True
 
 
-def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw, require_idle=True) -> str | None:
-    """Stop the app and show the screen; the sudo password, or None when the app was left as it was."""
+def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw, require_idle=True,
+          stopped_marker: Path | None = None) -> str | None:
+    """Stop the app and show the screen; the sudo password, or None when the app was left as it was. An app that
+    stopped_marker says is stopped for this hold is taken over as it is."""
     try:
         active = run(["systemctl", "is-active", TOUCHSCREEN], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None  # not a printer
-    if (active.stdout or "").strip() != "active":
+    stopped = (active.stdout or "").strip() != "active"
+    if stopped and (stopped_marker is None or not stopped_marker.exists()):
         return None
     try:
         if require_idle:
@@ -172,11 +179,15 @@ def _take(*, paths, reporter, environ, input_stream, run, urlopen, draw, require
                         "/bin/sh", "-c", WATCHER_SCRIPT, "sh", str(os.getpid()), str(marker),
                         *(str(record) for record in recovery_records(paths))],
                        run=run, password=password, timeout=30)
-    if watcher.returncode or run_sudo(["systemctl", "stop", TOUCHSCREEN], run=run, password=password,
-                                      timeout=60).returncode:
+    if watcher.returncode or (not stopped and run_sudo(["systemctl", "stop", TOUCHSCREEN], run=run, password=password,
+                                                       timeout=60).returncode):
         marker.unlink(missing_ok=True)  # the watcher, if it started, then leaves the app alone
         run_sudo(["systemctl", "start", TOUCHSCREEN], run=run, password=password, timeout=60)
+        if stopped_marker is not None:
+            stopped_marker.unlink(missing_ok=True)
         return None
+    if stopped_marker is not None:
+        stopped_marker.unlink(missing_ok=True)  # the hold has the app now; the launcher's cleanup leaves it alone
     update_screen.light(lambda command: run_sudo(command, run=run, password=password, timeout=60), reporter=reporter)
     draw(update_screen.INSTALLING, reporter=reporter)
     return password

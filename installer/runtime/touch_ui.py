@@ -673,6 +673,17 @@ def compose(screen_id: str, **fields) -> Composition:
     return Composition(screen_id, s.c, buttons)
 
 
+def starting_screen(*, where: str, footer: str) -> bytes:
+    """The USB hand-off's starting screen (installer/usb/launch.sh), as an upright 800x480 PNG for update_screen.draw:
+    the checking screen saying the installer is starting, without the header's Log button, which nothing answers
+    until the installer runs. The installer's first screen then replaces it with no visible jump."""
+    composition = compose("checking", text="Starting the Valve Oil installer…", where=where, footer=footer)
+    for rectangles in composition.buttons.values():
+        for x, y, w, h in rectangles:
+            composition.canvas.fill(x, y, w, h, BG)
+    return encode_png(WIDTH, HEIGHT, bytes(composition.canvas.pixels))
+
+
 def compose_header(previous: Composition, screen_id: str, **fields) -> Composition:
     """`previous` with its header drawn again for `fields`, which differ from its own only in the header."""
     canvas = previous.canvas.copy()
