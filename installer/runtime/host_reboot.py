@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
-from . import messages, safety
+from . import boot_path, messages, safety
 from .errors import ActivePrintError, InstallerError, KlipperBusyError, KlipperNotReadyError, PrinterStateError
 from .fs_atomic import atomic_delete, atomic_write_text
 from .interaction import prompt_yes
@@ -341,10 +341,14 @@ def reboot_pending(paths: RuntimePaths) -> bool:
         return False
 
 
-def schedule_reboot_after_firmware_update(paths: RuntimePaths, *, password: str, run=subprocess.run) -> bool:
+def schedule_reboot_after_firmware_update(paths: RuntimePaths, *, password: str, run=subprocess.run, reporter=None,
+                                          environ: dict[str, str] | None = None) -> bool:
     """At the end of a QIDI firmware update, reboot for its install's host changes once the update has ended and the
     printer is idle, whether a session follows the update or not. Returns whether the reboot was scheduled."""
     if not reboot_pending(paths):
+        return False
+    if reporter is not None and not boot_path.boot_files_allow_reboot(
+            paths, reporter=reporter, environ=os.environ if environ is None else environ):
         return False
     command = _reboot_unit_command(paths, delay=FIRMWARE_UPDATE_REBOOT_DELAY, require_klipper_idle=False)
     try:
@@ -365,6 +369,8 @@ def _schedule_reboot(
     require_ready: bool = True,
 ) -> bool:
     """Schedule complete-host-reboot, which checks the printer again before rebooting."""
+    if not boot_path.boot_files_allow_reboot(paths, reporter=reporter, environ=environ):
+        return False
     if not _printer_allows_reboot(paths, reporter=reporter, require_klipper_idle=require_klipper_idle, urlopen=urlopen,
                                   require_ready=require_ready):
         return False
@@ -455,6 +461,9 @@ def perform_scheduled_host_reboot(
     if not _printer_allows_reboot(paths, reporter=reporter, require_klipper_idle=require_klipper_idle, urlopen=urlopen,
                                   wait_seconds=STATE_WAIT_SECONDS, sleep=sleep, clock=clock,
                                   require_ready=require_ready):
+        return False
+    # Checked last, right before the reboot: never restart a printer that would stop at the boot logo.
+    if not boot_path.boot_files_allow_reboot(paths, reporter=reporter, environ=environ):
         return False
     try:
         password = authenticate_sudo(

@@ -957,6 +957,30 @@ After an install or automatic update that applies zram swap, the CPU governor, a
 - **WHEN** the printer has rebooted since those changes, or a later install changed none of them
 - **THEN** the installer does not reboot for them
 
+### Requirement: The printer can start again
+Every install and update SHALL check, before it changes anything else, that the printer could start again: on QIDI's merged `/usr`, `/sbin`, `/bin`, and `/lib` link to `usr/sbin`, `usr/bin`, and `usr/lib`, and `/sbin/init` leads to a program. It SHALL put back a link a directory replaced, refuse when it can't, keep QIDI's touchscreen app from replacing `/sbin` again, and no reboot Valve Oil starts SHALL run while the check fails.
+
+#### Scenario: A directory replaced a link
+- **WHEN** an install or update finds `/sbin`, `/bin`, or `/lib` is a real directory that lacks its own `init`, `sh`, or `systemd/systemd` while the matching directory under `/usr` has it, as QIDI's Format External Storage leaves `/sbin` after unpacking dosfstools with `dpkg-deb -x` over `/`
+- **THEN** it copies the directory's files and links into the `/usr` directory without replacing any there, moves the directory aside to a dated name, and puts the relative link back through a rename, all before its backup or any other change
+- **AND** it says it repaired the link, checks again, and stops before any other change if the printer still couldn't start
+- **AND** a dry run says what it would repair and changes nothing
+- **AND** an unmerged system's real directories that hold their own files are left alone
+
+#### Scenario: Files the installer can't repair
+- **WHEN** a link points somewhere else, a directory under `/usr` lacks what the printer starts, or `/sbin/init` leads to no program
+- **THEN** the install or update changes nothing, and tells the operator not to restart the printer and where the recovery guide is
+
+#### Scenario: The touchscreen app finds its formatting tool
+- **WHEN** neither `mkfs.fat` nor `mkfs.vfat` is in `/usr/sbin`, `/sbin`, `/usr/bin`, or `/bin`, and the touchscreen app carries QIDI's `dosfstools` arm64 package
+- **THEN** the install or update installs that package with `dpkg -i`, after reading its name and architecture, so the app's Format External Storage never unpacks it over `/`
+- **AND** a printer that has the tool, or whose app carries no such package, gets nothing installed, and a failed install of the package tells the operator not to use Format External Storage and doesn't stop the install
+- **AND** uninstall leaves the package and the repaired links as they are
+
+#### Scenario: No reboot onto a printer that won't start
+- **WHEN** any reboot Valve Oil starts is about to be scheduled or run, after an install, an automatic update, a QIDI firmware update, the USB installer, or an uninstall the operator approved, while the check fails
+- **THEN** the printer is not rebooted, and the operator is told what was found, that the installer repairs it, and where the recovery guide is
+
 ### Requirement: Moonraker Spoolman accounting for QIDI Box changes
 Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 

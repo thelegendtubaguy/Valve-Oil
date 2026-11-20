@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
-from . import addons_cli, firmware_update, install_flow, install_screen, messages, progress, safety, update_window, valve_oil_status
+from . import addons_cli, boot_path, firmware_update, install_flow, install_screen, messages, progress, safety, update_window, valve_oil_status
 from .auto_update import (
     KIND_ENV,
     LOCK_HELD_ENV,
@@ -600,6 +600,9 @@ def _install(args, *, paths, manifest, reporter, env, input_stream, in_firmware_
     install is done; a firmware update started here takes it over (install_screen.py). A front end that holds the
     screen itself (usb_install.py) has it from its first screen."""
     firmware = None
+    if not args.dry_run:
+        # First of all: a printer QIDI's app left unable to start can also leave Klipper in error (boot_path.py).
+        boot_path.protect(paths, reporter=reporter, environ=env, dry_run=False, input_stream=input_stream)
     if not in_firmware_update and not existing_installation(paths, manifest):
         # Before the touchscreen is taken or a board is read: a new install needs a printer that works as it is.
         ensure_klipper_ready_for_new_install(paths)

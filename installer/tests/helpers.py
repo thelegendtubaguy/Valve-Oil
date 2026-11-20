@@ -249,6 +249,41 @@ def fake_system_root(
     return root
 
 
+def add_merged_usr(root: Path, *, format_tools: bool = False, dosfstools_deb: bool = False) -> Path:
+    """QIDI's merged /usr under a fake system root: /sbin, /bin, and /lib link into /usr, and /sbin/init leads to
+    systemd. format_tools: dosfstools is installed. dosfstools_deb: the touchscreen app carries its package."""
+    usr_lib = root / "usr/lib"
+    usr_lib.mkdir(parents=True, exist_ok=True)
+    if (root / "lib").is_dir() and not (root / "lib").is_symlink():
+        shutil.copytree(root / "lib", usr_lib, dirs_exist_ok=True)
+        shutil.rmtree(root / "lib")
+    for name in ("sbin", "bin"):
+        (root / "usr" / name).mkdir(parents=True, exist_ok=True)
+    systemd = usr_lib / "systemd/systemd"
+    systemd.parent.mkdir(parents=True, exist_ok=True)
+    systemd.write_bytes(b"systemd")
+    systemd.chmod(0o755)
+    (root / "usr/bin/sh").write_bytes(b"sh")
+    (root / "usr/bin/sh").chmod(0o755)
+    os.symlink("/lib/systemd/systemd", root / "usr/sbin/init")
+    for name in ("sbin", "bin", "lib"):
+        os.symlink(f"usr/{name}", root / name)
+    if format_tools:
+        _install_fake_dosfstools(root)
+    if dosfstools_deb:
+        deb = root / "home/qidi/QIDI_Client/resource/mkfs_tools/dosfstools_4.2-1_arm64.deb"
+        deb.parent.mkdir(parents=True, exist_ok=True)
+        deb.write_text("Package: dosfstools\nArchitecture: arm64\n", encoding="utf-8")
+    return root
+
+
+def _install_fake_dosfstools(root: Path) -> None:
+    tool = root / "usr/sbin/mkfs.fat"
+    tool.write_bytes(b"mkfs.fat")
+    tool.chmod(0o755)
+    os.symlink("mkfs.fat", root / "usr/sbin/mkfs.vfat")
+
+
 def with_fluidd_build(manifest):
     """Pin the manifest's Fluidd build to a small archive; repository checkouts carry no release build."""
     archive = temp_path("fluidd-build-") / "fluidd.zip"
@@ -374,6 +409,11 @@ def fake_host_run(root: Path):
             )
             return result(command)
         if command and command[0].startswith("/etc/init.d/"):
+            return result(command)
+        if command[:2] == ["dpkg-deb", "-f"]:
+            return result(command, stdout=Path(command[2]).read_text(encoding="utf-8"))
+        if command[:1] == ["dpkg"] and command[1] == f"--root={root}" and command[2] == "-i":
+            _install_fake_dosfstools(root)
             return result(command)
         raise AssertionError(f"Unexpected host command: {command}")
 

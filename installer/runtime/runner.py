@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import replace
 
 from .addons_cli import maybe_update_installed_addons
-from . import boot_logo, klipper_cfg, messages, patches, progress, safety, update_window
+from . import boot_logo, boot_path, klipper_cfg, messages, patches, progress, safety, update_window
 from .auto_update import (
     LOCK_HELD_ENV,
     adopt_legacy_enrollment,
@@ -219,6 +219,8 @@ def run_install(
         )
     else:
         reporter.debug(event="install.prior_state.missing", state_path=state_path)
+    # Before anything else changes, the printer must be able to start again (boot_path.py).
+    boot_path.protect(paths, reporter=reporter, environ=env, dry_run=dry_run, run=run, input_stream=input_stream)
     # Only an install over an existing Valve Oil may repair a Klipper halted on an error (_execute_install).
     new_install = prior_state is None and not existing_installation(paths, manifest)
     if new_install:

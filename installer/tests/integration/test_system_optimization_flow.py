@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
 
-from installer.runtime import install_flow, messages, system_optimizations
+from installer.runtime import boot_path, install_flow, messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
 from installer.runtime import moonraker_allowed_services, moonraker_used_extruders
 from installer.runtime import moonraker_speedups
@@ -57,6 +57,7 @@ from installer.runtime.uninstall import run_uninstall
 from installer.tests.helpers import (
     FIXTURES_ROOT,
     REPO_ROOT,
+    add_merged_usr,
     build_env,
     copy_base_runtime,
     earlier_blocked_qidiclient,
@@ -1459,3 +1460,98 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             shutil.copytree(source, destination)
             preimage["backup_dir"] = str(destination)
             for metadata in preimage.get("files", {}).values(): metadata.pop("sha256", None)
+
+
+class BootFilesFlowTests(unittest.TestCase):
+    """QIDI's Format External Storage unpacks dosfstools over /, replacing merged /usr's /sbin link with a directory;
+    the printer then stops at the boot logo on its next start (boot_path.py)."""
+
+    def _install_env(self, root):
+        printer_root = copy_base_runtime(homing_patched=True)
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        env[SYSTEM_ROOT_ENV] = str(root)
+        boot_id = printer_root / "boot-id"
+        boot_id.write_text("boot-one\n", encoding="utf-8")
+        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")
+        return printer_root, env, paths, manifest, urlopen
+
+    def _calls(self, root):
+        host_run = fake_host_run(root)
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append([part for part in command if part not in ("sudo", "-S", "-p", "")])
+            return host_run(command, **kwargs)
+
+        return run, calls
+
+    def test_install_repairs_a_sbin_qidis_format_replaced_and_keeps_its_tools(self):
+        root = add_merged_usr(fake_system_root(), dosfstools_deb=True)
+        # What `dpkg-deb -x dosfstools.deb /` leaves: a real /sbin with only dosfstools in it.
+        (root / "sbin").unlink()
+        (root / "sbin").mkdir()
+        (root / "sbin/mkfs.fat").write_bytes(b"qidi mkfs.fat")
+        (root / "sbin/mkfs.fat").chmod(0o755)
+        os.symlink("mkfs.fat", root / "sbin/mkdosfs")
+        self.assertTrue(boot_path.check(root)[0].repairable)
+        printer_root, env, paths, manifest, urlopen = self._install_env(root)
+        run, calls = self._calls(root)
+
+        before = snapshot_tree(root)
+        report = io.StringIO()
+        run_install(paths, manifest, PlainReporter(report), dry_run=True, urlopen=urlopen, environ=env, run=run)
+        self.assertEqual(snapshot_tree(root), before)
+        self.assertIn("Would repair the files the printer starts from: /sbin is a directory", report.getvalue())
+
+        report = io.StringIO()
+        run_install(paths, manifest, PlainReporter(report), urlopen=urlopen, environ=env, run=run)
+        self.assertEqual(os.readlink(root / "sbin"), "usr/sbin")
+        self.assertEqual(boot_path.check(root), ())
+        # The directory's tools moved into /usr/sbin, so QIDI's app finds them and doesn't unpack its package again.
+        self.assertEqual((root / "usr/sbin/mkfs.fat").read_bytes(), b"qidi mkfs.fat")
+        self.assertEqual(os.readlink(root / "usr/sbin/mkdosfs"), "mkfs.fat")
+        self.assertTrue(boot_path.format_tool_present(root))
+        self.assertEqual(len(list(root.glob("sbin.valve-oil-*"))), 1)
+        self.assertIn("Repaired /sbin", report.getvalue())
+        self.assertNotIn(["dpkg", f"--root={root}", "-i"], [call[:3] for call in calls])
+
+    def test_install_installs_qidis_dosfstools_only_when_its_format_tool_is_missing(self):
+        root = add_merged_usr(fake_system_root(), dosfstools_deb=True)
+        printer_root, env, paths, manifest, urlopen = self._install_env(root)
+        run, calls = self._calls(root)
+        report = io.StringIO()
+        run_install(paths, manifest, PlainReporter(report), dry_run=True, urlopen=urlopen, environ=env, run=run)
+        self.assertIn(messages.DOSFSTOOLS_WOULD_INSTALL, report.getvalue())
+        self.assertFalse(boot_path.format_tool_present(root))
+
+        report = io.StringIO()
+        run_install(paths, manifest, PlainReporter(report), urlopen=urlopen, environ=env, run=run)
+        installs = [call for call in calls if call[:1] == ["dpkg"]]
+        self.assertEqual(len(installs), 1)
+        self.assertTrue(boot_path.format_tool_present(root))
+        self.assertIn(messages.DOSFSTOOLS_INSTALLED, report.getvalue())
+
+        # Once present, later installs leave it be; uninstall keeps it, since removing it re-arms QIDI's bug.
+        run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=urlopen, environ=env, run=run)
+        self.assertEqual(len([call for call in calls if call[:1] == ["dpkg"]]), 1)
+        compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
+        run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()), environ=env, urlopen=urlopen, run=run)
+        self.assertTrue(boot_path.format_tool_present(root))
+        self.assertEqual(os.readlink(root / "sbin"), "usr/sbin")
+
+    def test_install_refuses_before_any_change_when_the_boot_files_cant_be_repaired(self):
+        root = add_merged_usr(fake_system_root(), dosfstools_deb=True)
+        (root / "sbin").unlink()
+        os.symlink("usr/local/sbin", root / "sbin")
+        printer_root, env, paths, manifest, urlopen = self._install_env(root)
+        run, calls = self._calls(root)
+        before, printer_before = snapshot_tree(root), snapshot_tree(printer_root)
+        with self.assertRaises(boot_path.BootPathError) as raised:
+            run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=urlopen, environ=env, run=run)
+        self.assertIn(boot_path.RECOVERY_DOC_URL, raised.exception.message)
+        self.assertEqual(snapshot_tree(root), before)
+        self.assertEqual(snapshot_tree(printer_root), printer_before)
+        self.assertFalse((printer_root / manifest.state_file).exists())

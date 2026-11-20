@@ -136,3 +136,12 @@ def klipper_not_ready(state: str, state_message: str = "") -> str:
     """Klipper's state, with its own first line of explanation when it gives one (such as a config error)."""
     first = next((line.strip() for line in (state_message or "").splitlines() if line.strip()), "")
     return f"Klipper isn't ready ({state}: {first})" if first else f"Klipper isn't ready ({state})"
+# The files the printer needs to start (boot_path.py).
+HOST_REBOOT_REFUSED_BOOT_FILES = "The printer was not restarted, because it wouldn't start again: {detail}. Run the installer, which repairs this, or follow {doc}"
+BOOT_FILES_UNREPAIRABLE = "Nothing was installed, because the printer wouldn't start again after its next restart: {detail}. Don't restart or switch off the printer; follow {doc}"
+BOOT_FILES_REPAIR_FAILED = "Repairing the files the printer starts from failed at `{command}`. Don't restart or switch off the printer; follow {doc}"
+BOOT_FILES_WOULD_REPAIR = "Would repair the files the printer starts from: {detail}."
+BOOT_FILES_REPAIRED = "Repaired {name}, so the printer can start again. It links to {target} again{moved}."
+DOSFSTOOLS_INSTALLED = "Installed QIDI's dosfstools package, so the touchscreen's Format External Storage no longer replaces /sbin."
+DOSFSTOOLS_WOULD_INSTALL = "Would install QIDI's dosfstools package, so the touchscreen's Format External Storage doesn't replace /sbin."
+DOSFSTOOLS_NOT_INSTALLED = "QIDI's dosfstools package could not be installed. Don't use Format External Storage on the touchscreen. On this printer it breaks the files the printer starts from."

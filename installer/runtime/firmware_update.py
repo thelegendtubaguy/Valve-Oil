@@ -1617,7 +1617,8 @@ def _end_succeeded(ctx: _Run, status_run) -> int:
     notes.append((ctx.record.get("calibration_result") or {}).get("summary", ""))
     # The install's host changes that need a reboot get it here, whoever follows the update: a session may have
     # ended, and an automatic update has none.
-    if schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run):
+    if schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run,
+                                             reporter=ctx.reporter, environ=ctx.environ):
         notes.append("The printer restarts in a few seconds, once it is idle.")
     message = " ".join(note for note in notes if note)
     valve_oil_status.clear_pending(ctx.paths, kind=valve_oil_status.FIRMWARE)

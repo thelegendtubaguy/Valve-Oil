@@ -21,7 +21,8 @@ from installer.runtime.host_reboot import (
 )
 from installer.runtime.models import RuntimePaths
 from installer.runtime.reporter import PlainReporter
-from installer.tests.helpers import _JsonResponse, moonraker_urlopen, temp_path
+from installer.tests.helpers import _JsonResponse, add_merged_usr, moonraker_urlopen, temp_path
+from installer.runtime import boot_path
 
 
 class HostRebootTests(unittest.TestCase):
@@ -119,6 +120,46 @@ class HostRebootTests(unittest.TestCase):
                 run=run,
             )
         )
+        self.assertEqual(calls[-1][-2:], ["systemctl", "reboot"])
+
+    def test_a_printer_that_would_not_start_again_is_never_rebooted(self):
+        # QIDI's Format External Storage replaced /sbin with a directory: no /sbin/init, so the next start would stop
+        # at the boot logo. No reboot path restarts it, whoever asks.
+        system = add_merged_usr(self.root / "system")
+        (system / "sbin").unlink()
+        (system / "sbin").mkdir()
+        environ = {boot_path.SYSTEM_ROOT_ENV: str(system)}
+        self._write_marker()
+        recommend_reboot(self.paths)
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        stream = io.StringIO()
+        reporter = PlainReporter(stream)
+        self.assertFalse(maybe_schedule_host_reboot(self.paths, reporter=reporter, input_stream=None, environ=environ,
+                                                    automatic=True, urlopen=moonraker_urlopen("standby"), run=run))
+        self.assertFalse(maybe_schedule_recommended_reboot(self.paths, reporter=reporter, input_stream=None,
+                                                           environ=environ, urlopen=moonraker_urlopen("standby"),
+                                                           run=run))
+        self.assertFalse(maybe_schedule_host_reboot(self.paths, reporter=reporter, input_stream=None, environ=environ,
+                                                    explicit=True, urlopen=moonraker_urlopen("standby"), run=run))
+        for recommended in (False, True):
+            self.assertFalse(perform_scheduled_host_reboot(self.paths, reporter=reporter, environ=environ,
+                                                           recommended=recommended, require_ready=False,
+                                                           urlopen=moonraker_urlopen("standby"), run=run))
+        self.assertFalse(schedule_reboot_after_firmware_update(self.paths, password="", run=run, reporter=reporter,
+                                                               environ=environ))
+        self.assertEqual(calls, [])
+        self.assertIn(boot_path.RECOVERY_DOC_URL, stream.getvalue())
+
+        # Put back, it reboots as before.
+        (system / "sbin").rmdir()
+        (system / "sbin").symlink_to("usr/sbin")
+        self.assertTrue(perform_scheduled_host_reboot(self.paths, reporter=reporter, environ=environ,
+                                                      urlopen=moonraker_urlopen("standby"), run=run))
         self.assertEqual(calls[-1][-2:], ["systemctl", "reboot"])
 
     def test_busy_unknown_or_not_ready_printer_leaves_reboot_pending(self):
