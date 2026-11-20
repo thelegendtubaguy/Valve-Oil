@@ -2,13 +2,22 @@
 
 [← Back to the README](../README.md)
 
+## The printer stops at the boot logo
+
+If the touchscreen stays on the boot logo and the printer never joins the network, over Wi-Fi or Ethernet, see [Recovering a printer that won't boot](recovering-an-unbootable-printer.md). It gets the printer booting again over USB without wiping it, and saves its logs on the way. The cause found so far is QIDI's touchscreen **Format External Storage** button, which can replace the system's `/sbin` link on printers that came without the FAT formatting tools.
+
 ## The installer stopped
 
 Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why. Each run also saves a log in `~/printer_data/logs`, such as `valve-oil-install-20261117-091402.log`, which the installer names when it stops; attach it when you [report a problem](#reporting-a-problem). See [Logs](install.md#logs).
 
 **`[Errno 13] Permission denied: '/home/qidi/printer_data/.tltg_optimized_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
 
-**Klipper is stopped with an error,** such as `... is not a valid config section`: you can still update with the installer. It can't read or flash the boards without Klipper, so after waiting for Klipper it leaves the board firmware as it is, installs its files, restarts Klipper, and then updates saved settings. If Klipper still doesn't start, the installer says so; fix the error shown in Fluidd and run the installer again. A new install needs Klipper ready to read the boards first, and otherwise stops with `Valve Oil reads the THR, mainboard, and USB Boxes before a new install and could not read them all, so nothing was installed.`
+**Klipper is stopped with an error,** such as `... is not a valid config section`:
+
+- **A new install** refuses to start and changes nothing, with `Klipper isn't ready (error: ...), so nothing was installed.` and Klipper's own first line of the error. Valve Oil isn't installed yet, so the error comes from the printer as it is. Fix it first, using the error Fluidd or the touchscreen shows, then run the installer again. It also refuses while Klipper is shut down, or still starting after a minute.
+- **An update over an installed Valve Oil** may be what fixes the error, since Valve Oil's own files can cause one. The installer installs its Klipper files and restarts Klipper before it changes anything else. It can't read or flash the boards without Klipper, so it leaves the board firmware as it is. If Klipper starts, the install carries on as usual. If it doesn't, the installer puts its files back, changes nothing else, doesn't restart the printer, and stops with `Klipper still did not start with Valve Oil's files, so they were put back and nothing else was changed.` Fix the error shown in Fluidd and run the installer again.
+
+Automatic updates and **Update now** don't install anything while Klipper isn't ready. The printer warning and Valve Oil UI's **Updates** screen say `Klipper isn't ready; fix the error Fluidd shows, or run the Valve Oil installer`.
 
 **A new install was refused because of a board,** with `This release of Valve Oil doesn't support a board on this printer yet, so nothing was installed.`: open the prefilled support issue link the installer printed above that line, and submit it. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet). If it says a Box `is listed in box.cfg but is not connected`, connect that Box, or remove it in the touchscreen's Box setup, and run the installer again.
 

@@ -462,6 +462,8 @@ class Printer:
         self.events.append(("moonraker",))
         if self.services["moonraker.service"] != "active":
             raise urllib.error.URLError("connection refused")
+        if url.endswith("/printer/info"):
+            return Response(json.dumps({"result": {"state": "ready", "process_id": 100}}).encode())
         names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
         status = {"print_stats": {"state": self.print_state}, "webhooks": {"state": "ready"},
                   "heaters": {"available_heaters": ["extruder"]}, "extruder": {"target": self.heater},

@@ -42,6 +42,7 @@ BLOCKERS = {
     "printing": "a print is running or paused",
     "heaters_on": "a heater is set to a temperature",
     "printer_state_unknown": "Klipper didn't report whether the printer is idle",
+    "klipper_not_ready": "Klipper isn't ready; fix the error Fluidd shows, or run the Valve Oil installer",
     "free_space": "there isn't enough free space on the printer",
     "mirror_unreachable": "the firmware download couldn't be reached",
     "package_unverified": "the firmware download didn't match its pinned checksum",

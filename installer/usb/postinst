@@ -7,7 +7,8 @@
 #   1. puts QIDI's firmware manifest and board images back into the update folder, from the set the zip carries for
 #      the installed system package's version, checked by SHA-256 before and after the copy;
 #   2. copies the Valve Oil bundle from the drive into the printer user's cache, checked against the zip's pin;
-#   3. starts launch.sh as its own transient systemd unit, outside the app's cgroup, and exits 0.
+#   3. starts launch.sh as its own transient systemd unit, outside the app's cgroup, with the starting screen it shows
+#      (update_screen.py and starting.png) beside it, and exits 0.
 # It never exits non-zero: a failed postinst leaves dpkg's state broken and the app shows an error.
 #
 # Paths can be overridden for tests: VO_USB_UPDATE_DIR, VO_USB_PRINTER_DATA, VO_USB_MOUNTS, VO_USB_RUN_DIR.
@@ -23,6 +24,7 @@ LOG=$PRINTER_DATA/logs/valve-oil-usb-handoff.log
 STATUS=$CACHE/restore
 NO_RESTORE_MARKER=.valve-oil-no-restore-set
 BUNDLE=valve-oil.tar.gz
+STARTING_SCREEN="update_screen.py starting.png"
 UNIT_PREFIX=valve-oil-usb-install
 # systemd writes a transient unit's description into its unit file; without one it uses the command line.
 UNIT_DESCRIPTION="Valve Oil USB installer"
@@ -166,6 +168,11 @@ main() {
   LAUNCHER=$RUN_DIR/launch.sh
   rm -f "$LAUNCHER"
   cp "$HANDOFF/launch.sh" "$LAUNCHER" 2>/dev/null && chmod 0700 "$LAUNCHER"
+  # The starting screen the launcher shows once the app has restarted.
+  for name in $STARTING_SCREEN; do
+    rm -f "$RUN_DIR/$name"
+    cp "$HANDOFF/$name" "$RUN_DIR/$name" 2>/dev/null && chmod 0600 "$RUN_DIR/$name"
+  done
 
   RESULT=
   SET_NAME=

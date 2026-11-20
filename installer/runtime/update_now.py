@@ -62,6 +62,8 @@ def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], ur
         with acquire(paths.lock_path):
             safety.ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
             safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+            # Update now never installs onto a Klipper that isn't ready; ./install.sh is what may repair one.
+            safety.ensure_klipper_ready(paths.moonraker_url, urlopen=urlopen)
             valve_oil_status.set_run_step(paths, record.id, step="download", step_label="Downloading the latest Valve Oil release")
             reporter.line("Downloading the latest Valve Oil release...")
             checksum = fetch_latest_checksum(release_checksum_url(environ), urlopen=urlopen)

@@ -193,7 +193,8 @@ def restart_klipper_service(
     )
 
 
-def _restart_service_until_ready(paths, *, pre_restart_pid: int, urlopen, sleep, attempts: int) -> None:
+def request_klipper_restart(paths, *, urlopen=urllib.request.urlopen) -> None:
+    """Ask Moonraker to restart the Klipper service, without waiting for it."""
     request = urllib.request.Request(
         service_restart_url(paths.moonraker_url),
         data=b'{"service":"klipper"}',
@@ -205,6 +206,10 @@ def _restart_service_until_ready(paths, *, pre_restart_pid: int, urlopen, sleep,
             response.read()
     except (OSError, urllib.error.URLError, ValueError) as exc:
         raise ProcessRestartError("Could not request Klipper service restart.") from exc
+
+
+def _restart_service_until_ready(paths, *, pre_restart_pid: int, urlopen, sleep, attempts: int) -> None:
+    request_klipper_restart(paths, urlopen=urlopen)
     for attempt in range(attempts):
         try:
             pid, state = read_printer_info(paths.moonraker_url, urlopen=urlopen)

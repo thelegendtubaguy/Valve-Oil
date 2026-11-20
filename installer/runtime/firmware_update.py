@@ -50,7 +50,8 @@ from .board_firmware import NEEDS_IMAGE, UNREAD, load_board_admission, record_bo
 from .box_firmware import usb_path_for_serial
 from . import closed_loop_firmware
 from .closed_loop_firmware import DriverUpdateFailed, KlipperAPI, klipper_api_path
-from .errors import ActivePrintError, FirmwareDetectionError, HeaterOnError, InstallerError, PrinterStateError
+from .errors import (ActivePrintError, FirmwareDetectionError, HeaterOnError, InstallerError, KlipperNotReadyError,
+                     PrinterStateError)
 from .firmware import detect_firmware, detect_firmware_key_best_effort, supported_printer
 from .fs_atomic import atomic_delete, atomic_write_text
 from .mainboard_firmware import mainboard_serial
@@ -330,12 +331,17 @@ def firmware_update_plan(paths, *, manifest=None, admission=None, urlopen=urllib
 
 
 def printer_blockers(paths, *, urlopen, wait_seconds: float = 0.0) -> tuple[Blocker, ...]:
+    """What stops an update from starting now: a print, a heater, or a Klipper that isn't ready. Nothing is installed,
+    updated, or rebooted onto a Klipper halted on an error; the operator's ./install.sh is what may repair one."""
     try:
         safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, wait_seconds=wait_seconds)
+        safety.ensure_klipper_ready(paths.moonraker_url, urlopen=urlopen, wait_seconds=wait_seconds)
     except HeaterOnError:
         return (Blocker.of("heaters_on"),)
     except ActivePrintError:
         return (Blocker.of("printing"),)
+    except KlipperNotReadyError:
+        return (Blocker.of("klipper_not_ready"),)
     except PrinterStateError:
         return (Blocker.of("printer_state_unknown"),)
     return ()
@@ -1611,7 +1617,8 @@ def _end_succeeded(ctx: _Run, status_run) -> int:
     notes.append((ctx.record.get("calibration_result") or {}).get("summary", ""))
     # The install's host changes that need a reboot get it here, whoever follows the update: a session may have
     # ended, and an automatic update has none.
-    if schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run):
+    if schedule_reboot_after_firmware_update(ctx.paths, password=ctx.password, run=ctx.run,
+                                             reporter=ctx.reporter, environ=ctx.environ):
         notes.append("The printer restarts in a few seconds, once it is idle.")
     message = " ".join(note for note in notes if note)
     valve_oil_status.clear_pending(ctx.paths, kind=valve_oil_status.FIRMWARE)

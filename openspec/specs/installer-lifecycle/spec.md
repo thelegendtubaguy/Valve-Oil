@@ -163,19 +163,29 @@ After install, update, or uninstall commits without a managed source change, the
 - **THEN** after a fresh idle-state check it restarts the Klipper service without asking and waits for Klipper to be ready under a different process
 - **AND** when a print is active or paused, a heater is on, the printer state cannot be verified, or Klipper does not become ready, the run still succeeds and says Klipper must be restarted to apply the changes
 
-### Requirement: Install repairs a halted Klipper
-Install and update SHALL be able to repair a printer whose Klipper is halted on an error, such as a configuration error, by writing files before anything that requires a running Klipper.
+### Requirement: A new install needs a ready Klipper
+A new install SHALL change nothing unless Moonraker reports Klipper ready, since a printer without Valve Oil has nothing of Valve Oil's that could have halted it.
 
-#### Scenario: Files first, then restart, then saved variables
-- **WHEN** install or update starts while Moonraker reports Klipper halted on an error
+#### Scenario: Klipper isn't ready on a new install
+- **WHEN** an SSH or USB install starts on a printer with no Valve Oil installation, as the board admission rule counts it, and Klipper reports error or shutdown, or still isn't ready after about a minute
+- **THEN** the install stops before it reads a board, backs up, or writes anything, and an SSH install before it takes the touchscreen
+- **AND** it tells the operator Klipper's state and the first line of Klipper's own message, and to fix the printer on QIDI's firmware first
+
+### Requirement: Install repairs a halted Klipper
+An install or update over an existing Valve Oil installation SHALL be able to repair a Klipper halted on an error, such as a configuration error, by installing Valve Oil's Klipper files and restarting Klipper before anything else changes.
+
+#### Scenario: Klipper files first, then restart, then everything else
+- **WHEN** an install or update over an existing installation starts while Moonraker reports Klipper halted on an error
 - **THEN** the printer counts as idle for the install, because a halted Klipper cannot be printing
-- **AND** no saved variable is read or written before the files, extra modules, and state are committed
+- **AND** no saved variable is read or written before the files, extra modules, and patches are written
 - **AND** the install then restarts the Klipper service without asking and, once Klipper is ready under a new process, verifies pending saved-variable expectations and initializes, enables, and maps saved variables as a normal install would
+- **AND** only then does it commit its state and go on to the system changes, the boot logo, the automatic-update settings, and the board firmware
 
 #### Scenario: Klipper still does not start
 - **WHEN** Klipper is not ready under a new process after that restart
-- **THEN** the installed files and state remain committed
-- **AND** no saved variable is written, pending expectations and source activation remain pending, and the operator is told to fix the reported error and run the installer again
+- **THEN** the install puts back every file and its state as they were before the run, requests one more Klipper restart so Klipper runs the files on disk, and fails
+- **AND** it makes no system change, writes no boot logo, flashes no board, changes no automatic-update setting, writes no saved variable, keeps pending saved-variable expectations, and schedules no reboot
+- **AND** the operator is told to fix the reported error and run the installer again
 
 ### Requirement: Non-owning QIDI Box reconciliation
 The installer SHALL keep an available QIDI Box usable without claiming ownership of vendor saved variables or silently replacing existing non-empty tool mappings. Box availability SHALL be recognized for every supported firmware's Box transport, including the legacy USB Box configuration and the RS-485 Box stack.
@@ -494,7 +504,7 @@ The update check SHALL be scheduled on every installation. Installing a release,
 
 #### Scenario: Enrolled release installation is idle and integrity checked
 - **WHEN** an enrolled updater observes a new release checksum, a published release newer than the installed one, or missing or drifted optimized installation state
-- **THEN** update proceeds only while the printer is idle, with no print running or paused and every heater target 0, and after archive integrity and path safety are verified
+- **THEN** update proceeds only while the printer is idle, with Klipper ready, no print running or paused, and every heater target 0, and after archive integrity and path safety are verified
 - **AND** missing or drifted state runs the current release installer even when its checksum is unchanged
 - **AND** the release is downloaded and unpacked under the installer's cache in the printer user's home, never `/tmp`, and nothing of the download is left once the bundle is in place or the attempt fails
 - **AND** the bundled noninteractive installer performs the change
@@ -515,6 +525,11 @@ The update check SHALL be scheduled on every installation. Installing a release,
 - **AND** an earlier release's automatic-update units, which it wrote only when automatic updates were turned on, keep the printer enrolled when an install replaces them
 - **AND** uninstall removes enrollment before privileged timer cleanup so a surviving service cannot install or reconcile
 - **AND** plumbing failure is reported separately from successful configuration or uninstall work
+
+#### Scenario: Nothing is updated onto a Klipper that isn't ready
+- **WHEN** an enrolled update check, Update now, or a QIDI firmware update finds Klipper halted on an error or shut down
+- **THEN** it installs no release, starts no firmware update, reconciles nothing, flashes no board, and completes no pending Klipper activation
+- **AND** what is waiting is published with the `klipper_not_ready` reason, which the printer warnings, Fluidd, and Valve Oil UI show
 
 #### Scenario: A check without enrollment changes nothing
 - **WHEN** the update check runs on a printer that is not enrolled
@@ -921,6 +936,12 @@ After an install or automatic update that applies zram swap, the CPU governor, a
 - **AND** when the scheduled reboot runs, a printer state that can't be read, as while Klipper starts, is read again for up to 5 minutes before the reboot is left pending
 - **AND** an install during a print, or one that cannot read the printer state, reboots nothing and tells the operator to reboot
 
+#### Scenario: No reboot after an unfinished run
+- **WHEN** an install ends while Klipper still has to restart onto the installed files, or any reboot is about to be scheduled or run while Klipper isn't ready
+- **THEN** the reboot is held and stays pending, and the operator is told why and to run the installer again once it is fixed
+- **AND** this holds for the reboot an install schedules, the automatic-update reboot, and the reboot at the end of a QIDI firmware update, where a Klipper still starting is read again for up to 5 minutes first
+- **AND** only a reboot the operator approved during an uninstall runs without a ready Klipper
+
 #### Scenario: A QIDI firmware update reboots when it ends
 - **WHEN** the install a QIDI firmware update runs applied any of those changes or leaves a Rockchip reboot pending, and the update succeeds
 - **THEN** the update schedules the reboot about 30 seconds after it ends, whether or not a session follows it, with the same checks when it runs, and its result says the printer restarts
@@ -935,6 +956,30 @@ After an install or automatic update that applies zram swap, the CPU governor, a
 #### Scenario: The reboot lasts until the next boot
 - **WHEN** the printer has rebooted since those changes, or a later install changed none of them
 - **THEN** the installer does not reboot for them
+
+### Requirement: The printer can start again
+Every install and update SHALL check, before it changes anything else, that the printer could start again: on QIDI's merged `/usr`, `/sbin`, `/bin`, and `/lib` link to `usr/sbin`, `usr/bin`, and `usr/lib`, and `/sbin/init` leads to a program. It SHALL put back a link a directory replaced, refuse when it can't, keep QIDI's touchscreen app from replacing `/sbin` again, and no reboot Valve Oil starts SHALL run while the check fails.
+
+#### Scenario: A directory replaced a link
+- **WHEN** an install or update finds `/sbin`, `/bin`, or `/lib` is a real directory that lacks its own `init`, `sh`, or `systemd/systemd` while the matching directory under `/usr` has it, as QIDI's Format External Storage leaves `/sbin` after unpacking dosfstools with `dpkg-deb -x` over `/`
+- **THEN** it copies the directory's files and links into the `/usr` directory without replacing any there, moves the directory aside to a dated name, and puts the relative link back through a rename, all before its backup or any other change
+- **AND** it says it repaired the link, checks again, and stops before any other change if the printer still couldn't start
+- **AND** a dry run says what it would repair and changes nothing
+- **AND** an unmerged system's real directories that hold their own files are left alone
+
+#### Scenario: Files the installer can't repair
+- **WHEN** a link points somewhere else, a directory under `/usr` lacks what the printer starts, or `/sbin/init` leads to no program
+- **THEN** the install or update changes nothing, and tells the operator not to restart the printer and where the recovery guide is
+
+#### Scenario: The touchscreen app finds its formatting tool
+- **WHEN** neither `mkfs.fat` nor `mkfs.vfat` is in `/usr/sbin`, `/sbin`, `/usr/bin`, or `/bin`, or dpkg doesn't list `dosfstools` as installed, as after a repair copied the tools into `/usr/sbin`, and the touchscreen app carries QIDI's `dosfstools` arm64 package
+- **THEN** the install or update installs that package with `dpkg -i`, after reading its name and architecture, so the app's Format External Storage never unpacks it over `/`
+- **AND** a printer that has the tool installed through dpkg, or whose app carries no such package, gets nothing installed, and a failed install of the package tells the operator not to use Format External Storage and doesn't stop the install
+- **AND** uninstall leaves the package and the repaired links as they are
+
+#### Scenario: No reboot onto a printer that won't start
+- **WHEN** any reboot Valve Oil starts is about to be scheduled or run, after an install, an automatic update, a QIDI firmware update, the USB installer, or an uninstall the operator approved, while the check fails
+- **THEN** the printer is not rebooted, and the operator is told what was found, that the installer repairs it, and where the recovery guide is
 
 ### Requirement: Moonraker Spoolman accounting for QIDI Box changes
 Normal install and update SHALL patch QIDI's Moonraker Spoolman component, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
@@ -1251,6 +1296,11 @@ Each release SHALL publish one USB drive image that an operator extracts to a US
 #### Scenario: First install from USB
 - **WHEN** an operator starts the USB installer on a supported printer without Valve Oil and confirms the summary
 - **THEN** the printer ends with the same installed state as an SSH install with the same answers, and the finish screen says what to do next
+
+#### Scenario: Valve Oil takes the touchscreen when QIDI's app restarts
+- **WHEN** QIDI's app has installed the drive's package and restarted
+- **THEN** the touchscreen shows Valve Oil's starting screen within seconds, before the bundle is unpacked or Klipper is ready, and keeps showing Valve Oil's screens until the operator quits or the run ends
+- **AND** QIDI's app starts again when the starting screen can't be drawn, or when the installer ends or never starts without having taken the app over
 
 #### Scenario: One drive for every printer
 - **WHEN** the same drive is plugged into a Max 4, a Plus 5, or a Smart 5

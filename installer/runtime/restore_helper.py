@@ -125,8 +125,10 @@ def run_restore_helper(
         external=external,
         firmware=restore_firmware,
     )
+    # Restoring a backup may be what lets a halted Klipper start again.
     safety.ensure_printer_idle(
         paths.moonraker_url,
+        allow_halted=True,
         **({"urlopen": urlopen} if urlopen is not None else {}),
     )
     process_id = None

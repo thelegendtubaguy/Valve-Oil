@@ -2,19 +2,24 @@
 # shellcheck disable=SC2015 # every `A && B || fail` fails when A or B does
 # Valve Oil USB installer launcher (docs/under-the-hood.md, "USB installer").
 #
-# The USB hand-off's postinst copies this to /run/valve-oil-usb/ and starts it as root in a transient systemd unit:
+# The USB hand-off's postinst copies this, update_screen.py, and starting.png to /run/valve-oil-usb/ and starts it as
+# root in a transient systemd unit:
 #   launch.sh launch <printer_data> <drive mount point> <bundle sha256> <qidi-client InvocationID at the hand-off>
-# It waits for QIDI's touchscreen app to restart after the package install and for Klipper, removes the hand-off
-# package's dpkg record, gives the printer's user passwordless sudo for the unit's life, unpacks the bundle the
-# postinst copied into the user's cache to ~/valve-oil as install-latest.sh does, and execs the installer's USB mode,
-# which drops root to the printer's user. A failure before that leaves the app running and writes its log to the drive.
+# It waits for QIDI's touchscreen app to restart after the package install, then stops the app and shows the starting
+# screen, so Valve Oil is on the touchscreen from then on. While Klipper starts, it removes the hand-off package's dpkg
+# record, gives the printer's user passwordless sudo for the unit's life, and unpacks the bundle the postinst copied into
+# the user's cache to ~/valve-oil as install-latest.sh does. Once Klipper is ready, it execs the installer's USB mode,
+# which drops root to the printer's user and takes the stopped app over (install_screen.held). A failure before that
+# starts the app again and writes its log to the drive.
 #
 #   launch.sh cleanup
-# is the unit's ExecStopPost: it removes the sudoers drop-in, however the unit ended.
+# is the unit's ExecStopPost: it removes the sudoers drop-in, however the unit ended, and starts the app when the
+# installer never took it over.
 #
 # Overridable for tests: VO_USB_SUDOERS_DIR, VO_USB_TMPFILES_DIR, VO_USB_RUN_DIR, VO_USB_MOONRAKER_URL, and the
 # waits in seconds, VO_USB_CLIENT_TIMEOUT, VO_USB_KLIPPER_TIMEOUT, VO_USB_KLIPPER_SETTLE, VO_USB_DPKG_TIMEOUT,
-# VO_USB_POLL; and VO_USB_PYTHON, the interpreter the installer is exec'd with.
+# VO_USB_POLL; VO_USB_PYTHON, the interpreter the installer is exec'd with; and VO_USB_SCREEN_PYTHON, the one that
+# draws the starting screen.
 
 SUDOERS_DIR=${VO_USB_SUDOERS_DIR:-/etc/sudoers.d}
 TMPFILES_DIR=${VO_USB_TMPFILES_DIR:-/etc/tmpfiles.d}
@@ -25,8 +30,9 @@ KLIPPER_TIMEOUT=${VO_USB_KLIPPER_TIMEOUT:-300}
 KLIPPER_SETTLE=${VO_USB_KLIPPER_SETTLE:-60}
 DPKG_TIMEOUT=${VO_USB_DPKG_TIMEOUT:-120}
 POLL=${VO_USB_POLL:-2}
-# The interpreter the installer runs under.
+# The interpreter the installer runs under, and the one that draws the starting screen.
 PYTHON=${VO_USB_PYTHON:-python3}
+SCREEN_PYTHON=${VO_USB_SCREEN_PYTHON:-python3}
 HANDOFF_PACKAGE=valve-oil-usb-handoff
 TOUCHSCREEN=qidi-client.service
 # No dot in the name: sudo skips drop-ins whose names contain one. tmpfiles removes both at the next boot, in case
@@ -35,9 +41,21 @@ SUDOERS_NAME=valve-oil-usb-install
 TMPFILES_NAME=valve-oil-usb-install.conf
 BUNDLE=valve-oil.tar.gz
 BUNDLE_NAME=valve-oil
+# In the printer user's cache while the app is stopped for the starting screen; the installer removes it when it takes
+# the app over (usb_install.TOUCHSCREEN_STOPPED). Its path is kept in $RUN_DIR/touchscreen for the cleanup.
+TOUCHSCREEN_STOPPED=touchscreen-stopped
+
+# Start the app when the launcher stopped it and the installer didn't take it over.
+release_touchscreen() {
+  stopped=$(cat "$RUN_DIR/touchscreen" 2>/dev/null)
+  [ -n "$stopped" ] && [ -e "$stopped" ] || return 0
+  rm -f "$stopped"
+  systemctl start "$TOUCHSCREEN"
+}
 
 cleanup() {
   rm -f "$SUDOERS_DIR/$SUDOERS_NAME" "$SUDOERS_DIR/.$SUDOERS_NAME.tmp" "$TMPFILES_DIR/$TMPFILES_NAME"
+  release_touchscreen
   rm -rf "$RUN_DIR"
 }
 
@@ -48,6 +66,7 @@ log() {
 # Leave QIDI's app running, and copy the log to the drive, where the owner can read it without SSH.
 fail() {
   log "FAILED: $*"
+  rm -f "$(cat "$RUN_DIR/touchscreen" 2>/dev/null)"
   cleanup
   systemctl start "$TOUCHSCREEN" || log "could not start $TOUCHSCREEN"
   if [ -n "$DRIVE" ] && [ -d "$DRIVE/valve-oil" ]; then
@@ -101,10 +120,55 @@ print(state)
 sys.exit(1)
 '
 
+# Wait for Klipper in the background, while the bundle unpacks; klipper_ready collects the answer.
 wait_for_klipper() {
-  state=$(python3 -I -c "$KLIPPER_WAIT" "$MOONRAKER_URL" "$KLIPPER_TIMEOUT" "$KLIPPER_SETTLE" "$POLL") \
+  rm -f "$RUN_DIR/klipper"
+  (
+    state=$(python3 -I -c "$KLIPPER_WAIT" "$MOONRAKER_URL" "$KLIPPER_TIMEOUT" "$KLIPPER_SETTLE" "$POLL")
+    echo "$? $state" > "$RUN_DIR/klipper"
+  ) &
+  KLIPPER_WAIT_PID=$!
+}
+
+klipper_ready() {
+  wait "$KLIPPER_WAIT_PID"
+  read -r code state < "$RUN_DIR/klipper" 2>/dev/null || code=1
+  [ "$code" = 0 ] \
     || fail "Klipper was not ready within ${KLIPPER_TIMEOUT}s (last state: ${state:-no answer from Moonraker})"
   log "Klipper is $state"
+}
+
+# Draw $1, a still image, with update_screen.py beside this script; exit 1 when it can't be drawn.
+DRAW_SCREEN='
+import subprocess, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import update_screen as screen
+screen.light(lambda command: subprocess.run(command))
+fallback = ((4, screen.TEXT, "Starting the Valve Oil"), (4, screen.TEXT, "installer..."))
+sys.exit(0 if screen.draw(screen.Image(Path(sys.argv[2]), fallback)) else 1)
+'
+
+# Stop the app the package install restarted and show the starting screen until the installer draws its own. Without
+# the screen's files, or when it can't be drawn, the app stays on, and the installer takes it over as before.
+show_starting_screen() {
+  [ -f "$RUN_DIR/update_screen.py" ] && [ -f "$RUN_DIR/starting.png" ] \
+    || { log "the hand-off has no starting screen; $TOUCHSCREEN stays on"; return 0; }
+  stopped="$HOME_DIR/.cache/valve-oil/usb/$TOUCHSCREEN_STOPPED"
+  mkdir -p "${stopped%/*}" && printf 'launch.sh\n' > "$stopped" && chown "$OWNER" "$stopped" \
+    && printf '%s\n' "$stopped" > "$RUN_DIR/touchscreen" \
+    || { rm -f "$stopped"; log "could not record the stopped app; $TOUCHSCREEN stays on"; return 0; }
+  if ! systemctl stop "$TOUCHSCREEN"; then
+    release_touchscreen
+    log "could not stop $TOUCHSCREEN; it stays on"
+    return 0
+  fi
+  if "$SCREEN_PYTHON" -I -c "$DRAW_SCREEN" "$RUN_DIR" "$RUN_DIR/starting.png"; then
+    log "showing the starting screen"
+  else
+    release_touchscreen
+    log "could not draw the starting screen; started $TOUCHSCREEN again"
+  fi
 }
 
 # The app's dpkg holds the lock until the postinst has returned; the record is harmless if it stays.
@@ -142,6 +206,29 @@ grant_sudo() {
   log "gave $USER_NAME passwordless sudo until the unit stops"
 }
 
+# Members of the bundle, checked as each is read and unpacked in one pass: one valve-oil/ root, regular files and
+# folders only, no absolute or parent paths. Prints the problem and exits 3 for a bundle that breaks a rule.
+UNPACK='
+import sys, tarfile
+archive, destination, root = sys.argv[1], sys.argv[2], sys.argv[3]
+# Python 3.12 and later also apply their own checks; the printer runs 3.9.
+safe = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+with tarfile.open(archive, "r|gz") as tar:
+    for member in tar:
+        parts = member.name.split("/")
+        if member.name.startswith("/") or ".." in parts:
+            problem = "unsafe member paths"
+        elif parts[0] != root:
+            problem = "a root other than " + root + "/"
+        elif not (member.isfile() or member.isdir()):
+            problem = "unsupported member types"
+        else:
+            tar.extract(member, destination, **safe)
+            continue
+        print(problem)
+        sys.exit(3)
+'
+
 # Unpack the bundle as install-latest.sh does: one valve-oil/ root holding install.sh, regular files and folders only,
 # no absolute or parent paths, no links; then replace ~/valve-oil, owned by the printer's user.
 unpack_bundle() {
@@ -149,26 +236,13 @@ unpack_bundle() {
   [ -f "$archive" ] || fail "the bundle was not copied from the drive (see the postinst lines above)"
   [ "$(sha256sum < "$archive" | cut -d' ' -f1)" = "$BUNDLE_SHA256" ] || fail "$archive does not match the zip's pin"
   stage=$(mktemp -d "$HOME_DIR/.valve-oil-usb.XXXXXX") || fail "could not make a staging folder in $HOME_DIR"
-  members="$stage/archive.members"
-  listing="$stage/archive.listing"
-  tar -tzf "$archive" > "$members" && tar -tvzf "$archive" > "$listing" || { rm -rf "$stage"; fail "could not list $archive"; }
-  problem=
-  if grep -E '(^/|(^|/)\.\.(/|$))' "$members" >/dev/null 2>&1; then
-    problem="unsafe member paths"
-  elif grep -Ev "^${BUNDLE_NAME}(/|\$)" "$members" >/dev/null 2>&1; then
-    problem="a root other than ${BUNDLE_NAME}/"
-  elif ! grep -Fx "${BUNDLE_NAME}/install.sh" "$members" >/dev/null 2>&1; then
-    problem="no ${BUNDLE_NAME}/install.sh"
-  elif grep -Ev '^[-d]' "$listing" >/dev/null 2>&1; then
-    problem="unsupported member types"
-  fi
-  [ -z "$problem" ] || { rm -rf "$stage"; fail "the bundle has $problem"; }
-  mkdir "$stage/extract" && tar -xzf "$archive" -C "$stage/extract" --no-same-owner \
-    || { rm -rf "$stage"; fail "could not unpack $archive"; }
-  if find "$stage/extract/$BUNDLE_NAME" -type l | grep . >/dev/null 2>&1; then
-    rm -rf "$stage"
-    fail "the bundle has symbolic links"
-  fi
+  mkdir "$stage/extract" || { rm -rf "$stage"; fail "could not make a staging folder in $HOME_DIR"; }
+  problem=$(python3 -I -c "$UNPACK" "$archive" "$stage/extract" "$BUNDLE_NAME")
+  case $? in
+    0) ;;
+    3) rm -rf "$stage"; fail "the bundle has $problem" ;;
+    *) rm -rf "$stage"; fail "could not unpack $archive" ;;
+  esac
   [ -f "$stage/extract/$BUNDLE_NAME/install.sh" ] || { rm -rf "$stage"; fail "the bundle has no install.sh"; }
   chown -R "$OWNER" "$stage/extract/$BUNDLE_NAME" || { rm -rf "$stage"; fail "could not give the bundle to $USER_NAME"; }
   rm -rf "$INSTALL_DIR"
@@ -199,10 +273,12 @@ launch() {
   [ -n "$4" ] && [ "$3" != 0 ] || fail "could not find the user that owns $PRINTER_DATA"
 
   wait_for_touchscreen
+  show_starting_screen
   wait_for_klipper
   purge_handoff_package
   grant_sudo
   unpack_bundle
+  klipper_ready
   set -- "$PYTHON" -I -S "$INSTALL_DIR/installer/runtime/bootstrap.py" usb
   [ -n "$DRIVE" ] && set -- "$@" --drive "$DRIVE"
   log "running: $*"

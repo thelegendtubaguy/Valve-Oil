@@ -40,6 +40,27 @@ class PrinterStateError(InstallerError):
         super().__init__(messages.COULD_NOT_DETERMINE_PRINTER_STATE)
 
 
+class KlipperNotReadyError(PrinterStateError):
+    """Moonraker answers, and Klipper reports a state other than ready, such as error after a config error."""
+
+    def __init__(self, state: str, state_message: str = ""):
+        InstallerError.__init__(self, messages.klipper_not_ready(state, state_message))
+        self.state = state
+        self.state_message = state_message
+
+
+class NewInstallKlipperNotReadyError(InstallerError):
+    """A new install on a printer whose Klipper isn't ready: nothing Valve Oil has installed can be the cause."""
+
+    def __init__(self, detail: str):
+        super().__init__(messages.NEW_INSTALL_KLIPPER_NOT_READY.format(detail=detail))
+
+
+class HaltedKlipperDidNotStartError(InstallerError):
+    def __init__(self):
+        super().__init__(messages.HALTED_KLIPPER_DID_NOT_START)
+
+
 class ManagedTreeSourceError(InstallerError):
     pass
 

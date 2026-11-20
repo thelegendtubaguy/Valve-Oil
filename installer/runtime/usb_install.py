@@ -39,6 +39,9 @@ DRIVE_LOG_NAME = "valve-oil-install.log"  # at the drive's root, where the finis
 # match its SHA256SUMS: QIDI's update folder was emptied by the Offline Update and could not be put back.
 NO_RESTORE_SET_MARKERS = (Path("/home/qidi/update/.valve-oil-no-restore-set"),)
 HANDOFF_STATUS = ".cache/valve-oil/usb/restore"  # in the printer user's home
+# Also in the printer user's home: the launcher stopped QIDI's app to show its starting screen (installer/usb/launch.sh),
+# and the session takes the app over from it.
+TOUCHSCREEN_STOPPED = ".cache/valve-oil/usb/touchscreen-stopped"
 SLICER_URL = f"{REPOSITORY_URL}/blob/main/docs/install.md#slicer-start-g-code"
 FIRMWARE_DOWNLOAD_URL = "https://wiki.qidi3d.com/en/firmware"
 DRIVE_POLL_SECONDS = 1.0
@@ -89,6 +92,10 @@ class Session:
         self._last_snapshot = None
         self._footer = f"Valve Oil {manifest.package.version} · USB installer"
         self._update_folder_restored = False
+        # The printer the hand-off's zip was for, as its starting screen names it, until the firmware says.
+        printer = next((printer for printer in manifest.printers
+                        if printer.id == self._handoff_status().get("printer")), None)
+        self._where = printer.display_name if printer is not None else "QIDI printer"
 
     # ---- the session ------------------------------------------------------------------------------------------------
 
@@ -119,7 +126,9 @@ class Session:
         if not self._update_folder_restored:
             self._restore_update_folder()
         try:
-            safety.ensure_printer_idle(self.paths.moonraker_url, urlopen=self.urlopen, wait_seconds=60.0)
+            # The install itself refuses a halted Klipper unless Valve Oil is installed and may be what halted it.
+            safety.ensure_printer_idle(self.paths.moonraker_url, urlopen=self.urlopen, wait_seconds=60.0,
+                                       allow_halted=True)
         except ActivePrintError as exc:
             return self._busy(exc)
         except PrinterStateError:
@@ -136,11 +145,20 @@ class Session:
         password = getattr(self.hold, "password", None)
         if password is None:
             return
+        copying = []
+
+        def copy_started():
+            copying.append(True)
+            self._show("checking", text="Copying QIDI's system package from the drive…")
+
         result = restore_soc_package_from_drive(
             self.paths, self.manifest, environ=self.env, reporter=self.reporter,
-            sudo=lambda command: run_sudo(command, run=self.run, password=password, timeout=300))
+            sudo=lambda command: run_sudo(command, run=self.run, password=password, timeout=300),
+            copy_started=copy_started)
         self.reporter.debug(event="usb.update_folder", result=result.result)
         self._update_folder_restored = True
+        if copying:
+            self._show("checking")
 
     def _install(self) -> str:
         self.error = None
@@ -207,6 +225,10 @@ class Session:
 
     def firmware_update(self, result) -> None:
         self.firmware = result
+
+    def reading_boards(self) -> None:
+        """The install reads every board before it asks anything, which takes up to a minute."""
+        self._show("checking", text="Reading the printer's board firmware…")
 
     # ---- screens before the run --------------------------------------------------------------------------------------
 
@@ -341,8 +363,11 @@ class Session:
         return os.path.ismount(self.drive) or (self.drive / "QD_Update").is_dir()
 
     def _restart(self) -> None:
+        from . import boot_path
         from .sudo import run_sudo
 
+        if not boot_path.boot_files_allow_reboot(self.paths, reporter=self.reporter, environ=self.env):
+            return
         password = getattr(self.hold, "password", None) or self.env.get("TLTG_OPTIMIZED_SUDO_PASSWORD") or ""
         run_sudo(["systemctl", "reboot"], run=self.run, password=password, timeout=60)
         self.sleep(60)  # the reboot ends this process
@@ -502,7 +527,7 @@ class Session:
 
     def _show(self, screen: str, *, buttons=None, **fields):
         fields.setdefault("footer", self._footer)
-        fields.setdefault("where", getattr(self, "_where", "QIDI printer"))
+        fields.setdefault("where", self._where)
         try:
             shown = self.ui.show(screen, **fields)
         except Exception as exc:  # a screen that can't be drawn is logged; the run goes on
@@ -540,7 +565,8 @@ def run(*, paths, manifest, env, reporter, drive: Path, dispatch, ui=None, run=s
     log_path = getattr(log, "path", None)
     ended = QUIT
     with install_screen.held(paths=paths, reporter=reporter, environ=env, require_idle=False,
-                             progress_screen=False, run=run, urlopen=urlopen) as hold:
+                             progress_screen=False, run=run, urlopen=urlopen,
+                             stopped_marker=paths.printer_data_root.parent / TOUCHSCREEN_STOPPED) as hold:
         password = hold.password
         if ui is None and password is not None:
             ui = touch_ui.open(reporter, sudo=lambda command: run_sudo(command, run=run, password=password, timeout=60),

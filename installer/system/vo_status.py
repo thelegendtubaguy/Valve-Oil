@@ -163,6 +163,7 @@ LIVE_BLOCKERS = {
     "printing": "a print is running or paused",
     "heaters_on": "a heater is set to a temperature",
     "printer_state_unknown": "Klipper didn't report whether the printer is idle",
+    "klipper_not_ready": "Klipper isn't ready; fix the error Fluidd shows, or run the Valve Oil installer",
 }
 OUTSIDE_WINDOW = "it's outside the update window"
 UPDATE_NOW_BLOCKERS = {
@@ -571,20 +572,21 @@ def _mtime(path: Path) -> float:
 
 
 def live_printer() -> tuple[str, ...] | None:
-    """The printer-state blockers that hold now, as the installer's idle check sees them (safety.ensure_printer_idle):
-    printing (or paused), heaters_on, or printer_state_unknown; None when Moonraker can't be read."""
+    """The printer-state blockers that hold now, as the installer's checks see them (firmware_update.printer_blockers):
+    printing (or paused), heaters_on, klipper_not_ready, or printer_state_unknown; None when Moonraker can't be
+    read."""
     try:
         status = _moonraker_objects(("print_stats", "webhooks", "heaters"))
     except (OSError, ValueError, KeyError, TypeError):
         return None
     state = _record(status.get("print_stats")).get("state")
     if not isinstance(state, str) or not state:
-        # A Klipper halted on an error has no print state, can't be printing, and has shut its heaters off.
-        return () if _klipper_state() == "error" else ("printer_state_unknown",)
+        # A Klipper halted on an error has no print state; nothing is updated onto it.
+        return ("klipper_not_ready",) if _klipper_state() == "error" else ("printer_state_unknown",)
     if state in ("printing", "paused"):
         return ("printing",)
     if _record(status.get("webhooks")).get("state") != "ready":
-        return ()
+        return ("klipper_not_ready",)
     heaters = _record(status.get("heaters")).get("available_heaters")
     if not isinstance(heaters, list) or not all(isinstance(name, str) and name for name in heaters):
         return ("printer_state_unknown",)

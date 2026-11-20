@@ -3,7 +3,8 @@ drive, and stand-ins for dpkg, dpkg-query, systemctl, systemd-run, and chown on 
 
 `offline_update` does what QIDI's offline update does with a printer zip from the drive (empty the update folder, unzip
 it there, copy the SOC file to qidi.deb) and runs the package's postinst as dpkg would. `launch` then runs the unit the
-postinst started, as systemd would, with the interpreter it execs recorded instead of run.
+postinst started, as systemd would, with the interpreter it execs recorded instead of run, and the starting screen's
+drawing recorded instead of drawn.
 """
 from __future__ import annotations
 
@@ -57,7 +58,15 @@ exit 0
     "fake-python": """#!/bin/sh
 for argument in "$@"; do printf '%s\\n' "$argument"; done > "$FAKE/exec"
 """,
+    # Draws the starting screen: records the image and exits with $FAKE/screen-exit (0 when absent).
+    "fake-screen": """#!/bin/sh
+echo "draw ${5:-}" >> "$FAKE/calls"
+exit "$(cat "$FAKE/screen-exit" 2>/dev/null || echo 0)"
+""",
 }
+
+
+STARTING_PNG = b"starting screen"
 
 
 def make_bundle(path: Path, members: dict[str, bytes] | None = None, *, symlink: str | None = None) -> Path:
@@ -116,6 +125,15 @@ class FakePrinter:
         return dict(line.split("=", 1) for line in path.read_text(encoding="utf-8").splitlines())
 
     @property
+    def touchscreen_stopped(self) -> Path:
+        """The launcher's record that it stopped the app for its starting screen."""
+        return self.home / ".cache/valve-oil/usb/touchscreen-stopped"
+
+    def cleanup(self) -> None:
+        """The unit's ExecStopPost."""
+        subprocess.run(self.unit_command()[:2] + ["cleanup"], env=self.env(), check=True)
+
+    @property
     def cached_bundle(self) -> Path:
         return self.home / ".cache/valve-oil/usb/valve-oil.tar.gz"
 
@@ -128,7 +146,8 @@ class FakePrinter:
                 "VO_USB_UPDATE_DIR": str(self.update), "VO_USB_PRINTER_DATA": str(self.printer_data),
                 "VO_USB_MOUNTS": str(self.fake / "mounts"), "VO_USB_RUN_DIR": str(self.run_dir),
                 "VO_USB_SUDOERS_DIR": str(self.sudoers), "VO_USB_TMPFILES_DIR": str(self.tmpfiles),
-                "VO_USB_PYTHON": str(self.bin / "fake-python"), **extra}
+                "VO_USB_PYTHON": str(self.bin / "fake-python"), "VO_USB_SCREEN_PYTHON": str(self.bin / "fake-screen"),
+                **extra}
 
     def put_on_drive(self, zip_name: str, printer_zip: bytes, bundle: Path) -> None:
         (self.drive / "QD_Update" / zip_name).write_bytes(printer_zip)
@@ -157,6 +176,8 @@ class FakePrinter:
         shutil.copy2(bundle, self.cached_bundle)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(usb_drive_image.USB_SOURCE / "launch.sh", self.run_dir / "launch.sh")
+        shutil.copy2(usb_drive_image.UPDATE_SCREEN, self.run_dir / "update_screen.py")
+        (self.run_dir / "starting.png").write_bytes(STARTING_PNG)
         (self.fake / "handoff").write_text("", encoding="utf-8")
         sha256 = hashlib.sha256(bundle.read_bytes()).hexdigest()
         (self.fake / "unit").write_text("\n".join(["/bin/sh", str(self.run_dir / "launch.sh"), "launch",

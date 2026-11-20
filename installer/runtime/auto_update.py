@@ -37,6 +37,7 @@ from .errors import (
     ActivePrintError,
     FirmwareDetectionError,
     InstallerError,
+    KlipperNotReadyError,
     PreflightTargetsError,
     PrinterStateError,
 )
@@ -426,6 +427,9 @@ def _skipped(reporter, found, checksum: str) -> AutoUpdateRunResult:
     if any(blocker.code in ("printing", "heaters_on") for blocker in found.printer_blockers):
         reporter.line(messages.AUTO_UPDATE_SKIPPED_ACTIVE_PRINT)
         return AutoUpdateRunResult(action="skipped-active-print", checksum=checksum)
+    if any(blocker.code == "klipper_not_ready" for blocker in found.printer_blockers):
+        reporter.line(messages.AUTO_UPDATE_SKIPPED_KLIPPER_NOT_READY)
+        return AutoUpdateRunResult(action="skipped-klipper-not-ready", checksum=checksum)
     reporter.line(messages.AUTO_UPDATE_SKIPPED_UNKNOWN_STATE)
     return AutoUpdateRunResult(action="skipped-unknown-printer-state", checksum=checksum)
 
@@ -438,6 +442,14 @@ def _complete_pending_activation(paths: RuntimePaths, *, reporter, urlopen: UrlO
         raise AutoUpdateError("Pending saved-variable verification could not be verified.") from exc
     if not paths.restart_marker_path.exists():
         return
+    try:
+        safety.ensure_klipper_ready(paths.moonraker_url, urlopen=urlopen)
+    except KlipperNotReadyError:
+        # Nothing restarts or updates a Klipper that isn't ready; the update check publishes why it waits.
+        reporter.line(messages.AUTO_UPDATE_SKIPPED_KLIPPER_NOT_READY)
+        return
+    except PrinterStateError:
+        pass  # read again below, which fails the check as before
     try:
         manifest = load_manifest(paths.installer_root / "package.yaml")
         safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)

@@ -37,9 +37,11 @@ def run_install_environment_preflight(
     reporter=None,
     disk_usage: DiskUsageFn = shutil.disk_usage,
     urlopen: UrlOpenFn = urllib.request.urlopen,
+    allow_halted: bool = False,
 ) -> None:
+    """allow_halted: an install over an existing Valve Oil, which may repair a Klipper halted on an error."""
     ensure_install_paths_safe(paths=paths, manifest=manifest)
-    printer_state = safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+    printer_state = safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, allow_halted=allow_halted)
     source_files = managed_tree_source_files(
         managed_tree_source_roots(paths, manifest, detected_firmware),
         required_files=manifest.managed_tree.required_files,
@@ -179,7 +181,8 @@ def run_uninstall_preflight(
         )
     if not report.is_empty():
         raise PreflightTargetsError(report)
-    printer_state = safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen)
+    # Uninstall may be what lets a halted Klipper start again.
+    printer_state = safety.ensure_printer_idle(paths.moonraker_url, urlopen=urlopen, allow_halted=True)
     required_bytes = estimate_uninstall_free_bytes(
         paths=paths,
         state=state,

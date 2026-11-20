@@ -854,20 +854,25 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 self.assertEqual(len(scripts), len(set(scripts)))
 
     def test_install_repairs_klipper_halted_on_a_config_error(self):
-        # Klipper halts on a config error, so it has no print state or saved variables until it restarts.
-        for starts in (True, False):
-            with self.subTest(starts_after_restart=starts):
+        # Klipper halts on a config error, so it has no print state or saved variables until it restarts. Only a
+        # printer with Valve Oil installed is repaired: its own files may be what halted it.
+        for case in ("new_install", "starts", "stays_halted"):
+            with self.subTest(case=case):
                 printer_root, paths, _ = self._fixture("01.01.06.03")
                 saved_variables_path = printer_root / "config/saved_variables.cfg"
-                saved_variables_path.write_text(
-                    saved_variables_path.read_text(encoding="utf-8")
-                    + "vo_keep_loaded_between_prints = 1\n",
-                    encoding="utf-8",
-                )
-                box_enablement.write_saved_variable_verify_marker(
-                    paths, {"vo_keep_loaded_between_prints": "1"}
-                )
                 base_urlopen = self._fixture_urlopen(printer_root)
+                state_path = printer_root / "config/tltg_optimized_state.yaml"
+                helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
+                if case != "new_install":
+                    self._run_install_with_urlopen(paths, base_urlopen)
+                    # The missing helper is the config error that halted Klipper.
+                    helper.unlink()
+                    box_enablement.write_saved_variable_verify_marker(paths, {"vo_keep_loaded_between_prints": "1"})
+                    saved_variables_path.write_text(
+                        saved_variables_path.read_text(encoding="utf-8") + "vo_keep_loaded_between_prints = 1\n",
+                        encoding="utf-8",
+                    )
+                state_before = state_path.read_bytes() if state_path.exists() else None
                 klipper = {"halted": True, "restarts": 0, "stray": False}
 
                 def urlopen(request, timeout=0):
@@ -876,51 +881,57 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                         # While Klipper starts, QIDI's Moonraker can answer with a late reply to another request.
                         klipper["stray"] = False
                         return _JsonResponse({"result": {"eventtime": 1.0, "status": {"print_stats": {}}}})
-                    if klipper["halted"]:
-                        if "/machine/services/restart" in url:
-                            klipper["restarts"] += 1
-                            klipper["halted"] = not starts
-                            klipper["stray"] = True
-                        elif "/printer/info" in url:
-                            return _JsonResponse({"result": {"state": "error", "process_id": 100 + klipper["restarts"]}})
-                        elif "save_variables" in url or "/printer/gcode/script" in url:
+                    if "/machine/services/restart" in url:
+                        klipper["restarts"] += 1
+                        klipper["halted"] = case == "stays_halted"
+                        klipper["stray"] = True
+                    elif klipper["halted"]:
+                        if "/printer/info" in url:
+                            return _JsonResponse({"result": {"state": "error", "process_id": 100 + klipper["restarts"],
+                                                             "state_message": "Unable to load tltg_probe_test"}})
+                        if "save_variables" in url or "/printer/gcode/script" in url:
                             raise AssertionError("saved variables used while Klipper is halted")
-                        elif "print_stats" in url:
+                        if "print_stats" in url:
                             return _JsonResponse({"result": {"status": {"print_stats": {}}}})
                     return base_urlopen(request, timeout=timeout)
 
                 # Klipper's restarts are waited for without real sleeps.
-                def no_wait():
-                    stack = contextlib.ExitStack()
-                    for name in ("restart_pending", "restart_klipper_service"):
-                        stack.enter_context(mock.patch(f"installer.runtime.runner.{name}", functools.partial(
-                            getattr(process_restart, name), sleep=lambda _seconds: None)))
-                    return stack
-                with no_wait():
-                    self._run_install_with_urlopen(paths, urlopen)
-
-                self.assertTrue((printer_root / "config/tltg_optimized_state.yaml").exists())
-                self.assertTrue((paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py").is_file())
-                self.assertEqual(klipper["restarts"], 1)
-                # Source activation stays pending until Klipper is ready under a new process.
-                self.assertEqual(paths.restart_marker_path.exists(), not starts)
-                saved_variables = saved_variables_path.read_text(encoding="utf-8")
-                self.assertEqual(saved_variable_verify_marker_path(paths).exists(), not starts)
-                for name, value in box_enablement.BOX_MOTION_DEFAULTS.items():
-                    if starts:
-                        self.assertEqual(
-                            klipper_cfg.resolve_unique_option(saved_variables, "Variables", name).value,
-                            value,
-                        )
+                stack = contextlib.ExitStack()
+                for name in ("restart_pending", "restart_klipper_service"):
+                    stack.enter_context(mock.patch(f"installer.runtime.runner.{name}", functools.partial(
+                        getattr(process_restart, name), sleep=lambda _seconds: None)))
+                with stack:
+                    if case == "starts":
+                        self._run_install_with_urlopen(paths, urlopen)
                     else:
-                        self.assertNotIn(f"{name} =", saved_variables)
-                if starts:
-                    # With source already current, the install restarts the Klipper service itself.
+                        with self.assertRaises(InstallerError) as raised:
+                            self._run_install_with_urlopen(paths, urlopen)
+
+                if case == "new_install":
+                    self.assertIn("Unable to load tltg_probe_test", raised.exception.message)
+                    self.assertEqual(klipper["restarts"], 0)
+                    self.assertFalse(state_path.exists())
+                    self.assertFalse(helper.exists())
+                    self.assertEqual(list(paths.backup_root.glob("*.zip")) if paths.backup_root.exists() else [], [])
+                elif case == "starts":
+                    self.assertTrue(helper.is_file())
+                    self.assertEqual(klipper["restarts"], 1)
+                    self.assertFalse(paths.restart_marker_path.exists())
+                    self.assertFalse(saved_variable_verify_marker_path(paths).exists())
+                    # With source already current, the next install over a halted Klipper restarts the service itself.
                     klipper["halted"] = True
-                    with no_wait():
+                    with stack:
                         self._run_install_with_urlopen(paths, urlopen)
                     self.assertEqual(klipper["restarts"], 2)
                     self.assertFalse(paths.restart_marker_path.exists())
+                else:
+                    # The files are put back and nothing after them runs; Klipper is started on the files on disk.
+                    self.assertIn("put back", raised.exception.message)
+                    self.assertFalse(helper.exists())
+                    self.assertEqual(state_path.read_bytes(), state_before)
+                    self.assertFalse(paths.restart_marker_path.exists())
+                    self.assertTrue(saved_variable_verify_marker_path(paths).exists())
+                    self.assertEqual(klipper["restarts"], 2)
 
     def _run_install_with_urlopen(self, paths, urlopen):
         return run_install(
@@ -1273,9 +1284,17 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 return _BytesResponse(f"{checksum} bundle\n".encode())
             return _JsonResponse({"result": {}})
 
+        def halted_urlopen(request, timeout=0):
+            url = getattr(request, "full_url", str(request))
+            if url.endswith("/printer/info"):
+                return _JsonResponse({"result": {"state": "error", "state_message": "Config error", "process_id": 1}})
+            return unavailable_urlopen(request, timeout=timeout)
+
         for urlopen, expected_action in (
             (active_urlopen, "skipped-active-print"),
             (unavailable_urlopen, "skipped-unknown-printer-state"),
+            # A Klipper halted on an error isn't idle: nothing is updated onto it.
+            (halted_urlopen, "skipped-klipper-not-ready"),
         ):
             result = run_auto_update_check(
                 paths=paths,
@@ -1351,6 +1370,8 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 return _BytesResponse(f"{'2' * 64}  valve-oil.tar.gz\n".encode(), url=(
                     f"https://github.com/thelegendtubaguy/valve-oil/releases/download/v{latest}/"
                     "valve-oil.tar.gz.sha256" if latest else url))
+            if url.endswith("/printer/info"):
+                return _JsonResponse({"result": {"state": "ready", "process_id": 100}})
             if "printer/objects/query" not in url:
                 self.fail(f"Unexpected URL: {url}")
             names = [urllib.parse.unquote(part.split("=")[0]) for part in urllib.parse.urlsplit(url).query.split("&")]
@@ -1669,7 +1690,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 return _BytesResponse(f"{advertised_checksum} bundle\n".encode())
             if url.endswith(".tar.gz"):
                 return _BytesResponse(b"not the advertised archive")
-            if "printer/objects/query" in url:
+            if "printer/objects/query" in url or url.endswith("/printer/info"):
                 return moonraker_urlopen()(request, timeout=timeout)
             self.fail(f"Unexpected URL: {url}")
 

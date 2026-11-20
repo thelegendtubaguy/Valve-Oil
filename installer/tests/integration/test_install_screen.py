@@ -53,10 +53,10 @@ class InstallScreenTests(unittest.TestCase):
         self.host = Host()
         self.output = io.StringIO()
 
-    def hold(self, *, state="standby", environ=None):
+    def hold(self, *, state="standby", environ=None, stopped_marker=None):
         return install_screen.held(paths=self.paths, reporter=create_reporter(stream=self.output, prefer_plain=True),
                                    environ=environ or {}, run=self.host.run, urlopen=moonraker_urlopen(state),
-                                   draw=self.host.draw)
+                                   draw=self.host.draw, stopped_marker=stopped_marker)
 
     def test_the_install_shows_its_screen_and_starts_the_touchscreen_once_when_it_ends(self):
         with self.hold():
@@ -113,6 +113,22 @@ class InstallScreenTests(unittest.TestCase):
             self.assertEqual(self.host.screens, [update_screen.INSTALLING, update_screen.INSTALLING])
         self.assertEqual(self.host.touchscreen_commands(),
                          [["systemctl", "stop"], ["systemctl", "stop"], ["systemctl", "start"]])
+
+    def test_an_app_the_usb_launcher_stopped_is_taken_over_and_started_when_the_install_ends(self):
+        stopped = self.paths.printer_data_root / "touchscreen-stopped"
+        for launcher_stopped_it in (True, False):
+            with self.subTest(launcher_stopped_it=launcher_stopped_it):
+                self.host = Host()
+                self.host.services[install_screen.TOUCHSCREEN] = "inactive"
+                if launcher_stopped_it:
+                    stopped.write_text("launch.sh\n")
+                with self.hold(stopped_marker=stopped):
+                    # The launcher's cleanup must not start the app under the install once the hold has it.
+                    self.assertEqual(install_screen.touchscreen_held(), launcher_stopped_it)
+                    self.assertFalse(stopped.exists())
+                # An app stopped by anyone else is left as it is.
+                self.assertEqual(self.host.touchscreen_commands(),
+                                 [["systemctl", "start"]] if launcher_stopped_it else [])
 
     def test_nothing_is_stopped_while_printing_or_inside_a_firmware_update(self):
         for state, environ in (("printing", {}), ("standby", {safety.FIRMWARE_UPDATE_RUN_ENV: "update-id"})):
