@@ -20,7 +20,7 @@ from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from installer.runtime import box_enablement, klipper_cfg, process_restart
+from installer.runtime import box_enablement, errors, klipper_cfg, process_restart
 from installer.runtime.box_enablement import (
     SavedVariablePersistenceError,
     detect_box_enablement_opportunity,
@@ -797,9 +797,18 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 raise OSError("Moonraker unavailable")
             return base_urlopen(request, timeout=timeout)
 
-        with self.assertRaises(SavedVariablePersistenceError):
+        with self.assertRaises(SavedVariablePersistenceError) as raised:
             self._run_install_with_urlopen(paths, failing_urlopen)
         self.assertEqual(saved_variables_path.read_bytes(), before)
+        # Nothing was written before the saved variables failed, which the USB installer's screen tells the operator.
+        self.assertEqual(raised.exception.install_outcome, errors.OUTCOME_UNCHANGED)
+
+        # A failure after the state is written, as in the boot logo, leaves Valve Oil installed and says so.
+        with mock.patch("installer.runtime.runner.boot_logo.install", side_effect=InstallerError("logo")), \
+                self.assertRaises(InstallerError) as raised:
+            self._run_install_with_urlopen(paths, self._fixture_urlopen(printer_root))
+        self.assertEqual(raised.exception.install_outcome, errors.OUTCOME_INSTALLED)
+        self.assertTrue((printer_root / self.manifest.state_file).is_file())
 
     def test_saved_variable_queued_behind_klipper_startup_is_waited_for(self):
         # QIDI's start-up Box check holds Klipper's G-code queue: Moonraker takes SAVE_VARIABLE but doesn't reply,
@@ -927,6 +936,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 else:
                     # The files are put back and nothing after them runs; Klipper is started on the files on disk.
                     self.assertIn("put back", raised.exception.message)
+                    self.assertEqual(raised.exception.install_outcome, errors.OUTCOME_PUT_BACK)
                     self.assertFalse(helper.exists())
                     self.assertEqual(state_path.read_bytes(), state_before)
                     self.assertFalse(paths.restart_marker_path.exists())

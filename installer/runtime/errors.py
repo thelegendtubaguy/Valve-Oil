@@ -8,6 +8,13 @@ from . import messages
 from .models import PreflightReport
 
 
+# What a failed install left behind, set on its exception as `install_outcome` (runner._execute_install), for front
+# ends that tell the operator (usb_install).
+OUTCOME_UNCHANGED = "unchanged"
+OUTCOME_PUT_BACK = "put_back"
+OUTCOME_INSTALLED = "installed"
+
+
 class InstallerError(Exception):
     def __init__(self, message: str):
         super().__init__(message)

@@ -583,7 +583,7 @@ def _draw_board_not_supported(s: _Screen) -> None:
 
 def _draw_failed(s: _Screen) -> None:
     f = s.f
-    _title(s, "icon_stop", "Install stopped")
+    _title(s, "icon_stop", str(f.get("title") or "Install stopped"))
     flow = _Flow(s)
     for paragraph in _paragraphs(f.get("text")):
         flow.paragraph(paragraph)
@@ -1274,6 +1274,11 @@ EXAMPLES = {
         "Step 4, System changes, did not finish:", ("bad", "Moonraker did not come back after it was restarted."),
         [("good", "Everything was put back the way it was."), ("plain", " Your configuration backup is kept.")]],
         "log_name": "valve-oil-install.log"}),
+    "16b-not-restarted": ("failed", {**_HEADER, "title": "The printer wasn't restarted", "text": [
+        "Valve Oil is installed, but the printer would stop at its boot logo if it restarted now:",
+        ("bad", "/sbin is a directory, not a link to usr/sbin."),
+        "Don't turn the printer off. Run **~/valve-oil/install.sh** over SSH, which repairs this, then tap Try "
+        "again. Or follow **github.com/thelegendtubaguy/valve-oil/blob/main/docs/recovering-an-unbootable-printer.md**."]}),
     "17-log": ("log", {**_HEADER, "header_step": "Step 4 of 10 · 1:52", "lines": [
         "09:14:02  Printer: QIDI Max 4, QIDI firmware 01.01.07.01",
         f"09:14:02  Valve Oil: not installed. Installing {_VERSION}",
