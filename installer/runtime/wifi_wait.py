@@ -9,7 +9,14 @@ from .errors import InstallerError
 # AIC8800 Wi-Fi driver creates wlan0 about 15 s into boot, and after an install the service gave up at 14 s, leaving
 # the printer off the network until it was started by hand. The drop-in orders the service after wlan0 appears and
 # lifts the start limit, so wpa_supplicant starts once the interface exists however long the driver takes.
+#
+# The drop-in alone still leaves Wi-Fi off in two cases, on every printer. When wlan0 goes away, as when the driver is
+# reloaded (QIDI's wifibt-init.sh loads it on the Max 4 and Plus 5), the binding stops wpa_supplicant and nothing starts
+# it when wlan0 comes back. And when wlan0 takes longer than systemd's 90 s wait for the device, the start fails and
+# isn't retried. The udev rule makes wlan0 itself want the service, so wpa_supplicant starts whenever wlan0 appears.
+# systemd reads no drop-ins for device units, so the rule, not a unit file, carries the dependency.
 OPERATION = "wifi_wait_for_wlan0"
+RULE_OPERATION = "wifi_start_on_wlan0"
 UNIT = "makerbase-wlan0.service"
 FILE = f"/etc/systemd/system/{UNIT}.d/tltg-wait-for-wlan0.conf"
 # Package-created files start with a marker line so later package versions replace earlier ones.
@@ -20,6 +27,20 @@ CONTENT = MARKER + """\
 After=sys-subsystem-net-devices-wlan0.device
 StartLimitIntervalSec=0
 """
+
+
+RULE_FILE = "/etc/udev/rules.d/99-valve-oil-wifi-start.rules"
+RULE_MARKER = "# valve-oil:wifi-start-on-wlan0\n"
+RULE_CONTENT = RULE_MARKER + f"""\
+# Starts QIDI's wpa_supplicant whenever wlan0 appears, as after a driver reload. Installed by Valve Oil.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", ENV{{SYSTEMD_WANTS}}+="{UNIT}"
+"""
+
+
+def patch_rule(current: str) -> str:
+    if current == "" or current.startswith(RULE_MARKER):
+        return RULE_CONTENT
+    raise InstallerError(f"Existing {RULE_FILE} is unrecognized and was preserved.")
 
 
 def patch_dropin(current: str) -> str:

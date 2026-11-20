@@ -873,6 +873,26 @@ Normal install and update SHALL make QIDI's boot-time camera setup for crowsnest
 - **THEN** install and update leave it unchanged and report it
 - **AND** uninstall removes only an unchanged package drop-in
 
+### Requirement: QIDI's Wi-Fi starts whenever wlan0 exists
+Normal install and update SHALL make QIDI's Wi-Fi service (`makerbase-wlan0.service`, `wpa_supplicant` on `wlan0`) wait for `wlan0` without giving up, and start whenever `wlan0` appears, on every supported printer, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
+
+#### Scenario: The Wi-Fi driver is slow at boot
+- **WHEN** `wlan0` appears later in boot than QIDI's service first starts
+- **THEN** `wpa_supplicant` starts once `wlan0` exists, without hitting the service's start limit
+
+#### Scenario: wlan0 goes away and comes back
+- **WHEN** `wlan0` disappears while the printer runs, as when the Wi-Fi driver is reloaded, and then appears again
+- **THEN** `wpa_supplicant` starts again without the operator starting it
+
+#### Scenario: Applying the change
+- **WHEN** install or update adds or changes the drop-in or the udev rule
+- **THEN** they take effect at the next boot or the next time `wlan0` appears, without restarting Wi-Fi during the install
+
+#### Scenario: Operator files are preserved
+- **WHEN** a file already exists at the package's drop-in or rule path without the package marker
+- **THEN** install and update leave it unchanged and report it
+- **AND** uninstall removes only unchanged package files
+
 ### Requirement: Print-critical services get the CPU first
 Normal install and update SHALL run Klipper at a higher CPU priority than Moonraker, and Moonraker at a higher CPU priority than QIDI's touchscreen app, SHALL keep Klipper on CPUs apart from the web server, camera, and AI detection, and SHALL replace QIDI's repeating CPU tuning script with settings systemd applies once, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 

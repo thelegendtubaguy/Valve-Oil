@@ -374,6 +374,16 @@ GUARDED_FILE_PATCHES = {
         create_if_missing=True,
         reloads_units=True,
     ),
+    # udev reads a changed rules file by itself; the rule applies the next time wlan0 appears.
+    wifi_wait.RULE_OPERATION: _GuardedFilePatch(
+        label="Wi-Fi start udev rule",
+        file=lambda spec: wifi_wait.RULE_FILE,
+        patch=wifi_wait.patch_rule,
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
     **{
         operation: _GuardedFilePatch(
             label=f"{service_priority.SERVICES[operation]} priority drop-in",
@@ -3856,6 +3866,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION,
         wifi_wait.OPERATION,
+        wifi_wait.RULE_OPERATION,
         *service_priority.SERVICES,
         *cpu_tuning.FILES,
         # The path files go after the packages they point at, so restoration removes them first.
@@ -3957,7 +3968,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
-        webcam_id.OPERATION, wifi_wait.OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
+        webcam_id.OPERATION, wifi_wait.OPERATION, wifi_wait.RULE_OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         adb_usb_only.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
         addons_service.UNIT_OPERATION, addons_service.SERVER_OPERATION,
         status_service.UNIT_OPERATION, status_service.SERVER_OPERATION,
@@ -4414,6 +4425,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             restart_on_exit.KLIPPER_OPERATION,
             webcam_id.OPERATION,
             wifi_wait.OPERATION,
+            wifi_wait.RULE_OPERATION,
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,

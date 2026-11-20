@@ -227,6 +227,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertNotIn(webcam_id.UNIT, service_events)
         # QIDI's Wi-Fi service waits for wlan0 from the next boot, without a restart that would drop the network now.
         self.assertEqual((system_root / wifi_wait.FILE.lstrip("/")).read_text(encoding="utf-8"), wifi_wait.CONTENT)
+        # ...and starts again whenever wlan0 comes back, as after a driver reload.
+        self.assertEqual((system_root / wifi_wait.RULE_FILE.lstrip("/")).read_text(encoding="utf-8"),
+                         wifi_wait.RULE_CONTENT)
         self.assertNotIn(wifi_wait.UNIT, service_events)
         # Klipper gets the CPU before Moonraker, and both before the touchscreen app, each on its own CPUs.
         for operation, dropin in service_priority.FILES.items():
@@ -658,6 +661,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         self.assertFalse((system_root / webcam_id.FILE.lstrip("/")).exists())
         self.assertFalse((system_root / wifi_wait.FILE.lstrip("/")).exists())
+        self.assertFalse((system_root / wifi_wait.RULE_FILE.lstrip("/")).exists())
         for dropin in (*service_priority.FILES.values(), *cpu_tuning.FILES.values()):
             self.assertFalse((system_root / dropin.lstrip("/")).exists())
         # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.
