@@ -8,6 +8,8 @@ import logging, math
 HOMING_START_DELAY = 0.001
 ENDSTOP_SAMPLE_TIME = .000015
 ENDSTOP_SAMPLE_COUNT = 4
+# Valve Oil: how far past the end of the axis an X/Y homing touch may drive.
+VO_TOUCH_MARGIN = 6.
 
 # Return a completion that completes when all completions in a list complete
 def multi_complete(printer, completions):
@@ -246,6 +248,7 @@ class HomingMove:
 class Homing:
     def __init__(self, printer):
         self.printer = printer
+        self._vo_homed_x = False
         self.toolhead = printer.lookup_object('toolhead')
         self.changed_axes = []
         self.trigger_mcu_pos = {}
@@ -310,6 +313,90 @@ class Homing:
         #正常走回零确定坐标
         hmove.homing_move(homepos, hi.second_homing_speed)
 
+    # Valve Oil: one closed-loop X/Y touch. The driver decides when the
+    # toolhead reaches the end of the axis; when it misses, vo_homing_guard
+    # stops the move once the motor falls behind against the frame. The
+    # toolhead then rests against whatever stopped it, so back off, arm the
+    # driver again, and touch once more from retry_startpos. A Y touch stopped
+    # twice has usually run into the filament cutter at the front left, so X
+    # homes first, which moves the toolhead to the right, and Y touches a last
+    # time. When the guard stopped the move because the drivers stopped
+    # answering, homing fails at once.
+    def _vo_xy_touch(self, hmove, homepos_axis, speed, retry_startpos, axis,
+                     lift_dir, hi, rails, endstops, script, recover_script):
+        guard = self.printer.lookup_object('vo_homing_guard', None)
+        stops = 0
+        while True:
+            try:
+                return hmove.homing_move(homepos_axis, speed, True)
+            except self.printer.command_error:
+                stop = guard.take_stop() if guard is not None else None
+                if stop is None:
+                    raise
+            stop, retry = stop
+            if not retry:
+                raise self.printer.command_error(stop)
+            stops += 1
+            home_x = stops == 2 and axis == 1 and not self._vo_homed_x
+            if stops > 1 and not home_x:
+                raise self.printer.command_error(
+                    "%s It happened %s, so homing stopped. Check that nothing"
+                    " blocks the toolhead and that the %s belts are tight, then"
+                    " home again." % (
+                        stop, "again after homing X" if stops > 2 else "twice",
+                        "XY"[axis]))
+            if home_x:
+                self.gcode.respond_raw(
+                    "!! %s Backing off and homing X, which moves the toolhead"
+                    " to the right, then homing Y again." % (stop,))
+            else:
+                self.gcode.respond_raw("!! %s Backing off and homing %s again."
+                                       % (stop, "XY"[axis]))
+            self.toolhead.set_position(homepos_axis)
+            self.gcode.run_script_from_command(recover_script)
+            for mcu_endstop1, _ in endstops:
+                mcu_endstop1.home_zero()
+            lift = self._fill_coord(homepos_axis)
+            lift[axis] += lift_dir * hi.retract_dist
+            self.toolhead.manual_move(lift, hi.retract_speed)
+            self.gcode.run_script_from_command("M400")
+            if home_x:
+                self._vo_homed_x = True
+                x_homing = Homing(self.printer)
+                x_homing.set_axes([0])
+                self.toolhead.get_kinematics().home(x_homing)
+                homepos_axis[0] = retry_startpos[0] = \
+                    self.toolhead.get_position()[0]
+            self.toolhead.set_position(retry_startpos)
+            self.printer.send_event("homing:home_rails_end", self, rails)
+            self.printer.send_event("homing:home_rails_begin", self, rails)
+            self.gcode.run_script_from_command(script)
+        self.toolhead.set_position(homepos_axis)
+        self.gcode.run_script_from_command(recover_script)
+        for mcu_endstop1, _ in endstops:
+            mcu_endstop1.home_zero()
+        lift = self._fill_coord(homepos_axis)
+        lift[axis] += lift_dir * hi.retract_dist
+        self.toolhead.manual_move(lift, hi.retract_speed)
+        self.gcode.run_script_from_command("M400")
+        self.toolhead.set_position(retry_startpos)
+        self.printer.send_event("homing:home_rails_end", self, rails)
+        self.printer.send_event("homing:home_rails_begin", self, rails)
+        self.gcode.run_script_from_command(script)
+        try:
+            return hmove.homing_move(homepos_axis, speed, True)
+        except self.printer.command_error:
+            stop = guard.take_stop()
+            if stop is None:
+                raise
+        stop, retry = stop
+        if not retry:
+            raise self.printer.command_error(stop)
+        raise self.printer.command_error(
+            "%s It happened twice, so homing stopped. Check that nothing blocks"
+            " the toolhead and that the %s belts are tight, then home again."
+            % (stop, "XY"[axis]))
+
     # 闭环电机-XY二次回零/回零校准
     def xy_home_second_genera(self, rails, forcepos, movepos, hi, endstops, mcu_endstop):
         # logging.info("Test: custom_second_home: V2.1.4")
@@ -346,10 +433,22 @@ class Homing:
         homepos_axis[axis] = homepos[axis]
         logging.info(f"homepos_axis={homepos_axis}")
 
+        # Valve Oil: a touch the driver never ends drives into the frame until
+        # its move runs out, so no touch is longer than the axis and
+        # VO_TOUCH_MARGIN. Touches after the first stay that long too: when
+        # the driver ends a touch early, away from the frame, the next touch
+        # has to reach the frame for the check below to catch it.
+        home_dir = -lift_dir
+        position_min, position_max = rails[0].get_range()
+        full_d = abs(homepos[axis] - startpos[axis])
+        touch_startpos = list(startpos)
+        touch_startpos[axis] = homepos[axis] - home_dir * min(
+            full_d, position_max - position_min + VO_TOUCH_MARGIN)
+
         retry_count = 0
         while True:
             retry_count += 1
-            self.toolhead.set_position(startpos)
+            self.toolhead.set_position(touch_startpos)
 
             # 第一次触发
             if (axis == 0 or axis == 1): 
@@ -357,7 +456,9 @@ class Homing:
                 self.printer.send_event("homing:home_rails_begin", self, rails)
                 self.gcode.run_script_from_command(script)
 
-            epos = hmove.homing_move(homepos_axis, hi.speed, True)
+            epos = self._vo_xy_touch(hmove, homepos_axis, hi.speed,
+                                     touch_startpos, axis, lift_dir, hi, rails,
+                                     endstops, script, recover_script)
             # logging.info("epos=%.4f", epos[axis])
             self.toolhead.set_position(homepos_axis)
 
@@ -376,7 +477,7 @@ class Homing:
             self.toolhead.manual_move(lift, hi.retract_speed)
             self.gcode.run_script_from_command("M400")
 
-            self.toolhead.set_position(startpos)
+            self.toolhead.set_position(touch_startpos)
 
             # 第二次触发
             if (axis == 0 or axis == 1): 
@@ -384,7 +485,10 @@ class Homing:
                 self.printer.send_event("homing:home_rails_begin", self, rails)
                 self.gcode.run_script_from_command(script)
 
-            epos1 = hmove.homing_move(homepos_axis, hi.second_homing_speed, True)
+            epos1 = self._vo_xy_touch(hmove, homepos_axis,
+                                      hi.second_homing_speed, touch_startpos,
+                                      axis, lift_dir, hi, rails, endstops,
+                                      script, recover_script)
             # logging.info("epos1=%.4f", epos1[axis])
             self.toolhead.set_position(homepos_axis)
 
@@ -393,7 +497,7 @@ class Homing:
                 self.gcode.run_script_from_command(recover_script)
 
             # 偏差判断
-            second_homing_dist = startpos[axis] - epos1[axis]
+            second_homing_dist = touch_startpos[axis] - epos1[axis]
             axis_diff = abs(retract_dist - second_homing_dist)
             logging.info("SECOND_HOME[%d]: axis=%d retract_dist=%.4f second_homing_dist=%.4f diff=%.4f", retry_count, axis, retract_dist, second_homing_dist, axis_diff)
             if axis_diff <= hi.tolerance:

@@ -27,12 +27,7 @@ def homing_fixture_bytes(firmware: str) -> bytes:
         raise ValueError(f"Unsupported homing fixture firmware: {firmware}")
     if firmware in {"01.01.06.05", "01.01.07.01"}:
         return homing_sync_reset_fixture_bytes()
-    value = (REPO_ROOT / "installer/klipper/qidi/homing.py").read_bytes()
-    value = value.replace(b"G4 P100", b"G4 P200").replace(b"G4 P50", b"G4 P200")
-    value = value.replace(
-        b'self.toolhead.dwell(\r\n            .25 if rails[0].get_name() in ("stepper_x", "stepper_y")\r\n            else 1)',
-        b"self.toolhead.dwell(1)",
-    )
+    value = (FIXTURES_ROOT / "source-patches/01.01.06.04/homing.py").read_bytes()
     if firmware == "01.01.06.03":
         value = value.replace(
             b"G4 P200\\nSET_HOMING_MODE STEPPER=y VALUE=2",

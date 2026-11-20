@@ -813,6 +813,43 @@ The optional X/Y step-loss monitor SHALL stay inert until its saved variable ena
 - **WHEN** the saved variable is absent or false, X or Y is not homed, or the printer has no QIDI closed-loop X/Y drivers
 - **THEN** the monitor sends nothing to the drivers
 
+### Requirement: X/Y homing guard
+On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop an X or Y homing touch whose motor falls behind before its driver reports the end of the axis, and QIDI's closed-loop homing SHALL back off and touch again, homing X first when Y is stopped twice. The guard SHALL be on unless its saved variable turns it off, and SHALL send only the position-error query, and only to the other X/Y motor's driver.
+
+#### Scenario: Touches are no longer than the axis
+- **WHEN** a closed-loop X or Y touch starts
+- **THEN** it drives no further than the axis range (`position_max` minus `position_min`) and 6 mm, whether or not the guard is on
+- **AND** a touch after a back-off may drive that far too, so a touch the driver ended away from the frame is followed by one that reaches it
+
+#### Scenario: Blocked touch is stopped and retried
+- **WHEN** the guard is on and, during an X or Y homing move, the other X/Y motor's position error is at least 8 electrical cycles (8192 counts) from its first read in that move
+- **THEN** the guard triggers the move's endstop trsync from the host, so the mainboard stops the motors at once
+- **AND** homing takes the toolhead to be at the end of that axis, backs off by `homing_retract_dist`, arms the driver again, and repeats the touch
+- **AND** the console says the touch was stopped, how far the motor fell behind, and that the axis is homing again
+
+#### Scenario: Second blocked Y touch homes X first
+- **WHEN** the repeated Y touch is stopped the same way and X has not homed during this Y home
+- **THEN** homing backs off Y by `homing_retract_dist`, homes X, and repeats the Y touch with X at its homed position
+- **AND** the console says X homes before Y homes again
+
+#### Scenario: Blocked touches that recovery did not clear fail homing
+- **WHEN** the repeated X touch is stopped the same way, the Y touch after X homed is stopped, or a repeated Y touch is stopped after X homed during this Y home
+- **THEN** homing fails with an error that names the axis, says it happened twice or again after homing X, and asks to check for obstructions and belt tension
+
+#### Scenario: Drivers stop answering during a touch
+- **WHEN** the guard is on and two position-error queries in a row go unanswered during an X or Y homing move
+- **THEN** the guard triggers the move's endstop trsync from the host
+- **AND** homing fails at once, without another touch, with an error saying the motor drivers stopped answering
+
+#### Scenario: Touch ending normally
+- **WHEN** the driver ends an X or Y homing move before the motor falls 8 cycles behind
+- **THEN** the guard changes nothing about homing
+- **AND** `klippy.log` gets one line for the move with the number of reads, unanswered requests, the time to the first reply, the first reading, and the largest deviation in counts and millimeters of belt
+
+#### Scenario: Guard off or unsupported
+- **WHEN** the saved variable `vo_homing_guard` is false, the move homes Z or probes, or the printer has no QIDI closed-loop X/Y drivers
+- **THEN** the guard sends the drivers nothing and homing behaves as without it
+
 ### Requirement: QIDI RS-485 device evidence
 The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.
 
