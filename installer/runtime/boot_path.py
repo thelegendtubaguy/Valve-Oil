@@ -133,12 +133,15 @@ def describe(problems) -> str:
     return "; ".join(problem.detail for problem in problems)
 
 
+def reboot_problems(paths, environ: dict[str, str]) -> tuple[Problem, ...]:
+    """What would stop the printer at its boot logo if it restarted now; empty when it can restart."""
+    root = root_for(paths, environ)
+    return () if root is None else check(root)
+
+
 def boot_files_allow_reboot(paths, *, reporter, environ: dict[str, str]) -> bool:
     """Whether the printer can start again: never reboot one that would stop at the boot logo."""
-    root = root_for(paths, environ)
-    if root is None:
-        return True
-    problems = check(root)
+    problems = reboot_problems(paths, environ)
     if not problems:
         return True
     reporter.debug(event="host_reboot.boot_files_broken", detail=describe(problems))

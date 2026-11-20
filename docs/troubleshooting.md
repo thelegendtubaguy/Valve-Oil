@@ -31,7 +31,9 @@ Automatic updates and **Update now** don't install anything while Klipper isn't 
 
 **The touchscreen says QIDI's update files are missing:** QIDI's Offline Update empties `/home/qidi/update` before it runs any package, and the drive had no copy of QIDI's files for this printer's firmware, so they couldn't be put back. Nothing else was changed. Download the QIDI firmware for your printer and version from QIDI and extract its files into `/home/qidi/update`, or run the Offline Update with QIDI's own package.
 
-**Install stopped:** the screen names the step that didn't finish and why, and says what state the printer was left in. The log is on the drive as `valve-oil-install.log`. **Try again** runs the install again; **Quit** gives the touchscreen back to QIDI's app.
+**Install stopped:** the screen names the step that didn't finish and why, and says what state the printer was left in: nothing changed, everything put back, or Valve Oil installed with that step left to run again. The log is on the drive as `valve-oil-install.log`. **Try again** runs the install again; **Quit** gives the touchscreen back to QIDI's app.
+
+**The printer wasn't restarted:** after the install, the printer would have stopped at its boot logo if it had restarted, and the screen says what it found. Don't turn the printer off. Run `~/valve-oil/install.sh` over SSH, which repairs it, then tap **Try again**, or see [Recovering a printer that won't boot](recovering-an-unbootable-printer.md).
 
 ## QIDI firmware updates
 

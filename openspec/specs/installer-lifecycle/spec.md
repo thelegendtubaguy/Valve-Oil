@@ -1337,6 +1337,11 @@ Each release SHALL publish one USB drive image that an operator extracts to a US
 #### Scenario: Install finishes
 - **WHEN** a USB install finishes
 - **THEN** the log is on the drive before the finish screen shows, and the printer restarts when the drive is taken out or the operator chooses to restart with it in
+- **AND** when the printer wouldn't start again, the touchscreen says it wasn't restarted and what was found, checks again when the operator taps Try again, and returns the touchscreen to QIDI's app without restarting when the operator quits
+
+#### Scenario: Install stops
+- **WHEN** a USB install stops with an error
+- **THEN** the touchscreen names the step and the error, and says what the install left: nothing changed when it stopped before writing anything, everything put back when its rollback restored the files it wrote, or Valve Oil installed with the step left to run again when it stopped after its state was written
 
 #### Scenario: Older supported firmware with no network
 - **WHEN** a USB install runs on a printer whose QIDI firmware the release updates from and the printer has no network

@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import replace
 
 from .addons_cli import maybe_update_installed_addons
-from . import boot_logo, boot_path, klipper_cfg, messages, patches, progress, safety, update_window
+from . import boot_logo, boot_path, errors, klipper_cfg, messages, patches, progress, safety, update_window
 from .auto_update import (
     LOCK_HELD_ENV,
     adopt_legacy_enrollment,
@@ -435,6 +435,13 @@ def build_install_plan(
 
 
 
+def _note_outcome(exc: BaseException, outcome: str) -> None:
+    try:
+        exc.install_outcome = outcome
+    except AttributeError:
+        pass
+
+
 def _execute_install(
     *,
     paths: RuntimePaths,
@@ -670,12 +677,17 @@ def _execute_install(
             journal.rollback_or_raise(
                 exc, backup_label=plan.backup_label, backup_zip_path=backup_zip_path
             )
+            _note_outcome(exc, errors.OUTCOME_PUT_BACK)
             if isinstance(exc, HaltedKlipperDidNotStartError):
                 # The failed process loaded the files that were just put back; start one with the files on disk.
                 try:
                     request_klipper_restart(paths, urlopen=urlopen)
                 except ProcessRestartError:
                     pass
+        else:
+            # Once the state is committed, Valve Oil's files stay installed: the system changes and boot logo that
+            # come after aren't undone by the journal, and a later run finishes them.
+            _note_outcome(exc, errors.OUTCOME_INSTALLED if journal.committed else errors.OUTCOME_UNCHANGED)
         if not journal.committed and not migration_committed:
             discard_legacy_system_ledger_migration(paths, migrated_paths)
         raise

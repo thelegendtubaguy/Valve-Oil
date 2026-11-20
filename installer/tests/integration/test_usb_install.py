@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import io
+import os
+import subprocess
 import unittest
 from types import SimpleNamespace
 
-from installer.runtime import install_flow, progress, touch_ui, usb_install
+from installer.runtime import boot_path, errors, install_flow, progress, touch_ui, usb_install
 from installer.runtime.board_firmware import BoardAdmissionError
 from installer.runtime.errors import OperationCancelled
 from installer.runtime.manifest import load_manifest
 from installer.runtime.reporter import create_reporter
 from installer.runtime.run_log import LoggingReporter, RunLog
-from installer.tests.helpers import REPO_ROOT, moonraker_urlopen, temp_path
+from installer.tests.helpers import REPO_ROOT, add_merged_usr, fake_system_root, moonraker_urlopen, temp_path
 
 MANIFEST = load_manifest(REPO_ROOT / "installer/package.yaml")
 
@@ -137,10 +139,53 @@ class UsbInstallTests(unittest.TestCase):
         self.assertEqual(session.loop(), usb_install.QUIT)
         failed = [fields for name, fields in self.ui.screens if name == "failed"][0]
         self.assertIn(f"Step 2, {progress.BACKUP}, did not finish: Moonraker did not come back", failed["text"])
-        self.assertIn("put back", failed["text"])
+        self.assertIn("Nothing was changed.", failed["text"])
         self.assertIn("Moonraker did not come back",
                       (self.drive / usb_install.DRIVE_LOG_NAME).read_text(encoding="utf-8"))
         self.assertIn("log", self.ui.names())
+
+    def test_a_failed_install_says_what_it_left_behind(self):
+        # The install says on its error what it left: put back before the state was written, kept after it, when the
+        # system changes and boot logo that follow aren't undone.
+        for outcome, said, unsaid in ((errors.OUTCOME_PUT_BACK, "Everything was put back", "Nothing was changed"),
+                                      (errors.OUTCOME_INSTALLED, "Valve Oil is installed", "put back"),
+                                      (errors.OUTCOME_UNCHANGED, "Nothing was changed", "put back")):
+            with self.subTest(outcome=outcome):
+                def fail(front_end, outcome=outcome):
+                    error = RuntimeError("the boot logo couldn't be written")
+                    error.install_outcome = outcome
+                    raise error
+
+                session = self.session(["start", "yes", "yes", "install", "quit"], run=fail)
+                self.assertEqual(session.loop(), usb_install.QUIT)
+                failed = [fields for name, fields in self.ui.screens if name == "failed"][0]
+                self.assertIn(said, failed["text"])
+                self.assertNotIn(unsaid, failed["text"])
+
+    def test_a_printer_that_wouldnt_start_again_isnt_restarted_and_says_so(self):
+        session = self.session([])
+        system = add_merged_usr(fake_system_root())
+        (system / "sbin").unlink()
+        (system / "sbin").mkdir()  # what QIDI's Format External Storage leaves
+        session.env = {boot_path.SYSTEM_ROOT_ENV: str(system)}
+        commands = []
+        session.run = lambda command, **kwargs: commands.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+        restart = usb_install.Session._restart.__get__(session)
+
+        # Quit: the screen says why, and the printer isn't restarted.
+        self.ui.taps.extend(["view_log", "close", "quit"])
+        restart()
+        refused = [fields for name, fields in self.ui.screens if name == "failed"][-1]
+        self.assertEqual(refused["title"], "The printer wasn't restarted")
+        self.assertIn("/sbin", " ".join(str(part) for part in refused["text"]))
+        self.assertFalse([command for command in commands if "reboot" in command])
+
+        # Try again, once the files are repaired: it restarts.
+        self.ui.taps.extend(["again"])
+        (system / "sbin").rmdir()
+        os.symlink("usr/sbin", system / "sbin")
+        restart()
+        self.assertTrue([command for command in commands if "reboot" in command])
 
     def test_a_printer_it_cannot_install_on_says_why_and_changes_nothing(self):
         # Busy: says so, and checks again.
