@@ -2,6 +2,10 @@
 
 [← Back to the README](../README.md)
 
+## The printer stops at the boot logo
+
+If the touchscreen stays on the boot logo and the printer never joins the network, over Wi-Fi or Ethernet, see [Recovering a printer that won't boot](recovering-an-unbootable-printer.md). It gets the printer booting again over USB without wiping it, and saves its logs on the way. The cause found so far is QIDI's touchscreen **Format External Storage** button, which can replace the system's `/sbin` link on printers that came without the FAT formatting tools.
+
 ## The installer stopped
 
 Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why. Each run also saves a log in `~/printer_data/logs`, such as `valve-oil-install-20261117-091402.log`, which the installer names when it stops; attach it when you [report a problem](#reporting-a-problem). See [Logs](install.md#logs).

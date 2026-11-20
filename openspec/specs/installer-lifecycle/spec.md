@@ -972,9 +972,9 @@ Every install and update SHALL check, before it changes anything else, that the 
 - **THEN** the install or update changes nothing, and tells the operator not to restart the printer and where the recovery guide is
 
 #### Scenario: The touchscreen app finds its formatting tool
-- **WHEN** neither `mkfs.fat` nor `mkfs.vfat` is in `/usr/sbin`, `/sbin`, `/usr/bin`, or `/bin`, and the touchscreen app carries QIDI's `dosfstools` arm64 package
+- **WHEN** neither `mkfs.fat` nor `mkfs.vfat` is in `/usr/sbin`, `/sbin`, `/usr/bin`, or `/bin`, or dpkg doesn't list `dosfstools` as installed, as after a repair copied the tools into `/usr/sbin`, and the touchscreen app carries QIDI's `dosfstools` arm64 package
 - **THEN** the install or update installs that package with `dpkg -i`, after reading its name and architecture, so the app's Format External Storage never unpacks it over `/`
-- **AND** a printer that has the tool, or whose app carries no such package, gets nothing installed, and a failed install of the package tells the operator not to use Format External Storage and doesn't stop the install
+- **AND** a printer that has the tool installed through dpkg, or whose app carries no such package, gets nothing installed, and a failed install of the package tells the operator not to use Format External Storage and doesn't stop the install
 - **AND** uninstall leaves the package and the repaired links as they are
 
 #### Scenario: No reboot onto a printer that won't start

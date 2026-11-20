@@ -237,9 +237,22 @@ def format_tool_present(root: Path) -> bool:
     return any(_executable(root, f"{directory}/{tool}") for directory in TOOL_DIRS for tool in FORMAT_TOOLS)
 
 
+def dosfstools_registered(root: Path) -> bool:
+    """Whether dpkg lists dosfstools as installed: a repair copies the tools into /usr/sbin without dpkg knowing."""
+    try:
+        status = _map(root, "/var/lib/dpkg/status").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for stanza in status.split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in stanza.splitlines() if ": " in line and not line.startswith(" "))
+        if fields.get("Package") == DOSFSTOOLS_PACKAGE and fields.get("Status") == "install ok installed":
+            return True
+    return False
+
+
 def _ensure_format_tools(root: Path, *, run, sudo_password, reporter, dry_run: bool) -> None:
     deb = _map(root, DOSFSTOOLS_DEB)
-    if format_tool_present(root):
+    if format_tool_present(root) and (dosfstools_registered(root) or not deb.is_file()):
         reporter.debug(event="install.dosfstools", result="already_current")
         return
     if not deb.is_file():

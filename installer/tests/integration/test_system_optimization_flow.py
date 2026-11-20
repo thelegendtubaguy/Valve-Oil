@@ -1510,13 +1510,14 @@ class BootFilesFlowTests(unittest.TestCase):
         run_install(paths, manifest, PlainReporter(report), urlopen=urlopen, environ=env, run=run)
         self.assertEqual(os.readlink(root / "sbin"), "usr/sbin")
         self.assertEqual(boot_path.check(root), ())
-        # The directory's tools moved into /usr/sbin, so QIDI's app finds them and doesn't unpack its package again.
-        self.assertEqual((root / "usr/sbin/mkfs.fat").read_bytes(), b"qidi mkfs.fat")
+        # The directory's tools moved into /usr/sbin, and dpkg then installs QIDI's package over them so dpkg owns
+        # them; QIDI's app finds its tool and doesn't unpack the package again.
         self.assertEqual(os.readlink(root / "usr/sbin/mkdosfs"), "mkfs.fat")
         self.assertTrue(boot_path.format_tool_present(root))
+        self.assertTrue(boot_path.dosfstools_registered(root))
         self.assertEqual(len(list(root.glob("sbin.valve-oil-*"))), 1)
         self.assertIn("Repaired /sbin", report.getvalue())
-        self.assertNotIn(["dpkg", f"--root={root}", "-i"], [call[:3] for call in calls])
+        self.assertEqual([call[:3] for call in calls].count(["dpkg", f"--root={root}", "-i"]), 1)
 
     def test_install_installs_qidis_dosfstools_only_when_its_format_tool_is_missing(self):
         root = add_merged_usr(fake_system_root(), dosfstools_deb=True)

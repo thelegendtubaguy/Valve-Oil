@@ -278,10 +278,18 @@ def add_merged_usr(root: Path, *, format_tools: bool = False, dosfstools_deb: bo
 
 
 def _install_fake_dosfstools(root: Path) -> None:
+    """What dpkg -i of QIDI's dosfstools leaves: its tools in /usr/sbin, replacing unowned copies, and a status entry."""
     tool = root / "usr/sbin/mkfs.fat"
     tool.write_bytes(b"mkfs.fat")
     tool.chmod(0o755)
-    os.symlink("mkfs.fat", root / "usr/sbin/mkfs.vfat")
+    alias = root / "usr/sbin/mkfs.vfat"
+    if alias.is_symlink() or alias.exists():
+        alias.unlink()
+    os.symlink("mkfs.fat", alias)
+    status = root / "var/lib/dpkg/status"
+    status.parent.mkdir(parents=True, exist_ok=True)
+    with status.open("a", encoding="utf-8") as file:
+        file.write("Package: dosfstools\nStatus: install ok installed\nArchitecture: arm64\n\n")
 
 
 def with_fluidd_build(manifest):

@@ -18,6 +18,7 @@
 
 - [Fixes for QIDI bugs](fixes.md)
 - [If something goes wrong](troubleshooting.md): firmware updates that didn't start or finish, an empty `printer.cfg`, backups, restore, Box link monitor, reporting problems
+- [Recovering a printer that won't boot](recovering-an-unbootable-printer.md): a printer that stops at the boot logo with no network, over USB with ADB or maskrom, and saving its logs
 - [Board firmware](firmware.md): the toolhead accelerometer fix, the QIDI Box shutdown fix and spool tag reading, and the Max 4 mainboard closed-loop reply fix, all flashed by the installer, and the Max 4's closed-loop motor drivers
 
 ## Details

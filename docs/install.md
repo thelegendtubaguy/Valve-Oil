@@ -127,13 +127,13 @@ When an install or update turns on zram swap, the CPU setting, the service prior
 
 QIDI's system image keeps its programs in `/usr`, and `/sbin`, `/bin`, and `/lib` are links into it. At power-on the kernel starts `/sbin/init`, which leads to `systemd`, and `systemd` starts everything else, from the network and SSH to Klipper and the touchscreen app.
 
-QIDI's touchscreen app can break this. When you use **Format External Storage** on a printer that doesn't have the `mkfs.fat` formatting tool, the app unpacks its own copy of the `dosfstools` package over the whole system with `dpkg-deb -x`. That replaces the `/sbin` link with a folder holding only the formatting tools. The printer keeps running, but the next time it starts it stops at the boot logo, with no network, SSH, or ADB. Some printers ship with `dosfstools` installed and never hit this; others don't. If yours is already stuck at the boot logo, see [Recovering a printer that won't start](recovering-an-unbootable-printer.md).
+QIDI's touchscreen app can break this. When you use **Format External Storage** on a printer that doesn't have the `mkfs.fat` formatting tool, the app unpacks its own copy of the `dosfstools` package over the whole system with `dpkg-deb -x`. That replaces the `/sbin` link with a folder holding only the formatting tools. The printer keeps running, but the next time it starts it stops at the boot logo, with no network, SSH, or ADB. Some printers ship with `dosfstools` installed and never hit this; others don't. If yours is already stuck at the boot logo, see [Recovering a printer that won't boot](recovering-an-unbootable-printer.md).
 
 Every install and update checks these files before it changes anything else:
 
 - When a folder has replaced `/sbin`, `/bin`, or `/lib`, the installer copies the folder's files into `/usr` without replacing any there, moves the folder aside as `/sbin.valve-oil-<date>`, and puts the link back. It says `Repaired /sbin` in its log.
-- When the files are broken in a way it can't repair, such as a link that points somewhere else, it installs nothing and says what it found. Don't restart or switch off the printer then; follow [Recovering a printer that won't start](recovering-an-unbootable-printer.md).
-- When `mkfs.fat` is missing and the touchscreen app carries QIDI's `dosfstools` package, the installer installs that package properly with `dpkg`, so the app finds its tool and never unpacks it again.
+- When the files are broken in a way it can't repair, such as a link that points somewhere else, it installs nothing and says what it found. Don't restart or switch off the printer then; follow [Recovering a printer that won't boot](recovering-an-unbootable-printer.md).
+- When `mkfs.fat` is missing, or dpkg doesn't list `dosfstools` as installed (as after a repair), and the touchscreen app carries QIDI's `dosfstools` package, the installer installs that package properly with `dpkg`, so the app finds its tool and never unpacks it again.
 
 A dry run says what it would repair or install. Uninstall undoes neither: the repaired links are how the system should be, and removing `dosfstools` would let the touchscreen break `/sbin` again.
 
