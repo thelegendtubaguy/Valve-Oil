@@ -222,13 +222,16 @@ def existing_installation(paths, manifest) -> bool:
     What a wrong answer costs: a printer counted new when it isn't (installed by a release before the admission record,
     not enrolled, and its config emptied by a QIDI update, so Valve Oil isn't running on it) is refused when a board
     isn't admitted, with the support link, and keeps working as stock. A printer counted existing when it isn't would
-    be installed in today's mode with a board this release doesn't admit; only these three files can cause that, and
-    uninstall removes all of them.
+    be installed in today's mode with a board this release doesn't admit; only these files can cause that, and
+    uninstall removes all of them. The install-started marker is written only after the boards were admitted.
     """
     from .auto_update import enrollment_path
+    from .legacy_manual_install import install_started_path
 
+    # A new install that stopped before writing its state is finished by the next run, as an install over its own.
     return any(path.exists() for path in (
-        paths.printer_data_root / manifest.state_file, admission_path(paths), enrollment_path(paths)))
+        paths.printer_data_root / manifest.state_file, admission_path(paths), enrollment_path(paths),
+        install_started_path(paths)))
 
 
 # ---- reading -------------------------------------------------------------------------------------------------------

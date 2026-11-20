@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from . import klipper_cfg
 from .manifest import patch_variant_maximum, select_patch_variant
 from .models import PatchLedgerEntry, PatchResult, PatchSpec, SectionPatchSpec
@@ -11,6 +14,22 @@ UNINSTALL_REVERTED = "reverted"
 UNINSTALL_NOOP_EXPECTED = "noop_expected"
 USER_MODIFIED = "user_modified"
 SECTION_DELETED = "__TLTG_SECTION_DELETED__"
+_SECTION_HASH = re.compile(r"[0-9a-f]{64}")
+
+
+def is_section_hash(value: str) -> bool:
+    """A section delete's recorded original that is only its normalized SHA-256, which earlier releases recorded
+    for a section already gone when no install record said what it held."""
+    return _SECTION_HASH.fullmatch(value) is not None
+
+
+def stock_section_text(stock_root: Path, file: str, section: str, normalized_sha256: str) -> str | None:
+    """QIDI's text of `section` from the bundled stock config, when it is the section a delete expects."""
+    try:
+        text = klipper_cfg.resolve_unique_section(klipper_cfg.read_text(stock_root / file), section).text
+    except (OSError, klipper_cfg.TargetResolutionError):
+        return None
+    return text if klipper_cfg.normalized_section_sha256(text) == normalized_sha256 else None
 
 
 def classify_install_patch(current: str, patch: PatchSpec, firmware_version: str, prior_state=None) -> PatchResult:

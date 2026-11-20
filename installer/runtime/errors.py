@@ -103,6 +103,13 @@ class InstalledPackageValidationError(InstallerError):
         super().__init__(messages.COULD_NOT_VALIDATE_INSTALLED_PACKAGE_STATE)
 
 
+class UnfinishedInstallError(InstallerError):
+    """Uninstall found a new install that stopped before saving its state; installing again finishes it."""
+
+    def __init__(self):
+        super().__init__(messages.UNINSTALL_FOUND_UNFINISHED_INSTALL)
+
+
 class RecoveryRequiredError(InstallerError):
     def __init__(self):
         super().__init__(messages.PREVIOUS_RECOVERY_DID_NOT_COMPLETE)

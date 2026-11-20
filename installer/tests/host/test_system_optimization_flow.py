@@ -915,13 +915,16 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             validate_system_ledger(forged, manifest=manifest, paths=paths)
         journal = {"schema_version": 1, "operation": "apt_sources", "transaction_id": "x", "phase": "apply", "preimage": forged["restore_preimages"]["apt_sources"]}
         _journal_path(paths).write_text(json.dumps(journal), encoding="utf-8")
-        with self.assertRaises(SystemOptimizationRecoveryError):
-            recover_pending_system_optimization(
-                paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()),
-                input_stream=io.StringIO(), environ=env, run=fake_host_run(system_root),
-                urlopen=moonraker_urlopen(),
-            )
-        self.assertTrue(_journal_path(paths).exists())
+        before = snapshot_tree(system_root)
+        # A journal no run can act on is set aside, untouched, so it stops nothing; nothing it names is restored.
+        self.assertFalse(recover_pending_system_optimization(
+            paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()),
+            input_stream=io.StringIO(), environ=env, run=fake_host_run(system_root),
+            urlopen=moonraker_urlopen(),
+        ))
+        self.assertFalse(_journal_path(paths).exists())
+        self.assertEqual(len(list(paths.printer_data_root.glob(f"{_journal_path(paths).name}.set-aside-*"))), 1)
+        self.assertEqual(snapshot_tree(system_root), before)
 
     def test_host_ledger_migration_and_rockchip_journal_recovery(self):
         printer_root = copy_base_runtime(homing_patched=True)
@@ -1160,20 +1163,21 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         for name, payload_for in invalid_cases:
             with self.subTest(name=name):
                 journal.write_text(json.dumps(payload_for(backup_root, unrelated)), encoding="utf-8")
-                with self.assertRaises(StateValidationError):
-                    system_optimizations.recover_pending_legacy_system_ledger_migration(
-                        paths, paths.printer_data_root / "absent-state.yaml"
-                    )
+                # An invalid journal is dropped so the next run can go on; nothing it names is removed.
+                system_optimizations.recover_pending_legacy_system_ledger_migration(
+                    paths, paths.printer_data_root / "absent-state.yaml"
+                )
+                self.assertFalse(journal.exists())
                 self.assertEqual(retained.read_bytes(), b"retain")
 
         link = backup_root / ".ledger-migration-link"
         link.symlink_to(unrelated, target_is_directory=True)
         journal = paths.printer_data_root / system_optimizations.LEGACY_MIGRATION_JOURNAL
         journal.write_text(json.dumps({"schema_version": 1, "kind": "legacy-system-ledger-gifs", "migration_id": "a" * 32, "target": str(link)}), encoding="utf-8")
-        with self.assertRaises(StateValidationError):
-            system_optimizations.recover_pending_legacy_system_ledger_migration(
-                paths, paths.printer_data_root / "absent-state.yaml"
-            )
+        system_optimizations.recover_pending_legacy_system_ledger_migration(
+            paths, paths.printer_data_root / "absent-state.yaml"
+        )
+        self.assertFalse(journal.exists())
         self.assertEqual(retained.read_bytes(), b"retain")
 
         paths, _, _, _ = self._host_context()
@@ -1216,7 +1220,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         backup.assert_not_called(); prune.assert_not_called()
         self.assertEqual(snapshot_tree(root), before)
 
-    def test_forged_legacy_rockchip_journal_never_clears(self):
+    def test_forged_legacy_rockchip_journal_is_never_acted_on(self):
         legacy = {"policy": {"system_optimizations": "enabled", "ai_detection": "unset"}, "restore_preimages": {}, "outcomes": {}, "committed_transactions": {}, "actions": [{"id": "rockchip_root_sync", "status": "applied", "transaction_id": "same"}]}
         # Recovery loads only an on-disk installed state; use a valid install then replace its ledger.
         paths, manifest, env, root = self._installed_host_context()
@@ -1224,9 +1228,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         write_installed_state(state_path, _replace_system_ledger(load_installed_state(state_path), legacy))
         journal = {"schema_version": 1, "operation": "rockchip_root_sync", "transaction_id": "same", "phase": "captured", "preimage": {"classification": "defective_stock", "dropin": {"path": "/etc/shadow", "exists": False}, "desired_dropin": manifest.system_optimizations.rockchip_root_sync.dropin_content, "unit": {}, "mount_options": ["rw", "sync"], "marker": {"exists": False}}}
         _journal_path(paths).write_text(json.dumps(journal), encoding="utf-8")
-        with self.assertRaises(SystemOptimizationRecoveryError):
-            recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root), urlopen=moonraker_urlopen())
-        self.assertTrue(_journal_path(paths).exists())
+        before = snapshot_tree(root)
+        self.assertFalse(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=fake_host_run(root), urlopen=moonraker_urlopen()))
+        self.assertFalse(_journal_path(paths).exists())
+        self.assertEqual(snapshot_tree(root), before)
 
     def test_rockchip_restores_full_admitted_mount_preimage(self):
         paths, manifest, env, root = self._host_context()
@@ -1302,6 +1307,34 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertTrue(recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(output), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen()))
         self.assertIn(messages.SYSTEM_OPTIMIZATIONS_FAILED, output.getvalue())
         self.assertFalse(_journal_path(paths).exists())
+
+    def test_a_rollback_that_keeps_failing_is_set_aside_after_its_last_attempt(self):
+        # Such as a service QIDI's package removed: the rollback can never finish, and must not stop every run.
+        paths, manifest, env, root = self._host_context()
+        calls = {"fail_apply": True}
+        base_run = fake_host_run(root)
+        def run(command, **kwargs):
+            actual = command[4:] if command[:4] == ["sudo", "-S", "-p", ""] else command
+            if actual == ["systemctl", "disable", "--now", "bluetooth"] and calls["fail_apply"]:
+                return CompletedProcess(command, 1, stdout="failed")
+            if actual in (["systemctl", "enable", "xl2tpd"], ["systemctl", "start", "xl2tpd"], ["systemctl", "enable", "--now", "xl2tpd"]):
+                return CompletedProcess(command, 1, stdout="failed")
+            return base_run(command, **kwargs)
+        ledger = {"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}, "restore_preimages": {}, "actions": []}
+        with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=("service_xl2tpd", "service_bluetooth")):
+            with self.assertRaises(SystemOptimizationRecoveryError):
+                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", block_qidi_updates=True, run=run, urlopen=moonraker_urlopen())
+        calls["fail_apply"] = False
+        recover = lambda output: recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(output), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen())
+        for _ in range(system_optimizations.JOURNAL_RECOVERY_ATTEMPTS - 1):
+            with self.assertRaises(SystemOptimizationRecoveryError):
+                recover(io.StringIO())
+            self.assertTrue(_journal_path(paths).exists())
+        output = io.StringIO()
+        self.assertFalse(recover(output))
+        self.assertFalse(_journal_path(paths).exists())
+        self.assertIn("could not be rolled back", output.getvalue())
+        self.assertEqual(len(list(paths.printer_data_root.glob(f"{_journal_path(paths).name}.set-aside-*"))), 1)
 
     def test_pending_journal_recovers_past_a_gif_backup_a_power_cut_emptied(self):
         paths, manifest, env, root = self._host_context()

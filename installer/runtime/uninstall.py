@@ -7,6 +7,7 @@ import urllib.request
 
 from .addons_cli import maybe_remove_addons
 from . import boot_logo, box_config, klipper_cfg, messages, patches
+from .legacy_manual_install import install_started_path
 from .auto_update import (
     SYSTEM_ROOT_ENV,
     auto_updates_configured,
@@ -35,7 +36,7 @@ from .compatibility import (
 )
 from .config_transaction import FileChangePlan, apply_file_change_plan
 from .ensure_lines import has_active_line, remove_active_line
-from .errors import InstalledPackageValidationError, OperationCancelled
+from .errors import InstalledPackageValidationError, OperationCancelled, UnfinishedInstallError
 from .firmware import detect_firmware_key_best_effort
 from .interaction import (
     confirm_yes,
@@ -164,6 +165,8 @@ def run_uninstall(
     if not any(non_patch_markers.values()) and not any(patch_markers.values()):
         if pending_saved_variables_marker.exists() and not dry_run:
             atomic_delete(pending_saved_variables_marker)
+        if install_started_path(paths).exists() and not dry_run:
+            atomic_delete(install_started_path(paths))
         if not dry_run:
             _remove_update_check(paths=paths, reporter=reporter, input_stream=input_stream, environ=env, run=run)
         reporter.emit_nothing_to_uninstall()
@@ -176,6 +179,8 @@ def run_uninstall(
         )
 
     if any(non_patch_markers.values()) and (state is None or state_invalid):
+        if state is None and not state_invalid and install_started_path(paths).exists():
+            raise UnfinishedInstallError()
         raise InstalledPackageValidationError()
 
     assert state is not None
@@ -503,6 +508,9 @@ def _execute_uninstall(
         if saved_variable_verify_marker_path(paths).exists():
             journal.note_write()
             atomic_delete(saved_variable_verify_marker_path(paths))
+        if install_started_path(paths).exists():
+            journal.note_write()
+            atomic_delete(install_started_path(paths))
         uninstall_counters["state_remove"][0] = 1
         reporter.emit_uninstall_counters(**_freeze_counters(uninstall_counters))
     except BaseException as exc:
@@ -629,13 +637,21 @@ def _uninstall_patch_ledger(
     firmware up to QIDI's newer values; uninstall leaves QIDI's current value instead of the older one.
     """
     printer = manifest.printer_for_firmware(firmware) if firmware else None
-    if printer is None:
-        return state.patch_ledger
-    stock_root = paths.installer_root / printer.stock_snapshot(firmware)
+    stock_root = paths.installer_root / printer.stock_snapshot(firmware) if printer is not None else None
     ledger = []
     for entry in state.patch_ledger:
-        if (
-            entry.option != "__section__"
+        if entry.option == "__section__" and patches.is_section_hash(entry.expected):
+            # An install that found the section already deleted recorded only its hash: put QIDI's text back,
+            # or leave it deleted when the bundle has no copy, rather than writing the hash into the file.
+            stock = (
+                patches.stock_section_text(stock_root, entry.file, entry.section, entry.expected)
+                if stock_root is not None
+                else None
+            )
+            entry = dataclasses.replace(entry, expected=stock if stock is not None else patches.SECTION_DELETED)
+        elif (
+            stock_root is not None
+            and entry.option != "__section__"
             and entry.expected != entry.desired
             and _stock_option_value(stock_root / entry.file, entry) == entry.desired
         ):

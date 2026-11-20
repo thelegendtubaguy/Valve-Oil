@@ -60,12 +60,34 @@ def verify_pending_saved_variable_expectations(
     *,
     clear: bool = True,
     urlopen: UrlOpenFn = urllib.request.urlopen,
+    earlier_run_reporter=None,
 ) -> bool:
+    """Check that the values an install saved are still Klipper's. In the run that saved them a mismatch fails it.
+
+    earlier_run_reporter: the check is of an earlier run's values. Klipper's values may have changed since, by the
+    operator or the touchscreen, and that run already reported a loss, so a mismatch or an unreadable marker is
+    reported here and the marker dropped; keeping it would stop every later install and update. Klipper not
+    answering still fails the check."""
     path = saved_variable_verify_marker_path(paths)
     if not path.exists():
         return False
     if paths.restart_marker_path.exists():
         return False
+    try:
+        values = _read_saved_variable_marker(path)
+    except SavedVariablePersistenceError as exc:
+        return _drop_earlier_run_marker(path, exc, reporter=earlier_run_reporter, clear=clear)
+    live = read_live_saved_variables(paths, urlopen=urlopen)
+    try:
+        _check_saved_values(live, values)
+    except SavedVariablePersistenceError as exc:
+        return _drop_earlier_run_marker(path, exc, reporter=earlier_run_reporter, clear=clear)
+    if clear:
+        atomic_delete(path)
+    return True
+
+
+def _read_saved_variable_marker(path: Path) -> dict[str, str]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         values = raw["values"] if isinstance(raw, dict) and raw.get("schema_version") == 1 else None
@@ -77,10 +99,18 @@ def verify_pending_saved_variable_expectations(
     ):
         raise SavedVariablePersistenceError("Saved-variable verification marker is invalid.")
     _validate_saved_values(values)
-    _verify_saved_values(paths, values, urlopen=urlopen)
+    return values
+
+
+def _drop_earlier_run_marker(path: Path, exc: SavedVariablePersistenceError, *, reporter, clear: bool) -> bool:
+    if reporter is None:
+        raise exc
+    reporter.line(messages.SAVED_VARIABLES_CHANGED_SINCE_INSTALL)
+    if hasattr(reporter, "debug"):
+        reporter.debug(event="saved_variable.marker.dropped", message=exc.message)
     if clear:
         atomic_delete(path)
-    return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -534,7 +564,10 @@ def _wait_for_queued_save(paths: RuntimePaths, name: str, value: str, *, reporte
 
 
 def _verify_saved_values(paths: RuntimePaths, values: Mapping[str, str], *, urlopen: UrlOpenFn) -> None:
-    live = read_live_saved_variables(paths, urlopen=urlopen)
+    _check_saved_values(read_live_saved_variables(paths, urlopen=urlopen), values)
+
+
+def _check_saved_values(live: Mapping[str, str], values: Mapping[str, str]) -> None:
     if any(
         _normalize_saved_string(live.get(name, "")) != _normalize_saved_string(value)
         for name, value in values.items()

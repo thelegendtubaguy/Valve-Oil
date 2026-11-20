@@ -437,7 +437,7 @@ def _skipped(reporter, found, checksum: str) -> AutoUpdateRunResult:
 def _complete_pending_activation(paths: RuntimePaths, *, reporter, urlopen: UrlOpenFn) -> None:
     """Enrolled printers only: finish a Klipper restart an earlier install left pending while the printer was busy."""
     try:
-        verify_pending_saved_variable_expectations(paths, urlopen=urlopen)
+        verify_pending_saved_variable_expectations(paths, urlopen=urlopen, earlier_run_reporter=reporter)
     except SavedVariablePersistenceError as exc:
         raise AutoUpdateError("Pending saved-variable verification could not be verified.") from exc
     if not paths.restart_marker_path.exists():
@@ -459,7 +459,7 @@ def _complete_pending_activation(paths: RuntimePaths, *, reporter, urlopen: UrlO
             allowed_entries=restart_entries(manifest),
             urlopen=urlopen,
         )
-        verify_pending_saved_variable_expectations(paths, urlopen=urlopen)
+        verify_pending_saved_variable_expectations(paths, urlopen=urlopen, earlier_run_reporter=reporter)
         reporter.line("Klipper service process restarted and verified.")
     except (
         ActivePrintError,

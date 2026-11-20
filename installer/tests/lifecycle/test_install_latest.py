@@ -5,6 +5,7 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,24 @@ class CliArgumentTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parse_args(["install", "--run"])
         self.assertEqual(parse_args(["auto-update", "--run"]).mode, "auto-update-check")
+
+    def test_a_run_outlives_the_ssh_session_closing(self):
+        # Closing the SSH session hangs up the terminal. A run stopped there has no rollback and can leave the printer
+        # half changed, so it goes on to its end with its terminal output dropped.
+        done = temp_path("hangup-") / "done"
+        script = (
+            "import os, signal, sys\n"
+            "from installer.runtime import cli\n"
+            "with cli._survives_hangup():\n"
+            "    os.kill(os.getpid(), signal.SIGHUP)\n"
+            "    print('after the hangup', flush=True)\n"
+            "    open(sys.argv[1], 'w').write('finished')\n"
+        )
+        result = subprocess.run([sys.executable, "-c", script, str(done)], cwd=REPO_ROOT, capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(done.read_text(), "finished")
+        self.assertNotIn("after the hangup", result.stdout)
 
     def test_auto_update_launcher_accepts_global_version(self):
         result = subprocess.run(

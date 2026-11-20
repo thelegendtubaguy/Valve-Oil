@@ -53,7 +53,7 @@ from .interaction import (
     maybe_restart_klipper,
     maybe_restart_pending_service_if_idle,
 )
-from .legacy_manual_install import maybe_reset_legacy_manual_install
+from .legacy_manual_install import clear_install_started, mark_install_started, maybe_reset_legacy_manual_install
 from .manifest import active_patch_entries
 from .mirror import (
     collect_source_hashes,
@@ -232,7 +232,8 @@ def run_install(
         # Kept until Klipper runs again; the install may be what lets it start.
         reporter.line(messages.SAVED_VARIABLE_CHECK_DEFERRED_KLIPPER_HALTED)
     else:
-        verify_pending_saved_variable_expectations(paths, clear=not dry_run, urlopen=urlopen)
+        verify_pending_saved_variable_expectations(paths, clear=not dry_run, urlopen=urlopen,
+                                                   earlier_run_reporter=reporter)
 
     reporter.status(messages.PERFORMING_PREFLIGHT_CHECKS)
     run_install_environment_preflight(
@@ -322,6 +323,8 @@ def run_install(
             ),
             external_firmware=detected_firmware,
         )
+        if prior_state is None:
+            mark_install_started(paths, manifest.package.version)
         pruned_backups = prune_installer_backups(
             paths.printer_data_root,
             install_label_prefix=manifest.backup.label_prefix,
@@ -640,6 +643,7 @@ def _execute_install(
         )
         journal.note_write()
         write_installed_state(state_path, state)
+        clear_install_started(paths)
         migration_committed = True
         finalize_legacy_system_ledger_migration(paths)
         journal.commit()
@@ -818,14 +822,19 @@ def _collect_install_patch_results(
         path = paths.printer_data_root / patch.file
         text = klipper_cfg.read_text(path)
         current_section = _resolve_section_text_or_none(text, patch.section)
-        results.append(
-            _preserve_prior_section_expected(
-                patches.classify_install_section_delete(
-                    current_section, patch, detected_firmware
-                ),
-                prior_state,
-            )
+        result = _preserve_prior_section_expected(
+            patches.classify_install_section_delete(current_section, patch, detected_firmware),
+            prior_state,
         )
+        if result.classification == patches.INSTALL_NOOP_DESIRED and patches.is_section_hash(result.expected):
+            # Already deleted with no record of what it held: record QIDI's text so uninstall can put it back.
+            stock = patches.stock_section_text(
+                paths.installer_root / manifest.printer_for_firmware(detected_firmware).stock_snapshot(detected_firmware),
+                patch.file, patch.section, result.expected,
+            )
+            if stock is not None:
+                result = replace(result, expected=stock)
+        results.append(result)
     return tuple(results)
 
 

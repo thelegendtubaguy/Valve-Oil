@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import functools
 import hashlib
 import io
@@ -20,7 +21,7 @@ from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from installer.runtime import box_enablement, errors, klipper_cfg, process_restart
+from installer.runtime import box_enablement, errors, klipper_cfg, messages, process_restart
 from installer.runtime.box_enablement import (
     SavedVariablePersistenceError,
     detect_box_enablement_opportunity,
@@ -225,6 +226,38 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     urlopen=self._fixture_urlopen(printer_root),
                 )
                 self.assertEqual(homing_path.read_bytes(), stock_source)
+
+    def test_uninstall_restores_a_section_an_unfinished_install_deleted_before_any_record(self):
+        # An install that deletes QIDI's sections and then dies leaves no record of them; earlier releases then
+        # recorded only the section's hash, and uninstall wrote that hash into printer.cfg.
+        section = "filament_switch_sensor filament_switch_sensor"
+        for recorded in ("this release", "an earlier release"):
+            with self.subTest(recorded=recorded):
+                printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
+                cfg = printer_root / "config/printer.cfg"
+                stock_text = klipper_cfg.resolve_unique_section(cfg.read_text(encoding="utf-8"), section).text
+                cfg.write_text(klipper_cfg.delete_section(cfg.read_text(encoding="utf-8"), section), encoding="utf-8")
+                self._run_install(paths)
+                state_path = printer_root / "config/tltg_optimized_state.yaml"
+                if recorded == "an earlier release":
+                    state = load_installed_state(state_path)
+                    write_installed_state(state_path, dataclasses.replace(state, patch_ledger=tuple(
+                        dataclasses.replace(entry, expected=klipper_cfg.normalized_section_sha256(stock_text))
+                        if entry.section == section else entry
+                        for entry in state.patch_ledger)))
+
+                run_uninstall(
+                    paths,
+                    self.manifest,
+                    self.compatibility,
+                    PlainReporter(io.StringIO()),
+                    input_stream=io.StringIO("Y\n"),
+                    urlopen=self._fixture_urlopen(printer_root),
+                )
+
+                self.assertEqual(
+                    klipper_cfg.resolve_unique_section(cfg.read_text(encoding="utf-8"), section).text.strip(),
+                    stock_text.strip())
 
     def test_install_refuses_firmware_whose_soc_file_names_another_printer(self):
         for firmware, other_prefix in (("01.01.07.01", "QD_PLUS5_SOC_"), ("01.01.02.01", "QD_MAX4_SOC_")):
@@ -675,7 +708,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             "'operator-choice'",
         )
 
-    def test_source_restart_rejects_changed_authorized_saved_values(self):
+    def test_saved_values_klipper_lost_fail_their_install_and_the_next_run_reports_them(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"
         saved_variables_path.write_text(
@@ -705,15 +738,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 urlopen=urlopen,
             )
 
-        with self.assertRaises(SavedVariablePersistenceError):
-            run_install(
-                paths,
-                self.manifest,
-                PlainReporter(io.StringIO()),
-                input_stream=io.StringIO("Y\nN\n"),
-                urlopen=urlopen,
-            )
-
         marker_path = saved_variable_verify_marker_path(paths)
         expected_marker = json.loads(marker_path.read_text(encoding="utf-8"))
         self.assertEqual(expected_marker["schema_version"], 1)
@@ -722,18 +746,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
             (paths.managed_klipper_root / "klippy/extras/homing.py").is_file()
         )
 
-        with self.assertRaises(SavedVariablePersistenceError):
-            self._run_install_with_urlopen(paths, self._fixture_urlopen(printer_root))
-        self.assertEqual(
-            json.loads(marker_path.read_text(encoding="utf-8")), expected_marker
-        )
-
-        saved_variables_path.write_text(
-            saved_variables_path.read_text(encoding="utf-8").replace(
-                "enable_box = 0", "enable_box = 1"
-            ),
-            encoding="utf-8",
-        )
+        # A dry run leaves the check for a run that changes something.
         marker_bytes = marker_path.read_bytes()
         run_install(
             paths,
@@ -744,12 +757,6 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         )
         self.assertEqual(marker_path.read_bytes(), marker_bytes)
 
-        saved_variables_path.write_text(
-            saved_variables_path.read_text(encoding="utf-8").replace(
-                "enable_box = 1", "enable_box = 0"
-            ),
-            encoding="utf-8",
-        )
         with mock.patch(
             "installer.runtime.uninstall.atomic_delete", side_effect=OSError("marker delete failed")
         ):
@@ -764,6 +771,18 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 )
         self.assertEqual(marker_path.read_bytes(), marker_bytes)
         self.assertTrue((printer_root / "config/tltg_optimized_state.yaml").exists())
+
+        # The next install says the values changed, which the operator may have done since, and goes on.
+        output = io.StringIO()
+        run_install(
+            paths,
+            self.manifest,
+            PlainReporter(output),
+            input_stream=io.StringIO("Y\nN\n"),
+            urlopen=self._fixture_urlopen(printer_root),
+        )
+        self.assertIn(messages.SAVED_VARIABLES_CHANGED_SINCE_INSTALL, output.getvalue())
+        self.assertFalse(marker_path.exists())
 
         run_uninstall(
             paths,

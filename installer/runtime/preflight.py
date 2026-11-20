@@ -121,11 +121,13 @@ def build_install_preflight_report(
         path = paths.printer_data_root / spec.file
         if not path.exists() or not has_active_line(klipper_cfg.read_text(path), spec.line):
             missing_lines.append(spec)
+    printer = manifest.printer_for_firmware(detected_firmware) if detected_firmware is not None else None
     patch_target_issues = _patch_target_issues(
         paths=paths,
         patch_entries=_install_patch_entries(manifest, detected_firmware),
         detected_firmware=detected_firmware,
         prior_state=prior_state,
+        stock_root=paths.installer_root / printer.stock_snapshot(detected_firmware) if printer is not None else None,
     )
     return PreflightReport(
         missing_files=tuple(missing_files),
@@ -214,9 +216,8 @@ def build_uninstall_preflight_report(
     include_line_path = paths.printer_data_root / include_line_file
     if not include_line_path.exists():
         missing_files.append(include_line_file)
-    managed_tree_root = paths.printer_data_root / state.managed_tree.root
-    if not managed_tree_root.exists():
-        missing_files.append(state.managed_tree.root)
+    # The managed tree may already be gone: an uninstall that stopped after removing it still has its state, and
+    # finishing it is the only way forward.
     patch_target_issues = _patch_target_issues(paths=paths, patch_entries=state.patch_ledger)
     return PreflightReport(
         missing_files=tuple(missing_files),
@@ -356,6 +357,7 @@ def _patch_target_issues(
     patch_entries: Iterable[object],
     detected_firmware: str | None = None,
     prior_state: InstalledState | None = None,
+    stock_root: Path | None = None,
 ) -> list[PatchTargetIssue]:
     issues: list[PatchTargetIssue] = []
     seen: set[tuple[str, str, str]] = set()
@@ -402,6 +404,15 @@ def _patch_target_issues(
                 and (
                     _prior_state_has_patch(prior_state, entry)
                     or getattr(entry, "desired", None) == patches.SECTION_DELETED
+                    # Deleted by an install that stopped before recording it: QIDI's copy can still put it back.
+                    or (
+                        stock_root is not None
+                        and detected_firmware is not None
+                        and patches.stock_section_text(
+                            stock_root, entry.file, entry.section,
+                            select_patch_variant(entry, detected_firmware).expected_normalized_sha256,
+                        ) is not None
+                    )
                 )
             ):
                 continue

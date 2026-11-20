@@ -255,8 +255,20 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 - **AND** operation failure rolls back journaled host work without deleting a verified configuration install
 - **AND** incomplete host compensation retains a recovery blocker and does not report the overall operation as complete
 - **AND** host backups are flushed to storage before a journal or installed state names them
-- **AND** a touchscreen GIF backup that is missing or no longer matches its recorded hash is never restored and never blocks recovery, install, or uninstall; that GIF keeps whatever the touchscreen has
+- **AND** a host backup that is missing or no longer matches its recorded hash is never restored and never blocks recovery, install, or uninstall; the file it backed up keeps what it has
 - **AND** when compensation fails, the reported error names the failure that started it as well as the compensation's own failure, and the retained recovery record keeps that original failure, so the later run that finishes or retries the compensation reports it too
+
+#### Scenario: A stopped run never blocks the next
+- **WHEN** an install or uninstall stops at any point without its rollback, from a power cut, a restart, or the SSH session closing
+- **THEN** running it again finishes it and leaves the printer as a run that never stopped would
+- **AND** a hangup of the terminal does not stop a run; its terminal output is dropped and it goes on to its end and its log
+- **AND** a new install records that it started before its first change and clears the record once its state is written; Valve Oil's files with that record and no state are finished as its own, never reset as a hand-copied install, and count as an existing installation; uninstall then says to finish the install first
+- **AND** a section delete found already applied with no record of its original records QIDI's section text from the bundled stock config, and uninstall puts that text back for a record that holds only the section's hash, or leaves the section deleted when the bundle has no copy
+- **AND** uninstall goes on when the managed tree is already removed
+- **AND** a pending Klipper restart whose record can't be read or no longer matches the files restarts Klipper and clears the record
+- **AND** an earlier run's saved-variable check that no longer matches Klipper is reported and cleared, while the run that saved the values still fails on a mismatch
+- **AND** a host journal that can't be read or acted on is set aside unchanged, and one whose rollback fails is retried by the next runs and set aside after the third attempt, leaving the host as it is
+- **AND** an invalid legacy ledger migration journal is dropped without removing anything it names
 
 #### Scenario: Uninstall follows the operator's host-state decision
 - **WHEN** uninstall finds host restore preimages

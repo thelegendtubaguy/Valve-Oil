@@ -21,6 +21,8 @@ Automatic updates and **Update now** don't install anything while Klipper isn't 
 
 **A new install was refused because of a board,** with `This release of Valve Oil doesn't support a board on this printer yet, so nothing was installed.`: open the prefilled support issue link the installer printed above that line, and submit it. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet). If it says a Box `is listed in box.cfg but is not connected`, connect that Box, or remove it in the touchscreen's Box setup, and run the installer again.
 
+**The install or uninstall was cut off,** by a power cut, the printer restarting, or the SSH session closing: run the same command again. It finishes what the stopped run started, from wherever it stopped. An uninstall after a new install was cut off says `An earlier install stopped before it finished`: run the installer again first, then uninstall. Closing the SSH session no longer stops a run; it carries on to the end and writes only its log. If the earlier run left system changes it couldn't roll back, the next run says so, leaves them as they are, keeps the record as `~/printer_data/.tltg_optimized_system_journal.json.set-aside-<time>`, and goes on; attach that file when you [report a problem](#reporting-a-problem).
+
 **`A QIDI firmware update is in progress or did not finish; run ./install.sh to follow or finish it before anything else`:** run `~/valve-oil/install.sh`. See [A QIDI firmware update stopped part way](#a-qidi-firmware-update-stopped-part-way).
 
 ## The USB installer

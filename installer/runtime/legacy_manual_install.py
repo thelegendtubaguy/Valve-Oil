@@ -8,7 +8,7 @@ from pathlib import Path
 from . import messages
 from .backup import create_config_backup, format_backup_timestamp, utc_now
 from .errors import InstallerError, OperationCancelled
-from .fs_atomic import atomic_write_bytes
+from .fs_atomic import atomic_delete, atomic_write_bytes, atomic_write_text
 from .install_screen import touchscreen_held
 from .interaction import confirm_yes
 from .mirror import mirror_tree, remove_tree, validate_managed_tree_source
@@ -37,8 +37,27 @@ PRESERVED_CONFIG_SYMLINK_PATHS = ("config/KAMP", "config/fluidd.cfg")
 REMOVED_LEGACY_PATHS = ("config/tltg-optimized-macros",)
 
 
+# Written by a new install before its first change and removed with its state written. Valve Oil's files with it and
+# no state are a Valve Oil install a power cut or a closed SSH session stopped, never a hand-copied one: the run that
+# wrote it had already reset any hand-copied macros, and the next install picks up where it stopped.
+INSTALL_STARTED_FILE = ".tltg_valve_oil_install_started"
+
+
 class LegacyManualInstallError(InstallerError):
     pass
+
+
+def install_started_path(paths: RuntimePaths) -> Path:
+    return paths.printer_data_root / INSTALL_STARTED_FILE
+
+
+def mark_install_started(paths: RuntimePaths, package_version: str) -> None:
+    atomic_write_text(install_started_path(paths), f"{package_version}\n", mode=0o644)
+
+
+def clear_install_started(paths: RuntimePaths) -> None:
+    if install_started_path(paths).exists():
+        atomic_delete(install_started_path(paths))
 
 
 @dataclass(frozen=True)
@@ -118,7 +137,7 @@ def detect_legacy_manual_install(
     paths: RuntimePaths,
     manifest: Manifest,
 ) -> LegacyManualInstallReport | None:
-    if (paths.printer_data_root / manifest.state_file).exists():
+    if (paths.printer_data_root / manifest.state_file).exists() or install_started_path(paths).exists():
         return None
 
     markers = []

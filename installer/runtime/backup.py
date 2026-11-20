@@ -267,6 +267,9 @@ def create_config_backup(
                     ),
                 )
         os.chmod(temp_path, 0o600)
+        # A new name gets no flush-on-rename from ext4: write it out first, or a power cut can leave an empty backup.
+        with temp_path.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temp_path, final_path)
         fsync_directory(backup_root)
     finally:
