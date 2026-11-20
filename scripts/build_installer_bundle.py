@@ -277,7 +277,8 @@ def build_valve_oil_ui(manifest, version: str) -> tuple[Path, str]:
             f"Building Valve Oil UI needs Node.js and npm; install the Node version in {spec.source}/.nvmrc."
         )
     environ = {**os.environ, "VO_UI_VERSION": version}
-    for command in ([npm, "ci"], [npm, "run", "build"]):
+    # The tests run before the build, so a bundle is never built from a UI whose tests fail.
+    for command in ([npm, "ci"], [npm, "test"], [npm, "run", "build"]):
         step = "npm " + " ".join(command[1:])
         print(f"Running {step} in {spec.source}/", file=sys.stderr)
         # npm's output goes to stderr; stdout lists only the built bundles.

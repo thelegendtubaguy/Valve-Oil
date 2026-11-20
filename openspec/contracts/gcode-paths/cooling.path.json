@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "path": "cooling",
+  "title": "Fan commands",
+  "entrypoints": [],
+  "macro_files": [
+    "config/box.cfg",
+    "config/klipper-macros-qd/*.cfg",
+    "installer/klipper/macros/*.cfg",
+    "installer/klipper/printers/max4/*.cfg"
+  ],
+  "branches": [
+    {
+      "name": "exhaust_fan_leaves_chamber_heater_on",
+      "source_macro": "M106",
+      "condition": "any fan command; the exhaust fan is P3",
+      "slice": {
+        "start": "{% set p = params.P|default(0)|int %}"
+      },
+      "must_include_order": [
+        "{% if p == 3 and printer[\"fan_generic chamber_circulation_fan\"] is defined %}",
+        "printer.tltg_chamber_exhaust_guard.stopped",
+        "SET_FAN_SPEED FAN=chamber_circulation_fan SPEED={speed}"
+      ],
+      "must_not_include": [
+        "SET_HEATER_TEMPERATURE",
+        "M141",
+        "TURN_OFF_HEATERS"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/cooling.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/cooling.mmd"
+  }
+}

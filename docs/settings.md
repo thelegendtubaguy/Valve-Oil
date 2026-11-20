@@ -17,7 +17,7 @@ Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_k
 | [`vo_staggered_start_heating`](print-start.md#staggered-heating) | `0` | `1` heats the bed, chamber, then nozzle in turn. Needs current start G-code. |
 | [`vo_staggered_start_heating_dwell_seconds`](print-start.md#staggered-heating) | `10` | Pause between staggered heating stages, in seconds. |
 | [`vo_pause_timeout_hours`](print-start.md#long-pauses) | `72` | Hours a print can sit paused before it's cancelled. |
-| [`vo_box_link_monitor`](troubleshooting.md#box-link-monitor) | `0` | `1` records Box disconnect details to `tltg_box_link.log`. |
+| [`vo_box_link_monitor`](troubleshooting.md#box-link-monitor) | `0` | `1` records Box disconnect details to `vo_box_link.log`. |
 | [`vo_homing_guard`](fixes.md#xy-homing-grinding-into-the-frame) | `1` | `0` stops the guard that ends an X or Y homing move grinding into the frame and homes it again. Max 4 only. |
 | [`vo_step_loss_monitor`](tools.md#xy-step-loss-monitor) | `0` | `1` pauses the print and warns when an X or Y motor slips, and cancels it during print start. Max 4 only. |
 | [`vo_step_loss_recovery`](tools.md#correcting-the-position-after-a-slip) | `0` | With the step-loss monitor on, `1` corrects the toolhead position after a print's first slip and keeps printing instead of pausing. Max 4 only. |

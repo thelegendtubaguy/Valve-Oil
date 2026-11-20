@@ -155,7 +155,7 @@ When a Box drops off its USB link with `Lost communication with MCU 'mcu_boxN'`,
 SAVE_VARIABLE VARIABLE=vo_box_link_monitor VALUE=1
 ```
 
-It writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so it survives log rotation. The log is capped at 2 MB and rotates once to `tltg_box_link.log.1`. Set the variable back to `0` to stop recording; this takes effect without a restart.
+It writes `printer_data/logs/vo_box_link.log`, separate from `klippy.log` so it survives log rotation. The log is capped at 2 MB and rotates once to `vo_box_link.log.1`. Before 26.11.18.2 it was `tltg_box_link.log`. Set the variable back to `0` to stop recording; this takes effect without a restart.
 
 **When reporting a Box disconnect,** attach this file along with the end of `klippy.log`.
 
@@ -180,7 +180,7 @@ It writes `printer_data/logs/tltg_box_link.log`, separate from `klippy.log` so i
 
 Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues/new/choose) and pick the form that fits. Each form asks for the printer details below, and for the logs that show what happened.
 
-The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `tltg_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
+The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
 
 For a board Valve Oil doesn't support yet, use the link in the installer's output or in the board's printer warning instead: it opens the support form with the printer details and the board's report already filled in.
 

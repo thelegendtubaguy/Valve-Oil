@@ -3,7 +3,7 @@ import { Check, Minus, Plus, Scan, ScanSearch, Settings2 } from 'lucide-react'
 import { Card, Choices, MenuButton, SectionLabel, Toggle, confirm } from '../ui'
 import { attempt } from '../toast'
 import { runGcode } from '../../state/printer'
-import { encodeGcodeParamValue } from '../control/gcode'
+import { excludeObjectGcode } from '../control/gcode'
 import { PreviewCanvas, type PreviewCanvasHandle } from './PreviewCanvas'
 import { usePreviewModel, usePrintFollow } from './hooks'
 import { fanStops, layerByFilePosition, moveIndexByFilePosition, roleNames, speedStops } from './model'
@@ -113,7 +113,7 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
 
   const exclude = useCallback(async (name: string) => {
     const ok = await confirm({ title: 'Exclude object', body: <>Are you sure you want to exclude <b>{name}</b> from printing?</>, confirm: 'Exclude', danger: true })
-    if (ok) attempt(() => runGcode(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(name.toUpperCase().replace(/\s/g, '_'))}`))
+    if (ok) attempt(() => runGcode(excludeObjectGcode(name)))
   }, [])
 
   // Fluidd hides a lone part's outline when asked to.

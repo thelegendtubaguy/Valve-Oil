@@ -19,7 +19,44 @@ export const isBasicGcodeCommand = (commandName: string) => basicGcodeCommandReg
 function getParamValueAsString(param: GcodeParamValue) {
   if (param && typeof param === 'object') param = param.value
   if (!param && param !== 0) return ''
-  return param.toString()
+  return typeof param === 'number' ? gcodeNumber(param) : param.toString()
+}
+
+/**
+ * A number as Klipper reads it. JavaScript writes a number below 0.000001 as `1e-7`, which Klipper reads as 1 followed
+ * by an E (extruder) word, so numbers are written in plain decimals, to six places. A number with no plain form (not
+ * finite, or 1e21 and above) comes out as JavaScript writes it, and runGcode refuses to send it.
+ */
+export function gcodeNumber(value: number) {
+  return String(Number(value.toFixed(6)))
+}
+
+/** A G-code template: each number in it is written by gcodeNumber, everything else as it is. */
+export function gcode(strings: TemplateStringsArray, ...values: unknown[]) {
+  return strings.reduce((text, part, i) => {
+    const value = values[i - 1]
+    return text + (typeof value === 'number' ? gcodeNumber(value) : String(value)) + part
+  })
+}
+
+// A number Klipper misreads: `1e-7` is 1 and an E word, and `nan` and `inf` pass its range checks.
+const misreadNumberRegexp = /^[+-]?((\d+\.?\d*|\.\d+)e[+-]?\d+|nan|inf(inity)?)$/i
+
+/**
+ * The first word of a script with a number Klipper would misread, or null. Valve Oil UI writes its numbers with
+ * gcodeNumber, so this finds one that wasn't, or one with no plain form. The text M117, M118, and M23 take raw isn't
+ * read as numbers.
+ */
+export function misreadGcodeNumber(script: string): string | null {
+  for (const line of script.split('\n')) {
+    const [command, ...words] = line.replace(/;.*/, '').trim().split(/\s+/)
+    if (!command || getParamNameForRawGcodeCommand(command.toUpperCase())) continue
+    for (const word of words) {
+      const equals = word.indexOf('=')
+      if (misreadNumberRegexp.test(equals >= 0 ? word.slice(equals + 1) : word.slice(1))) return word
+    }
+  }
+  return null
 }
 
 /** Quotes a parameter value when Klipper would otherwise split or misread it. */
@@ -76,17 +113,21 @@ export function gcodeMacroParams(gcode: string) {
 export function moveGcode(movement: Partial<Record<'X' | 'Y' | 'Z', number>>, rate: number, absolute: boolean, clientMacro: string | null) {
   const sep = clientMacro ? '=' : ''
   const words = Object.entries(movement)
-    .map(([k, v]) => `${k}${sep}${v}`)
+    .map(([k, v]) => `${k}${sep}${gcodeNumber(v)}`)
     .join(' ')
-  if (clientMacro) return `${clientMacro.toUpperCase()} ${words} F=${rate * 60}${absolute ? ' ABSOLUTE=1' : ''}`
-  return `SAVE_GCODE_STATE NAME=_ui_movement\nG9${absolute ? 0 : 1}\nG1 ${words} F${rate * 60}\nRESTORE_GCODE_STATE NAME=_ui_movement`
+  if (clientMacro) return gcode`${clientMacro.toUpperCase()} ${words} F=${rate * 60}${absolute ? ' ABSOLUTE=1' : ''}`
+  return gcode`SAVE_GCODE_STATE NAME=_ui_movement\nG9${absolute ? 0 : 1}\nG1 ${words} F${rate * 60}\nRESTORE_GCODE_STATE NAME=_ui_movement`
 }
 
 /** An extrude (positive) or retract (negative) move, as Fluidd sends it. Rate is mm/s. */
 export function extrudeGcode(amount: number, rate: number, clientMacro: string | null) {
-  if (clientMacro) return `${clientMacro.toUpperCase()} E=${amount} F=${rate * 60}`
-  return `SAVE_GCODE_STATE NAME=_ui_retract\nM83\nG1 E${amount} F${rate * 60}\nRESTORE_GCODE_STATE NAME=_ui_retract`
+  if (clientMacro) return gcode`${clientMacro.toUpperCase()} E=${amount} F=${rate * 60}`
+  return gcode`SAVE_GCODE_STATE NAME=_ui_retract\nM83\nG1 E${amount} F${rate * 60}\nRESTORE_GCODE_STATE NAME=_ui_retract`
 }
+
+/** The command that drops one object from the running print. Klipper's object names are upper case without spaces. */
+export const excludeObjectGcode = (name: string) =>
+  `EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(name.toUpperCase().replace(/\s/g, '_'))}`
 
 /**
  * A jog distance shortened so the move stays inside the axis limits Klipper reports (toolhead.axis_minimum and

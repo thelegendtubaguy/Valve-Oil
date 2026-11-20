@@ -94,6 +94,7 @@ import { FLUIDD, VALVE_OIL_UI, useDbItem } from '../../state/database'
 import { useJob, isActive } from '../../state/job'
 import { displayName, fmtDuration } from '../../lib/format'
 import { fmtDate, fmtSize } from './cells'
+import { gcode } from '../control/gcode'
 
 const EditorDialog = lazy(() => import('../editor/ConfigEditor').then((m) => ({ default: m.EditorDialog })))
 
@@ -280,7 +281,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   const preheat = (e: FsEntry) => {
     const m = e.meta
     if (!m) return
-    const lines = [Number(m.first_layer_extr_temp) > 0 && `M104 S${m.first_layer_extr_temp}`, Number(m.first_layer_bed_temp) > 0 && `M140 S${m.first_layer_bed_temp}`, Number(m.chamber_temp) > 0 && `M141 S${m.chamber_temp}`].filter(Boolean)
+    const lines = [Number(m.first_layer_extr_temp) > 0 && gcode`M104 S${m.first_layer_extr_temp}`, Number(m.first_layer_bed_temp) > 0 && gcode`M140 S${m.first_layer_bed_temp}`, Number(m.chamber_temp) > 0 && gcode`M141 S${m.chamber_temp}`].filter(Boolean)
     if (lines.length) attempt(() => runGcode(lines.join('\n')))
   }
   const copyToConfig = async (e: FsEntry) => {

@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "path": "homing",
+  "title": "X, Y, and Z homing (QIDI Max 4)",
+  "entrypoints": [],
+  "macro_files": [
+    "config/box.cfg",
+    "config/klipper-macros-qd/*.cfg",
+    "installer/klipper/macros/*.cfg",
+    "installer/klipper/printers/max4/*.cfg"
+  ],
+  "branches": [
+    {
+      "name": "full_home_y_then_x_then_z",
+      "source_section": "homing_override",
+      "condition": "X, Y, and Z are homed, or Z alone before X and Y are",
+      "slice": {
+        "start": "{% if full_home or z_needs_full %}",
+        "end": "{% if xy_home %}"
+      },
+      "must_include_order": [
+        "_VO_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_RESTORE_XY_HOMING_STATE",
+        "_VO_HOME_Z_FROM_SAFE_POINT_RAW"
+      ],
+      "must_not_include": [
+        "MOVE_X=",
+        "MOVE_Y=",
+        "_VO_HOME_Z_FROM_SAFE_POINT\n",
+        "G28"
+      ]
+    },
+    {
+      "name": "xy_home_y_then_x",
+      "source_section": "homing_override",
+      "condition": "X and Y are homed without Z",
+      "slice": {
+        "start": "{% if xy_home %}",
+        "end": "{% if y_only %}"
+      },
+      "must_include_order": [
+        "_VO_PREP_XY_HOME",
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_RESTORE_XY_HOMING_STATE"
+      ],
+      "must_not_include": [
+        "MOVE_X=",
+        "MOVE_Y=",
+        "_VO_HOME_Z_FROM_SAFE_POINT",
+        "G28"
+      ]
+    },
+    {
+      "name": "z_alone_from_the_safe_point",
+      "source_section": "homing_override",
+      "condition": "Z alone with X and Y already homed",
+      "slice": {
+        "start": "{% if z_only and xy_homed %}",
+        "end": "{% if not (full_home or z_needs_full or xy_home or x_only or y_only or z_only) %}"
+      },
+      "must_include_order": [
+        "_VO_HOME_Z_FROM_SAFE_POINT_RAW"
+      ],
+      "must_not_include": [
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_HOME_Z_FROM_SAFE_POINT\n",
+        "G28"
+      ]
+    },
+    {
+      "name": "acceleration_restored_after_every_refusal",
+      "source_section": "homing_override",
+      "condition": "the end of every homing request; nothing after it can raise and leave homing acceleration set",
+      "slice": {
+        "start": "_VO_RESTORE_DEFAULT_ACCEL WARN=1"
+      },
+      "must_include_order": [
+        "_VO_RESTORE_DEFAULT_ACCEL WARN=1"
+      ],
+      "must_not_include": [
+        "action_raise_error"
+      ]
+    },
+    {
+      "name": "xy_prep_holds_position_unless_asked",
+      "source_macro": "_VO_PREP_XY_HOME",
+      "condition": "before X or Y homes; X and Y are nudged only when a caller asks, and homing never does",
+      "slice": {
+        "start": "{% set set_z = params.SET_Z|default(0)|int %}"
+      },
+      "must_include_order": [
+        "SET_KINEMATIC_POSITION X=150",
+        "SET_KINEMATIC_POSITION Y=150",
+        "SET_STEPPER_ENABLE STEPPER=stepper_x enable=0",
+        "SET_STEPPER_ENABLE STEPPER=stepper_y enable=0",
+        "{% if move_z or move_x or move_y %}",
+        "{% if move_x %}",
+        "G1 X{move_x} F3000",
+        "{% if move_y %}",
+        "G1 Y{move_y} F3000"
+      ],
+      "must_not_include": [
+        "G28"
+      ]
+    },
+    {
+      "name": "closed_loop_state_then_input_shaper",
+      "source_macro": "_VO_RESTORE_XY_HOMING_STATE",
+      "condition": "after X or Y has homed",
+      "slice": {
+        "start": "SET_HOMING_STATE STEPPER=y VALUE=2"
+      },
+      "must_include_order": [
+        "SET_HOMING_STATE STEPPER=y VALUE=2",
+        "SET_HOMING_STATE STEPPER=x VALUE=2",
+        "SET_HOMING_MODE STEPPER=y VALUE=2",
+        "SET_HOMING_MODE STEPPER=x VALUE=2",
+        "_VO_RESTORE_INPUT_SHAPER"
+      ],
+      "must_not_include": [
+        "G28",
+        "G1 "
+      ]
+    },
+    {
+      "name": "public_z_home_goes_through_homing_override",
+      "source_macro": "_VO_HOME_Z_FROM_SAFE_POINT",
+      "condition": "macros that home Z; homing_override then runs the raw path once",
+      "slice": {
+        "start": "G28 Z"
+      },
+      "must_include_order": [
+        "G28 Z"
+      ],
+      "must_not_include": [
+        "G28.6245197",
+        "_VO_HOME_Z_FROM_SAFE_POINT_RAW"
+      ]
+    },
+    {
+      "name": "raw_z_home_at_the_safe_point",
+      "source_macro": "_VO_HOME_Z_FROM_SAFE_POINT_RAW",
+      "condition": "homing_override's Z home",
+      "slice": {
+        "start": "SET_VELOCITY_LIMIT ACCEL=10000"
+      },
+      "must_include_order": [
+        "_VO_MOVE_TO_Z_HOME_POINT",
+        "M400",
+        "SET_VELOCITY_LIMIT ACCEL=500",
+        "G28.6245197 Z",
+        "G1 Z10 F480",
+        "_VO_RESTORE_DEFAULT_ACCEL"
+      ],
+      "must_not_include": [
+        "G28 Z",
+        "_VO_HOME_Z_FROM_SAFE_POINT\n"
+      ]
+    },
+    {
+      "name": "unshaped_printers_keep_lower_acceleration",
+      "source_macro": "_VO_RESTORE_DEFAULT_ACCEL",
+      "condition": "whenever a macro puts the print acceleration back",
+      "slice": {
+        "start": "{% set status = printer.tltg_macro_status %}"
+      },
+      "must_include_order": [
+        "{% if status.input_shaper.saved and not status.input_shaper.unshaped_axes %}",
+        "SET_VELOCITY_LIMIT ACCEL={status.max_accel|float}",
+        "{% else %}",
+        "SET_VELOCITY_LIMIT ACCEL={[status.max_accel|float, opt.unshaped_accel|float]|min}"
+      ],
+      "must_not_include": [
+        "printer.configfile"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/homing.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/homing.mmd"
+  }
+}

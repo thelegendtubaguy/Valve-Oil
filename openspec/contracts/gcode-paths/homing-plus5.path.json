@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "path": "homing_plus5",
+  "title": "X, Y, and Z homing (QIDI Plus 5)",
+  "entrypoints": [],
+  "macro_files": [
+    "config/box.cfg",
+    "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01/config/klipper-macros-qd/*.cfg",
+    "installer/klipper/macros/*.cfg",
+    "installer/klipper/printers/plus5/*.cfg"
+  ],
+  "stock_config": {
+    "root": "installer/stock/qidi-plus5-defaults/firmwares/01.01.02.01",
+    "firmware": "01.01.02.01"
+  },
+  "branches": [
+    {
+      "name": "full_home_y_then_x_then_z",
+      "source_section": "homing_override",
+      "condition": "X, Y, and Z are homed, or Z alone before X and Y are",
+      "slice": {
+        "start": "{% if full_home or z_needs_full %}",
+        "end": "{% if xy_home %}"
+      },
+      "must_include_order": [
+        "_VO_PREP_XY_HOME SET_Z=1 MOVE_Z=5",
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_RESTORE_XY_HOMING_STATE",
+        "_VO_HOME_Z_FROM_SAFE_POINT_RAW"
+      ],
+      "must_not_include": [
+        "MOVE_X=",
+        "MOVE_Y=",
+        "_VO_HOME_Z_FROM_SAFE_POINT\n",
+        "G28"
+      ]
+    },
+    {
+      "name": "xy_home_y_then_x",
+      "source_section": "homing_override",
+      "condition": "X and Y are homed without Z",
+      "slice": {
+        "start": "{% if xy_home %}",
+        "end": "{% if y_only %}"
+      },
+      "must_include_order": [
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_RESTORE_XY_HOMING_STATE"
+      ],
+      "must_not_include": [
+        "MOVE_X=",
+        "MOVE_Y=",
+        "_VO_HOME_Z_FROM_SAFE_POINT",
+        "G28"
+      ]
+    },
+    {
+      "name": "z_alone_from_the_safe_point",
+      "source_section": "homing_override",
+      "condition": "Z alone with X and Y already homed",
+      "slice": {
+        "start": "{% if z_only and xy_homed %}",
+        "end": "{% if not (full_home or z_needs_full or xy_home or x_only or y_only or z_only) %}"
+      },
+      "must_include_order": [
+        "_VO_HOME_Z_FROM_SAFE_POINT_RAW"
+      ],
+      "must_not_include": [
+        "_VO_HOME_Y_AND_BACKOFF",
+        "_VO_HOME_X_AND_BACKOFF",
+        "_VO_HOME_Z_FROM_SAFE_POINT\n",
+        "G28"
+      ]
+    },
+    {
+      "name": "acceleration_restored_after_every_refusal",
+      "source_section": "homing_override",
+      "condition": "the end of every homing request; nothing after it can raise and leave homing acceleration set",
+      "slice": {
+        "start": "_VO_RESTORE_DEFAULT_ACCEL WARN=1"
+      },
+      "must_include_order": [
+        "_VO_RESTORE_DEFAULT_ACCEL WARN=1"
+      ],
+      "must_not_include": [
+        "action_raise_error"
+      ]
+    },
+    {
+      "name": "sensorless_y_home_at_homing_current",
+      "source_macro": "_VO_HOME_Y_AND_BACKOFF",
+      "condition": "Y homes against the frame at the lower motor current, then backs off",
+      "slice": {
+        "start": "{% set homing_current"
+      },
+      "must_include_order": [
+        "SET_TMC_CURRENT STEPPER=stepper_x CURRENT={homing_current}",
+        "SET_TMC_CURRENT STEPPER=stepper_y CURRENT={homing_current}",
+        "G28.6245197 Y",
+        "CURRENT={drivers[\"tmc2240 stepper_x\"].run_current}",
+        "CURRENT={drivers[\"tmc2240 stepper_y\"].run_current}",
+        "M400"
+      ],
+      "must_not_include": [
+        "ENFORCE_MODE",
+        "SET_HOMING_MODE",
+        "SET_HOMING_STATE"
+      ]
+    },
+    {
+      "name": "sensorless_x_home_at_homing_current",
+      "source_macro": "_VO_HOME_X_AND_BACKOFF",
+      "condition": "X homes against the frame at the lower motor current, then backs off",
+      "slice": {
+        "start": "{% set homing_current"
+      },
+      "must_include_order": [
+        "SET_TMC_CURRENT STEPPER=stepper_x CURRENT={homing_current}",
+        "SET_TMC_CURRENT STEPPER=stepper_y CURRENT={homing_current}",
+        "G28.6245197 X",
+        "CURRENT={drivers[\"tmc2240 stepper_x\"].run_current}",
+        "CURRENT={drivers[\"tmc2240 stepper_y\"].run_current}",
+        "M400"
+      ],
+      "must_not_include": [
+        "ENFORCE_MODE",
+        "SET_HOMING_MODE",
+        "SET_HOMING_STATE"
+      ]
+    },
+    {
+      "name": "xy_prep_moves_only_z",
+      "source_macro": "_VO_PREP_XY_HOME",
+      "condition": "before a full home; X and Y don't move before they home",
+      "slice": {
+        "start": "{% if params.SET_Z|default(0)|int %}"
+      },
+      "must_include_order": [
+        "SET_KINEMATIC_POSITION X=100 Y=100 Z={printer.toolhead.axis_maximum.z / 2}",
+        "G1 Z{params.MOVE_Z|default(0)|int} F600"
+      ],
+      "must_not_include": [
+        "G1 X",
+        "G1 Y",
+        "G0 X",
+        "G0 Y",
+        "G28"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/homing-plus5.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/homing-plus5.mmd"
+  }
+}

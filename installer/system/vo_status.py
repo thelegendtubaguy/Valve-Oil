@@ -509,7 +509,7 @@ def support_files() -> list[tuple[str, Path]]:
         rotated = sorted(LOGS.glob(f"{name}.*"), key=_mtime)
         if rotated:
             files.append((f"logs/{rotated[-1].name}", rotated[-1]))
-    files.append(("logs/tltg_box_link.log", LOGS / "tltg_box_link.log"))
+    files.append(("logs/vo_box_link.log", LOGS / "vo_box_link.log"))
     files += [
         ("valve-oil/update-now.log", JOB_LOG),
         ("valve-oil/addon-change.log", CACHE / "addons/job.log"),

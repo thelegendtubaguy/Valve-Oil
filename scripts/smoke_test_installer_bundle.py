@@ -16,7 +16,6 @@ import tempfile
 import threading
 import zipfile
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,8 +30,15 @@ from installer.runtime.naming import (
     INSTALL_BACKUP_LABEL_PREFIX,
     UNINSTALL_BACKUP_LABEL_PREFIX,
 )
+from installer.tests.helpers import (  # noqa: E402
+    build_env as printer_env,
+    moonraker_http,
+    moonraker_urlopen,
+    stock_printer_data,
+)
 
-FIXTURE_ROOT = REPO_ROOT / "installer/tests/fixtures/runtime/base"
+
+COMMAND_TIMEOUT = 600  # seconds for one run of the bundle
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +55,16 @@ def main(argv: list[str] | None = None) -> int:
         check_usb_image(Path(args.usb_image).resolve(), archive_path, stub_qidi=args.usb_stub_qidi)
 
     workspace = Path(tempfile.mkdtemp(prefix="installer-smoke-"))
+    try:
+        check_bundle(archive_path, workspace)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+    print("bundle smoke test passed")
+    return 0
+
+
+def check_bundle(archive_path: Path, workspace: Path) -> None:
+    """The extracted bundle's contents, its commands' help and version, and its installs on stand-in printers."""
     extract_root = workspace / "extract"
     extract_root.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:gz") as tar:
@@ -173,197 +189,173 @@ def main(argv: list[str] | None = None) -> int:
     alias_dry_run = run_command(
         [str(bundle_root / "install.sh"), "--uninstall", "--dry-run", "--plain"],
         cwd=bundle_root,
-        env=build_env(prepare_printer_root(workspace / "alias-printer"), moonraker_url="http://moonraker.invalid"),
+        env=build_env(stand_in_printer_data(package_manifest), moonraker_url="http://moonraker.invalid", workspace=workspace),
     )
     if alias_dry_run.returncode != 0 or "Nothing to uninstall." not in alias_dry_run.stdout:
         raise SystemExit("install.sh --uninstall alias did not preserve no-op behavior")
 
-        dry_run_install_printer_root = prepare_printer_root(workspace / "dry-run-install-printer")
-        dry_run_install_env = build_env(dry_run_install_printer_root, moonraker_url=url)
-        dry_run_install = run_command(
-            [str(bundle_root / "install.sh"), "--dry-run", "--plain"],
-            cwd=bundle_root,
-            env=dry_run_install_env,
-        )
-        if dry_run_install.returncode != 0:
-            raise SystemExit(dry_run_install.stdout + dry_run_install.stderr)
-        if (dry_run_install_printer_root / "config/tltg_optimized_state.yaml").exists():
+    check_installs(bundle_root, workspace, package_manifest)
+
+
+FIRST_INSTALL = """\
+# A new install reads the printer's boards before anything else (board_firmware.board_preflight), which needs a
+# printer. This runs the bundle's install step itself, from the bundle's own code, as that preflight's caller does.
+import os
+import sys
+from pathlib import Path
+
+bundle_root = Path(sys.argv[1])
+sys.path[:0] = [str(bundle_root / "installer/runtime/vendor"), str(bundle_root)]
+
+from installer.runtime.cli import resolve_runtime_paths
+from installer.runtime.manifest import load_manifest
+from installer.runtime.reporter import PlainReporter
+from installer.runtime.runner import run_install
+
+environ = dict(os.environ)
+paths = resolve_runtime_paths(bundle_root=bundle_root, environ=environ)
+run_install(paths, load_manifest(paths.installer_root / "package.yaml"), PlainReporter(sys.stdout), environ=environ)
+"""
+
+
+def first_install(bundle_root: Path, workspace: Path, env: dict[str, str]) -> None:
+    driver = workspace / "first_install.py"
+    driver.write_text(FIRST_INSTALL, encoding="utf-8")
+    run = run_command([sys.executable, "-I", "-S", str(driver), str(bundle_root)], cwd=bundle_root, env=env)
+    if run.returncode != 0:
+        raise SystemExit("first install smoke test failed:\n" + run.stdout + run.stderr)
+
+
+def check_installed_modules(bundle_root: Path, printer_root: Path, manifest, *, installed: bool) -> None:
+    for module in manifest.install.extra_modules:
+        target = printer_root / "klipper" / module.destination
+        if not installed:
+            if target.exists():
+                raise SystemExit(f"uninstall smoke test did not remove {target.name}")
+        elif not target.is_file():
+            raise SystemExit(f"install smoke test did not install {target.name}")
+        elif target.read_bytes() != (bundle_root / "installer" / module.source).read_bytes():
+            raise SystemExit(f"install smoke test installed an unexpected {target.name} payload")
+
+
+def check_installs(bundle_root: Path, workspace: Path, manifest) -> None:
+    """Run the bundle against stand-in printers: a new install's plan, a first install, an update through each front
+    end, uninstall, and the restore helper. None of it may ask this host for root."""
+    install_sh = str(bundle_root / "install.sh")
+    state_file = "config/tltg_optimized_state.yaml"
+
+    with stand_in_printer(manifest, workspace) as (printer_root, env):
+        dry_run = run_command([install_sh, "--dry-run", "--plain"], cwd=bundle_root, env=env)
+        if dry_run.returncode != 0:
+            raise SystemExit(dry_run.stdout + dry_run.stderr)
+        if (printer_root / state_file).exists():
             raise SystemExit("install dry-run smoke test unexpectedly created state file")
-        if list(dry_run_install_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
+        if list(printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
             raise SystemExit("install dry-run smoke test unexpectedly created a backup zip")
-        if "Dry-run summary:" not in dry_run_install.stdout:
+        if "Dry-run summary:" not in dry_run.stdout:
             raise SystemExit("install dry-run smoke test did not emit the dry-run summary")
-        if "Host reboot dry-run: would schedule a delayed reboot" not in dry_run_install.stdout:
+        if "Host reboot dry-run: would schedule a delayed reboot" not in dry_run.stdout:
             raise SystemExit("install dry-run smoke test did not report the host reboot")
 
-        plain_printer_root = prepare_printer_root(workspace / "plain-printer")
-        plain_env = build_env(plain_printer_root, moonraker_url=url)
-        install = run_command(
-            [str(bundle_root / "install.sh"), "--plain"],
-            cwd=bundle_root,
-            env=plain_env,
-            input_text="yes\nno\nno\n",
-        )
-        if install.returncode != 0:
-            raise SystemExit(install.stdout + install.stderr)
-        if not (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
+    with stand_in_printer(manifest, workspace) as (printer_root, env):
+        first_install(bundle_root, workspace, env)
+        if not (printer_root / state_file).exists():
             raise SystemExit("install smoke test did not create state file")
-        module_targets = {
-            plain_printer_root / f"klipper/klippy/extras/tltg_{name}.py":
-                REPO_ROOT / f"installer/klipper/extras/{name}.py"
-            for name in ("box_link_monitor", "box_mcu_temperature", "background_save_config",
-                         "box_heater_refresh", "klipper_health", "macro_status", "printer_warnings", "klipper_fixes", "save_variables_fast",
-                         "box_feed_motion", "box_eject", "box_filament_guard", "box_loaded_slot",
-                         "box_slot_jog", "box_spool_roll", "box_rfid", "filament_catalog", "box_flow_recovery", "cold_cut",
-                         "box485_monitor", "spoolman", "probe_test", "chamber_exhaust_guard", "step_loss_monitor", "velocity_limit",
-                         "resonance_sweep", "pause_timeout", "probe_report", "bed_soak")
-        }
-        for module_target, module_source in module_targets.items():
-            if not module_target.is_file():
-                raise SystemExit(f"install smoke test did not install {module_target.name}")
-            if module_target.read_bytes() != module_source.read_bytes():
-                raise SystemExit(f"install smoke test installed an unexpected {module_target.name} payload")
+        check_installed_modules(bundle_root, printer_root, manifest, installed=True)
+        backups = sorted(printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip"))
+        if len(backups) != 1:
+            raise SystemExit("install smoke test did not create the expected install backup zip")
 
-        uninstall_dry_run = run_command(
-            [str(bundle_root / "install.sh"), "--uninstall", "--dry-run", "--plain"],
-            cwd=bundle_root,
-            env=plain_env,
-        )
+        update = run_command([install_sh, "--yes", "--plain"], cwd=bundle_root, env=env)
+        if update.returncode != 0:
+            raise SystemExit(update.stdout + update.stderr)
+        check_installed_modules(bundle_root, printer_root, manifest, installed=True)
+
+        uninstall_dry_run = run_command([install_sh, "--uninstall", "--dry-run", "--plain"], cwd=bundle_root, env=env)
         if uninstall_dry_run.returncode != 0:
             raise SystemExit(uninstall_dry_run.stdout + uninstall_dry_run.stderr)
-        if not (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
+        if not (printer_root / state_file).exists():
             raise SystemExit("uninstall dry-run smoke test unexpectedly removed state file")
-        if list(plain_printer_root.glob(f"{UNINSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
+        if list(printer_root.glob(f"{UNINSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
             raise SystemExit("uninstall dry-run smoke test unexpectedly created a backup zip")
         if "Dry-run summary:" not in uninstall_dry_run.stdout:
             raise SystemExit("uninstall dry-run smoke test did not emit the dry-run summary")
 
-        uninstall = run_command(
-            [str(bundle_root / "install.sh"), "--uninstall", "--plain"],
-            cwd=bundle_root,
-            env=plain_env,
-            input_text="yes\nno\nno\n",
-        )
+        uninstall = run_command([install_sh, "--uninstall", "--yes", "--plain"], cwd=bundle_root, env=env)
         if uninstall.returncode != 0:
             raise SystemExit(uninstall.stdout + uninstall.stderr)
-        if (plain_printer_root / "config/tltg_optimized_state.yaml").exists():
+        if (printer_root / state_file).exists():
             raise SystemExit("uninstall smoke test did not remove state file")
-        for module_target in module_targets:
-            if module_target.exists():
-                raise SystemExit(f"uninstall smoke test did not remove {module_target.name}")
+        check_installed_modules(bundle_root, printer_root, manifest, installed=False)
 
-        rich_printer_root = prepare_printer_root(workspace / "rich-printer")
-        rich_env = build_env(rich_printer_root, moonraker_url=url)
-        rich_env["TERM"] = "xterm-256color"
-        rich_install = run_command_with_pty(
-            [str(bundle_root / "install.sh")],
-            cwd=bundle_root,
-            env=rich_env,
-            input_text="yes\nno\nno\nno\n",
-        )
-        if rich_install.returncode != 0:
-            raise SystemExit(rich_install.stdout)
-        if "Valve Oil installer" not in rich_install.stdout:
+    with stand_in_printer(manifest, workspace) as (printer_root, env):
+        first_install(bundle_root, workspace, env)
+        env["TERM"] = "xterm-256color"
+        rich_update = run_command_with_pty([install_sh, "--yes"], cwd=bundle_root, env=env)
+        if rich_update.returncode != 0:
+            raise SystemExit(rich_update.stdout)
+        if "Valve Oil installer" not in rich_update.stdout:
             raise SystemExit("rich launcher smoke test did not render the live TUI")
-        if not (rich_printer_root / "config/tltg_optimized_state.yaml").exists():
-            raise SystemExit("rich install smoke test did not create state file")
 
-        demo_printer_root = prepare_printer_root(workspace / "demo-printer")
-        demo_env = build_env(demo_printer_root, moonraker_url=url)
-        demo_env["TERM"] = "xterm-256color"
-        demo_env["TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS"] = "0.05"
-        rich_demo = run_command_with_pty(
-            [str(bundle_root / "install.sh"), "--demo-tui"],
-            cwd=bundle_root,
-            env=demo_env,
-        )
+        rich_vendor = bundle_root / "installer/runtime/vendor/rich"
+        disabled_rich_vendor = bundle_root / "installer/runtime/vendor/rich.disabled"
+        rich_vendor.rename(disabled_rich_vendor)
+        try:
+            fallback_update = run_command_with_pty([install_sh, "--yes"], cwd=bundle_root, env=env)
+        finally:
+            disabled_rich_vendor.rename(rich_vendor)
+        if fallback_update.returncode != 0:
+            raise SystemExit(fallback_update.stdout)
+        if "stage 1/5" not in fallback_update.stdout:
+            raise SystemExit("plain fallback smoke test did not emit contract stage output")
+        if "Valve Oil installer" in fallback_update.stdout:
+            raise SystemExit("plain fallback smoke test unexpectedly rendered the rich TUI")
+
+    with stand_in_printer(manifest, workspace) as (printer_root, env):
+        env["TERM"] = "xterm-256color"
+        env["TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS"] = "0.05"
+        rich_demo = run_command_with_pty([install_sh, "--demo-tui"], cwd=bundle_root, env=env)
         if rich_demo.returncode != 0:
             raise SystemExit(rich_demo.stdout)
         if "Valve Oil installer" not in rich_demo.stdout:
             raise SystemExit("demo TUI smoke test did not render the live TUI")
         if "Installed." not in rich_demo.stdout:
             raise SystemExit("demo TUI smoke test did not emit the install success line")
-        if (demo_printer_root / "config/tltg_optimized_state.yaml").exists():
+        if (printer_root / state_file).exists():
             raise SystemExit("demo TUI smoke test unexpectedly created state file")
-        if list(demo_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
+        if list(printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip")):
             raise SystemExit("demo TUI smoke test unexpectedly created a backup zip")
 
-        restore_printer_root = prepare_printer_root(workspace / "restore-printer")
-        restore_env = build_env(restore_printer_root, moonraker_url=url)
-        restore_install = run_command(
-            [str(bundle_root / "install.sh"), "--plain"],
-            cwd=bundle_root,
-            env=restore_env,
-            input_text="yes\nno\nno\n",
-        )
-        if restore_install.returncode != 0:
-            raise SystemExit(restore_install.stdout + restore_install.stderr)
-        restore_backups = sorted(restore_printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip"))
-        if len(restore_backups) != 1:
+    with stand_in_printer(manifest, workspace) as (printer_root, env):
+        printer_cfg = printer_root / "config/printer.cfg"
+        stock_printer_cfg = printer_cfg.read_text(encoding="utf-8")
+        first_install(bundle_root, workspace, env)
+        backup = next(iter(sorted(printer_root.glob(f"{INSTALL_BACKUP_LABEL_PREFIX}-*.zip"))), None)
+        if backup is None:
             raise SystemExit("restore helper smoke test did not create the expected install backup zip")
-        restore_backup = restore_backups[0]
-        invalid_restore_zip = restore_printer_root / "invalid-restore.zip"
-        with zipfile.ZipFile(invalid_restore_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        invalid_backup = printer_root / "invalid-restore.zip"
+        with zipfile.ZipFile(invalid_backup, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("notes.txt", "not a runtime backup\n")
-        restore_printer_cfg_before = (restore_printer_root / "config/printer.cfg").read_text(encoding="utf-8")
-        invalid_restore_run = run_command(
-            [str(bundle_root / "restore.sh"), "--backup", str(invalid_restore_zip)],
-            cwd=bundle_root,
-            env=restore_env,
-            input_text="RESTORE\n",
-        )
-        if invalid_restore_run.returncode == 0:
+        installed_printer_cfg = printer_cfg.read_text(encoding="utf-8")
+        invalid_restore = run_command([str(bundle_root / "restore.sh"), "--backup", str(invalid_backup)],
+                                      cwd=bundle_root, env=env, input_text="RESTORE\n")
+        if invalid_restore.returncode == 0:
             raise SystemExit("restore helper smoke test unexpectedly accepted an invalid backup zip")
-        if (restore_printer_root / "config/printer.cfg").read_text(encoding="utf-8") != restore_printer_cfg_before:
+        if printer_cfg.read_text(encoding="utf-8") != installed_printer_cfg:
             raise SystemExit("restore helper smoke test changed printer.cfg after an invalid backup zip")
 
-        (restore_printer_root / "config/printer.cfg").write_text("[printer]\n", encoding="utf-8")
-        state_path = restore_printer_root / "config/tltg_optimized_state.yaml"
-        if state_path.exists():
-            state_path.unlink()
-        managed_tree = restore_printer_root / "config/tltg-optimized-macros"
-        if managed_tree.exists():
-            shutil.rmtree(managed_tree)
-        restore_run = run_command(
-            [str(bundle_root / "restore.sh"), "--backup", str(restore_backup)],
-            cwd=bundle_root,
-            env=restore_env,
-            input_text="RESTORE\n",
-        )
-        if restore_run.returncode != 0:
-            raise SystemExit(restore_run.stdout + restore_run.stderr)
-        restored_printer_cfg = (restore_printer_root / "config/printer.cfg").read_text(encoding="utf-8")
-        if "[include tltg-optimized-macros/*.cfg]" in restored_printer_cfg:
-            raise SystemExit("restore helper smoke test did not restore the archived printer.cfg state")
-        if state_path.exists():
+        restore = run_command([str(bundle_root / "restore.sh"), "--backup", str(backup)], cwd=bundle_root, env=env,
+                              input_text="RESTORE\n")
+        if restore.returncode != 0:
+            raise SystemExit(restore.stdout + restore.stderr)
+        if printer_cfg.read_text(encoding="utf-8") != stock_printer_cfg:
+            raise SystemExit("restore helper smoke test did not restore the archived printer.cfg")
+        if (printer_root / state_file).exists():
             raise SystemExit("restore helper smoke test unexpectedly preserved the installed state file")
-        if managed_tree.exists():
-            raise SystemExit("restore helper smoke test unexpectedly preserved the managed tree")
 
-        rich_vendor = bundle_root / "installer/runtime/vendor/rich"
-        disabled_rich_vendor = bundle_root / "installer/runtime/vendor/rich.disabled"
-        rich_vendor.rename(disabled_rich_vendor)
-        try:
-            fallback_printer_root = prepare_printer_root(workspace / "fallback-printer")
-            fallback_env = build_env(fallback_printer_root, moonraker_url=url)
-            fallback_env["TERM"] = "xterm-256color"
-            fallback_install = run_command_with_pty(
-                [str(bundle_root / "install.sh")],
-                cwd=bundle_root,
-                env=fallback_env,
-                input_text="yes\nno\nno\nno\n",
-            )
-            if fallback_install.returncode != 0:
-                raise SystemExit(fallback_install.stdout)
-            if "stage 1/5" not in fallback_install.stdout:
-                raise SystemExit("plain fallback smoke test did not emit contract stage output")
-            if "Valve Oil installer" in fallback_install.stdout:
-                raise SystemExit("plain fallback smoke test unexpectedly rendered the rich TUI")
-        finally:
-            disabled_rich_vendor.rename(rich_vendor)
-
-    print("bundle smoke test passed")
-    return 0
+    refused = refused_host_commands(workspace)
+    if refused:
+        raise SystemExit("bundle smoke test asked this host for root on a stand-in printer:\n  " + "\n  ".join(refused))
 
 
 def check_usb_image(image: Path, bundle_archive: Path, *, stub_qidi: bool) -> None:
@@ -483,115 +475,58 @@ def check_usb_printer_zip(printer, zip_name: str, data: bytes, bundle_sha256: st
         raise SystemExit(f"{deb_file} does not carry installer/usb/postinst as its postinst")
 
 
+SUDO_GUARD = """#!/bin/sh
+# Stands in for sudo while the smoke test runs the bundle: `sudo -v` succeeds, as it does on a printer, and any
+# command that would run as root is recorded and refused.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -S) shift ;;
+        -p) shift 2 ;;
+        *) break ;;
+    esac
+done
+[ "$1" = "-v" ] && exit 0
+printf '%s\\n' "$*" >> "$(dirname "$0")/refused"
+exit 1
+"""
+
+
+def host_guard(workspace: Path) -> Path:
+    """A PATH entry whose sudo refuses every command, so a bundle run on a stand-in printer can't change this host."""
+    guard = workspace / "host-guard"
+    if not guard.exists():
+        guard.mkdir(parents=True)
+        (guard / "sudo").write_text(SUDO_GUARD, encoding="utf-8")
+        (guard / "sudo").chmod(0o755)
+    return guard
+
+
+def refused_host_commands(workspace: Path) -> list[str]:
+    refused = host_guard(workspace) / "refused"
+    return refused.read_text(encoding="utf-8").splitlines() if refused.exists() else []
+
+
+def stand_in_printer_data(manifest) -> Path:
+    """printer_data of a Max 4 on the firmware this release installs for, so no run plans a QIDI firmware update."""
+    printer = next(printer for printer in manifest.printers if printer.id == "max4")
+    return stock_printer_data(manifest, printer.target_firmware.version)
+
+
 @contextmanager
-def moonraker_server(state: str, *, saved_variables_path: Path | None = None):
-    payload = {"result": {"status": {"print_stats": {"state": state}}}}
-    process = {"pid": 100}
-
-    saved_values = {"box_count": "0", "enable_box": "0"}
-
-    def saved_variables() -> dict[str, str]:
-        path = saved_variables_path
-        if path is None:
-            return dict(saved_values)
-        if not path.exists():
-            return dict(saved_values)
-        values = {}
-        in_variables = False
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip() == "[Variables]":
-                in_variables = True
-                continue
-            if in_variables and line.startswith("["):
-                break
-            if in_variables and "=" in line:
-                name, value = line.split("=", 1)
-                values[name.strip()] = value.strip().strip("'\"")
-        return values
-
-    def persist_script(body: bytes) -> None:
-        import ast
-        import shlex
-
-        script = json.loads(body.decode("utf-8"))["script"]
-        match = re.fullmatch(r"SAVE_VARIABLE VARIABLE=([a-z0-9_]+) VALUE=(.+)", script)
-        if match is None:
-            raise ValueError(f"unexpected saved-variable command: {script}")
-        name, raw_value = match.groups()
-        value = repr(ast.literal_eval(shlex.split(raw_value)[0]))
-        if saved_variables_path is None:
-            saved_values[name] = value.strip("'\"")
-            return
-        text = saved_variables_path.read_text(encoding="utf-8")
-        line = f"{name} = {value}"
-        if re.search(rf"(?m)^{re.escape(name)}\s*=.*$", text):
-            text = re.sub(rf"(?m)^{re.escape(name)}\s*=.*$", line, text)
-        else:
-            text += line + "\n"
-        saved_variables_path.write_text(text, encoding="utf-8")
-
-    class Handler(BaseHTTPRequestHandler):
-        def _respond(self, body):
-            encoded = json.dumps(body).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def do_GET(self):
-            if self.path.endswith("/printer/info"):
-                self._respond({"result": {"state": "ready", "process_id": process["pid"]}})
-            elif self.path.endswith("/printer/objects/query?save_variables"):
-                self._respond({"result": {"status": {"save_variables": {"variables": saved_variables()}}}})
-            else:
-                self._respond(payload)
-
-        def do_POST(self):
-            if self.path.endswith("/machine/services/restart"):
-                process["pid"] += 1
-            elif self.path.endswith("/printer/gcode/script"):
-                length = int(self.headers.get("Content-Length", "0"))
-                persist_script(self.rfile.read(length))
-            self._respond({"result": "ok"})
-
-        def log_message(self, fmt, *args):
-            return
-
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}/printer/objects/query?print_stats"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
+def stand_in_printer(manifest, workspace: Path):
+    """A stand-in printer and the environment that points a bundle run at it: (printer_data, env)."""
+    printer_root = stand_in_printer_data(manifest)
+    moonraker = moonraker_urlopen(saved_variables_path=printer_root / "config/saved_variables.cfg",
+                                  heater_targets={"extruder": 0, "heater_bed": 0, "chamber": 0})
+    with moonraker_http(moonraker) as url:
+        yield printer_root, build_env(printer_root, moonraker_url=url + "/printer/objects/query?print_stats",
+                                      workspace=workspace)
 
 
-def prepare_printer_root(root: Path) -> Path:
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(FIXTURE_ROOT / "config", root / "config")
-    shutil.copy2(FIXTURE_ROOT / "firmware_manifest.json", root / "firmware_manifest.json")
-    homing = REPO_ROOT / "installer/klipper/qidi/homing.py"
-    target = root / "klipper/klippy/extras"
-    target.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(homing, target / "homing.py")
-    return root
-
-
-def build_env(printer_root: Path, *, moonraker_url: str) -> dict[str, str]:
+def build_env(printer_root: Path, *, moonraker_url: str, workspace: Path) -> dict[str, str]:
     env = dict(os.environ)
-    env.update(
-        {
-            "TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(printer_root),
-            "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(printer_root / "firmware_manifest.json"),
-            "TLTG_OPTIMIZED_MOONRAKER_URL": moonraker_url,
-            "TLTG_OPTIMIZED_KLIPPER_ROOT": str(printer_root / "klipper"),
-        }
-    )
+    env["PATH"] = f"{host_guard(workspace)}{os.pathsep}{env.get('PATH', '')}"
+    env.update(printer_env(printer_root, moonraker_url=moonraker_url))
     return env
 
 
@@ -604,6 +539,7 @@ def run_command(args: list[str], *, cwd: Path, env: dict[str, str], input_text: 
         input=input_text,
         capture_output=True,
         check=False,
+        timeout=COMMAND_TIMEOUT,
     )
 
 
@@ -626,6 +562,9 @@ def run_command_with_pty(args: list[str], *, cwd: Path, env: dict[str, str], inp
     if input_text:
         os.write(master_fd, input_text.encode("utf-8"))
 
+    # A run that waits for input it never gets is stopped at the time limit; the read below then ends.
+    watchdog = threading.Timer(COMMAND_TIMEOUT, process.kill)
+    watchdog.start()
     chunks: list[bytes] = []
     try:
         while True:
@@ -641,6 +580,7 @@ def run_command_with_pty(args: list[str], *, cwd: Path, env: dict[str, str], inp
             if process.poll() is not None and len(chunk) < 4096:
                 continue
     finally:
+        watchdog.cancel()
         os.close(master_fd)
 
     return subprocess.CompletedProcess(

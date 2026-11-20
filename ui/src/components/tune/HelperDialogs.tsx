@@ -8,6 +8,7 @@ import { prettyName } from '../../lib/format'
 import { createStore, useStore } from '../../lib/store'
 import { usePrinterFlags } from './hooks'
 import { useUiSetting } from '../settings/fluidd'
+import { gcode } from '../control/gcode'
 
 type Helper = 'manual' | 'screws'
 const helperOpen = createStore<Record<Helper, boolean>>({ manual: false, screws: false })
@@ -90,11 +91,11 @@ export function ManualProbeDialog() {
       <div className="mt-3 grid gap-1.5">
         {offsets.map((o) => (
           <div key={o} className="flex items-center gap-2">
-            <button className="pm" disabled={disabled} onClick={() => run(`TESTZ Z=-${o}`)} aria-label={`Lower ${o} mm`}>
+            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=-${o}`)} aria-label={`Lower ${o} mm`}>
               <Minus size={15} />
             </button>
             <div className="num flex-1 text-center font-semibold">{o} mm</div>
-            <button className="pm" disabled={disabled} onClick={() => run(`TESTZ Z=+${o}`)} aria-label={`Raise ${o} mm`}>
+            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=+${o}`)} aria-label={`Raise ${o} mm`}>
               <Plus size={15} />
             </button>
           </div>

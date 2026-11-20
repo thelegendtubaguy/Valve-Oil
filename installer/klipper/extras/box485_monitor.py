@@ -9,9 +9,11 @@
 #   ids in saved variables, USB serial adapters that are not Klipper MCUs, and
 #   a multi_color_controller Box identity other than the USB Box's.
 # - Once detected: every frame box485 sends and receives, QIDI's RS-485 log
-#   lines, and status changes go to printer_data/logs/tltg_box485.log, and a
+#   lines, and status changes go to printer_data/logs/vo_box485.log, and a
 #   shareable summary to tltg_box485_report.json. Device chip ids and adapter
-#   serial numbers are replaced with salted hashes in both.
+#   serial numbers are replaced with salted hashes in both. Bytes that fail
+#   their CRC or don't form a frame are recorded by length only, since a
+#   damaged reply can hold a chip id where nothing here can recognize it.
 #
 # Without RS-485 hardware it writes nothing. It also:
 # - keeps box485 from opening a Klipper MCU's serial port. box485 polls its
@@ -32,8 +34,8 @@ import subprocess
 import threading
 import time
 
-OUTPUT_NAME = "tltg_box485.log"
-ROTATED_NAME = "tltg_box485.log.1"
+OUTPUT_NAME = "vo_box485.log"
+ROTATED_NAME = "vo_box485.log.1"
 REPORT_NAME = "tltg_box485_report.json"
 SALT_NAME = ".tltg_box485_salt"
 FIRMWARE_MANIFEST = "/home/qidi/update/firmware_manifest.json"
@@ -79,6 +81,10 @@ SAVED_ID_VARIABLE = re.compile(r"^box\d+_mcu_id$")
 SAVED_RS485_VARIABLES = ("box485_leases",)
 HEX_ID = re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{24}(?![0-9A-Fa-f])")
 BY_ID_SERIAL = re.compile(r"^(usb-.+_)([0-9A-Za-z]{8,})(-if\d+.*)$")
+# The same name inside other text, such as QIDI's line about a port it
+# couldn't open.
+BY_ID_SERIAL_IN_TEXT = re.compile(
+    r"(usb-[^\s/'\"]+_)([0-9A-Za-z]{8,})(-if\d+)")
 USB_TTY = re.compile(r"^tty(USB|ACM)\d+$")
 USB_ATTRIBUTES = ("idVendor", "idProduct", "manufacturer", "product",
                   "bcdDevice", "speed")
@@ -167,6 +173,9 @@ class Redactor:
         value = str(value)
         for raw, label in self._ids.items():
             value = re.sub(re.escape(raw), label, value, flags=re.IGNORECASE)
+        value = BY_ID_SERIAL_IN_TEXT.sub(
+            lambda match: (match.group(1) + self.label(match.group(2))
+                           + match.group(3)), value)
         return HEX_ID.sub(lambda match: self.label(match.group(0)), value)
 
     def device_name(self, name):
@@ -537,34 +546,39 @@ class Box485Monitor:
         self._byte_counts[direction] += len(data)
         frames, junk = self._decoders[direction].feed(data)
         now = self.reactor.monotonic()
+        # Only the length of bytes outside a frame: after a damaged frame they
+        # are that frame again, chip id and all.
         for chunk in junk:
             self._junk_bytes[direction] += len(chunk)
-            self._write("%s t=%.3f junk len=%d %s" % (
-                direction, now, len(chunk), self.redactor.text(chunk.hex())))
+            self._write("%s t=%.3f junk len=%d" % (direction, now, len(chunk)))
         for address, command, payload, crc_ok in frames:
             self._frame(direction, now, address, command, payload, crc_ok)
 
     def _frame(self, direction, now, address, command, payload, crc_ok):
         name = self._names.get(command, "cmd%d" % command)
-        if not crc_ok:
-            self._crc_errors[direction] += 1
-        elif (command == UUID_ACK and direction == "rx"
-                and len(payload) >= CHIP_ID_BYTES):
-            self.redactor.add(payload[:CHIP_ID_BYTES])
         count_key = "%s %s" % (direction, name)
         self._frame_counts[count_key] = self._frame_counts.get(count_key, 0) + 1
+        if not crc_ok:
+            # Any byte of a damaged frame may be wrong, its command and length
+            # too, so where a chip id sits in it is unknown: no payload.
+            self._crc_errors[direction] += 1
+            self._write("%s t=%.3f addr=%d %s(%d) len=%d crc=bad" % (
+                direction, now, address, name, command, len(payload)))
+            return
+        if (command == UUID_ACK and direction == "rx"
+                and len(payload) >= CHIP_ID_BYTES):
+            self.redactor.add(payload[:CHIP_ID_BYTES])
         key = (direction, address, command)
         last = self._last_frames.get(key)
-        if (crc_ok and last is not None and last[0] == payload
+        if (last is not None and last[0] == payload
                 and now - last[1] < FRAME_REPEAT_INTERVAL):
             last[2] += 1
             return
         repeats = last[2] if last is not None else 0
         self._last_frames[key] = [payload, now, 0]
-        self._write("%s t=%.3f addr=%d %s(%d) len=%d %s%s%s" % (
+        self._write("%s t=%.3f addr=%d %s(%d) len=%d %s%s" % (
             direction, now, address, name, command, len(payload),
             self.redactor.text(payload.hex()) or "-",
-            "" if crc_ok else " crc=bad",
             " (previous frame repeated %d times)" % repeats if repeats else ""))
 
     def on_vendor_record(self, record):
@@ -760,6 +774,11 @@ class Box485Monitor:
         for key, value in self._variables().items():
             if SAVED_ID_VARIABLE.match(key) and value:
                 self.redactor.add(value)
+            elif key in SAVED_RS485_VARIABLES and value:
+                # QIDI's code can address a leased device by its id before
+                # the device has answered discovery in this session.
+                for raw in HEX_ID.findall(json.dumps(value, default=repr)):
+                    self.redactor.add(raw)
         manager = self._manager()
         rack_uuid = getattr(manager, "rack_uuid", None) if manager else None
         if rack_uuid:
@@ -900,7 +919,7 @@ class Box485Monitor:
                      " yet, so it is recording what they do. Please" % reason)
         self.gcode.respond_info(
             "%s open an issue at %s and attach tltg_box485_report.json and"
-            " tltg_box485.log from Fluidd's logs folder." % (found, ISSUES_URL))
+            " vo_box485.log from Fluidd's logs folder." % (found, ISSUES_URL))
 
     def _handle_ready(self):
         self.reactor.register_timer(self._sample, self.reactor.NOW)
@@ -916,35 +935,39 @@ class Box485Monitor:
             self._write_report()
         self._close()
 
+    def _check(self, eventtime):
+        """Looks for RS-485 hardware: starts recording when a sign of it
+        appears, and records what changes after that."""
+        signals = self._detect()
+        if signals != self._signals:
+            added = sorted(set(signals) - set(self._signals))
+            removed = sorted(set(self._signals) - set(signals))
+            self._signals = signals
+            if signals:
+                reason = ", ".join(
+                    "%s=%s" % (key, signals[key]) for key in sorted(signals))
+                if added or not self._active:
+                    self._activate(self.redactor.text(reason))
+                else:
+                    self._write("signals: %s" % self.redactor.text(reason))
+            if removed and self._active:
+                self._write("signals gone: %s" % ", ".join(removed))
+            if self._active:
+                self._write_report()
+        if self._active:
+            for name in ("box485", "multi_color_controller"):
+                status = self._status(name)
+                if status != self._last_status.get(name):
+                    self._last_status[name] = status
+                    self._write("status %s %s" % (
+                        name, self.redactor.text(json.dumps(
+                            status, sort_keys=True, default=repr))))
+            if eventtime - self._last_report >= REPORT_INTERVAL:
+                self._write_report()
+
     def _sample(self, eventtime):
         try:
-            signals = self._detect()
-            if signals != self._signals:
-                added = sorted(set(signals) - set(self._signals))
-                removed = sorted(set(self._signals) - set(signals))
-                self._signals = signals
-                if signals:
-                    reason = ", ".join(
-                        "%s=%s" % (key, signals[key]) for key in sorted(signals))
-                    if added or not self._active:
-                        self._activate(self.redactor.text(reason))
-                    else:
-                        self._write("signals: %s"
-                                    % self.redactor.text(reason))
-                if removed and self._active:
-                    self._write("signals gone: %s" % ", ".join(removed))
-                if self._active:
-                    self._write_report()
-            if self._active:
-                for name in ("box485", "multi_color_controller"):
-                    status = self._status(name)
-                    if status != self._last_status.get(name):
-                        self._last_status[name] = status
-                        self._write("status %s %s" % (
-                            name, self.redactor.text(json.dumps(
-                                status, sort_keys=True, default=repr))))
-                if eventtime - self._last_report >= REPORT_INTERVAL:
-                    self._write_report()
+            self._check(eventtime)
         except Exception:
             logging.exception("tltg_box485_monitor: sample failed")
         if self._active:
@@ -952,7 +975,12 @@ class Box485Monitor:
         return eventtime + IDLE_SAMPLE_INTERVAL
 
     def cmd_VO_RS_BOX_REPORT(self, gcmd):
-        self._signals = self._detect()
+        # The same check as a sample, so signs of hardware found here start
+        # the recording as they would at the next sample.
+        try:
+            self._check(self.reactor.monotonic())
+        except Exception:
+            logging.exception("tltg_box485_monitor: check failed")
         self._write_report()
         if self._conflict is not None:
             gcmd.respond_raw(self._conflict_message())

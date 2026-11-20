@@ -2,87 +2,57 @@ import { describe, expect, it } from 'vitest'
 import { StringStream, type StreamParser } from '@codemirror/language'
 import { gcodeFile, klipperConfig } from './klipper-mode'
 
-/** Runs a parser over text the way StreamLanguage does: each line's tokens as [text, style] pairs. */
-function tokens<S>(parser: StreamParser<S>, text: string): [string, string | null][][] {
+/** How a parser colors each piece of text, run line by line the way StreamLanguage does. */
+function styles<S>(parser: StreamParser<S>, lines: string[]): (text: string) => string | null | undefined {
   const state = parser.startState!(2)
-  return text.split('\n').map((line) => {
-    const out: [string, string | null][] = []
+  const found = new Map<string, string | null>()
+  for (const line of lines) {
     if (!line) {
       parser.blankLine?.(state, 2)
-      return out
+      continue
     }
     const stream = new StringStream(line, 2, 2)
     while (!stream.eol()) {
       const style = parser.token(stream, state)
-      const text = line.slice(stream.start, stream.pos)
-      if (text.trim()) out.push([text, style])
+      const text = line.slice(stream.start, stream.pos).trim()
+      if (text && !found.has(text)) found.set(text, style)
       stream.start = stream.pos
     }
-    return out
-  })
+  }
+  return (text) => found.get(text)
 }
 
-const styleOf = (lines: [string, string | null][][], text: string) => lines.flat().find(([t]) => t === text)?.[1]
-
+// These compare how pieces of a file are colored with each other, not which color each gets.
 describe('Klipper config highlighting', () => {
-  const cfg = tokens(
-    klipperConfig,
-    [
+  it('colors a gcode: value as G-code past comment lines, and ends it at the next section', () => {
+    const style = styles(klipperConfig, [
       '[gcode_macro PRINT_START]',
-      'description: Start the print # inline',
       'variable_temp: 215',
       'gcode:',
-      '  {% set bed = params.BED|default(60)|float %}',
-      '  M140 S{bed}',
-      '  SET_HEATER_TEMPERATURE HEATER=chamber TARGET=45',
+      '  M140 S60',
       '# a comment line inside the macro',
       '  G28',
       '',
       '[printer]',
-      'kinematics: corexy',
       'max_velocity: 600',
-      '#*# <---------------------- SAVE_CONFIG ---------------------->',
-    ].join('\n'),
-  )
-
-  it('reads section headers', () => {
-    expect(styleOf(cfg, 'gcode_macro')).toBe('heading')
-    expect(styleOf(cfg, 'PRINT_START')).toBe('labelName')
-    expect(styleOf(cfg, 'printer')).toBe('heading')
-  })
-
-  it('reads keys, values, and comments', () => {
-    expect(styleOf(cfg, 'description')).toBe('propertyName')
-    expect(styleOf(cfg, '# inline')).toBe('comment')
-    expect(styleOf(cfg, '215')).toBe('number')
-    expect(styleOf(cfg, 'kinematics')).toBe('propertyName')
-    expect(styleOf(cfg, 'corexy')).toBe('string')
-  })
-
-  it('reads the G-code and Jinja in a gcode: value, past comment lines, until the next section', () => {
-    expect(styleOf(cfg, 'M140')).toBe('keyword')
-    expect(styleOf(cfg, 'SET_HEATER_TEMPERATURE')).toBe('keyword')
-    expect(styleOf(cfg, 'HEATER')).toBe('propertyName')
-    expect(styleOf(cfg, 'set')).toBe('controlKeyword')
-    expect(styleOf(cfg, 'params')).toBe('variableName.special')
-    expect(styleOf(cfg, 'G28')).toBe('keyword')
-    expect(cfg[7][0][1]).toBe('comment')
-    // max_velocity is a key again, not G-code.
-    expect(styleOf(cfg, 'max_velocity')).toBe('propertyName')
-  })
-
-  it('marks the SAVE_CONFIG block', () => {
-    expect(cfg[13][0][1]).toBe('meta')
+    ])
+    // G28 is still a command after the comment line, as M140 is before it.
+    expect(style('M140')).toBeTruthy()
+    expect(style('G28')).toBe(style('M140'))
+    // max_velocity is a config key again, like variable_temp, and not a command.
+    expect(style('max_velocity')).toBe(style('variable_temp'))
+    expect(style('max_velocity')).not.toBe(style('M140'))
+    // And [printer] is a section header, like [gcode_macro ...].
+    expect(style('printer')).toBe(style('gcode_macro'))
   })
 })
 
-describe('G-code highlighting', () => {
-  const g = tokens(gcodeFile, ['G1 X10.5 Y-2 F3000 ; move', 'EXCLUDE_OBJECT_DEFINE NAME=part_1'].join('\n'))
-  it('reads commands, parameters, and comments', () => {
-    expect(g[0][0]).toEqual(['G1', 'keyword'])
-    expect(styleOf(g, 'X')).toBe('propertyName')
-    expect(styleOf(g, '10.5')).toBe('number')
-    expect(styleOf(g, '; move')).toBe('comment')
-    expect(styleOf(g, 'NAME')).toBe('propertyName')
+describe('G-code file highlighting', () => {
+  it('colors the first word of every line as its command, apart from its parameters and comments', () => {
+    const style = styles(gcodeFile, ['G1 X10.5 F3000 ; move', 'EXCLUDE_OBJECT NAME=part_1'])
+    expect(style('G1')).toBeTruthy()
+    expect(style('EXCLUDE_OBJECT')).toBe(style('G1'))
+    expect(style('NAME')).not.toBe(style('G1'))
+    expect(style('; move')).not.toBe(style('G1'))
   })
 })

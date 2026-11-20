@@ -3,15 +3,18 @@ from __future__ import annotations
 import atexit
 import dataclasses
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
+import sys
 import tempfile
 import threading
+import urllib.request
 import zipfile
 from subprocess import CompletedProcess
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures"
@@ -51,6 +54,25 @@ def homing_sync_reset_fixture_bytes() -> bytes:
     ).read_bytes()
 
 
+def load_source(module_name: str, path: Path, *, stand_ins: dict | None = None):
+    """Import the file at `path` as `module_name`. `stand_ins` are sys.modules entries, such as the Klipper modules
+    the file imports, that exist only while it is imported."""
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    stand_ins = stand_ins or {}
+    saved = {name: sys.modules.get(name) for name in stand_ins}
+    sys.modules.update(stand_ins)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+    return module
+
+
 def temp_path(prefix: str) -> Path:
     root = Path(tempfile.mkdtemp(prefix=prefix))
     _TEMP_ROOTS.append(root)
@@ -84,6 +106,27 @@ def copy_base_runtime(*, homing_patched: bool = False) -> Path:
         homing_fixture_bytes("01.01.06.03"))
     (target / "homing.py").write_bytes(homing)
     return temp_root
+
+
+
+def stock_printer_data(manifest, firmware: str, *, homing: bytes | None = None) -> Path:
+    """printer_data of a printer on QIDI's `firmware` as shipped: that firmware's stock config, its firmware manifest,
+    and QIDI's homing.py (or `homing`)."""
+    printer_root = copy_base_runtime()
+    printer = manifest.printer_for_firmware(firmware)
+    if firmware != "01.01.06.03":
+        shutil.copytree(REPO_ROOT / "installer" / printer.stock_snapshot(firmware) / "config", printer_root / "config",
+                        dirs_exist_ok=True)
+    (printer_root / "firmware_manifest.json").write_text(
+        json.dumps({"SOC": {"file": f"{printer.soc_file_prefix}{printer.soc_version(firmware)}_Release_NA",
+                            "version": printer.soc_version(firmware)}}),
+        encoding="utf-8",
+    )
+    if homing is not None:
+        (printer_root / "klipper/klippy/extras/homing.py").write_bytes(homing)
+    elif firmware != "01.01.06.03":
+        (printer_root / "klipper/klippy/extras/homing.py").write_bytes(homing_fixture_bytes(firmware))
+    return printer_root
 
 
 
@@ -513,7 +556,7 @@ def moonraker_urlopen(
             return _JsonResponse({"result": "ok"})
         if "/printer/info" in url:
             return _JsonResponse({"result": {"state": "ready", "process_id": process["pid"]}})
-        heater_status = _heater_status(url, heater_targets)
+        heater_status = _heater_status(url, heater_targets, state)
         if heater_status is not None:
             return _JsonResponse(heater_status)
         return _JsonResponse(payload)
@@ -521,13 +564,18 @@ def moonraker_urlopen(
     return urlopen
 
 
-def _heater_status(url: str, heater_targets: dict[str, float] | None):
+def _heater_status(url: str, heater_targets: dict[str, float] | None, state: str | None = "standby"):
     """Answer the installer's heater queries: Klipper ready, with these heaters and targets."""
     from urllib.parse import unquote, urlsplit
 
     parts = urlsplit(url)
     names = [unquote(name) for name in parts.query.split("&") if name]
     targets = heater_targets or {}
+    if heater_targets is not None and "idle_timeout" in names:
+        # The board steps' readiness check (thr_firmware.check_thr_printer_ready): everything at once.
+        return {"result": {"status": {
+            "print_stats": {"state": state}, "webhooks": {"state": "ready"}, "idle_timeout": {"state": "Idle"},
+            "heaters": {"available_heaters": list(targets)}, **{name: {"target": targets[name]} for name in targets}}}}
     if names == ["webhooks", "heaters"]:
         return {"result": {"status": {"webhooks": {"state": "ready"}, "heaters": {"available_heaters": list(targets)}}}}
     if names and all(name in targets for name in names):
@@ -535,42 +583,37 @@ def _heater_status(url: str, heater_targets: dict[str, float] | None):
     return None
 
 
-@contextmanager
-def moonraker_server(state: str | None = "standby", *, raw_payload=None):
-    payload = raw_payload
-    if payload is None:
-        payload = {"result": {"status": {"print_stats": {"state": state}}}}
 
-    process = {"pid": 100}
+@contextmanager
+def moonraker_http(urlopen):
+    """Serve a Moonraker stand-in (moonraker_urlopen, or any urlopen-shaped function) over HTTP, for installer code
+    that runs in another process. Yields the server's base URL."""
 
     class Handler(BaseHTTPRequestHandler):
-        def _respond(self, body):
-            raw = json.dumps(body).encode("utf-8")
+        def _answer(self, data=None):
+            request = urllib.request.Request(f"http://moonraker.invalid{self.path}", data=data, method=self.command)
+            with urlopen(request, timeout=0) as response:
+                body = response.read()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(raw)
+            self.wfile.write(body)
 
         def do_GET(self):
-            if self.path.endswith("/printer/info"):
-                self._respond({"result": {"state": "ready", "process_id": process["pid"]}})
-            else:
-                self._respond(_heater_status(self.path, None) or payload)
+            self._answer()
 
         def do_POST(self):
-            if self.path.endswith("/machine/services/restart"):
-                process["pid"] += 1
-            self._respond({"result": "ok"})
+            self._answer(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
 
         def log_message(self, fmt, *args):
             return
 
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_port}/printer/objects/query?print_stats"
+        yield f"http://127.0.0.1:{server.server_port}"
     finally:
         server.shutdown()
         thread.join(timeout=5)

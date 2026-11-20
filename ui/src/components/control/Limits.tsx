@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Gauge, ScanLine, Undo2 } from 'lucide-react'
 import { Card, Empty, Stepper, Toggle } from '../ui'
 import { Note, objectLabel, send } from './common'
-import { encodeGcodeParamValue } from './gcode'
+import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
 
 /** The Limits tab: printer limits, runout sensors, and firmware retraction where the printer has it. */
@@ -46,7 +46,7 @@ function LimitsCard() {
   const scv = (cfg.square_corner_velocity as number | undefined) ?? 5
   const mcr = Math.round(((cfg.minimum_cruise_ratio as number | undefined) ?? 0.5) * 100)
   const a2d = (cfg.max_accel_to_decel as number | undefined) ?? accel / 2
-  const set = (arg: string, v: number) => send(`SET_VELOCITY_LIMIT ${arg}=${v}`)
+  const set = (arg: string, v: number) => send(gcode`SET_VELOCITY_LIMIT ${arg}=${v}`)
   return (
     <Card title="Printer limits" icon={<Gauge size={14} />}>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -113,7 +113,7 @@ function RetractCard() {
   const cfg = usePrinter((s) => s.settings.firmware_retraction as Record<string, number> | undefined)
   if (!cfg || !st) return null
   const max = (base: number | undefined, fallback: number, digits: number) => (base && base > 0 ? Math.round(base * 2 * 10 ** digits) / 10 ** digits : fallback)
-  const set = (arg: string, v: number) => send(`SET_RETRACTION ${arg}=${v}`)
+  const set = (arg: string, v: number) => send(gcode`SET_RETRACTION ${arg}=${v}`)
   return (
     <Card title="Firmware retraction" icon={<Undo2 size={14} />}>
       <div className="grid gap-3 sm:grid-cols-2">

@@ -1,12 +1,64 @@
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/workers/__tests__/parseGcode.spec.ts at
 // github.com/thelegendtubaguy/fluidd qidi@6405679. Keep behavior in step with the fork.
+// Valve Oil UI's own cases follow the fork's: the zip builder below (the fork's 3MF case builds its archive inline),
+// and the 'object outlines' and '3MF archives' blocks at the end.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import parseGcode from '../parseGcode'
+import { extract3mfGcode, is3mfUrl } from '../gcode-3mf'
 import { ExtrusionRole, MoveFlags } from '../../components/gcode-preview/types'
 import { deflateRawSync } from 'node:zlib'
 
 // a trailing newline is required; the reader only emits complete lines
 const encode = (lines: readonly string[]) => new TextEncoder().encode(`${lines.join('\n')}\n`)
+
+// A zip archive of the given entries, each stored as is or deflated, then the central directory.
+const zip = (entries: readonly { name: string, data: Uint8Array, deflate?: boolean }[]): ArrayBuffer => {
+  const locals: Uint8Array[] = []
+  const centrals: Uint8Array[] = []
+  let offset = 0
+
+  for (const entry of entries) {
+    const method = entry.deflate ? 8 : 0
+    const name = new TextEncoder().encode(entry.name)
+    const stored = entry.deflate ? new Uint8Array(deflateRawSync(entry.data)) : entry.data
+    const local = new DataView(new ArrayBuffer(30))
+    const central = new DataView(new ArrayBuffer(46))
+
+    local.setUint32(0, 0x04034b50, true)
+    local.setUint16(8, method, true)
+    local.setUint32(18, stored.length, true)
+    local.setUint32(22, entry.data.length, true)
+    local.setUint16(26, name.length, true)
+    central.setUint32(0, 0x02014b50, true)
+    central.setUint16(10, method, true)
+    central.setUint32(20, stored.length, true)
+    central.setUint32(24, entry.data.length, true)
+    central.setUint16(28, name.length, true)
+    central.setUint32(42, offset, true)
+    locals.push(new Uint8Array(local.buffer), name, stored)
+    centrals.push(new Uint8Array(central.buffer), name)
+    offset += 30 + name.length + stored.length
+  }
+
+  const directorySize = centrals.reduce((sum, part) => sum + part.length, 0)
+  const end = new DataView(new ArrayBuffer(22))
+
+  end.setUint32(0, 0x06054b50, true)
+  end.setUint16(10, entries.length, true)
+  end.setUint32(12, directorySize, true)
+  end.setUint32(16, offset, true)
+
+  const parts = [...locals, ...centrals, new Uint8Array(end.buffer)]
+  const archive = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+
+  parts.reduce((position, part) => {
+    archive.set(part, position)
+
+    return position + part.length
+  }, 0)
+
+  return archive.buffer
+}
 
 const parse = async (lines: readonly string[], onProgress: (filePosition: number) => void = () => {}) => {
   const encoded = encode(lines)
@@ -30,65 +82,23 @@ describe('parseGcode', () => {
   })
 
   it('reads the G-code out of a sliced 3MF archive', async () => {
-    // A minimal zip: a stored model entry, then the deflated plate G-code, then the central directory.
-    const entries = [
-      { name: '3D/3dmodel.model', data: new TextEncoder().encode('<model/>'), method: 0 },
-      { name: 'Metadata/plate_1.gcode', data: encode(['G28', 'G1 Z0.2', 'G1 X5 Y5', 'G1 X10 E1']), method: 8 }
-    ]
-    const locals: Uint8Array[] = []
-    const centrals: Uint8Array[] = []
-    let offset = 0
-
-    for (const entry of entries) {
-      const name = new TextEncoder().encode(entry.name)
-      const stored = entry.method === 8 ? new Uint8Array(deflateRawSync(entry.data)) : entry.data
-      const local = new DataView(new ArrayBuffer(30))
-      const central = new DataView(new ArrayBuffer(46))
-
-      local.setUint32(0, 0x04034b50, true)
-      local.setUint16(8, entry.method, true)
-      local.setUint32(18, stored.length, true)
-      local.setUint32(22, entry.data.length, true)
-      local.setUint16(26, name.length, true)
-      central.setUint32(0, 0x02014b50, true)
-      central.setUint16(10, entry.method, true)
-      central.setUint32(20, stored.length, true)
-      central.setUint32(24, entry.data.length, true)
-      central.setUint16(28, name.length, true)
-      central.setUint32(42, offset, true)
-      locals.push(new Uint8Array(local.buffer), name, stored)
-      centrals.push(new Uint8Array(central.buffer), name)
-      offset += 30 + name.length + stored.length
-    }
-
-    const directorySize = centrals.reduce((sum, part) => sum + part.length, 0)
-    const end = new DataView(new ArrayBuffer(22))
-
-    end.setUint32(0, 0x06054b50, true)
-    end.setUint16(10, entries.length, true)
-    end.setUint32(12, directorySize, true)
-    end.setUint32(16, offset, true)
-
-    const parts = [...locals, ...centrals, new Uint8Array(end.buffer)]
-    const archive = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
-
-    parts.reduce((position, part) => {
-      archive.set(part, position)
-
-      return position + part.length
-    }, 0)
+    // A minimal zip: a stored model entry, then the deflated plate G-code.
+    const archive = zip([
+      { name: '3D/3dmodel.model', data: new TextEncoder().encode('<model/>') },
+      { name: 'Metadata/plate_1.gcode', data: encode(['G28', 'G1 Z0.2', 'G1 X5 Y5', 'G1 X10 E1']), deflate: true }
+    ])
     const progress: number[] = []
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       body: new ReadableStream<Uint8Array>(),
-      arrayBuffer: async () => archive.buffer
+      arrayBuffer: async () => archive
     }))
 
-    const { moves } = await parseGcode('/server/files/gcodes/test.gcode.3mf?token=x', archive.length, position => progress.push(position))
+    const { moves } = await parseGcode('/server/files/gcodes/test.gcode.3mf?token=x', archive.byteLength, position => progress.push(position))
 
     expect(moves.length).toBe(4)
-    expect(progress[progress.length - 1]).toBe(archive.length)
+    expect(progress[progress.length - 1]).toBe(archive.byteLength)
   })
 
   it('parses moves into a columnar store', async () => {
@@ -355,5 +365,80 @@ describe('parseGcode', () => {
 
     expect([...moves.fan]).toEqual([0, 127, 127, 255, 0, 255, 0])
     expect(fanRange).toEqual({ min: 0, max: 255, count: 3 })
+  })
+
+  // Valve Oil UI: EXCLUDE_OBJECT_DEFINE gives the preview each object's outline (the name isn't kept; excluding an
+  // object uses the name Klipper reports). These cover the quoting the parser's word splitter (shlex.ts) handles.
+  describe('object outlines', () => {
+    const outline = [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }]
+
+    it.each([
+      ['as slicers write it', 'EXCLUDE_OBJECT_DEFINE NAME=part_1_id_0_copy_0 CENTER=3,4 POLYGON=[[1,2],[3,4],[5,6]]'],
+      ['in lower case', 'exclude_object_define name=part_1 polygon=[[1,2],[3,4],[5,6]]'],
+      ['with extra spaces and a trailing comment', '  EXCLUDE_OBJECT_DEFINE   NAME=part_1   POLYGON=[[1,2],[3,4],[5,6]]   ; first object'],
+      ['with double-quoted values holding spaces', 'EXCLUDE_OBJECT_DEFINE NAME="part 1" POLYGON="[[1, 2], [3, 4], [5, 6]]"'],
+      ['with single-quoted values holding spaces', 'EXCLUDE_OBJECT_DEFINE NAME=\'part 1\' POLYGON=\'[[1, 2], [3, 4], [5, 6]]\''],
+      ['after a name with escaped quotes', 'EXCLUDE_OBJECT_DEFINE NAME="6\\" bracket" POLYGON=[[1,2],[3,4],[5,6]]']
+    ])('reads an outline %s', async (_, line) => {
+      const { parts } = await parse([line, 'G1 X10 E1'])
+
+      expect(parts).toEqual([{ polygon: outline }])
+    })
+
+    it('keeps the objects in file order', async () => {
+      const { parts } = await parse([
+        'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON=[[0,0],[10,0],[10,10]]',
+        'EXCLUDE_OBJECT_DEFINE NAME=b POLYGON=[[20,20],[30,20],[30,30]]',
+        'G1 X10 E1'
+      ])
+
+      expect(parts).toEqual([
+        { polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }] },
+        { polygon: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }] }
+      ])
+    })
+
+    it.each([
+      ['no outline', 'EXCLUDE_OBJECT_DEFINE NAME=a CENTER=3,4'],
+      ['an empty outline value', 'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON='],
+      ['an outline cut short', 'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON=[[1,2],[3,'],
+      ['points with three coordinates', 'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON=[[1,2,3],[4,5,6]]'],
+      ['a single point instead of a list', 'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON=[1,2]'],
+      ['coordinates given as text', 'EXCLUDE_OBJECT_DEFINE NAME=a POLYGON=\'[["1","2"],["3","4"]]\'']
+    ])('skips an object with %s and reads the rest of the file', async (_, line) => {
+      const { parts, moves } = await parse([
+        line,
+        'EXCLUDE_OBJECT_DEFINE NAME=b POLYGON=[[1,2],[3,4],[5,6]]',
+        'G1 X10 E1'
+      ])
+
+      expect(parts).toEqual([{ polygon: outline }])
+      expect(moves.length).toBe(1)
+    })
+  })
+})
+
+// Valve Oil UI: the 3MF reader on its own.
+describe('3MF archives', () => {
+  const text = (value: string) => new TextEncoder().encode(value)
+
+  it('reads a stored G-code entry', async () => {
+    const { body, size } = extract3mfGcode(zip([
+      { name: 'Metadata/plate_1.png', data: text('png') },
+      { name: 'Metadata/plate_1.gcode', data: text('G1 X1\n') }
+    ]))
+
+    expect(size).toBe(6)
+    expect(await new Response(body).text()).toBe('G1 X1\n')
+  })
+
+  it('refuses an archive without G-code or a zip directory', () => {
+    expect(() => extract3mfGcode(zip([{ name: '3D/3dmodel.model', data: text('<model/>') }]))).toThrow()
+    expect(() => extract3mfGcode(new ArrayBuffer(64))).toThrow()
+  })
+
+  it('recognises 3MF URLs by path', () => {
+    expect(is3mfUrl('http://printer/server/files/gcodes/a%20b.gcode.3mf?x=1')).toBe(true)
+    expect(is3mfUrl('/server/files/gcodes/a.gcode')).toBe(false)
   })
 })

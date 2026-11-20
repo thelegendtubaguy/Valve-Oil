@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Layers } from 'lucide-react'
 import { Dialog, Toggle } from '../ui'
 import { send } from '../control/common'
-import { encodeGcodeParamValue } from '../control/gcode'
+import { encodeGcodeParamValue, gcode } from '../control/gcode'
 import { registerObjects, usePrinter } from '../../state/printer'
 
 // Pause at layer, as Fluidd's PauseAtLayerDialog: it needs the SET_PAUSE_NEXT_LAYER or SET_PAUSE_AT_LAYER macros, and
@@ -60,7 +60,7 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
     if (layerError) return
     const lines: string[] = []
     if (p.next) lines.push(next.enable ? `SET_PAUSE_NEXT_LAYER ENABLE=1 MACRO=${encodeGcodeParamValue(next.call)}` : 'SET_PAUSE_NEXT_LAYER ENABLE=0')
-    if (p.at) lines.push(at.enable ? `SET_PAUSE_AT_LAYER ENABLE=1 LAYER=${n} MACRO=${encodeGcodeParamValue(at.call)}` : 'SET_PAUSE_AT_LAYER ENABLE=0')
+    if (p.at) lines.push(at.enable ? gcode`SET_PAUSE_AT_LAYER ENABLE=1 LAYER=${n} MACRO=${encodeGcodeParamValue(at.call)}` : 'SET_PAUSE_AT_LAYER ENABLE=0')
     send(lines.join('\n'))
     onClose()
   }

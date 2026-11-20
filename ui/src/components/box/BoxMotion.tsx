@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { confirm, SectionLabel } from '../ui'
 import { qidiBoxSlotLabel, qidiBoxSlotNumber } from '../../qidi/qidi-box'
 import { runGcode, usePrinter } from '../../state/printer'
+import { gcode } from '../control/gcode'
 
 // Fallback for module versions that don't publish their fields.
 const FIELDS = ['fast_length', 'fast_speed_1', 'fast_speed_2', 'approach_speed', 'load_accel', 'unload_speed_1', 'unload_speed_2', 'unload_accel', 'unload_extruder_length']
@@ -109,7 +110,7 @@ export function BoxMotion() {
       if (invalid(f, v)) return null
       if (v === '') {
         if (isSet(cur[f])) params.push(`${f.toUpperCase()}=${clear}`)
-      } else if (Number(v) !== cur[f]) params.push(`${f.toUpperCase()}=${Number(v)}`)
+      } else if (Number(v) !== cur[f]) params.push(gcode`${f.toUpperCase()}=${Number(v)}`)
     }
     return params
   }
@@ -132,7 +133,7 @@ export function BoxMotion() {
   const apply = (scope: string) => {
     const params = changes(scope)
     if (!params?.length) return
-    run(scope, `VO_BOX_MOTION${scope === 'global' ? '' : ` SLOT=${qidiBoxSlotNumber(scope)}`} ${params.join(' ')}`)
+    run(scope, `VO_BOX_MOTION${scope === 'global' ? '' : gcode` SLOT=${qidiBoxSlotNumber(scope)}`} ${params.join(' ')}`)
   }
   const toggle = (key: string) => {
     if (open) {

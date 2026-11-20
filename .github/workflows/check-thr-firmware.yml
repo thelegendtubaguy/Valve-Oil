@@ -6,8 +6,13 @@ on:
       - 'firmware/**'
       - 'scripts/build_thr_firmware.py'
       - 'scripts/build_box_firmware.py'
+      - 'scripts/build_mcu_firmware.py'
       - 'scripts/check_thr_firmware.py'
+      - 'scripts/check_box_firmware.py'
+      - 'scripts/check_mcu_firmware.py'
       - 'scripts/flash_thr_firmware.py'
+      - 'scripts/flash_box_firmware.py'
+      - 'scripts/flash_mcu_firmware.py'
       - 'scripts/check_thr_flashing.py'
       - '.github/workflows/check-thr-firmware.yml'
   workflow_dispatch:
@@ -44,6 +49,21 @@ jobs:
               Path('build/stock-thr.bin').write_bytes(archive.read(manifest['thr']['member']))
           PY
           python3 scripts/check_thr_flashing.py --stock-image build/stock-thr.bin --patched-image dist/max4-thr-valve-oil-v1/QD_MAX4_THR_02.02.01.08_20260303_VALVE_OIL_v1.bin
+      - name: Verify Box and mainboard firmware patches
+        # QIDI's Max 4 release holds both stock images; each manifest names its own by hash.
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('build/stock-max4.zip') as archive:
+              images = {hashlib.sha256(archive.read(name)).hexdigest(): archive.read(name)
+                        for name in archive.namelist() if name.endswith('.bin')}
+          for board in ('box', 'mcu'):
+              manifest = json.loads(Path(f'firmware/max4-{board}-valve-oil-v1.json').read_text())
+              Path(f'build/stock-{board}.bin').write_bytes(images[manifest[board]['stock_sha256']])
+          PY
+          python3 scripts/check_box_firmware.py --stock-image build/stock-box.bin
+          python3 scripts/check_mcu_firmware.py --stock-image build/stock-mcu.bin
       - name: Verify reproducible artifacts
         run: |
           python3 scripts/build_thr_firmware.py --stock-archive build/stock-max4.zip --output-dir build/thr-repeat

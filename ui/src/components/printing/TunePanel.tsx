@@ -6,6 +6,7 @@ import { TargetStepper, startTarget } from '../control/TargetStepper'
 import { targetRange, type HeaterConfig } from '../control/heaters'
 import { fanLabel } from '../control/Outputs'
 import { usePrinter } from '../../state/printer'
+import { gcode } from '../control/gcode'
 
 // The in-print Tune panel, as the touchscreen's Tune screen: heater targets first (the chamber only where there is
 // one), then speed, flow, and Z offset, then the part, aux, and exhaust fans, each as − value +.
@@ -96,7 +97,7 @@ function HeaterTile({ obj, step }: { obj: string; step: number }) {
   const { label, icon } = HEATER_TILES[obj]
   return (
     <Tile icon={icon} label={label} now={typeof st.temperature === 'number' ? `${Math.round(st.temperature)}°` : null} hot>
-      <TargetStepper size="lg" label={label} step={step} start={startTarget(obj)} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(`SET_HEATER_TEMPERATURE HEATER=${obj.replace(/^heater_generic /, '')} TARGET=${t}`)} />
+      <TargetStepper size="lg" label={label} step={step} start={startTarget(obj)} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${obj.replace(/^heater_generic /, '')} TARGET=${t}`)} />
     </Tile>
   )
 }
@@ -105,7 +106,7 @@ function SpeedTile() {
   const v = usePrinter((s) => Math.round(((s.status.gcode_move?.speed_factor as number | undefined) ?? 1) * 100))
   return (
     <Tile icon={<Gauge size={14} />} label="Speed">
-      <Stepper label="Speed" value={v} step={5} min={10} max={500} unit="%" onChange={(x) => send(`M220 S${Math.round(x)}`)} />
+      <Stepper label="Speed" value={v} step={5} min={10} max={500} unit="%" onChange={(x) => send(gcode`M220 S${Math.round(x)}`)} />
     </Tile>
   )
 }
@@ -114,7 +115,7 @@ function FlowTile() {
   const v = usePrinter((s) => Math.round(((s.status.gcode_move?.extrude_factor as number | undefined) ?? 1) * 100))
   return (
     <Tile icon={<Droplet size={14} />} label="Flow">
-      <Stepper label="Flow" value={v} step={1} min={50} max={200} unit="%" onChange={(x) => send(`M221 S${Math.round(x)}`)} />
+      <Stepper label="Flow" value={v} step={1} min={50} max={200} unit="%" onChange={(x) => send(gcode`M221 S${Math.round(x)}`)} />
     </Tile>
   )
 }
@@ -123,7 +124,7 @@ function ZOffsetTile({ step }: { step: number }) {
   const z = usePrinter((s) => (s.status.gcode_move?.homing_origin?.[2] as number | undefined) ?? 0)
   return (
     <Tile icon={<ArrowDownToLine size={14} />} label="Z offset">
-      <Stepper label="Z offset" value={z} step={step} min={-5} max={5} digits={3} onChange={(v) => send(`SET_GCODE_OFFSET Z_ADJUST=${Math.round((v - z) * 1000) / 1000} MOVE=1`)} />
+      <Stepper label="Z offset" value={z} step={step} min={-5} max={5} digits={3} onChange={(v) => send(gcode`SET_GCODE_OFFSET Z_ADJUST=${Math.round((v - z) * 1000) / 1000} MOVE=1`)} />
     </Tile>
   )
 }
@@ -132,7 +133,7 @@ function FanTile({ obj, label, p }: { obj: string; label: string; p: number }) {
   const speed = usePrinter((s) => Math.round(((s.status[obj]?.speed as number | undefined) ?? 0) * 100))
   const set = (pct: number) => {
     const s255 = Math.round((Math.min(100, Math.max(0, pct)) / 100) * 255)
-    send(p < 0 ? (s255 ? `M106 S${s255}` : 'M107') : `M106 P${p} S${s255}`)
+    send(p < 0 ? (s255 ? gcode`M106 S${s255}` : 'M107') : gcode`M106 P${p} S${s255}`)
   }
   return (
     <Tile icon={<Fan size={14} />} label={label}>

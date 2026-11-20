@@ -1,5 +1,6 @@
 import { MoonrakerClient, resolveMoonrakerOrigin, type ConnectionState } from '../moonraker/client'
 import { createStore, useStore } from '../lib/store'
+import { misreadGcodeNumber } from '../components/control/gcode'
 
 export type KlippyState = 'startup' | 'ready' | 'error' | 'shutdown' | 'disconnected' | 'unknown'
 // Klipper object status: object name -> field -> value. Values are whatever Klipper reports.
@@ -212,10 +213,16 @@ export function pushConsole(text: string, kind: ConsoleLine['kind']) {
   printer.set((s) => ({ ...s, console: [...s.console.slice(-(CONSOLE_MAX - 1)), { id: ++lineId, time: Date.now(), text, kind }] }))
 }
 
-/** Runs G-code and records it, and any error, in the console. */
-export async function runGcode(script: string) {
+/**
+ * Runs G-code and records it, and any error, in the console. A command with a number Klipper would misread, such as
+ * `G1 X1e-7` (X1 and an extruder move), is refused instead of sent; `typed` sends what the operator typed, in the
+ * console or a macro's parameters, as they typed it.
+ */
+export async function runGcode(script: string, { typed = false }: { typed?: boolean } = {}) {
   pushConsole(script, 'command')
   try {
+    const misread = typed ? null : misreadGcodeNumber(script)
+    if (misread) throw new Error(`Not sent: Klipper would misread the number in ${misread}`)
     return await client.gcode(script)
   } catch (e) {
     pushConsole(e instanceof Error ? e.message : String(e), 'error')

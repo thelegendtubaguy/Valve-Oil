@@ -209,15 +209,22 @@ export const headersKey = (root: string) => `uiSettings.tableHeaders.${root}_${r
 
 export type ConfiguredHeader = { value: string; visible?: boolean }
 
-/** Applies Fluidd's saved header choices (getMergedTableHeaders): used only when they cover every column. */
+/**
+ * Applies Fluidd's saved header choices (getMergedTableHeaders): a saved list covering every column gives the order
+ * too; any other list, such as the single entries Fluidd saves when a column is ticked, gives each column it names its
+ * visibility. Unlike Fluidd, a saved list of the right length that names a column this table lacks never drops one.
+ */
 export function mergeColumns(columns: Column[], saved: ConfiguredHeader[] | null | undefined): Column[] {
-  if (!saved || saved.length !== columns.length) return columns
-  const out: Column[] = []
-  for (const s of saved) {
-    const c = columns.find((x) => x.value === s.value)
-    if (c) out.push({ ...c, visible: s.visible !== false })
+  if (!saved || !Array.isArray(saved)) return columns
+  const apply = (c: Column, s: ConfiguredHeader | undefined): Column => (s?.visible == null ? c : { ...c, visible: s.visible })
+  if (saved.length === columns.length) {
+    const out = saved.flatMap((s) => {
+      const c = columns.find((x) => x.value === s.value)
+      return c ? [apply(c, s)] : []
+    })
+    if (out.length === columns.length) return out
   }
-  return out.length === columns.length ? out : columns
+  return columns.map((c) => apply(c, saved.find((s) => s.value === c.value)))
 }
 
 // ---- values and sorting ----

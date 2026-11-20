@@ -3,7 +3,7 @@ import { BoxToolsCard } from '../box/BoxTools'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Gauge, House, Move as MoveIcon, Pipette, Snowflake, Wrench } from 'lucide-react'
 import { Card, Choices, MenuButton, Segmented, Stepper, confirm } from '../ui'
 import { NumberInput, Note, jog as jogAxis, send, usePrinting, useHasCommand } from './common'
-import { extrudeGcode, moveGcode } from './gcode'
+import { extrudeGcode, gcode, moveGcode } from './gcode'
 import { registerObjects, usePrinter } from '../../state/printer'
 import { createStore, useStore } from '../../lib/store'
 
@@ -355,11 +355,11 @@ export function ExtruderCard() {
         <div className={`grid gap-3 sm:grid-cols-2 ${printing ? '' : 'mt-4 border-t border-line pt-3'}`}>
           <div className="grid gap-1">
             <span className="section-label">Pressure advance</span>
-            <Stepper label="Pressure advance" value={ext.pressure_advance as number} step={0.001} min={0} max={2} digits={3} onChange={(v) => send(`SET_PRESSURE_ADVANCE ADVANCE=${v}`)} />
+            <Stepper label="Pressure advance" value={ext.pressure_advance as number} step={0.001} min={0} max={2} digits={3} onChange={(v) => send(gcode`SET_PRESSURE_ADVANCE ADVANCE=${v}`)} />
           </div>
           <div className="grid gap-1">
             <span className="section-label">Smooth time</span>
-            <Stepper label="Pressure advance smooth time" value={(ext.smooth_time as number | undefined) ?? 0} step={0.005} min={0} max={0.2} digits={3} unit="s" onChange={(v) => send(`SET_PRESSURE_ADVANCE SMOOTH_TIME=${v}`)} />
+            <Stepper label="Pressure advance smooth time" value={(ext.smooth_time as number | undefined) ?? 0} step={0.005} min={0} max={0.2} digits={3} unit="s" onChange={(v) => send(gcode`SET_PRESSURE_ADVANCE SMOOTH_TIME=${v}`)} />
           </div>
         </div>
       )}
@@ -378,7 +378,7 @@ export function ZOffsetCard() {
   const probe = useHasCommand('Z_OFFSET_APPLY_PROBE')
   const endstop = useHasCommand('Z_OFFSET_APPLY_ENDSTOP')
   const [step, setStep] = useState(Z_STEPS[1])
-  const adjust = (d: number) => send(`SET_GCODE_OFFSET Z_ADJUST=${d > 0 ? '+' : ''}${d} MOVE=${+zHomed}`)
+  const adjust = (d: number) => send(gcode`SET_GCODE_OFFSET Z_ADJUST=${d > 0 ? '+' : ''}${d} MOVE=${+zHomed}`)
   const saveDisabled = printing || z === 0
   return (
     <Card title="Z offset" icon={<ArrowDown size={14} />} aside={<span className="num text-[15px] font-bold text-ink">{`${z >= 0 ? '+' : ''}${z.toFixed(3)} mm`}</span>}>
@@ -449,7 +449,7 @@ export function SpeedFlowCard() {
               </button>
             )}
           </span>
-          <Stepper label="Speed" value={speed} step={5} min={1} max={500} unit="%" onChange={(v) => send(`M220 S${Math.round(v)}`)} />
+          <Stepper label="Speed" value={speed} step={5} min={1} max={500} unit="%" onChange={(v) => send(gcode`M220 S${Math.round(v)}`)} />
         </div>
         <div className="grid gap-1">
           <span className="section-label flex justify-between">
@@ -460,7 +460,7 @@ export function SpeedFlowCard() {
               </button>
             )}
           </span>
-          <Stepper label="Flow" value={flow} step={1} min={1} max={200} unit="%" onChange={(v) => send(`M221 S${Math.round(v)}`)} />
+          <Stepper label="Flow" value={flow} step={1} min={1} max={200} unit="%" onChange={(v) => send(gcode`M221 S${Math.round(v)}`)} />
         </div>
       </div>
     </Card>

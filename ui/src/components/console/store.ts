@@ -149,7 +149,7 @@ export async function sendCommand(command: string, history: string[], setHistory
   setHistory(addToHistory(history, text)).catch(() => {})
   if (text.toLowerCase() === 'm112') client.call('printer.emergency_stop').catch(() => {})
   try {
-    await runGcode(text)
+    await runGcode(text, { typed: true })
   } catch {
     /* the error shows in the console */
   }

@@ -4,6 +4,7 @@ import { attempt, toast } from './toast'
 import { runGcode, usePrinter } from '../state/printer'
 import { prettyName } from '../lib/format'
 import { targetError, targetRange } from './control/heaters'
+import { gcode } from './control/gcode'
 
 // m106 is the fan's M106 P index on QIDI printers, so speed changes go through the printer's own fan macro.
 export type Tile = { obj: string; label: string; kind: 'heater' | 'sensor' | 'fan'; m106?: number }
@@ -94,9 +95,9 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
     const name = tile.obj.replace(/^fan_generic /, '')
     const command = (pct: number) => {
       const s255 = Math.round((pct / 100) * 255)
-      if (tile.m106 != null) return `M106 P${tile.m106} S${s255}`
+      if (tile.m106 != null) return gcode`M106 P${tile.m106} S${s255}`
       if (generic) return `SET_FAN_SPEED FAN=${name} SPEED=${(pct / 100).toFixed(2)}`
-      return pct === 0 ? 'M107' : `M106 S${s255}`
+      return pct === 0 ? 'M107' : gcode`M106 S${s255}`
     }
     const set = (pct: number) => attempt(() => runGcode(command(pct))).then(onClose)
     return (
@@ -117,7 +118,7 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
   const max = range.max
   const heater = tile.obj.replace(/^heater_generic /, '')
   const presets = (PRESETS[tile.obj] ?? [45, 55, 65]).filter((t) => t <= max && t >= range.min)
-  const set = (t: number) => attempt(() => runGcode(`SET_HEATER_TEMPERATURE HEATER=${heater} TARGET=${t}`)).then(onClose)
+  const set = (t: number) => attempt(() => runGcode(gcode`SET_HEATER_TEMPERATURE HEATER=${heater} TARGET=${t}`)).then(onClose)
   return (
     <Dialog open onClose={onClose} title={`${tile.label} target`}>
       <div className="mb-3 text-ink-2">

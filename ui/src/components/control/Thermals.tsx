@@ -5,7 +5,7 @@ import { TempChart } from '../TempChart'
 import { Note, objectLabel, send, useHasCommand, useJobActive, usePrinting } from './common'
 import { TargetStepper, startTarget } from './TargetStepper'
 import { boxHeaterNumber, targetError, targetRange, type HeaterConfig } from './heaters'
-import { encodeGcodeParamValue } from './gcode'
+import { encodeGcodeParamValue, gcode } from './gcode'
 import { attempt } from '../toast'
 import { usePrinter } from '../../state/printer'
 import { applyPreset, usePresets } from '../../state/presets'
@@ -134,7 +134,7 @@ function HeaterRow({ obj, boxLimit }: { obj: string; boxLimit: number | null }) 
         </div>
       </div>
       <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
-        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(t) => send(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}`)} />
+        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(t) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}`)} />
       </div>
       <div className="col-start-2 row-start-1 sm:col-start-3">
         <MenuButton
@@ -166,7 +166,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
   const command = kind === 'pid' ? 'PID_CALIBRATE' : 'MPC_CALIBRATE'
   const run = () => {
     if (error || bpError) return
-    send(`${command} HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}${kind === 'mpc' && bp != null ? ` FAN_BREAKPOINTS=${bp}` : ''}`)
+    send(gcode`${command} HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
     onClose()
   }
   return (
@@ -233,7 +233,7 @@ function TemperatureFanRow({ obj }: { obj: string }) {
           {typeof st.temperature === 'number' ? `${st.temperature.toFixed(1)} °C` : '—'} · fan {Math.round(((st.speed as number | undefined) ?? 0) * 100)}%
         </div>
       </div>
-      <TargetStepper label={label} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(obj.slice(16))} TARGET=${t}`)} />
+      <TargetStepper label={label} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(gcode`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(obj.slice(16))} TARGET=${t}`)} />
     </div>
   )
 }

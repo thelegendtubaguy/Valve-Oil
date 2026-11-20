@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "path": "filament_runout",
+  "title": "Toolhead filament sensor runout and resume",
+  "entrypoints": [],
+  "macro_files": [
+    "config/box.cfg",
+    "config/klipper-macros-qd/*.cfg",
+    "installer/klipper/macros/*.cfg",
+    "installer/klipper/printers/max4/*.cfg"
+  ],
+  "branches": [
+    {
+      "name": "stale_sensor_trip_ignored",
+      "source_macro": "VO_FILAMENT_SENSOR_RUNOUT",
+      "condition": "Klipper runs the runout G-code after the command that was running ends; filament is back or no print is running",
+      "slice": {
+        "start": "{% if filament_back or not print_running %}",
+        "end": "{% else %}"
+      },
+      "must_include_order": [
+        "{% if filament_back or not print_running %}",
+        "ignoring an earlier toolhead sensor trip"
+      ],
+      "must_not_include": [
+        "PAUSE",
+        "AUTO_RELOAD_FILAMENT",
+        "SET_PRINT_SUB_STATUS",
+        "M118"
+      ]
+    },
+    {
+      "name": "runout_pause_then_recovery",
+      "source_macro": "VO_FILAMENT_SENSOR_RUNOUT",
+      "condition": "the print is running and the toolhead sensor still reads empty",
+      "slice": {
+        "start": "{% else %}"
+      },
+      "must_include_order": [
+        "{% if box_enabled %}",
+        "PAUSE",
+        "{% elif sensor.pause_enabled|int %}",
+        "PAUSE",
+        "M118 Filament run out",
+        "{% if box_enabled %}",
+        "AUTO_RELOAD_FILAMENT",
+        "SET_PRINT_SUB_STATUS SUB_STATUS=box_filament_exhausted",
+        "SET_PRINT_SUB_STATUS SUB_STATUS=ext_filament_exhausted"
+      ],
+      "must_not_include": [
+        "CANCEL_PRINT",
+        "RESUME"
+      ]
+    },
+    {
+      "name": "resume_by_filament_source",
+      "source_macro": "RESUME",
+      "condition": "the print is paused",
+      "slice": {
+        "start": "{% if printer['pause_resume'].is_paused|int == 1 %}"
+      },
+      "must_include_order": [
+        "{% if box_enabled %}",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "M109 S{resume_temp}",
+        "TRY_RESUME_PRINT",
+        "{% elif sensor.pause_enabled|int == 0 %}",
+        "RESUME_PRINT",
+        "{% elif vendor_flow %}",
+        "TRY_RESUME_PRINT",
+        "{% elif printer['filament_switch_sensor filament_switch_sensor'].filament_detected == True %}",
+        "RESUME_PRINT",
+        "M118 Please load filament"
+      ],
+      "must_not_include": [
+        "M106 P4",
+        "SET_PIN PIN=polar_cooler",
+        "ENABLE_SMART_PIN PIN=polar_cooler"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/filament-runout.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/filament-runout.mmd"
+  }
+}

@@ -42,7 +42,7 @@ Branch from latest `origin/dev` unless told otherwise. Target PRs to `dev` excep
 
 ## OpenSpec
 
-Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behavior,firmware-artifacts,thr-firmware-transfer}/spec.md`, `openspec/contracts/gcode-paths/start-print.path.json` with its `generated/start-print.md`, `openspec/observations/qidi-platform.md`, and `openspec/observations/qidi-box/*.md`.
+Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behavior,firmware-artifacts,thr-firmware-transfer}/spec.md`, the `openspec/contracts/gcode-paths/*.path.json` contract for the path you're changing with its `generated/*.md`, `openspec/observations/qidi-platform.md`, and `openspec/observations/qidi-box/*.md`.
 
 - `specs/` hold desired repository behavior: behavioral requirements, testable scenarios. Manifests, tests, and code own exhaustive non-operator-visible data.
 - `contracts/` hold machine-checked invariants; generated views are outputs, not authority.
@@ -52,6 +52,8 @@ Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behav
 ## Start-print changes
 
 Read the printer spec, contract, and generated view first. Update `start-print.path.json` for branch-level invariants, run `python3 scripts/check_gcode_paths.py --write` then `python3 scripts/check_gcode_paths.py`, and include changed generated `.md`/`.mmd` files. If a command change leaves generated views unchanged, say why it isn't a branch-level invariant. Contracted sources: both slicers' `start.gcode`, `config/box.cfg`, `config/klipper-macros-qd/*.cfg`, `installer/klipper/macros/*.cfg`.
+
+The other contracted paths work the same way: end print and cancel on error, filament change (cut, chute, unload), filament runout and resume, homing (Max 4 and Plus 5), Z offset across a print, and fan commands. The order of commands inside a macro, and commands a macro must never issue, go in a contract; `installer/tests/klipper/test_optimized_macro_contract.py` holds only what takes computing (moves against a printer's travel, cuts compared with QIDI's, rules across every installed file). A branch names a `source_macro`, or a `source_section` for G-code outside a `gcode_macro` such as `homing_override`. `scripts/check_gcode_paths.py` also fails on duplicate macros and on macros that call themselves through other macros, for every printer.
 
 ## Runtime paths
 
@@ -84,7 +86,8 @@ Read the printer spec, contract, and generated view first. Update `start-print.p
 - Test durable behavior, safety boundaries, and release contracts, not implementation detail. Don't test private helpers, call order, constants, exact status wording, standard-library behavior, or synthetic examples unless enforcing a security boundary.
 - Extend existing lifecycle, contract, matrix, or smoke coverage first; prefer end-to-end scenarios and parameterized firmware/source matrices. Run checkers directly; don't wrap them. Put static invariants in contracts or standalone checkers.
 - Add a test module only for a distinct boundary; net growth needs an unrepresented operator-visible behavior or safety invariant. Remove or merge superseded and overlapping tests with behavior changes.
-- Keep `python3 scripts/run_installer_core_tests.py` under ten seconds on a typical machine (bundle smoke excluded).
+- Installer tests are grouped by subject under `installer/tests/`: `klipper/` (Klipper modules and macros), `firmware/` (board and QIDI firmware), `host/` (services, screens, host files), and `lifecycle/` (install, update, uninstall, USB). Load a Klipper module with `klipper_fakes.load_extra` and reuse its `CommandError` and `Reactor`; the firmware flows share `firmware/harness.py`. Every module under `installer/klipper/extras/` needs a test of what it must and must not do on the printer.
+- Keep `python3 scripts/run_installer_core_tests.py` under ten seconds on a typical machine (bundle smoke excluded). It runs one test module per worker process, so a module's tests can't depend on another module having run, and no test sleeps for real.
 
 ## Timing and terminology
 

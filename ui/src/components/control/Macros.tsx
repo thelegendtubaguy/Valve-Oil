@@ -5,7 +5,7 @@ import { attempt } from '../toast'
 import { ColorInput, send, usePrinting } from './common'
 import { gcodeCommandBuilder } from './gcode'
 import { addCategory, categoriesOf, listMacros, macroGroups, macroParams, MACROS_KEY, removeCategory, renameCategory, saveMacros, UNCATEGORIZED, type Macro, type MacrosDb } from './macro-settings'
-import { usePrinter } from '../../state/printer'
+import { runGcode, usePrinter } from '../../state/printer'
 import { FLUIDD, useDbItem } from '../../state/database'
 
 function useMacrosDb() {
@@ -93,7 +93,8 @@ function ParamsDialog({ macro, onClose }: { macro: Macro; onClose: () => void })
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.name, f.value])))
   const command = gcodeCommandBuilder(macro.name, values)
   const run = () => {
-    send(command)
+    // The parameters are the operator's text, or the macro's own defaults: sent as shown, as the console sends.
+    attempt(() => runGcode(command, { typed: true }))
     onClose()
   }
   return (

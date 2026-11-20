@@ -1,7 +1,7 @@
 import { Fan, Lightbulb, ToggleRight } from 'lucide-react'
 import { Card, Empty, Toggle } from '../ui'
 import { ColorInput, Note, Slider, objectLabel, send } from './common'
-import { encodeGcodeParamValue } from './gcode'
+import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
 
 // Fans, output pins, and LEDs, as Fluidd's Outputs card lists them (getOutputs): names starting with `_` are hidden.
@@ -94,11 +94,11 @@ function FanRow({ obj }: { obj: string }) {
   const offBelow = ((cfg.off_below as number | undefined) ?? 0) * 100
   const set = (pct: number) => {
     if (offBelow && pct > 0 && pct < offBelow) pct = offBelow
-    if (type === 'fan') return send(`M106 S${Math.ceil(pct * 2.55)}`)
+    if (type === 'fan') return send(gcode`M106 S${Math.ceil(pct * 2.55)}`)
     // QIDI's chamber exhaust goes through the printer's M106 macro, which tells the chamber guard and warns when it
     // fights a chamber target.
-    if (name === 'chamber_circulation_fan' && hasM106Macro) return send(`M106 P3 S${Math.ceil(pct * 2.55)}`)
-    send(`SET_FAN_SPEED FAN=${encodeGcodeParamValue(name)} SPEED=${pct / 100}`)
+    if (name === 'chamber_circulation_fan' && hasM106Macro) return send(gcode`M106 P3 S${Math.ceil(pct * 2.55)}`)
+    send(gcode`SET_FAN_SPEED FAN=${encodeGcodeParamValue(name)} SPEED=${pct / 100}`)
   }
   return (
     <div className={controllable ? 'grid gap-0.5' : 'row-k'}>
@@ -134,7 +134,7 @@ function PinRow({ obj }: { obj: string }) {
   const scale = (cfg.scale as number | undefined) ?? 1
   const pwm = cfg.pwm === true || type === 'pwm_tool' || type === 'pwm_cycle_time'
   const controllable = !cfg.static_value
-  const set = (v: number) => send(`SET_PIN PIN=${encodeGcodeParamValue(name)} VALUE=${v}`)
+  const set = (v: number) => send(gcode`SET_PIN PIN=${encodeGcodeParamValue(name)} VALUE=${v}`)
   const label = objectLabel(obj)
   if (pwm)
     return (
@@ -197,7 +197,7 @@ export function setLedGcode(name: string, channels: string, c: Rgbw) {
     .toLowerCase()
     .split('')
     .filter((ch): ch is keyof Rgbw => ch in CHANNEL)
-    .map((ch) => ` ${CHANNEL[ch]}=${Math.round(Math.min(1, Math.max(0, c[ch])) * 1000) / 1000}`)
+    .map((ch) => gcode` ${CHANNEL[ch]}=${Math.round(Math.min(1, Math.max(0, c[ch])) * 1000) / 1000}`)
     .join('')
   return `SET_LED LED=${encodeGcodeParamValue(name)}${parts}`
 }

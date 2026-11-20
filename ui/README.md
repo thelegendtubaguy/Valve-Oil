@@ -75,9 +75,13 @@ To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload
 
 ```sh
 npm run typecheck
-npm test          # the logic ported from the Fluidd fork, with its tests, and the UI's own parsing and calculations
+npm test          # the logic ported from the Fluidd fork, with its tests, and the UI's own parsing, calculations, and printer commands
 npm run build
 ```
+
+A spec ported from Fluidd or its fork keeps its `__tests__` folder and file name (`src/qidi/__tests__/qidi-box.test.ts` is the fork's `qidi-box.spec.ts`), so it can be compared with the source. The UI's own tests sit beside the file they test (`fs.test.ts` beside `fs.ts`), and a screen's small files can share one, as in `src/components/system/system.test.ts`. Every function that builds a command for the printer needs a test of the exact text it sends, so it goes in a module that doesn't import `src/state/printer.ts`, which reads the page's address when loaded: `src/state/box-model.ts`, `src/state/preset-gcode.ts`, `src/components/control/gcode.ts`. A test that needs `runGcode` stubs `location` first, as `gcode.test.ts` does.
+
+Numbers go into a command through the `gcode` template tag from `src/components/control/gcode.ts` (`` gcode`M104 S${target}` ``), which writes them in plain decimals. JavaScript writes 0.0000001 as `1e-7`, which Klipper reads as `1` and an E word. `runGcode` refuses a command with such a number, or with `NaN` or `Infinity`, except what the operator typed into the console or a macro's parameters.
 
 ## Layout
 

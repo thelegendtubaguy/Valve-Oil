@@ -13,8 +13,8 @@ import subprocess
 import time
 
 ENABLE_VARIABLE = "vo_box_link_monitor"
-OUTPUT_NAME = "tltg_box_link.log"
-ROTATED_NAME = "tltg_box_link.log.1"
+OUTPUT_NAME = "vo_box_link.log"
+ROTATED_NAME = "vo_box_link.log.1"
 
 # Lines that mark a link failure in klippy.log. The chelper serial reader
 # reports the lost endpoint before Klipper raises a timeout, so the EOF line is
@@ -192,6 +192,10 @@ class BoxLinkMonitor:
             self._handle.flush()
             if durable:
                 os.fsync(self._handle.fileno())
+            # Klipper can run for weeks between restarts: a full log is
+            # closed here, and the next write moves it aside.
+            if self._handle.tell() >= self.max_log_bytes:
+                self._close()
         except Exception:
             logging.exception("tltg_box_link_monitor: write failed")
 

@@ -60,6 +60,19 @@ describe('file positions', () => {
     expect(moveIndexByFilePosition(moves, position)).toBe(move)
     expect(layerByFilePosition(layers, position)).toBe(layer)
   })
+
+  it('stays on the first move and layer while the print is still in the file’s header', () => {
+    // A file's header and thumbnails come before its first move.
+    const late = { ...moves, filePosition: Uint32Array.from([100, 110, 120, 130]) }
+    const lateLayers = layers.map((l) => ({ ...l, filePosition: l.filePosition + 100 }))
+    expect(moveIndexByFilePosition(late, 50)).toBe(0)
+    expect(layerByFilePosition(lateLayers, 50)).toBe(0)
+  })
+
+  it('answers 0 for a file with no moves or layers', () => {
+    expect(moveIndexByFilePosition(store([]), 50)).toBe(0)
+    expect(layerByFilePosition([], 50)).toBe(0)
+  })
 })
 
 describe('getToolColors', () => {

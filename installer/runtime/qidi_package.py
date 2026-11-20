@@ -153,7 +153,7 @@ def check_free_space(paths, target, *, disk_usage=shutil.disk_usage, unpacked: b
 
 # What a firmware update short of space removes: files that aren't the operator's and that nothing on the printer
 # reads again. The system journal beyond JOURNAL_KEEP, apt's download cache, the archive the touchscreen's online update
-# leaves in ~/download, and rotated logs in printer_data/logs (klippy.log.2026-11-10, tltg_box_link.log.1) older than
+# leaves in ~/download, and rotated logs in printer_data/logs (klippy.log.2026-11-10, vo_box_link.log.1) older than
 # ROTATED_LOG_DAYS, so the logs a support issue asks for stay. Prints, timelapses, and QIDI's update folder, whose THR
 # image the board firmware reads, are left alone.
 JOURNAL_KEEP = "50M"

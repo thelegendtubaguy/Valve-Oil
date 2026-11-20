@@ -15,12 +15,10 @@ import os
 import shutil
 import subprocess
 import tarfile
-import threading
 import zipfile
-from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+from installer.tests.helpers import _JsonResponse, moonraker_http
 from scripts import usb_drive_image
 
 FAKE_COMMANDS = {
@@ -207,28 +205,6 @@ class FakePrinter:
         return path.read_text(encoding="utf-8").split("\n")[:-1] if path.exists() else None
 
 
-@contextmanager
 def moonraker(state: str = "ready"):
     """Moonraker's /printer/info with Klipper in `state`; yields its base URL."""
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            body = json.dumps({"result": {"state": state}}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            return
-
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
+    return moonraker_http(lambda request, timeout=0: _JsonResponse({"result": {"state": state}}))

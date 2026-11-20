@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Ban, Shapes } from 'lucide-react'
 import { Dialog, confirm } from '../ui'
 import { send } from '../control/common'
-import { encodeGcodeParamValue } from '../control/gcode'
+import { excludeObjectGcode } from '../control/gcode'
 import { usePrinter } from '../../state/printer'
 
 type Part = { name: string; center?: [number, number]; polygon?: [number, number][] }
@@ -20,7 +20,7 @@ export const partLabel = (name: string) => name.replace(/_/g, ' ')
 
 async function exclude(name: string) {
   if (!(await confirm({ title: `Exclude ${partLabel(name)}?`, body: 'Are you sure you want to exclude this object from printing? The printer skips it for the rest of this print, and it can’t be added back.', confirm: 'Exclude', danger: true }))) return
-  send(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(name.toUpperCase().replace(/\s/g, '_'))}`)
+  send(excludeObjectGcode(name))
 }
 
 /** A button for the print card that opens the object list, when the file defines objects. */

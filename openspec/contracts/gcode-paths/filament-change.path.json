@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "path": "filament_change",
+  "title": "Filament change, cut, and unload (QIDI Max 4)",
+  "entrypoints": [
+    {
+      "name": "OrcaSlicer filament change (Max 4)",
+      "path": "orcaslicer_gcode/max4/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    },
+    {
+      "name": "QIDI Studio filament change (Max 4)",
+      "path": "qidistudio_gcode/max4/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    },
+    {
+      "name": "OrcaSlicer filament change (Plus 5)",
+      "path": "orcaslicer_gcode/plus5/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    },
+    {
+      "name": "QIDI Studio filament change (Plus 5)",
+      "path": "qidistudio_gcode/plus5/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    },
+    {
+      "name": "OrcaSlicer filament change (Smart 5)",
+      "path": "orcaslicer_gcode/smart5/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    },
+    {
+      "name": "QIDI Studio filament change (Smart 5)",
+      "path": "qidistudio_gcode/smart5/change_filament.gcode",
+      "must_include_order": [
+        "OPTIMIZED_CUT_FILAMENT\n",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T[current_extruder]",
+        "T[next_extruder]",
+        "M109.0 S"
+      ],
+      "must_not_include": [
+        "_VO_START_PRE_SCRAPE_WIPE",
+        "VO_RESET_TOOL_MAPPINGS"
+      ]
+    }
+  ],
+  "macro_files": [
+    "config/box.cfg",
+    "config/klipper-macros-qd/*.cfg",
+    "installer/klipper/macros/*.cfg",
+    "installer/klipper/printers/max4/*.cfg"
+  ],
+  "branches": [
+    {
+      "name": "cut_or_hand_off_to_vendor_flow",
+      "source_macro": "OPTIMIZED_CUT_FILAMENT",
+      "condition": "a slicer filament change or a manual cut; QIDI's flow controller cuts for itself during a print",
+      "slice": {
+        "start": "{% set vendor_flow_cuts"
+      },
+      "must_include_order": [
+        "printer.print_stats.state == \"printing\" and printer.tltg_macro_status.vendor_flow",
+        "{% if not vendor_flow_cuts %}",
+        "_VO_CUT_FILAMENT_MOTION",
+        "{% else %}",
+        "SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE={printer.toolhead.estimated_print_time}",
+        "{% endif %}"
+      ],
+      "must_not_include": [
+        "CUT_FILAMENT T=",
+        "G1 "
+      ]
+    },
+    {
+      "name": "chute_move_skipped_once_after_vendor_cut",
+      "source_macro": "OPTIMIZED_MOVE_TO_TRASH",
+      "condition": "every move to the chute; skipped once within 2 s of a cut handed to QIDI's flow controller",
+      "slice": {
+        "start": "{% set handoff = vendor_cut_handoff_time|float %}"
+      },
+      "must_include_order": [
+        "printer.toolhead.estimated_print_time - handoff < 2",
+        "SET_GCODE_VARIABLE MACRO=OPTIMIZED_MOVE_TO_TRASH VARIABLE=vendor_cut_handoff_time VALUE=-1.0",
+        "{% if not skip_for_vendor_flow %}",
+        "_VO_MOVE_TO_TRASH_MOTION",
+        "{% endif %}"
+      ],
+      "must_not_include": [
+        "G1 "
+      ]
+    },
+    {
+      "name": "cut_motion_restores_state",
+      "source_macro": "_VO_CUT_FILAMENT_MOTION",
+      "condition": "the cut itself; the strike and its move off the cutter are _VO_CUTTER_STRIKE's",
+      "slice": {
+        "start": "{% set saved_accel = printer.toolhead.max_accel|float %}"
+      },
+      "must_include_order": [
+        "SAVE_GCODE_STATE NAME=vo_cut_filament_state",
+        "G90",
+        "G28 O X Y",
+        "M204 S10000",
+        "_VO_CUTTER_STRIKE EXIT_X=15 EXIT_F=8000",
+        "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+        "RESTORE_GCODE_STATE NAME=vo_cut_filament_state"
+      ],
+      "must_not_include": [
+        "G4 P2000",
+        "G1 E"
+      ]
+    },
+    {
+      "name": "chute_move_restores_state",
+      "source_macro": "_VO_MOVE_TO_TRASH_MOTION",
+      "condition": "the move to the chute from anywhere on or behind the bed",
+      "slice": {
+        "start": "{% set saved_accel = printer.toolhead.max_accel|float %}"
+      },
+      "must_include_order": [
+        "SAVE_GCODE_STATE NAME=vo_move_to_trash_state",
+        "G90",
+        "G28 O X Y",
+        "M204 S10000",
+        "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+        "RESTORE_GCODE_STATE NAME=vo_move_to_trash_state"
+      ],
+      "must_not_include": [
+        "F3500",
+        "G1 E",
+        "G1 Z"
+      ]
+    },
+    {
+      "name": "unload_through_box_or_vendor_flow",
+      "source_macro": "VO_UNLOAD_FILAMENT",
+      "condition": "the Box is in use; QIDI's flow controller cuts and unloads for itself",
+      "slice": {
+        "start": "{% if box_enabled %}"
+      },
+      "must_include_order": [
+        "saved_accel = printer.toolhead.max_accel|float",
+        "SAVE_GCODE_STATE NAME=vo_unload_filament_state",
+        "G90",
+        "M83",
+        "{% if printer.tltg_macro_status.vendor_flow %}",
+        "UNLOAD_FILAMENT T={T}",
+        "{% else %}",
+        "CUT_FILAMENT T={T}",
+        "OPTIMIZED_MOVE_TO_TRASH",
+        "UNLOAD_T{T}",
+        "G1 E25 F300",
+        "{% endif %}",
+        "SET_VELOCITY_LIMIT ACCEL={saved_accel}",
+        "RESTORE_GCODE_STATE NAME=vo_unload_filament_state"
+      ],
+      "must_not_include": [
+        "PATTERN=MIXED",
+        "_VO_REAR_BED_SCRAPE"
+      ]
+    }
+  ],
+  "generated": {
+    "markdown": "openspec/contracts/gcode-paths/generated/filament-change.md",
+    "mermaid": "openspec/contracts/gcode-paths/generated/filament-change.mmd"
+  }
+}

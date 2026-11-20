@@ -63,13 +63,39 @@ describe('config services (Fluidd CONFIG_SERVICE_MAP)', () => {
 })
 
 describe('columns', () => {
-  it('uses Fluidd’s saved headers only when they cover every column', () => {
-    const cols = columnsFor('config')
-    expect(mergeColumns(cols, [{ value: 'size', visible: false }])).toBe(cols)
-    const merged = mergeColumns(cols, [{ value: 'size', visible: false }, { value: 'modified' }])
-    expect(merged.map((c) => [c.value, c.visible])).toEqual([
+  const shown = (cols: { value: string; visible: boolean }[]) => cols.map((c) => [c.value, c.visible])
+
+  it('takes the order and visibility of saved headers that cover every column', () => {
+    const merged = mergeColumns(columnsFor('config'), [{ value: 'size', visible: false }, { value: 'modified' }])
+    expect(shown(merged)).toEqual([
       ['size', false],
       ['modified', true],
+    ])
+  })
+
+  it('hides and shows the columns Fluidd saved one at a time, leaving the rest as they were', () => {
+    // Fluidd saves only the column that was ticked or unticked.
+    expect(shown(mergeColumns(columnsFor('config'), [{ value: 'size', visible: false }]))).toEqual([
+      ['modified', true],
+      ['size', false],
+    ])
+    const defaults = columnsFor('gcodes')
+    const merged = mergeColumns(defaults, [
+      { value: 'size', visible: false },
+      { value: 'slicer_version', visible: true },
+    ])
+    expect(merged.filter((c, i) => c.visible !== defaults[i].visible).map((c) => [c.value, c.visible])).toEqual([
+      ['slicer_version', true],
+      ['size', false],
+    ])
+    expect(merged.map((c) => c.value)).toEqual(defaults.map((c) => c.value))
+  })
+
+  it('keeps every column when a saved list of the right length names one the table lacks', () => {
+    const merged = mergeColumns(columnsFor('config'), [{ value: 'size', visible: false }, { value: 'gone', visible: true }])
+    expect(shown(merged)).toEqual([
+      ['modified', true],
+      ['size', false],
     ])
   })
 })

@@ -13,11 +13,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from installer.tests.integration.test_macro_call_graph import (  # noqa: E402
+from scripts.klipper_macro_source import (  # noqa: E402
     MacroDefinition,
     iter_static_commands,
+    macro_call_graph_errors,
     manifest_deleted_sections,
     parse_macro_definitions,
+    parse_section_definitions,
 )
 
 CONTRACT_ROOT = REPO_ROOT / "openspec" / "contracts" / "gcode-paths"
@@ -56,7 +58,8 @@ class ContractReport:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate sparse G-code path contracts and generated path maps."
+        description="Validate sparse G-code path contracts and generated path maps, and that no installed macro "
+                    "calls itself through other macros."
     )
     parser.add_argument(
         "--write",
@@ -79,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     if not errors:
         for report in reports:
             errors.extend(write_or_check_generated(report, write=args.write))
+
+    errors.extend(macro_call_graph_errors())
 
     if errors:
         for error in errors:
@@ -127,8 +132,11 @@ def load_and_validate_contract(contract_path: Path) -> ContractReport:
         validate_entrypoint(contract_path, entrypoint)
 
     branch_reports: list[BranchReport] = []
+    def sections(name: str) -> list[MacroDefinition]:
+        return parse_section_definitions(macro_files, name, excluded_sections=excluded_sections)
+
     for branch in require_list(contract, "branches", contract_path):
-        branch_reports.append(validate_branch(contract_path, branch, macros))
+        branch_reports.append(validate_branch(contract_path, branch, macros, sections))
 
     report = ContractReport(
         contract_path=contract_path,
@@ -190,14 +198,27 @@ def validate_branch(
     contract_path: Path,
     branch: dict[str, Any],
     macros: dict[str, MacroDefinition],
+    sections,
 ) -> BranchReport:
-    macro_name = require_str(branch, "source_macro", contract_path)
-    macro = macros.get(macro_name.upper())
-    if macro is None:
-        raise ContractError(
-            f"{relative(contract_path)} branch {branch.get('name', '<unnamed>')}: "
-            f"missing source_macro {macro_name}"
-        )
+    """A branch reads a gcode_macro (source_macro) or another section that runs G-code, such as homing_override
+    (source_section)."""
+    section_name = branch.get("source_section")
+    if section_name is not None:
+        found = sections(section_name) if isinstance(section_name, str) else []
+        if len(found) != 1:
+            raise ContractError(
+                f"{relative(contract_path)} branch {branch.get('name', '<unnamed>')}: "
+                f"source_section {section_name} is defined {len(found)} times in the contract's macro_files"
+            )
+        macro = found[0]
+    else:
+        macro_name = require_str(branch, "source_macro", contract_path)
+        macro = macros.get(macro_name.upper())
+        if macro is None:
+            raise ContractError(
+                f"{relative(contract_path)} branch {branch.get('name', '<unnamed>')}: "
+                f"missing source_macro {macro_name}"
+            )
     line_slice = extract_branch_slice(contract_path, branch, macro)
     label = f"{relative(contract_path)} branch {branch.get('name', '<unnamed>')}"
     assert_order(label, line_slice.text, branch.get("must_include_order", []))

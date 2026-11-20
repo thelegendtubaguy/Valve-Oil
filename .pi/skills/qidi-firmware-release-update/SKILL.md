@@ -161,7 +161,7 @@ Add focused tests for:
 Useful files:
 
 ```text
-installer/tests/integration/test_install_flow.py
+installer/tests/lifecycle/test_source_patch_lifecycle_matrix.py
 scripts/smoke_test_installer_bundle.py
 installer/tests/fixtures/runtime/base/
 ```

@@ -100,16 +100,26 @@ class BoxFeedTest:
         self.timer = self.reactor.register_timer(self._cycle_timer)
         self.printer.register_event_handler("klippy:shutdown",
                                             self._handle_shutdown)
-        self.gcode.register_command(
+        self._register(
             "VO_BOX_FEED_CHECK", self.cmd_CHECK,
             desc="Report Box feeder test preconditions without motion")
-        self.gcode.register_command(
+        self._register(
             "VO_BOX_FEED_TEST", self.cmd_TEST,
             desc="Cycle a Box slot between park and the toolhead sensor")
-        self.gcode.register_command(
+        self._register(
             "VO_BOX_FEED_STOP", self.cmd_STOP,
             desc="Stop the Box feeder test after the current cycle")
-        self.gcode.register_command("_VO_BOX_FEED_CYCLE", self.cmd_CYCLE)
+        self._register("_VO_BOX_FEED_CYCLE", self.cmd_CYCLE)
+
+    def _register(self, name, handler, desc=None):
+        # Klipper shuts down on any exception from a G-code command other
+        # than its command error, so the test's own errors are raised as one.
+        def run(gcmd):
+            try:
+                handler(gcmd)
+            except FeedTestError as e:
+                raise gcmd.error(str(e))
+        self.gcode.register_command(name, run, desc=desc)
 
     # Object access
     def _slot(self, slot):
@@ -620,16 +630,21 @@ class BoxFeedTest:
             gcmd.respond_info("No Box feeder test is running")
             return
         self.session["stop"] = True
+        # A cycle holds the G-code lock while it runs, so this command runs
+        # between cycles. The timer runs now and ends the session instead of
+        # starting another cycle once the pause is over.
+        self.reactor.update_timer(self.timer, self.reactor.NOW)
         gcmd.respond_info("Box feeder test will stop after the current cycle")
 
     def cmd_CYCLE(self, gcmd):
         session = self.session
         if session is None:
             raise gcmd.error("No Box feeder test is running")
-        try:
-            self._run_cycle(gcmd, session)
-        except FeedTestError as e:
-            raise gcmd.error(str(e))
+        # Checked here, with the G-code lock held: a stop can arrive while the
+        # timer waits for the lock to run this cycle.
+        if session["stop"]:
+            return
+        self._run_cycle(gcmd, session)
 
 
 def load_config(config):
