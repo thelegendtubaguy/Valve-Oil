@@ -47,21 +47,48 @@ G92 E0
 ; Draw a fat front prime line to consume high-temp ooze from the final heat-up.
 G1 Z0.5 F900
 G1 Z{initial_layer_print_height} F1200
-G1 E6 F300
+; Load the nozzle no faster than the filament's max volumetric speed.
+{if filament_max_volumetric_speed[initial_tool] > 0}
+G1 F{min(300, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60)}
+{else}
+G1 F300
+{endif}
+G1 E6
 M106 S200
+; Draw the line (0.5 mm of filament per mm) no faster than the filament's max volumetric speed.
+{if filament_max_volumetric_speed[initial_tool] > 0}
+G1 F{min(1200, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*2)}
+{else}
+G1 F1200
+{endif}
 {if first_layer_print_min[1] - 10 >= print_bed_min[1]}
 {if first_layer_print_min[0]+45 <= print_bed_max[0]}
-G1 X{first_layer_print_min[0]+5} E20 F1200
+G1 X{first_layer_print_min[0]+5} E20
+; Taper the last 5 mm (0.16 mm of filament per mm) no faster than the filament's max volumetric speed.
+{if filament_max_volumetric_speed[initial_tool] > 0}
+G1 F{min(6000, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*6.25)}
+{else}
 G1 F6000
+{endif}
 G1 X{first_layer_print_min[0]} E0.8
 {else}
-G1 X140 E20 F1200
+G1 X140 E20
+; Taper the last 5 mm (0.16 mm of filament per mm) no faster than the filament's max volumetric speed.
+{if filament_max_volumetric_speed[initial_tool] > 0}
+G1 F{min(6000, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*6.25)}
+{else}
 G1 F6000
+{endif}
 G1 X135 E0.8
 {endif}
 {else}
-G1 X140 E20 F1200
+G1 X140 E20
+; Taper the last 5 mm (0.16 mm of filament per mm) no faster than the filament's max volumetric speed.
+{if filament_max_volumetric_speed[initial_tool] > 0}
+G1 F{min(6000, filament_max_volumetric_speed[initial_tool]/(filament_diameter[initial_tool]*filament_diameter[initial_tool]*3.14159/4)*60*6.25)}
+{else}
 G1 F6000
+{endif}
 G1 X135 E0.8
 {endif}
 ; Lift off after the tapered finish.
