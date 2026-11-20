@@ -26,7 +26,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from . import install_flow, install_screen, progress, safety
+from . import errors, install_flow, install_screen, progress, safety
 from .progress_screen import ProgressScreen, clock_text as _clock
 from .board_firmware import BoardAdmissionError
 from .errors import ActivePrintError, InstallerError, OperationCancelled, PrinterStateError, RollbackFailedError
@@ -366,11 +366,31 @@ class Session:
         from . import boot_path
         from .sudo import run_sudo
 
-        if not boot_path.boot_files_allow_reboot(self.paths, reporter=self.reporter, environ=self.env):
-            return
+        while not boot_path.boot_files_allow_reboot(self.paths, reporter=self.reporter, environ=self.env):
+            if self._not_restarted(boot_path.describe(boot_path.reboot_problems(self.paths, self.env))) == QUIT:
+                return
         password = getattr(self.hold, "password", None) or self.env.get("TLTG_OPTIMIZED_SUDO_PASSWORD") or ""
         run_sudo(["systemctl", "reboot"], run=self.run, password=password, timeout=60)
         self.sleep(60)  # the reboot ends this process
+
+    def _not_restarted(self, detail: str) -> str:
+        """The printer would stop at its boot logo if it restarted: say so instead of restarting. Try again checks again,
+        as after the files were repaired over SSH; Quit gives the screen back to QIDI's app, still not restarted."""
+        from . import boot_path
+
+        self.copy_log_to_drive()
+        while True:
+            tapped = self._ask_screen(
+                "failed", ("quit", "view_log", "again"), title="The printer wasn't restarted",
+                text=["Valve Oil is installed, but the printer would stop at its boot logo if it restarted now:",
+                      ("bad", detail.rstrip(".") + "."),
+                      "Don't turn the printer off. Run **~/valve-oil/install.sh** over SSH, which repairs this, then "
+                      f"tap Try again. Or follow **{boot_path.RECOVERY_DOC_URL.split('://', 1)[-1]}**."],
+                log_name=None)
+            if tapped == "view_log":
+                self._show_log()
+                continue
+            return QUIT if tapped == "quit" else "again"
 
     def copy_log_to_drive(self) -> Path | None:
         """Copy the run log to the drive's root and flush it; the path on the drive, or None."""
@@ -400,12 +420,15 @@ class Session:
         step = (f"Step {snapshot.index}, {snapshot.step}, did not finish"
                 if snapshot is not None and snapshot.step else "The install did not finish")
         message = getattr(error, "message", None) or str(error or "the installer stopped")
+        # runner._execute_install says on the error what the install left; before it starts, nothing was written.
+        outcome = getattr(error, "install_outcome", None)
         if isinstance(error, RollbackFailedError):
             state = "Some changes could not be put back. Don't turn the printer off; the log says what to do."
-        elif snapshot is None or snapshot.step in (None, progress.CHECK):
-            state = "Nothing was changed."
-        elif snapshot.step in (progress.BACKUP, progress.CONFIGURATION, progress.SYSTEM_CHANGES):
+        elif outcome == errors.OUTCOME_PUT_BACK:
             state = "Everything was put back the way it was. Your configuration backup is kept."
+        elif outcome == errors.OUTCOME_UNCHANGED or (
+                outcome is None and (snapshot is None or snapshot.step in (None, progress.CHECK, progress.BACKUP))):
+            state = "Nothing was changed."
         else:
             state = "Valve Oil is installed; this step runs again when you try again."
         elapsed = _clock(self.clock() - self.started_at) if self.started_at is not None else None

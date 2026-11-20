@@ -441,6 +441,11 @@ def check_usb_printer_zip(printer, zip_name: str, data: bytes, bundle_sha256: st
         folder = usb.HANDOFF_FOLDER
         expected = {"firmware_manifest.json", deb_file, f"{folder}/printer", f"{folder}/zip", f"{folder}/launch.sh",
                     f"{folder}/{ARCHIVE_NAME}.sha256", f"{folder}/update_screen.py", f"{folder}/starting.png"}
+        # The starting screen launch.sh draws from QIDI's app restart until the installer draws its own.
+        if archive.read(f"{folder}/update_screen.py") != usb.UPDATE_SCREEN.read_bytes():
+            raise SystemExit(f"{zip_name} update_screen.py is not installer/runtime/update_screen.py")
+        if not archive.read(f"{folder}/starting.png").startswith(b"\x89PNG\r\n\x1a\n"):
+            raise SystemExit(f"{zip_name} starting.png is not a PNG")
         for restore_set in printer.restore_sets:
             expected |= {f"{folder}/{restore_set.name}/{name}" for name, _ in restore_set.files}
             expected.add(f"{folder}/{restore_set.name}/SHA256SUMS")
@@ -460,9 +465,6 @@ def check_usb_printer_zip(printer, zip_name: str, data: bytes, bundle_sha256: st
             raise SystemExit(f"{zip_name} does not pin the bundle on the drive")
         if archive.read(f"{folder}/launch.sh") != (REPO_ROOT / "installer/usb/launch.sh").read_bytes():
             raise SystemExit(f"{zip_name} does not carry installer/usb/launch.sh")
-        if archive.read(f"{folder}/update_screen.py") != usb.UPDATE_SCREEN.read_bytes() or \
-                not archive.read(f"{folder}/starting.png").startswith(b"\x89PNG\r\n\x1a\n"):
-            raise SystemExit(f"{zip_name} does not carry the starting screen launch.sh draws")
         members = usb.read_deb(archive.read(deb_file))
     if list(members) != ["debian-binary", "control.tar.gz", "data.tar.gz"] or members["debian-binary"] != b"2.0\n":
         raise SystemExit(f"{deb_file} is not a Debian package: {list(members)}")
