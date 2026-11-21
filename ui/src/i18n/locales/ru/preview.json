@@ -93,7 +93,7 @@
     "unsupported_compression": "G-code в 3MF использует неподдерживаемое сжатие zip: {{method}}",
     "no_gcode": "В архиве 3MF нет G-code",
     "download_failed": "Не удалось скачать G-code ({{status}} {{statusText}})",
-    "eof_in_escape": "Неожиданный конец строки в escape-последовательности",
-    "eof_in_quote": "Неожиданный конец строки внутри кавычек"
+    "eof_in_escape": "Неожиданный конец файла в escape-последовательности",
+    "eof_in_quote": "Неожиданный конец файла внутри кавычек"
   }
 }
