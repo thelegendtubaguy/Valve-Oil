@@ -111,7 +111,7 @@ Slots are numbered from 0, the same as `LOAD_FILAMENT_CONTROL SLOT=`, so the car
 ### Choosing values
 
 - **`FAST_LENGTH`** is used exactly as set. On a Max 4, filament reached the toolhead sensor 1001–1016 mm into the push, so QIDI's 930 mm leaves about 70–85 mm for the slow approach. On a Plus 5, it reached the sensor about 845 mm into the push. The fast push stops at the toolhead sensor, so set it past the sensor and filament reaches the toolhead at full speed.
-- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If unloads fail with `QDE_004_008` (`Extruder unloading failure.`) and nothing is caught between the Box and the toolhead, set it back to QIDI's with `VO_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
+- **`UNLOAD_EXTRUDER_LENGTH`:** an unload starts with the extruder pulling the cut filament back 30 mm, then this much more at 10 mm/s, before the Box takes over. The sensor sits above the extruder gears, so once it clears, the filament is out of the gears. How far that takes varies between printers. On one Max 4 the filament left the sensor 34 mm into the unload, about 4 mm into this second pull; on another, it once left only as a 50 mm pull ended. The 55 mm default keeps some margin over that and saves about 6.5 seconds per unload over QIDI's 120 mm. If the sensor hasn't cleared by then, the extruder pulls up to 20 mm more before the unload [stops](#filament-caught-at-the-toolhead). If unloads stop that way and the filament comes out freely by hand, raise this setting, or set it back to QIDI's with `VO_BOX_MOTION UNLOAD_EXTRUDER_LENGTH=vendor`.
 
 If a setting saved with `SAVE_VARIABLE` is invalid, the affected load or unload uses QIDI's motion and the console says why. If a QIDI firmware update changes how the Box moves filament in a way these settings don't recognize, the Box keeps QIDI's motion and the console says so.
 
@@ -266,6 +266,21 @@ QIDI's Box moves, such as the park over the waste chute, assume absolute positio
 ### Failed tool changes during a print
 
 When a step of a filament change during a print fails, QIDI pauses the print, and **Resume** finishes the change from wherever the filament stopped, then carries on printing. A step that ended with an error instead, such as `Error during homing b_endstop: Communication timeout during homing` while unloading, cancelled the print. It now pauses the print the same way, and the console says which step failed and why, for example `T1 failed at BOX_UNLOAD: Error during homing b_endstop: Communication timeout during homing. The print is paused; RESUME tries the tool change again.` Only a Klipper shutdown, such as a lost Box connection, still ends the print.
+
+### Filament caught at the toolhead
+
+An unload pulls the filament back with the extruder until the toolhead filament sensor is clear, and only then does the Box pull it back. While the sensor still detects filament, QIDI pulls 10 mm more at a time, up to seven times, then moves or shakes the toolhead and starts over, three times in all, before `Code:QDE_004_008; Message:Extruder unloading failure.` That's more than 400 mm and about a minute and a half of pulling on filament that isn't moving, which grinds it.
+
+The unload now stops once the extruder has pulled 20 mm past the pull-back without the sensor clearing, 105 mm in all with the Max 4's default pull-back, and the console says what's wrong, for example `Box unload of 1D stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, ...`. Something at the toolhead is holding the filament, such as a cutter blade that hasn't sprung back or a swollen cut end. Free it there, then:
+
+- During a print, **Resume** tries the tool change again.
+- Otherwise, **Retry** (`FLOW_RETRY`) repeats the unload, or **Stop** (`FLOW_STOP`) ends it.
+
+`klippy.log` gets a line for every unload from the toolhead, with both sensors before and after, how far the extruder pulled, and where the toolhead sensor cleared, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`.
+
+### A slot that runs out during a tool change
+
+When the loaded slot runs out of filament and the print then changes tool, QIDI purges what's left at the waste chute and is meant to switch the print to another slot with the same filament. A bug in QIDI's Box code stops it there with `'BoxExtruderStepper' object has no attribute 'loaded_stepper'`. The print is paused, and the console now says which slot ran out, for example `T3 paused the print: 1C ran out of filament. ...`. **Resume** loads the new tool's slot and carries on. Put filament in the slot that ran out before the print needs it again, or the print pauses there.
 
 ### Filament stopped between the hub and the toolhead
 

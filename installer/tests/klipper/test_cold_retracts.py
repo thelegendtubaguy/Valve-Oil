@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sys
 import threading
 import types
@@ -304,6 +305,9 @@ class Dispatcher:
     def respond_info(self, message):
         self.messages.append(message)
 
+    def respond_raw(self, message):
+        self.messages.append(message)
+
 
 class Task:
     def __init__(self, steps):
@@ -328,6 +332,8 @@ class Manager:
         self.unload_failures = unload_failures
         self.unload_errors = unload_errors
         self.wipe_errors = 0
+        # The Box slot whose unload from the toolhead BOX_UNLOAD runs, if any.
+        self.stepper = None
         run = gcode.run_script_from_command
         self.method_map = {
             "BOX_HEAT": lambda: run("MOVE_TO_TRASH\nM109 S%s" % (self.current_flow_temp,)) or True,
@@ -354,6 +360,8 @@ class Manager:
         run = self.gcode.run_script_from_command
         run("MOVE_TO_TRASH\n")
         run("M109 S%s" % (self.current_flow_temp if self.current_flow_temp is not None else 0,))
+        if self.stepper is not None:
+            return self.stepper.extruder_unload_single_func()
         for line in ("M83", "G1 E-30 F300", "M400", "G1 E-120 F600", "M400"):
             run(line)
         if self.unload_errors:
@@ -503,6 +511,141 @@ class ColdBoxFlowTest(unittest.TestCase):
                 with self.assertRaises(CommandError):
                     self.unload(gcode, COLD=1)
                 self.assertEqual((gcode.sent, printer.moves), ([], []))
+
+
+class BoxStepper:
+    """QIDI's Box slot, as the harness ran its unload from the toolhead on the
+    Max 4, Plus 5, and Smart 5: after the pull-back, 10 mm pulls while the
+    toolhead sensor detects filament, up to seven, and three attempts in all
+    before QDE_004_008. The Box pulls only once the sensor is clear."""
+
+    def __init__(self, printer, gcode, clears_after, pull="G1 E-10 F300"):
+        self.printer = printer
+        self.gcode = gcode
+        self.clears_after = clears_after
+        self.pull = pull
+        self.box_pulls = 0
+        self.start = None
+        self.runout_helper = self
+
+    @property
+    def filament_present(self):
+        pulled = -sum(self.printer.moves[self.start:]) if self.start is not None else 0.
+        return int(self.clears_after is None or pulled < self.clears_after)
+
+    def extruder_unload_single_func(self):
+        self.start = len(self.printer.moves)
+        sensor = self.printer.lookup_object(box_flow_recovery.TOOLHEAD_SENSOR)
+        for attempt in range(3):
+            if attempt:
+                self.gcode.run_script_from_command("G1 Y380 F9000\nG1 X30 F9000\nG1 X30 Y30 F15000\nM400")
+            for line in ("M83\n", "G1 E-30 F300\n", "M400\n", "G1 E-55 F600\n", "M400\n"):
+                self.gcode.run_script_from_command(line)
+            for _ in range(7):
+                if not sensor.runout_helper.filament_present:
+                    break
+                for line in ("M83\n", self.pull + "\n", "M400\n"):
+                    self.gcode.run_script_from_command(line)
+            if not sensor.runout_helper.filament_present:
+                self.box_pulls += 1
+                self.printer.objects["box_extras"].b_endstop_state = 1
+                return True
+        self.gcode.run_script_from_command("MOVE_TO_TRASH\nM400")
+        self.gcode.respond_info("Code:QDE_004_008; Message:Extruder unloading failure.")
+        return False
+
+
+class ToolheadUnloadTest(unittest.TestCase):
+    """Filament caught at the toolhead stops a Box unload 20 mm past its
+    pull-back, instead of three rounds of pull-backs, and a tool change
+    that QIDI's auto-reload bug stops says which slot ran out."""
+
+    def setUp(self) -> None:
+        logging.disable(logging.CRITICAL)
+        self.addCleanup(logging.disable, logging.NOTSET)
+
+    def setup(self, clears_after, print_state="standby", **stepper):
+        printer = Printer(260., print_state=print_state)
+        gcode = printer.objects["gcode"] = Dispatcher(printer)
+        controller = Controller(gcode, 3)
+        manager = controller.task_queue_manager
+        stepper = manager.stepper = BoxStepper(printer, gcode, clears_after, **stepper)
+        printer.objects["multi_color_controller"] = controller
+        printer.objects[box_flow_recovery.TOOLHEAD_SENSOR] = stepper
+        printer.objects["box_extras"] = types.SimpleNamespace(b_endstop_state=0)
+        printer.lookup_objects = lambda prefix: [("box_stepper slot2", stepper)]
+        printer.register_event_handler = lambda event, handler: None
+        gcode.handlers["PAUSE"] = lambda gcmd: gcode.sent.append("PAUSED")
+
+        def tool_change(gcmd):
+            # T_MANAGER runs a print's tool change steps itself.
+            manager.current_task = Task(["BOX_CUT", "BOX_UNLOAD", "BOX_LOAD"])
+            manager.method_map["BOX_LOAD"] = lambda: True
+            manager._run()
+        gcode.handlers["T_MANAGER"] = tool_change
+        config = types.SimpleNamespace(get_printer=lambda: printer)
+        box_flow_recovery.BoxFlowRecovery(config)._handle_ready()
+        return printer, gcode, manager, stepper
+
+    def unload(self, gcode):
+        gcode.handlers["UNLOAD_FILAMENT_CONTROL"](FilamentCommand(SLOT=2))
+
+    def test_filament_that_clears_within_two_pulls_unloads_as_qidis_does(self) -> None:
+        for clears_after, pulls in ((40., []), (95., [-10.]), (105., [-10., -10.])):
+            with self.subTest(clears_after=clears_after):
+                printer, gcode, manager, stepper = self.setup(clears_after)
+                self.unload(gcode)
+                self.assertEqual(printer.moves, [-30., -55.] + pulls)
+                self.assertEqual(stepper.box_pulls, 1)
+                self.assertIsNone(manager.current_task)
+
+    def test_caught_filament_stops_the_idle_unload_before_the_box_pulls(self) -> None:
+        printer, gcode, manager, stepper = self.setup(None)
+        with self.assertRaises(CommandError) as caught:
+            self.unload(gcode)
+        self.assertEqual(printer.moves, [-30., -55., -10., -10.])
+        self.assertEqual(stepper.box_pulls, 0)
+        message = str(caught.exception)
+        self.assertIn("1C", message)
+        self.assertIn("105 mm", message)
+        self.assertIn("FLOW_RETRY", message)
+        self.assertTrue(manager.current_task.is_paused)
+        self.assertEqual(manager.current_task.current_step, "BOX_UNLOAD")
+        # Freed by hand, the retry unloads it.
+        stepper.clears_after = 0.
+        gcode.handlers["FLOW_RETRY"](FilamentCommand())
+        self.assertEqual(stepper.box_pulls, 1)
+        self.assertIsNone(manager.current_task)
+
+    def test_caught_filament_in_a_tool_change_pauses_the_print(self) -> None:
+        printer, gcode, manager, stepper = self.setup(None, print_state="printing")
+        gcode.handlers["T_MANAGER"](Params("T_MANAGER T=3"))
+        self.assertEqual(printer.moves, [-30., -55., -10., -10.])
+        self.assertEqual(stepper.box_pulls, 0)
+        self.assertIn("PAUSED", gcode.sent)
+        self.assertTrue(manager.current_task.is_paused)
+        self.assertTrue(any("1C" in m and "RESUME" in m and "FLOW_RETRY" not in m for m in gcode.messages))
+
+    def test_box_code_with_other_pulls_stops_after_the_same_20_mm(self) -> None:
+        printer, gcode, manager, stepper = self.setup(None, pull="G1 E-5 F600")
+        with self.assertRaises(CommandError):
+            self.unload(gcode)
+        self.assertEqual(printer.moves, [-30., -55., -5., -5., -5., -5.])
+        self.assertEqual(stepper.box_pulls, 0)
+        self.assertTrue(manager.current_task.is_paused)
+
+    def test_tool_change_after_a_slot_ran_out_names_the_slot_and_pauses_the_print(self) -> None:
+        printer, gcode, manager, stepper = self.setup(None, print_state="printing")
+        printer.objects["save_variables"] = types.SimpleNamespace(allVariables={"last_load_slot": "slot2"})
+
+        def tool_change(gcmd):
+            raise AttributeError("'BoxExtruderStepper' object has no attribute 'loaded_stepper'")
+        recovery = box_flow_recovery.BoxFlowRecovery(types.SimpleNamespace(get_printer=lambda: printer))
+        recovery.originals["T_MANAGER"] = tool_change
+        recovery.manager = manager
+        recovery.cmd_T_MANAGER(Params("T_MANAGER T=3"))
+        self.assertIn("PAUSED", gcode.sent)
+        self.assertTrue(any("1C ran out" in m and "RESUME" in m for m in gcode.messages))
 
 
 class ExternalLoadTest(unittest.TestCase):

@@ -97,7 +97,7 @@ Keys read by a vendor slot 2 load and unload, in call order, with the defaults p
 | Load pre-stage | `extruder_load_length_1` `3000`, `_speed` `85`, `_accel` `50` |
 | Load three-stage home | `multi_extruder_load_length_1..3` `550`/`380`/`240`, `multi_extruder_load_speed_1..3` `85`/`65`/`10`, `multi_extruder_load_accel` `100` |
 | Load hub sync | `hub_load_length` `18`, `hub_load_v` `40`, `hub_load_a` `40` |
-| Unload extruder retract | `exl_1` `30` at `exl_1_speed` `300`, `exl_2` `120` at `exl_2_speed` `600`; runtime-confirmed as `G1 E-30 F300` then `G1 E-120 F600`, each followed by `M400`, with no toolhead-switch stop. On slot 2 (2026-10-27), polling `motion_report` and the switch showed it clearing 34 mm into the retract, about 4 mm into the second move |
+| Unload extruder retract | `exl_1` `30` at `exl_1_speed` `300`, `exl_2` `120` at `exl_2_speed` `600`; runtime-confirmed as `G1 E-30 F300` then `G1 E-120 F600`, each followed by `M400`, with no toolhead-switch stop; the sensor-checked pulls that follow are below. On slot 2 (2026-10-27), polling `motion_report` and the switch showed it clearing 34 mm into the retract, about 4 mm into the second move |
 | Unload pre-stage | `extruder_unload_length_1` `-1500`, `_speed` `65`, `_accel` `50` |
 | Unload two-stage home | `multi_extruder_unload_length_1..2` `-350`/`-1150`, `multi_extruder_unload_speed_1..2` `65`/`85`, `multi_extruder_unload_accel` `100` |
 | Unload after home | `extruder_unload_length_2` `-260`, `_speed` `80`, `_accel` `50` |
@@ -127,6 +127,9 @@ The captures are `klippy.capture`, `klippy.speed200`, `klippy.accel150`, and `kl
 | Other load and unload branches | the same outer functions, through `do_home` and `do_move` |
 | Slot unload and eject | `slot_unload_single_func` → `do_home` |
 | Automatic slot load at insertion | `slot_load` → `do_home`, `do_move` |
+
+**Harness-recovered (2026-11-20, `extruder_unload_single_func` of the Max 4 `.07.01`, Plus 5 `01.01.02.01`, and Smart 5 `01.01.02.01` `box_stepper.so` builds, run on fake objects under Python 3.9 arm64):** after the two pull-backs the function reads the toolhead `filament_switch_sensor`, and while it detects filament sends `M83`, `G1 E-10 F300`, `M400`, up to seven times, through the slot's own `gcode` attribute. The two-stage Box home starts only once the sensor is clear. With it still detecting filament, the function moves the toolhead (`G1 Y380 F9000`, `G1 X30 F9000`, `G1 X30 Y30 F15000` on the Max 4) and repeats the pull-backs and 10 mm pulls, then runs `shake_for_unload_toolhead` and repeats them a third time, then sends `MOVE_TO_TRASH`; it never calls the Box home. On the Plus 5 the first attempt pulls back `exl_2` `100` at `800` and the later ones `120` at `600`. An exception raised from the slot's `gcode` during the 10 mm pulls leaves the function at once, with no further attempt. The `01.01.06.03` and `01.01.06.04` builds have no such function.
+- **Runtime-confirmed (operator `klippy.log`, 2026-11-20, package `26.11.06.1`, one USB Box):** two unloads, of 1B while idle and 1D during a print, logged the `exl_2` lookup three times about 31–37 s apart, then `Code:QDE_004_008; Message:Extruder unloading failure.` with `b_endstop_state = 1` and `e_endstop_state = 1`. That timing matches three attempts of 30 + 55 mm pull-back and seven 10 mm pulls each with the toolhead sensor never clearing; the operator reported clicking from the Box. What held the filament was not recorded.
 
 **Runtime-confirmed (2026-10-26, vendor `box_stepper.so`, slot 2):** these methods are looked up by name at call time. Python wrappers set on each `box_stepper slotN` instance and on the `box_extras` instance were called by vendor loads and unloads. Every slot holds the same `box_extras` object.
 

@@ -67,6 +67,20 @@
 # error handling cancelled the print. It now pauses the flow and the print the
 # same way, unless Klipper has shut down.
 #
+# Filament caught at the toolhead: QIDI's unload from the toolhead
+# (box_stepper's extruder_unload_single_func) pulls the cut filament back
+# 30 mm and then exl_2, and only starts the Box's pull once the toolhead
+# sensor is clear. While the sensor still detects filament it pulls 10 mm
+# more at a time, up to seven times, then moves or shakes the toolhead and
+# starts again, three times in all, before QDE_004_008: about 450 mm and a
+# minute and a half of pulling on filament that isn't moving. On any Box
+# code, the first two extruder pulls of an unload are its pull-back; once
+# pulls after them add up to EXTRA_PULL_MM with the sensor still detecting
+# filament, the next pull is refused and the unload stops with an error that
+# says what's wrong. Every unload from the toolhead logs both sensors before
+# and after, how far the extruder pulled, and where the toolhead sensor
+# cleared.
+#
 # External spool loads: QIDI's external-spool load flow ends with EXT_WIPE,
 # whose ExternalAdapter.wipe runs its purge and chute wipe and then returns
 # False whatever happened, in every build listed below, while a G-code error
@@ -78,6 +92,7 @@
 import contextlib
 import hashlib
 import logging
+import re
 import sys
 
 import greenlet
@@ -103,6 +118,13 @@ EXTERNAL_WIPE_FALSE_BUILDS = frozenset((
     # Smart 5 01.01.02.01
     "caee552ffb7734e7ef3fd3b861ef5bad6f22e2bdacdf34a586de21fdaf316370",
 ))
+# The pull-back of an unload from the toolhead is its first two extruder
+# pulls, 30 mm and then exl_2, in every traced build. Pulls after them may add up to
+# EXTRA_PULL_MM while the toolhead sensor detects filament; QIDI's are 10 mm.
+PULLBACK_MOVES = 2
+EXTRA_PULL_MM = 20.
+TOOLHEAD_SENSOR = "filament_switch_sensor filament_switch_sensor"
+RETRACT_LINE = re.compile(r"G1 E-(\d+(?:\.\d+)?) F\d+(?:\.\d+)?$")
 
 
 def _slot_number(slot):
@@ -154,6 +176,70 @@ class _StopScripts:
         return getattr(self._gcode, name)
 
 
+def _mm(value):
+    return "%d" % value if value == int(value) else "%.1f" % value
+
+
+class _UnloadWatch:
+    """A Box slot's G-code object for one unload from the toolhead: it adds
+    up the extruder's pulls, notes where the toolhead sensor cleared, and
+    raises stop(watch) instead of a pull once the pulls after the pull-back
+    reach EXTRA_PULL_MM with the sensor still detecting filament."""
+
+    def __init__(self, gcode, toolhead_filament, stop):
+        self._gcode = gcode
+        self._toolhead_filament = toolhead_filament
+        self._stop = stop
+        self.moves = 0
+        self.pullback = 0.
+        self.extra = 0.
+        self.cleared_at = None
+
+    @property
+    def pulled(self):
+        return self.pullback + self.extra
+
+    def _lines(self, script):
+        if not isinstance(script, str):
+            return []
+        return [line.strip() for line in script.split("\n")]
+
+    def _before(self, script):
+        if self.moves < PULLBACK_MOVES or self.extra < EXTRA_PULL_MM:
+            return
+        if any(RETRACT_LINE.match(line) for line in self._lines(script)) \
+                and self._toolhead_filament() is True:
+            raise self._stop(self)
+
+    def _after(self, script):
+        for line in self._lines(script):
+            retract = RETRACT_LINE.match(line)
+            if retract:
+                if self.moves < PULLBACK_MOVES:
+                    self.pullback += float(retract.group(1))
+                else:
+                    self.extra += float(retract.group(1))
+                self.moves += 1
+            elif line == "M400" and self.cleared_at is None \
+                    and self._toolhead_filament() is False:
+                self.cleared_at = self.pulled
+
+    def run_script_from_command(self, script):
+        self._before(script)
+        result = self._gcode.run_script_from_command(script)
+        self._after(script)
+        return result
+
+    def run_script(self, script):
+        self._before(script)
+        result = self._gcode.run_script(script)
+        self._after(script)
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._gcode, name)
+
+
 class BoxFlowRecovery:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -170,10 +256,17 @@ class BoxFlowRecovery:
         self._cold_task = None
         # QIDI's external wipe was checked, and wrapped if its build needs it.
         self._external_wipe_fixed = False
+        # T_MANAGER is running a print's tool change.
+        self._tool_change = False
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     # ----------------------------------------------------------------- setup
     def _handle_ready(self):
+        try:
+            self._watch_toolhead_unloads()
+        except Exception:
+            logging.exception("tltg_box_flow_recovery: watching unloads from "
+                              "the toolhead failed")
         controller = self.printer.lookup_object("multi_color_controller", None)
         manager = getattr(controller, "task_queue_manager", None)
         if not callable(getattr(manager, "stop", None)) \
@@ -298,6 +391,102 @@ class BoxFlowRecovery:
                         task, "is_paused", False) else None
         return run
 
+    # ------------------------------------------- unload from the toolhead
+    def _watch_toolhead_unloads(self):
+        lookup_objects = getattr(self.printer, "lookup_objects", None)
+        if not callable(lookup_objects):
+            return
+        watched = []
+        for name, stepper in lookup_objects("box_stepper"):
+            original = getattr(stepper, "extruder_unload_single_func", None)
+            if not callable(original) or not hasattr(stepper, "gcode"):
+                continue
+            slot = name.split()[-1]
+            stepper.extruder_unload_single_func = self._wrap_toolhead_unload(
+                slot, stepper, original)
+            watched.append(slot)
+        if watched:
+            logging.info("tltg_box_flow_recovery: watching unloads from the "
+                         "toolhead on %s", ", ".join(watched))
+
+    def _toolhead_filament(self):
+        """The toolhead sensor: True with filament, None if unknown."""
+        sensor = self.printer.lookup_object(TOOLHEAD_SENSOR, None)
+        # QIDI's runout helper starts at False but stores the sensor's 0 or 1
+        # once it changes.
+        present = getattr(getattr(sensor, "runout_helper", None),
+                          "filament_present", None)
+        return None if present is None else bool(present)
+
+    def _hub_filament(self):
+        """The Box hub sensor: True with filament, None if unknown."""
+        extras = self.printer.lookup_object("box_extras", None)
+        state = getattr(extras, "b_endstop_state", None)
+        return None if state is None else not state
+
+    def _wrap_toolhead_unload(self, slot, stepper, original):
+        def extruder_unload_single_func(*args, **kwargs):
+            real = stepper.gcode
+            if isinstance(real, _UnloadWatch):
+                return original(*args, **kwargs)
+            watch = _UnloadWatch(
+                real, self._toolhead_filament,
+                lambda watch: self._toolhead_stuck(slot, watch))
+            before = (self._toolhead_filament(), self._hub_filament())
+            stepper.gcode = watch
+            outcome = "raised"
+            try:
+                result = original(*args, **kwargs)
+                outcome = "returned %r" % (result,)
+                return result
+            except Exception as e:
+                outcome = "raised %s: %s" % (type(e).__name__, e)
+                raise
+            finally:
+                if stepper.gcode is watch:
+                    stepper.gcode = real
+                try:
+                    self._log_unload(slot, before, watch, outcome)
+                except Exception:
+                    logging.exception("tltg_box_flow_recovery: logging the "
+                                      "unload failed")
+        return extruder_unload_single_func
+
+    def _log_unload(self, slot, before, watch, outcome):
+        def state(value):
+            return {True: "filament", False: "clear"}.get(value, "unknown")
+        after = (self._toolhead_filament(), self._hub_filament())
+        cleared = "" if watch.cleared_at is None else \
+            ", cleared after %s mm" % (_mm(watch.cleared_at),)
+        logging.info(
+            "tltg_box_flow_recovery: %s unload from the toolhead: toolhead "
+            "sensor %s -> %s%s; hub sensor %s -> %s; extruder pulled back %s "
+            "mm, %s of them after its pull-back; %s",
+            slot_label(slot), state(before[0]), state(after[0]), cleared,
+            state(before[1]), state(after[1]), _mm(watch.pulled), _mm(watch.extra),
+            outcome)
+
+    def _toolhead_stuck(self, slot, watch):
+        message = (
+            "Box unload of %s stopped: the toolhead filament sensor still "
+            "detects filament after the extruder pulled it back %s mm, %s mm "
+            "more than its %s mm pull-back. Something at the toolhead is "
+            "holding the filament, such as a cutter blade that hasn't sprung "
+            "back or a swollen cut end, so the Box hasn't pulled it, and "
+            "QIDI's further pulls would only grind it. Free the filament at "
+            "the toolhead"
+            % (slot_label(slot), _mm(watch.pulled), _mm(watch.extra),
+               _mm(watch.pullback)))
+        # A print's tool change says how to resume after the message.
+        if not self._tool_change:
+            if self._task() is not None:
+                message += (", then FLOW_RETRY tries the unload again, or "
+                            "FLOW_STOP ends it.")
+            else:
+                message += ", then unload again."
+        logging.warning("tltg_box_flow_recovery: %s", message)
+        return self.printer.command_error(message)
+
     # ------------------------------------------------------------- cold flows
     def _cold_flow(self, flow_id):
         """Whether flow FLOW_ID can run cold; says why not."""
@@ -421,12 +610,15 @@ class BoxFlowRecovery:
     # ------------------------------------------------------------ tool change
     def cmd_T_MANAGER(self, gcmd):
         if self._print_state() in ("printing", "paused"):
+            self._tool_change = True
             try:
                 return self.originals["T_MANAGER"](gcmd)
             except Exception as e:
                 if not self._pause_print_after_error(gcmd, e):
                     raise
                 return None
+            finally:
+                self._tool_change = False
         message = ("T%s not run: QIDI's tool change runs only during a print. "
                    "To load a slot, use Load on the QIDI Box card or "
                    "LOAD_FILAMENT_CONTROL SLOT=<n>."
@@ -434,6 +626,26 @@ class BoxFlowRecovery:
         logging.info("tltg_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
+
+    def _ran_out_slot(self, error):
+        """The slot that ran out when QIDI's tool change hit its auto-reload
+        bug, or None for any other error.
+
+        When the loaded slot's inlet is empty and the toolhead sensor still
+        detects filament, QIDI's T_MANAGER (box_extras
+        filament_printing_manager_box1 on the Max 4 01.01.07.01 and the Plus 5
+        and Smart 5 01.01.02.01) purges the rest and then
+        calls loaded_stepper.loaded_stepper.switch_next_slot() on the slot
+        itself, which raises AttributeError before any flow step runs.
+        """
+        if not isinstance(error, AttributeError) \
+                or "'loaded_stepper'" not in str(error):
+            return None
+        save_vars = self.printer.lookup_object("save_variables", None)
+        variables = getattr(save_vars, "allVariables", None) or {}
+        slot = variables.get("last_load_slot")
+        return slot if _slot_number(slot) is not None \
+            and slot != EXTERNAL_SLOT else None
 
     def _pause_print_after_error(self, gcmd, error):
         """Pause the print after QIDI's print-time tool change raised, as
@@ -455,11 +667,25 @@ class BoxFlowRecovery:
             except Exception:
                 logging.exception("tltg_box_flow_recovery: pausing the tool "
                                   "change flow failed")
-        message = ("T%s failed%s: %s. The print is paused; RESUME tries the "
-                   "tool change again."
-                   % (gcmd.get("T", ""), " at %s" % (step,) if step else "",
-                      error))
-        logging.warning("tltg_box_flow_recovery: %s", message)
+        ran_out = self._ran_out_slot(error)
+        if ran_out is not None:
+            message = (
+                "T%s paused the print: %s ran out of filament. QIDI purged "
+                "what was left of it at the waste chute, then a bug in "
+                "QIDI's Box code stopped the tool change before it could "
+                "switch to another slot with the same filament. RESUME loads "
+                "T%s's slot and carries on printing. Put filament in %s "
+                "before the print needs it again, or the print pauses there."
+                % (gcmd.get("T", ""), slot_label(ran_out), gcmd.get("T", ""),
+                   slot_label(ran_out)))
+        else:
+            message = ("T%s failed%s: %s. The print is paused; RESUME tries "
+                       "the tool change again."
+                       % (gcmd.get("T", ""),
+                          " at %s" % (step,) if step else "",
+                          str(error).rstrip(".")))
+        logging.warning("tltg_box_flow_recovery: %s (%s: %s)", message,
+                        type(error).__name__, error)
         self.gcode.respond_raw("!! " + message)
         if self._print_state() == "printing":
             self.gcode.run_script_from_command("PAUSE")
