@@ -71,6 +71,7 @@ The other contracted paths work the same way: end print and cancel on error, fil
 ## Validation
 
 - Optimized macro `.cfg`: `python3 scripts/format_klipper_configs.py`
+- Klipper modules (`installer/klipper/**/*.py`), which must load in the Plus 4's Python 3.7 `klippy-env`: `python3 scripts/check_klipper_py37.py`
 - `installer/package.yaml` or `supported_upgrade_sources.yaml`: `python3 scripts/check_installer_known_versions.py`
 - Slicer G-code: `python3 scripts/check_optimized_slicer_macros.py`
 - Installer behavior: `python3 scripts/run_installer_core_tests.py`

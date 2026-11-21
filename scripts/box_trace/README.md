@@ -9,6 +9,8 @@ scripts/box_trace/box_trace.sh fetch qidi@<printer-ip>     # copy the log to tlt
 scripts/box_trace/box_trace.sh remove qidi@<printer-ip>    # delete the module, restart Klipper
 ```
 
+From a shell on the printer itself, for printers reached with a password instead of SSH keys or without the `tltg-optimized-macros` include (the QIDI Plus 4), use `box_trace_on_printer.sh install|status|remove` instead. It downloads the module from this repository's `dev` branch unless `dev_box_trace.py` sits beside it, adds `[include dev_box_trace.cfg]` as the first line of `printer.cfg` (keeping a copy as `printer.cfg.before-box-trace`), and takes the line out again on `remove`.
+
 `install` and `remove` restart the Klipper service, so X/Y/Z end up unhomed. They refuse while a print is running or paused. Installing the package deletes the tracer's config file, so run `install` again after it.
 
 ## The log
