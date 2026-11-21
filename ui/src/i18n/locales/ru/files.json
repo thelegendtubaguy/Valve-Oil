@@ -37,7 +37,7 @@
     "filament_weights": "Веса филамента",
     "mmu_print": "Печать с MMU",
     "referenced_tools": "Используемые инструменты",
-    "history_filament_used": "Израсходовано филамента",
+    "history_filament_used": "Расход филамента",
     "nozzle_diameter": "Диаметр сопла",
     "slicer": "Слайсер",
     "slicer_version": "Версия слайсера",
