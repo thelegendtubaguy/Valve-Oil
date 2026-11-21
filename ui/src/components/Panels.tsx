@@ -7,6 +7,7 @@ import { fileLeft, printLayer, printLayers, slicerLeft } from './printing/estima
 import type { FileMeta } from '../state/files'
 import { fmtDuration, prettyName } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
+import { t } from '../i18n'
 
 // ---- thermals: one compact row per heater and fan ----
 export function Thermals({ className = '' }: { className?: string }) {
@@ -15,7 +16,7 @@ export function Thermals({ className = '' }: { className?: string }) {
   return (
     <section className={`card ${className}`}>
       <h3 className="card-title">
-        <Flame size={14} /> Heaters and fans
+        <Flame size={14} /> {t('app.thermals.title')}
       </h3>
       <div className="grid">
         {tiles.map((t) => (
@@ -42,14 +43,14 @@ function ThermalRow({ tile, onOpen }: { tile: Tile; onOpen: () => void }) {
     >
       <span className="min-w-0">
         <span className="block truncate">{tile.label}</span>
-        <span className="mt-1 block h-1 overflow-hidden rounded-full bg-inset" title={fan ? 'Speed' : 'Heater power'}>
+        <span className="mt-1 block h-1 overflow-hidden rounded-full bg-inset" title={fan ? t('app.thermals.speed') : t('app.thermals.heater_power')}>
           <i className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(power * 100)}%`, background: fan ? 'var(--accent)' : 'var(--orange)' }} />
         </span>
       </span>
       <span className="num text-right">
         <b className="text-[15px]">{value ?? '—'}</b>
         <span className="text-ink-3">{fan ? '%' : '°'}</span>
-        {!fan && <span className="ml-1 text-[12px] text-ink-3">{target > 0 ? `→ ${Math.round(target)}` : tile.kind === 'sensor' ? '' : 'off'}</span>}
+        {!fan && <span className="ml-1 text-[12px] text-ink-3">{target > 0 ? `→ ${Math.round(target)}` : tile.kind === 'sensor' ? '' : t('app.temps.off')}</span>}
       </span>
     </button>
   )
@@ -80,18 +81,18 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
   return (
     <section className={`card ${className}`}>
       <h3 className="card-title">
-        <Gauge size={14} /> This print
+        <Gauge size={14} /> {t('app.job.title')}
       </h3>
       <div className="grid">
-        <Row k="Speed" v={speed > 0 ? `${speed.toFixed(1)} mm/s` : '—'} />
-        <Row k="Flow" v={flow > 0 ? `${flow.toFixed(1)} mm³/s` : '—'} />
-        <Row k="Filament" v={`${fmtLength(usedMm)}${totalMm ? ` of ${fmtLength(totalMm)}` : ''}${usedG != null ? ` · ${Math.round(usedG)} g` : ''}`} />
-        <Row k="Layer" v={`${layer ?? '—'} of ${layers ?? '—'}${z != null ? ` · Z ${z.toFixed(2)}` : ''}`} />
-        <Row k="Left by file" v={byFile != null ? fmtDuration(byFile) : '—'} />
-        <Row k="Left by slicer" v={bySlicer != null ? fmtDuration(bySlicer) : '—'} />
-        {pace != null && <Row k="Against the slicer" v={Math.abs(pace) < 0.03 ? 'on time' : `${Math.round(Math.abs(pace) * 100)}% ${pace > 0 ? 'slower' : 'faster'}`} />}
-        {meta?.estimated_time != null && <Row k="Slicer estimate" v={fmtDuration(meta.estimated_time)} />}
-        {meta?.layer_height != null && <Row k="Layer height" v={`${meta.layer_height} mm${meta.object_height ? ` · ${meta.object_height} mm tall` : ''}`} />}
+        <Row k={t('app.job.speed')} v={speed > 0 ? `${speed.toFixed(1)} mm/s` : '—'} />
+        <Row k={t('app.job.flow')} v={flow > 0 ? `${flow.toFixed(1)} mm³/s` : '—'} />
+        <Row k={t('app.job.filament')} v={`${totalMm ? t('app.job.of', { value: fmtLength(usedMm), total: fmtLength(totalMm) }) : fmtLength(usedMm)}${usedG != null ? ` · ${t('app.units.g', { n: Math.round(usedG) })}` : ''}`} />
+        <Row k={t('app.job.layer')} v={`${t('app.job.of', { value: layer ?? '—', total: layers ?? '—' })}${z != null ? ` · Z ${z.toFixed(2)}` : ''}`} />
+        <Row k={t('app.job.left_by_file')} v={byFile != null ? fmtDuration(byFile) : '—'} />
+        <Row k={t('app.job.left_by_slicer')} v={bySlicer != null ? fmtDuration(bySlicer) : '—'} />
+        {pace != null && <Row k={t('app.job.against_slicer')} v={Math.abs(pace) < 0.03 ? t('app.job.on_time') : t(pace > 0 ? 'app.job.slower' : 'app.job.faster', { pct: Math.round(Math.abs(pace) * 100) })} />}
+        {meta?.estimated_time != null && <Row k={t('app.job.slicer_estimate')} v={fmtDuration(meta.estimated_time)} />}
+        {meta?.layer_height != null && <Row k={t('app.job.layer_height')} v={`${meta.layer_height} mm${meta.object_height ? ` · ${t('app.job.tall', { n: meta.object_height })}` : ''}`} />}
       </div>
       {colors.length > 1 && (
         <div className="mt-2 grid gap-1">
@@ -101,7 +102,7 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
               <span className="min-w-0 flex-1 truncate text-ink-2">
                 T{i} {names[i] ?? ''}
               </span>
-              {weights?.[i] != null && <span className="num text-ink-3">{Math.round(weights[i])} g</span>}
+              {weights?.[i] != null && <span className="num text-ink-3">{t('app.units.g', { n: Math.round(weights[i]) })}</span>}
             </div>
           ))}
         </div>
@@ -112,7 +113,7 @@ export function JobDetails({ job, meta, className = '' }: { job: Job; meta: File
 
 /** Filament length as Fluidd reads it: mm under a metre, then metres. */
 export function fmtLength(mm: number) {
-  return mm < 1000 ? `${Math.round(mm)} mm` : `${(mm / 1000).toFixed(2)} m`
+  return mm < 1000 ? `${Math.round(mm)} mm` : t('app.units.m', { n: (mm / 1000).toFixed(2) })
 }
 
 function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
@@ -146,26 +147,26 @@ export function Health({ className = '' }: { className?: string }) {
   return (
     <section className={`card ${className}`}>
       <h3 className="card-title">
-        <Activity size={14} /> Printer health
+        <Activity size={14} /> {t('app.health.title')}
       </h3>
       <div className="rows-2">
         {health?.main_thread_load != null && <Row k="Klipper" v={<Level v={health.main_thread_load} warn={0.7} bad={0.9} />} />}
-        {health?.timers != null && <Row k="Timers" v={<span className={health.timers > 120 ? 'text-warn' : ''}>{health.timers}</span>} />}
-        {host?.cpu != null && <Row k="Host CPU" v={<Level v={host.cpu / 100} warn={0.75} bad={0.92} />} />}
-        {mem != null && <Row k="Memory" v={<Level v={mem} warn={0.8} bad={0.92} />} />}
-        {host?.cpuTemp != null && <Row k="Host temp" v={`${Math.round(host.cpuTemp)} °C`} />}
-        {disk && <Row k="Free space" v={<span className={disk.free / disk.total < 0.1 ? 'text-warn' : ''}>{(disk.free / 1024 ** 3).toFixed(1)} GB</span>} />}
+        {health?.timers != null && <Row k={t('app.health.timers')} v={<span className={health.timers > 120 ? 'text-warn' : ''}>{health.timers}</span>} />}
+        {host?.cpu != null && <Row k={t('app.health.host_cpu')} v={<Level v={host.cpu / 100} warn={0.75} bad={0.92} />} />}
+        {mem != null && <Row k={t('app.health.memory')} v={<Level v={mem} warn={0.8} bad={0.92} />} />}
+        {host?.cpuTemp != null && <Row k={t('app.health.host_temp')} v={`${Math.round(host.cpuTemp)} °C`} />}
+        {disk && <Row k={t('app.health.free_space')} v={<span className={disk.free / disk.total < 0.1 ? 'text-warn' : ''}>{t('app.units.gb', { n: (disk.free / 1024 ** 3).toFixed(1) })}</span>} />}
         {sensors.map((t) => (
           <Row key={t.name} k={t.name} v={t.t != null ? `${Math.round(t.t)} °C` : '—'} />
         ))}
-        {host?.uptime != null && <Row k="Up for" v={fmtDuration(host.uptime)} />}
+        {host?.uptime != null && <Row k={t('app.health.up_for')} v={fmtDuration(host.uptime)} />}
       </div>
       {mcus.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]" title="How busy each microcontroller is">
-          <span className="text-ink-2">MCU load</span>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]" title={t('app.health.mcu_load_hint')}>
+          <span className="text-ink-2">{t('app.health.mcu_load')}</span>
           {mcus.map((m) => (
             <span key={m.name} className="num">
-              <span className="text-ink-3">{m.name.replace(/ MCU$/, '')}</span> <b className={m.awake! >= 0.85 ? 'text-bad' : m.awake! >= 0.6 ? 'text-warn' : ''}>{Math.round(m.awake! * 100)}%</b>
+              <span className="text-ink-3">{m.name}</span> <b className={m.awake! >= 0.85 ? 'text-bad' : m.awake! >= 0.6 ? 'text-warn' : ''}>{Math.round(m.awake! * 100)}%</b>
             </span>
           ))}
         </div>
@@ -174,12 +175,12 @@ export function Health({ className = '' }: { className?: string }) {
   )
 }
 
-/** Short names for Klipper's MCUs: the mainboard, the toolhead board, and each Box. */
+/** Short names for Klipper's MCUs, shown after "MCU load": the mainboard, the toolhead board, and each Box. */
 function mcuName(obj: string) {
-  if (obj === 'mcu') return 'Mainboard'
+  if (obj === 'mcu') return t('app.health.mainboard')
   const n = obj.slice(4)
   const box = /^mcu_box(\d+)$/i.exec(n)
-  return box ? `Box ${box[1]} MCU` : `${n.toUpperCase() === n ? n : prettyName(obj)} MCU`
+  return box ? t('app.heaters.box', { n: box[1] }) : n.toUpperCase() === n ? n : prettyName(obj)
 }
 
 /** A percentage with a small bar; the bar turns orange or red past the thresholds. */

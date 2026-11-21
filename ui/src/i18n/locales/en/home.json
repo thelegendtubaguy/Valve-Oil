@@ -1,0 +1,108 @@
+{
+  "job": {
+    "now_printing": "Now printing",
+    "paused": "Paused",
+    "finished": "Finished",
+    "cancelled": "Cancelled",
+    "error": "Stopped with an error",
+    "remaining": "Remaining",
+    "done_at": "Done at",
+    "elapsed": "Elapsed",
+    "resume": "Resume",
+    "pause": "Pause",
+    "tune": "Tune",
+    "cancel_hold": "Cancel <hint>hold</hint>",
+    "speed": "Speed {{pct}}%",
+    "flow": "Flow {{pct}}%",
+    "printing": "Printing",
+    "filament": "Filament",
+    "slicer": "Slicer",
+    "print_again": "Print again"
+  },
+  "ready": {
+    "title": "Ready to print",
+    "last_finished": "Last print, finished {{ago}}",
+    "last_cancelled": "Last print, cancelled {{ago}}",
+    "last_failed": "Last print, failed {{ago}}",
+    "empty": "Upload a file or send one from your slicer."
+  },
+  "recent": {
+    "title": "Recent files",
+    "all": "All files",
+    "none": "No files yet."
+  },
+  "camera": {
+    "view": "View",
+    "camera": "Camera",
+    "layers": "Layers",
+    "unavailable": "Camera unavailable",
+    "full_screen": "Full screen"
+  },
+  "box": {
+    "loaded": "{{slot}} loaded",
+    "nothing_loaded": "Nothing loaded",
+    "tools": "Tools",
+    "tools_locked": "Tool mapping can be changed while the printer is idle",
+    "tools_hint": "Change which slot each tool loads",
+    "open": "Open the QIDI Box page",
+    "hint": "Click a slot for its actions, or a Box’s temperature for its heater."
+  },
+  "history": {
+    "last_weeks_one": "Last {{count}} week",
+    "last_weeks_other": "Last {{count}} weeks",
+    "done_one": "{{count}} done",
+    "done_other": "{{count}} done",
+    "failed_one": "{{count}} failed",
+    "failed_other": "{{count}} failed",
+    "day_one": "{{date}}: {{count}} done",
+    "day_other": "{{date}}: {{count}} done",
+    "day_failed_one": "{{date}}: {{count}} done, {{bad}} failed",
+    "day_failed_other": "{{date}}: {{count}} done, {{bad}} failed",
+    "print_time": "Print time",
+    "filament": "Filament",
+    "jobs": "Jobs"
+  },
+  "quick": {
+    "title": "Quick actions",
+    "lights_on": "Lights on",
+    "lights_off": "Lights off"
+  },
+  "exclude": {
+    "confirm_title": "Exclude {{name}}?",
+    "confirm_body": "Are you sure you want to exclude this object from printing? The printer skips it for the rest of this print, and it can’t be added back.",
+    "confirm": "Exclude",
+    "title": "Exclude objects",
+    "objects": "Objects",
+    "count": "{{left}} of {{total}}",
+    "printing": "printing",
+    "exclude_named": "Exclude {{name}}",
+    "exclude": "Exclude",
+    "hint": "Click an object on the bed or in the list to stop printing it. Green objects are still printing, amber is the one printing now, red ones are excluded.",
+    "map": "Objects on the bed"
+  },
+  "pause_layer": {
+    "button": "Pause at layer",
+    "armed_next": "Pause at next layer",
+    "armed_layer": "Pause at layer {{layer}}",
+    "layer_error": "Enter a layer after {{current}}, up to {{total}}.",
+    "title": "Pause at layer",
+    "accept": "Accept",
+    "now": "Now on layer {{current}} of {{total}}.",
+    "next": "Pause at next layer",
+    "at": "Pause at layer number",
+    "layer": "Layer",
+    "command": "Command"
+  },
+  "tune": {
+    "title": "Tune",
+    "z_step": "Z offset step",
+    "temp_step": "Temperature step",
+    "now": "now {{value}}",
+    "speed": "Speed",
+    "flow": "Flow",
+    "z_offset": "Z offset",
+    "part_fan": "Part fan",
+    "aux_fan": "Aux fan",
+    "exhaust_fan": "Exhaust fan"
+  }
+}

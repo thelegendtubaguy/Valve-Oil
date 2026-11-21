@@ -18,11 +18,19 @@ The screens are along the left, or along the bottom on a phone with the rest und
 - **Tune** shows the bed mesh in 3D or as a heat map, with its range and the probe points that needed a retry, and loads, saves, removes, and calibrates mesh profiles. The mesh's corners are named as you face the printer, front left to back right; X0 Y0 is the front left on every supported printer. In 3D a small printer in the corner turns with the bed, its front marked, so you can tell which side faces you. **Bed soak** runs the [bed soak test](tools.md#bed-soak-test) and charts its runs, as Fluidd's Bed soak card does. **Calibrate** has what the printer has: Z tilt, the bed screws, endstops, probe accuracy and calibration, the load-cell check, and input shaper calibration.
 - **History** lists past prints with their details and statistics, and prints one again. **Queue** is Moonraker's job queue, and **Timelapse** has the timelapse settings, render progress, and the rendered videos to play or download.
 - **System** shows the printer's computer, each board's load and firmware, and live charts, including Klipper's main thread. **Services** restarts, stops, and starts each service, including `qidi-client`, QIDI's touchscreen app, and reboots or shuts down the printer. **Logs** shows and downloads the logs. **Printer screen** shows the touchscreen, as Fluidd's Printer screen card does. **Diagnostics** browses everything Klipper reports and charts what you pick.
-- **Settings** has the printer's name, the theme, jog and extrude defaults, cameras, temperature presets, file and preview options, timelapse, and [Add-ons](addons.md).
+- **Settings** has the printer's name, the language, the theme, jog and extrude defaults, cameras, temperature presets, file and preview options, timelapse, and [Add-ons](addons.md).
 - **Updates** shows the Valve Oil release, the printer's QIDI firmware, and each board's firmware, what's waiting to install, the **Automatic updates** and **LAN only mode** switches, each install's steps as it runs, and the installer's logs, and installs updates with **Update now**. See [Updates](#updates).
 - Across the top: the printer's state, its temperatures, **Save config** when Klipper has changes waiting for `SAVE_CONFIG`, notifications (Klipper's and Moonraker's warnings and Moonraker's announcements), the light or dark switch, and **Emergency stop**, which asks first when **Require confirm on Emergency Stop** is on in Settings, as in Fluidd.
 - Printer warnings show at the top of every screen, as in Fluidd. A Valve Oil update warning has **Details**, which opens the Updates screen, and a board Valve Oil doesn't support yet has **Open a support issue** and **Details**.
 - When Klipper stops, Home says why, in Klipper's own words, with **Firmware restart** and **Restart Klipper**, and links to the configuration, the console, and the logs, which all still work.
+
+## Language
+
+Valve Oil UI is in English, Spanish, and Russian. It starts in your browser's language when it has it, and in English otherwise. **Settings → General → Language** picks another, kept in that browser, so each computer or phone can have its own. Fluidd's language is set in Fluidd.
+
+Only Valve Oil UI's own text changes language. What the printer writes stays in English: Klipper's and Moonraker's messages, the console, printer warnings, QIDI Box errors, and the update and install messages from Valve Oil's services. Names stay as they are in every language: macro and command names, file names, and Valve Oil, Klipper, QIDI Box, and the other product names.
+
+Corrections and new languages are welcome as pull requests; see [`ui/README.md`](../ui/README.md#translations).
 
 ## Updates
 

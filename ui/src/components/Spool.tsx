@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { qidiColorNearBackground } from '../qidi/qidi-box'
 import type { QidiBoxSlot } from '../state/box'
+import { t } from '../i18n'
 
 const isDark = () => document.documentElement.classList.contains('dark')
 
@@ -52,7 +53,7 @@ export function SpoolGlyph({ slot, cx, cy, r, selected, loaded, label = true }: 
 function ReadingRing({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   return (
     <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--orange)" strokeWidth={2} strokeDasharray="9 6" className="spin" style={{ transformOrigin: `${cx}px ${cy}px` }}>
-      <title>Reading RFID tag</title>
+      <title>{t('box.spool.reading')}</title>
     </circle>
   )
 }
@@ -67,6 +68,6 @@ export function Spool({ slot, size = 44, selected, loaded, label }: { slot: Pick
 }
 
 export function slotTitle(slot: QidiBoxSlot) {
-  if (!slot.present) return slot.index === 16 ? 'External spool' : 'Empty'
-  return [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') || 'Unknown filament'
+  if (!slot.present) return slot.index === 16 ? t('box.external_spool') : t('box.empty')
+  return [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') || t('box.unknown_filament')
 }

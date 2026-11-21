@@ -15,6 +15,7 @@ import { FilamentsPage } from '../components/box/filaments/FilamentsPage'
 import { boxCommands, slotByIndex, useBox, QIDI_BOX_EXTERNAL_SLOT, type BoxState } from '../state/box'
 import { runGcode, usePrinter } from '../state/printer'
 import { href, useSubPath } from '../lib/router'
+import { t } from '../i18n'
 
 // Home places these on its Box card.
 export { HeaterDialog, ToolMapDialog, SlotActions as SlotActionButtons }
@@ -38,10 +39,10 @@ function Header({ tab, children }: { tab: 'box' | 'filaments'; children?: ReactN
         label="QIDI Box"
         value={tab}
         options={[
-          { value: 'box', label: 'Slots', href: href('box') },
+          { value: 'box', label: t('box.screen.slots'), href: href('box') },
           {
             value: 'filaments',
-            label: 'Filaments',
+            label: t('box.screen.filaments'),
             href: href('box', 'filaments'),
           },
         ]}
@@ -80,13 +81,13 @@ function BoxSlots() {
             className="btn btn-sm"
             disabled={box.mappingLocked}
             onClick={() => setMapOpen(true)}
-            aria-label="Tool mapping"
-            title={box.mappingLocked ? 'Tool mapping can be changed while the printer is idle' : 'Tool mapping'}
+            aria-label={t('box.screen.tool_mapping')}
+            title={box.mappingLocked ? t('box.screen.tool_mapping_locked') : t('box.screen.tool_mapping')}
           >
-            <Pencil size={13} /> <span className="hidden sm:inline">Tool mapping</span>
+            <Pencil size={13} /> <span className="hidden sm:inline">{t('box.screen.tool_mapping')}</span>
           </button>
-          <button className="btn btn-sm" onClick={() => setSettingsOpen(true)} aria-label="Box settings" title="Box settings">
-            <Settings2 size={14} /> <span className="hidden sm:inline">Box settings</span>
+          <button className="btn btn-sm" onClick={() => setSettingsOpen(true)} aria-label={t('box.screen.settings')} title={t('box.screen.settings')}>
+            <Settings2 size={14} /> <span className="hidden sm:inline">{t('box.screen.settings')}</span>
           </button>
         </span>
       </Header>
@@ -96,7 +97,7 @@ function BoxSlots() {
           <Card className="order-2 xl:order-none">
             <BoxUnits box={box} selected={current} onSelect={setSelected} onTool={onTool} onHeater={setHeater} />
           </Card>
-          <Card title="Filament path" icon={<Waypoints size={14} />} className="order-5 hidden md:block xl:order-none">
+          <Card title={t('box.screen.filament_path')} icon={<Waypoints size={14} />} className="order-5 hidden md:block xl:order-none">
             <FilamentPath box={box} selected={current} onSelect={setSelected} nozzleTemp={nozzle} />
             {!box.flowPaused && box.warnings.length > 0 && (
               <div className="mt-3 grid gap-1.5">
@@ -147,13 +148,13 @@ export function Operation({ box, bare = false }: { box: BoxState; bare?: boolean
                 {p}
               </div>
             ))}
-            <div className="mt-1 text-[12.5px] text-ink-3">Retry runs the step again; Stop ends the Box operation.</div>
+            <div className="mt-1 text-[12.5px] text-ink-3">{t('box.operation.retry_hint')}</div>
             <div className="mt-2.5 flex flex-wrap gap-2">
               <button className="btn btn-sm btn-primary" disabled={!ready || pending} onClick={() => send(boxCommands.retry())}>
-                <RefreshCw size={13} /> Retry
+                <RefreshCw size={13} /> {t('common.retry')}
               </button>
               <button className="btn btn-sm" disabled={!ready || pending} onClick={() => send(boxCommands.stop())}>
-                <Square size={12} /> Stop
+                <Square size={12} /> {t('box.operation.stop')}
               </button>
             </div>
           </div>
@@ -166,7 +167,7 @@ export function Operation({ box, bare = false }: { box: BoxState; bare?: boolean
       <div className="flex items-center gap-2.5">
         <LoaderCircle size={17} className="spin flex-none text-accent-ink" />
         <span className="min-w-0 flex-1">
-          <span className="section-label mr-2">Box is working</span>
+          <span className="section-label mr-2">{t('box.operation.working')}</span>
           <span className="shimmer font-semibold">{box.taskText}</span>
         </span>
         <BoxIcon size={16} className="flex-none text-ink-3" />

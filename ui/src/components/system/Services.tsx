@@ -6,23 +6,24 @@ import { client, usePrinter } from '../../state/printer'
 import { useUpdateRunning } from '../../state/valve-oil'
 import { serviceTone } from './bits'
 import { refreshSystemInfo, useSystemInfo } from './system-info'
+import { t } from '../../i18n'
 
 // What each service on a QIDI printer is, for people who don't know the unit names.
-const ABOUT: Record<string, string> = {
-  klipper: 'Runs the printer',
-  moonraker: 'Klipper’s API server, which Fluidd and Valve Oil UI talk to',
-  'klipper-mcu': 'Klipper’s host MCU, for pins on the printer’s computer',
-  'qidi-client': 'QIDI’s touchscreen app',
-  crowsnest: 'Streams the camera',
-  'tltg-remote-screen': 'Streams the touchscreen to the Printer screen tab',
-  'tltg-status': 'Valve Oil’s update status',
+const about = (): Record<string, string> => ({
+  klipper: t('system.services.about.klipper'),
+  moonraker: t('system.services.about.moonraker'),
+  'klipper-mcu': t('system.services.about.klipper_mcu'),
+  'qidi-client': t('system.services.about.qidi_client'),
+  crowsnest: t('system.services.about.crowsnest'),
+  'tltg-remote-screen': t('system.services.about.remote_screen'),
+  'tltg-status': t('system.services.about.status'),
   'moonraker-obico': 'Obico',
   octoeverywhere: 'OctoEverywhere',
   tailscaled: 'Tailscale',
   'zerotier-one': 'ZeroTier',
-}
+})
 
-const PRINT_STOPS = 'A print in progress stops.'
+const printStops = () => t('system.services.print_stops')
 
 export function Services() {
   const { system, loading } = useSystemInfo()
@@ -33,9 +34,9 @@ export function Services() {
   const canHost = system?.virtualization?.virt_type !== 'container'
   return (
     <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-      <Card title="Services" icon={<Cog size={15} />} aside={loading ? <Spinner size={14} /> : undefined}>
+      <Card title={t('system.services.title')} icon={<Cog size={15} />} aside={loading ? <Spinner size={14} /> : undefined}>
         {services.length === 0 ? (
-          <Empty>{loading ? 'Loading…' : 'Moonraker didn’t list any services.'}</Empty>
+          <Empty>{loading ? t('common.loading') : t('system.services.none')}</Empty>
         ) : (
           <div className="grid gap-2">
             {services.map(([name, st]) => (
@@ -43,7 +44,7 @@ export function Services() {
             ))}
           </div>
         )}
-        {updating && <p className="mb-0 text-[12.5px] text-ink-3">Klipper and Moonraker can’t be restarted while Valve Oil updates the printer.</p>}
+        {updating && <p className="mb-0 text-[12.5px] text-ink-3">{t('system.services.locked')}</p>}
       </Card>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
         {!updating && <KlipperCard printing={printing} />}
@@ -64,7 +65,7 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
     setBusy(action)
     const ok = await attempt(async () => (await client.call(`machine.services.${action}`, { service: name }, 90000), true))
     setBusy(null)
-    if (ok && name !== 'moonraker') toast(`${name} ${action === 'stop' ? 'stopped' : action === 'start' ? 'started' : 'restarted'}`)
+    if (ok && name !== 'moonraker') toast(action === 'stop' ? t('system.services.stopped', { name }) : action === 'start' ? t('system.services.started', { name }) : t('system.services.restarted', { name }))
     // Moonraker announces most changes; refresh in case this service isn't one it watches.
     refreshSystemInfo()
   }
@@ -78,22 +79,22 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
             {sub && sub !== active ? ` (${sub})` : ''}
           </span>
         </div>
-        {ABOUT[name] && <div className="mt-0.5 text-[12.5px] text-ink-3">{ABOUT[name]}</div>}
+        {about()[name] && <div className="mt-0.5 text-[12.5px] text-ink-3">{about()[name]}</div>}
       </div>
       <div className="flex flex-none gap-1.5">
         {stopped ? (
           <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act('start')}>
-            {busy === 'start' ? <Spinner size={13} /> : <Play size={14} />} Start
+            {busy === 'start' ? <Spinner size={13} /> : <Play size={14} />} {t('system.services.start')}
           </button>
         ) : (
           <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act('restart')}>
-            {busy === 'restart' ? <Spinner size={13} /> : <RotateCw size={14} />} Restart
+            {busy === 'restart' ? <Spinner size={13} /> : <RotateCw size={14} />} {t('system.services.restart')}
           </button>
         )}
         {/* Stopping Moonraker would take this page with it, with no way back but SSH, so Fluidd hides it too. */}
         {name !== 'moonraker' && (
           <button className="btn btn-sm btn-danger" disabled={locked || busy != null || stopped} onClick={() => act('stop')}>
-            {busy === 'stop' ? <Spinner size={13} /> : <Square size={13} />} Stop
+            {busy === 'stop' ? <Spinner size={13} /> : <Square size={13} />} {t('system.services.stop')}
           </button>
         )}
       </div>
@@ -102,14 +103,18 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
 }
 
 function ask(name: string, action: 'start' | 'stop' | 'restart', printing: boolean): Promise<boolean> {
-  const verb = action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Restart'
   const bodies: ReactNode[] = []
-  if (name === 'klipper' && action !== 'start') bodies.push(action === 'stop' ? 'The printer stops responding until Klipper is started again.' : 'Klipper reloads its configuration and reconnects to the printer’s boards.')
-  if (name === 'moonraker') bodies.push('Fluidd and Valve Oil UI lose the printer for a few seconds, then reconnect.')
-  if (name === 'qidi-client') bodies.push(action === 'stop' ? 'The touchscreen stays off until you start it again or the printer reboots.' : 'The touchscreen goes blank for a few seconds while its app restarts.')
-  if (printing && (name === 'klipper' || (name === 'klipper-mcu' && action !== 'start'))) bodies.push(PRINT_STOPS)
+  if (name === 'klipper' && action !== 'start') bodies.push(action === 'stop' ? t('system.services.ask.klipper_stop') : t('system.services.ask.klipper_restart'))
+  if (name === 'moonraker') bodies.push(t('system.services.ask.moonraker'))
+  if (name === 'qidi-client') bodies.push(action === 'stop' ? t('system.services.ask.qidi_stop') : t('system.services.ask.qidi_restart'))
+  if (printing && (name === 'klipper' || (name === 'klipper-mcu' && action !== 'start'))) bodies.push(printStops())
   if (action === 'start' && !printing) return Promise.resolve(true)
-  return confirm({ title: `${verb} ${name}?`, body: bodies.length ? bodies.join(' ') : `${verb} the ${name} service.`, confirm: verb, danger: action !== 'start' })
+  return confirm({
+    title: t(`system.services.ask.${action}_title`, { name }),
+    body: bodies.length ? bodies.join(' ') : t(`system.services.ask.${action}_body`, { name }),
+    confirm: t(`system.services.${action}`),
+    danger: action !== 'start',
+  })
 }
 
 function KlipperCard({ printing }: { printing: boolean }) {
@@ -117,8 +122,8 @@ function KlipperCard({ printing }: { printing: boolean }) {
   const message = usePrinter((s) => s.klippyMessage)
   const connected = klippy !== 'disconnected' && klippy !== 'unknown'
   const [busy, setBusy] = useState<string | null>(null)
-  const run = async (key: string, title: string, body: string, fn: () => Promise<unknown>) => {
-    if (!(await confirm({ title, body: printing ? `${body} ${PRINT_STOPS}` : body, confirm: title.replace(/\?$/, ''), danger: true }))) return
+  const run = async (key: string, title: string, body: string, label: string, fn: () => Promise<unknown>) => {
+    if (!(await confirm({ title, body: printing ? `${body} ${printStops()}` : body, confirm: label, danger: true }))) return
     setBusy(key)
     await attempt(fn)
     setBusy(null)
@@ -132,23 +137,23 @@ function KlipperCard({ printing }: { printing: boolean }) {
             <button
               className="btn"
               disabled={busy != null}
-              title="Reloads Klipper’s configuration"
-              onClick={() => run('restart', 'Restart Klipper?', 'Klipper reloads its configuration.', () => client.call('printer.restart'))}
+              title={t('system.services.klipper.restart_hint')}
+              onClick={() => run('restart', t('system.services.klipper.restart_title'), t('system.services.klipper.restart_body'), t('system.services.klipper.restart'), () => client.call('printer.restart'))}
             >
-              {busy === 'restart' ? <Spinner size={14} /> : <RotateCw size={15} />} Restart Klipper
+              {busy === 'restart' ? <Spinner size={14} /> : <RotateCw size={15} />} {t('system.services.klipper.restart')}
             </button>
             <button
               className="btn"
               disabled={busy != null}
-              title="Reloads Klipper’s configuration and restarts the MCUs"
-              onClick={() => run('fw', 'Firmware restart?', 'Klipper reloads its configuration and restarts the printer’s boards.', () => client.call('printer.firmware_restart'))}
+              title={t('system.services.klipper.fw_hint')}
+              onClick={() => run('fw', t('system.services.klipper.fw_title'), t('system.services.klipper.fw_body'), t('system.services.klipper.fw'), () => client.call('printer.firmware_restart'))}
             >
-              {busy === 'fw' ? <Spinner size={14} /> : <Zap size={15} />} Firmware restart
+              {busy === 'fw' ? <Spinner size={14} /> : <Zap size={15} />} {t('system.services.klipper.fw')}
             </button>
           </>
         ) : (
-          <button className="btn" disabled={busy != null} title="Restarts the Klipper service" onClick={() => run('svc', 'Restart Klipper?', 'The Klipper service restarts.', () => client.call('machine.services.restart', { service: 'klipper' }, 90000))}>
-            {busy === 'svc' ? <Spinner size={14} /> : <RotateCw size={15} />} Restart Klipper
+          <button className="btn" disabled={busy != null} title={t('system.services.klipper.svc_hint')} onClick={() => run('svc', t('system.services.klipper.restart_title'), t('system.services.klipper.svc_body'), t('system.services.klipper.restart'), () => client.call('machine.services.restart', { service: 'klipper' }, 90000))}>
+            {busy === 'svc' ? <Spinner size={14} /> : <RotateCw size={15} />} {t('system.services.klipper.restart')}
           </button>
         )}
       </div>
@@ -160,25 +165,25 @@ function HostPowerCard({ printing }: { printing: boolean }) {
   const go = async (what: 'reboot' | 'shutdown') => {
     const reboot = what === 'reboot'
     const ok = await confirm({
-      title: reboot ? 'Reboot the printer?' : 'Shut down the printer?',
-      body: `${reboot ? 'The printer’s computer restarts, and Valve Oil UI reconnects when it’s back, in about a minute.' : 'The printer’s computer shuts down. Turn the printer off and on again to start it.'}${printing ? ` ${PRINT_STOPS}` : ''}`,
-      confirm: reboot ? 'Reboot' : 'Shut down',
+      title: reboot ? t('system.services.host.reboot_title') : t('system.services.host.shutdown_title'),
+      body: `${reboot ? t('system.services.host.reboot_body') : t('system.services.host.shutdown_body')}${printing ? ` ${printStops()}` : ''}`,
+      confirm: reboot ? t('system.services.host.reboot') : t('system.services.host.shutdown'),
       danger: true,
     })
     if (!ok) return
     // Moonraker goes away before it answers, so a lost connection here is expected.
     client.call(`machine.${what}`).catch(() => {})
-    toast(reboot ? 'Rebooting the printer' : 'Shutting down the printer')
+    toast(reboot ? t('system.services.host.rebooting') : t('system.services.host.shutting_down'))
   }
   return (
-    <Card title="Host" icon={<Power size={15} />}>
-      <p className="mt-0 mb-3 text-ink-3">The printer’s computer, which runs Klipper, Moonraker, and the touchscreen.</p>
+    <Card title={t('system.overview.host.title')} icon={<Power size={15} />}>
+      <p className="mt-0 mb-3 text-ink-3">{t('system.services.host.about')}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <button className="btn btn-danger" onClick={() => go('reboot')}>
-          <RotateCw size={15} /> Reboot
+          <RotateCw size={15} /> {t('system.services.host.reboot')}
         </button>
         <button className="btn btn-danger" onClick={() => go('shutdown')}>
-          <PowerOff size={15} /> Shut down
+          <PowerOff size={15} /> {t('system.services.host.shutdown')}
         </button>
       </div>
     </Card>

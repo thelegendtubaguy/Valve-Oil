@@ -6,6 +6,7 @@ import { client } from '../../state/printer'
 import { BED_SOAK_FOLDER, BED_SOAK_ROOT, BedSoakColors, BedSoakRunColors, bedSoakMilestones, bedSoakProblemPoints, type BedSoakRun } from '../../qidi/vo-bed-soak'
 import { BedSoakChart, type BedSoakChartSeries } from './BedSoakChart'
 import { bedSoakClock, bedSoakDuration, bedSoakStateLabel, bedSoakTargetsShort, fmtDateTime } from './bed-soak-format'
+import { t } from '../../i18n'
 
 export type BedSoakRunEntry = {
   /** Relative to the config root */
@@ -20,7 +21,7 @@ export type BedSoakRunEntry = {
 /** Deletes a run file. Over HTTP, as Moonraker's DELETE /server/files/config/<path>. */
 async function deleteRun(filename: string) {
   const r = await fetch(client.fileUrl(BED_SOAK_ROOT, `${BED_SOAK_FOLDER}/${filename}`), { method: 'DELETE' })
-  if (!r.ok) throw new Error(`Couldn't delete ${filename} (${r.status})`)
+  if (!r.ok) throw new Error(t('tune.soak.delete_failed', { name: filename, status: r.status }))
 }
 
 /** The fork's Past runs tab: every saved run, and up to three compared on charts. */
@@ -51,7 +52,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
     return i >= 0 ? BedSoakRunColors[i] : null
   }
 
-  if (!entries.length) return <div className="text-ink-3">No saved runs yet.</div>
+  if (!entries.length) return <div className="text-ink-3">{t('tune.soak.no_runs')}</div>
 
   const rows = entries.map((entry) => {
     const run = entry.run
@@ -62,12 +63,12 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
     const state = run?.result?.state
     let settled: { text: string; icon?: 'good' | 'warning' } | null = null
     if (m?.settled != null) settled = { text: duration(m.settled), icon: 'good' }
-    else if (state === 'finished') settled = { text: `Still moving at ${run?.settings.time_limit ?? '—'} min`, icon: 'warning' }
+    else if (state === 'finished') settled = { text: t('tune.soak.still_moving_at', { limit: run?.settings.time_limit ?? '—' }), icon: 'warning' }
     else if (run) settled = { text: '—' }
     let note = ''
-    if (entry.path === liveFile) note = 'Running'
-    else if (run && !run.result) note = 'Incomplete'
-    else if (state === 'stopped' || state === 'failed') note = bedSoakStateLabel[state]
+    if (entry.path === liveFile) note = bedSoakStateLabel('running') ?? ''
+    else if (run && !run.result) note = bedSoakStateLabel('incomplete') ?? ''
+    else if (state === 'stopped' || state === 'failed') note = bedSoakStateLabel(state) ?? ''
     const probeCount = run?.meshes[0]?.matrix.length ?? run?.settings.probe_count
     return {
       ...entry,
@@ -81,7 +82,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
       settled,
       ready: run ? duration(m?.ready) : '',
       problemCount: problems + jumps,
-      problems: [problems ? `${problems} point${problems === 1 ? '' : 's'}` : '', jumps ? `${jumps} jump${jumps === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · '),
+      problems: [problems ? t('tune.soak.points', { count: problems }) : '', jumps ? t('tune.soak.jumps', { count: jumps }) : ''].filter(Boolean).join(' · '),
     }
   })
 
@@ -91,7 +92,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
     .map((e) => ({ entry: e, run: e.run, color: colorFor(e.path) ?? BedSoakRunColors[0], name: bedSoakTargetsShort(e.run.settings.bed, e.run.settings.chamber) }))
   const times = compareRuns.flatMap(({ run }) => [...run.meshes.map((m) => m.time), run.temps.length ? run.temps[run.temps.length - 1][0] : 0])
   const xMax = Math.max(10, Math.ceil(Math.max(0, ...times) / 60 / 5) * 5)
-  const timeLabel = (minutes: number) => `${bedSoakClock(minutes * 60)} after heaters on`
+  const timeLabel = (minutes: number) => t('tune.soak.time_after', { time: bedSoakClock(minutes * 60) })
   const heightSeries: BedSoakChartSeries[] = compareRuns.map(({ run, color, name }) => ({
     name,
     color,
@@ -116,7 +117,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
   })
 
   const remove = async (filename: string) => {
-    if (await confirm({ title: 'Delete run', body: `Delete the bed soak run ${filename}?`, confirm: 'Delete', danger: true })) {
+    if (await confirm({ title: t('tune.soak.delete_title'), body: t('tune.soak.delete_body', { name: filename }), confirm: t('common.delete'), danger: true })) {
       await attempt(() => deleteRun(filename))
       onDeleted()
     }
@@ -129,14 +130,14 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
           <thead>
             <tr>
               <th className="w-8 pl-4!" />
-              <th>Date</th>
-              <th className="text-right">Bed</th>
-              <th className="text-right">Chamber</th>
-              <th>Mesh</th>
-              <th className="text-right">Bed at temp</th>
-              <th>Stopped moving</th>
-              <th className="text-right">Ready</th>
-              <th>Problems</th>
+              <th>{t('tune.soak.col_date')}</th>
+              <th className="text-right">{t('tune.soak.bed')}</th>
+              <th className="text-right">{t('tune.soak.chamber')}</th>
+              <th>{t('tune.soak.mesh')}</th>
+              <th className="text-right">{t('tune.soak.col_bed_at_temp')}</th>
+              <th>{t('tune.soak.stopped_moving')}</th>
+              <th className="text-right">{t('tune.soak.col_ready')}</th>
+              <th>{t('tune.soak.col_problems')}</th>
               <th />
             </tr>
           </thead>
@@ -150,7 +151,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
                     checked={!!r.color}
                     disabled={!r.run || (!r.color && compare.length >= 3)}
                     onChange={() => toggle(r.path)}
-                    aria-label={`Compare ${r.filename}`}
+                    aria-label={t('tune.soak.compare_named', { name: r.filename })}
                   />
                 </td>
                 <td className="whitespace-nowrap">
@@ -159,7 +160,7 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
                   {r.note && <span className="ml-1.5 text-ink-3">{r.note}</span>}
                 </td>
                 <td className="num text-right whitespace-nowrap">{r.bed} °C</td>
-                <td className="num text-right whitespace-nowrap">{r.chamber ? `${r.chamber} °C` : <span className="text-ink-3">off</span>}</td>
+                <td className="num text-right whitespace-nowrap">{r.chamber ? `${r.chamber} °C` : <span className="text-ink-3">{t('tune.soak.off')}</span>}</td>
                 <td className="whitespace-nowrap">{r.mesh}</td>
                 <td className="num text-right whitespace-nowrap">{r.bedAt}</td>
                 <td className="whitespace-nowrap">
@@ -179,17 +180,17 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
                       {r.problemCount}
                     </span>
                   ) : r.run ? (
-                    <span className="text-ink-3">None</span>
+                    <span className="text-ink-3">{t('tune.soak.none')}</span>
                   ) : null}
                 </td>
                 <td className="text-right whitespace-nowrap">
-                  <button className="iconbtn inline-grid text-accent-ink!" disabled={!r.run} title="Open" aria-label={`Open ${r.filename}`} onClick={() => onOpen(r.path)}>
+                  <button className="iconbtn inline-grid text-accent-ink!" disabled={!r.run} title={t('tune.soak.open')} aria-label={t('tune.soak.open_named', { name: r.filename })} onClick={() => onOpen(r.path)}>
                     <FolderOpen size={15} />
                   </button>
-                  <a className="iconbtn inline-grid" href={client.fileUrl(BED_SOAK_ROOT, r.path)} download={r.filename} title="Download" aria-label={`Download ${r.filename}`}>
+                  <a className="iconbtn inline-grid" href={client.fileUrl(BED_SOAK_ROOT, r.path)} download={r.filename} title={t('tune.shared.download')} aria-label={t('tune.soak.download_named', { name: r.filename })}>
                     <Download size={15} />
                   </a>
-                  <button className="iconbtn inline-grid" disabled={r.path === liveFile} title="Delete" aria-label={`Delete ${r.filename}`} onClick={() => remove(r.filename)}>
+                  <button className="iconbtn inline-grid" disabled={r.path === liveFile} title={t('common.delete')} aria-label={t('tune.soak.delete_named', { name: r.filename })} onClick={() => remove(r.filename)}>
                     <Trash2 size={15} />
                   </button>
                 </td>
@@ -201,11 +202,11 @@ export function BedSoakPastRuns({ entries, liveFile, onOpen, onDeleted }: { entr
       <div className="sep my-3" />
       {compareRuns.length ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <BedSoakChart title="Bed height since heaters on" unit="µm" series={heightSeries} xMin={0} xMax={xMax} timeLabel={timeLabel} height={180} hoverX={hoverX} onHover={setHoverX} />
-          <BedSoakChart title="Chamber temperature since heaters on" unit="°C" series={chamberSeries} xMin={0} xMax={xMax} timeLabel={timeLabel} height={180} hoverX={hoverX} onHover={setHoverX} />
+          <BedSoakChart title={t('tune.soak.chart_height_since')} unit="µm" series={heightSeries} xMin={0} xMax={xMax} timeLabel={timeLabel} height={180} hoverX={hoverX} onHover={setHoverX} />
+          <BedSoakChart title={t('tune.soak.chart_chamber_since')} unit="°C" series={chamberSeries} xMin={0} xMax={xMax} timeLabel={timeLabel} height={180} hoverX={hoverX} onHover={setHoverX} />
         </div>
       ) : (
-        <div className="text-ink-3">Tick up to three runs to compare them.</div>
+        <div className="text-ink-3">{t('tune.soak.compare_hint')}</div>
       )}
     </div>
   )

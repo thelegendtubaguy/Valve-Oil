@@ -6,6 +6,7 @@ import { Card } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, useBox, type BoxState } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 function useToolButtons(box: BoxState) {
   const commands = usePrinter((s) => s.commands)
@@ -30,7 +31,7 @@ export function BoxTools({ box: given }: { box?: BoxState }) {
           type="button"
           disabled={disabled}
           aria-pressed={active}
-          title={`${slot.label} · ${slot.present ? slot.name || 'Unknown filament' : 'Empty'}`}
+          title={`${slot.label} · ${slot.present ? slot.name || t('box.unknown_filament') : t('box.empty')}`}
           onClick={() => attempt(() => runGcode(boxCommands.tool(tool)))}
           className={`btn relative overflow-hidden px-1.5! ${active ? 'btn-primary disabled:opacity-100!' : ''}`}
         >
@@ -50,7 +51,7 @@ export function BoxToolsCard({ box, className = '' }: { box?: BoxState; classNam
   const b = box ?? own
   if (useToolButtons(b).length === 0) return null
   return (
-    <Card title="Tools" className={className} aside={b.printState === 'printing' ? 'Unavailable while printing' : undefined}>
+    <Card title={t('box.tools.title')} className={className} aside={b.printState === 'printing' ? t('box.tools.unavailable_printing') : undefined}>
       <BoxTools box={b} />
     </Card>
   )

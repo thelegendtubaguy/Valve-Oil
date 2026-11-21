@@ -10,20 +10,21 @@ import { ensureSpool, startSpoolman, useSpoolman, type SocketDiagnostic } from '
 import { SpoolIcon } from './SpoolIcon'
 import { SpoolSelectionDialog } from './SpoolSelectionDialog'
 import { fmtLength, fmtWeight, slotSpools, spoolPageUrl, toSpool, type Spool } from './spoolman'
+import { t, type MessageKey } from '../../i18n'
 
 // Fluidd's wording, with the page named for this UI instead of Fluidd.
-const LIVE_UPDATES: Record<SocketDiagnostic, string> = {
-  cors: "Live updates from Spoolman aren't working. Spoolman is blocking this page's browser origin - check your Spoolman configuration to allow it.",
-  'mixed-content': "Live updates from Spoolman aren't working. This page is served over HTTPS but the Spoolman address uses HTTP, so the browser blocks the direct connection.",
-  unreachable: "Live updates from Spoolman aren't working. This browser can't reach the Spoolman server directly.",
-  reachable: "Live updates from Spoolman aren't working. The direct connection to Spoolman failed for an unknown reason.",
+const LIVE_UPDATES: Record<SocketDiagnostic, MessageKey> = {
+  cors: 'spoolman.live.cors',
+  'mixed-content': 'spoolman.live.mixed_content',
+  unreachable: 'spoolman.live.unreachable',
+  reachable: 'spoolman.live.reachable',
 }
 
 const sentence = (parts: (string | null)[]) => {
   const text = parts.filter(Boolean).join(' · ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
-const slotTarget = (slot: number) => (slot === QIDI_BOX_EXTERNAL_SLOT ? "the external spool's spool" : `${qidiBoxSlotLabel(slot)}'s spool`)
+const slotTarget = (slot: number) => (slot === QIDI_BOX_EXTERNAL_SLOT ? t('spoolman.target_external') : t('spoolman.target_slot', { slot: qidiBoxSlotLabel(slot) }))
 
 /**
  * Shown only while Moonraker has its Spoolman component loaded. `slots` lists each Box slot's spool when Valve Oil's
@@ -70,24 +71,24 @@ function SpoolmanCardBody({ className, showSlots }: { className: string; showSlo
       icon={<Disc3 size={14} />}
       aside={
         <button className="btn btn-sm" disabled={!connected} onClick={() => setOpen(true)}>
-          Change spool
+          {t('spoolman.change_spool')}
         </button>
       }
     >
-      {connected && diagnostic && <Note tone="warn">{LIVE_UPDATES[diagnostic]}</Note>}
+      {connected && diagnostic && <Note tone="warn">{t(LIVE_UPDATES[diagnostic])}</Note>}
       {active ? (
         <ActiveSpool spool={active} url={url} />
       ) : connected ? (
-        <Note tone="info">Filament tracking is inactive. To get started, please select a spool.</Note>
+        <Note tone="info">{t('spoolman.inactive')}</Note>
       ) : (
         <Note tone="warn">
-          Spoolman server not available.
+          {t('spoolman.unavailable')}
           {error && <span className="mt-0.5 block text-[12px] opacity-80">{error}</span>}
         </Note>
       )}
       {connected && slotRows.length > 0 && (
         <div className="mt-3.5">
-          <SectionLabel className="mb-1.5">Box slots</SectionLabel>
+          <SectionLabel className="mb-1.5">{t('spoolman.box_slots')}</SectionLabel>
           <div className="grid gap-0.5">
             {slotRows.map((slot) => (
               <SlotRow key={slot} slot={slot} spoolId={perSlot!.spools.get(slot) ?? null} spool={spools.get(perSlot!.spools.get(slot) ?? -1)} loaded={perSlot!.loadedSlot === slot} />
@@ -109,9 +110,9 @@ function ActiveSpool({ spool, url }: { spool: Spool; url: string | null }) {
         <SpoolIcon spool={spool} size={56} />
         <div className="min-w-0 flex-1">
           <div className="section-label flex items-center gap-1.5">
-            Active spool
+            {t('spoolman.active_spool')}
             {url ? (
-              <a className="inline-flex items-center gap-1 text-accent-ink normal-case hover:underline" href={spoolPageUrl(url, spool.id)} target="_blank" rel="noopener noreferrer" title="Open in Spoolman">
+              <a className="inline-flex items-center gap-1 text-accent-ink normal-case hover:underline" href={spoolPageUrl(url, spool.id)} target="_blank" rel="noopener noreferrer" title={t('spoolman.open_in_spoolman')}>
                 #{spool.id} <ExternalLink size={11} />
               </a>
             ) : (
@@ -123,17 +124,17 @@ function ActiveSpool({ spool, url }: { spool: Spool; url: string | null }) {
         </div>
       </div>
       {spool.progress != null && (
-        <div className="bar mt-3 h-1.5!" role="progressbar" aria-label="Remaining" aria-valuenow={Math.round(spool.progress)} aria-valuemin={0} aria-valuemax={100}>
+        <div className="bar mt-3 h-1.5!" role="progressbar" aria-label={t('spoolman.row.remaining')} aria-valuenow={Math.round(spool.progress)} aria-valuemin={0} aria-valuemax={100}>
           <i style={{ width: `${Math.min(100, Math.max(0, spool.progress))}%` }} />
         </div>
       )}
       {/* Two columns only when the card itself is wide, since Home's side columns are narrow on any screen. */}
       <div className="@container mt-2">
         <div className="grid gap-x-[18px] @sm:grid-cols-2">
-        <Row k="Vendor">{f.vendor?.name || '—'}</Row>
-        <Row k="Material">{f.material || '—'}</Row>
-        <Row k="Filament">{f.name || '—'}</Row>
-        <Row k="Colors">
+        <Row k={t('spoolman.row.vendor')}>{f.vendor?.name || '—'}</Row>
+        <Row k={t('spoolman.row.material')}>{f.material || '—'}</Row>
+        <Row k={t('spoolman.row.filament')}>{f.name || '—'}</Row>
+        <Row k={t('spoolman.row.colors')}>
           {color ? (
             <span className="inline-flex items-center gap-1">
               {color.map((c) => (
@@ -144,18 +145,18 @@ function ActiveSpool({ spool, url }: { spool: Spool; url: string | null }) {
             '—'
           )}
         </Row>
-        <Row k="Remaining">
+        <Row k={t('spoolman.row.remaining')}>
           <Amount value={fmtWeight(spool.remaining_weight)} of={fmtWeight(spool.initial_weight)} />
           <Amount value={fmtLength(spool.remaining_length)} of={fmtLength(spool.initial_length)} sub />
         </Row>
-        <Row k="Used">
+        <Row k={t('spoolman.row.used')}>
           <Amount value={fmtWeight(spool.used_weight)} of={fmtWeight(spool.initial_weight)} />
           <Amount value={fmtLength(spool.used_length)} of={fmtLength(spool.initial_length)} sub />
         </Row>
-        {spool.location && <Row k="Location">{spool.location}</Row>}
-        {spool.lot_nr && <Row k="Lot nr">{spool.lot_nr}</Row>}
-        <Row k="First used">{spool.first_used ? fmtAgo(spool.first_used / 1000) : 'Never'}</Row>
-        <Row k="Last used">{spool.last_used ? fmtAgo(spool.last_used / 1000) : 'Never'}</Row>
+        {spool.location && <Row k={t('spoolman.row.location')}>{spool.location}</Row>}
+        {spool.lot_nr && <Row k={t('spoolman.row.lot_nr')}>{spool.lot_nr}</Row>}
+        <Row k={t('spoolman.row.first_used')}>{spool.first_used ? fmtAgo(spool.first_used / 1000) : t('spoolman.row.never')}</Row>
+        <Row k={t('spoolman.row.last_used')}>{spool.last_used ? fmtAgo(spool.last_used / 1000) : t('spoolman.row.never')}</Row>
         </div>
       </div>
       {spool.comment && <p className="mt-2 mb-0 text-[12.5px] text-ink-2">{spool.comment}</p>}
@@ -183,13 +184,13 @@ function Amount({ value, of, sub }: { value: string; of: string; sub?: boolean }
 function SlotRow({ slot, spoolId, spool, loaded }: { slot: number; spoolId: number | null; spool: Spool | undefined; loaded: boolean }) {
   return (
     <div className={`flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-1 ${loaded ? 'bg-accent-tint' : ''}`}>
-      <span className={`w-7 flex-none text-[13px] font-bold ${loaded ? 'text-accent-ink' : 'text-ink-2'}`}>{slot === QIDI_BOX_EXTERNAL_SLOT ? 'Ext' : qidiBoxSlotLabel(slot)}</span>
+      <span className={`w-7 flex-none text-[13px] font-bold ${loaded ? 'text-accent-ink' : 'text-ink-2'}`}>{qidiBoxSlotLabel(slot)}</span>
       <SpoolIcon spool={spool} size={32} />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold">
-          {spoolId == null ? <span className="text-ink-3">No spool</span> : (spool?.filament_name ?? `Spool ${spoolId}`)}
+          {spoolId == null ? <span className="text-ink-3">{t('spoolman.no_spool')}</span> : (spool?.filament_name ?? t('spoolman.spool_n', { id: spoolId }))}
         </div>
-        <div className="truncate text-[12px] text-ink-3">{sentence([slot === QIDI_BOX_EXTERNAL_SLOT ? 'External spool' : null, loaded ? 'loaded' : null, spoolId != null ? `#${spoolId}` : null])}</div>
+        <div className="truncate text-[12px] text-ink-3">{sentence([slot === QIDI_BOX_EXTERNAL_SLOT ? t('box.external_spool') : null, loaded ? t('spoolman.loaded') : null, spoolId != null ? `#${spoolId}` : null])}</div>
       </div>
       {spool && <span className="num flex-none text-[12.5px] font-semibold">{fmtWeight(spool.remaining_weight, 0)}</span>}
     </div>

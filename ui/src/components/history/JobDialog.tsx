@@ -6,6 +6,7 @@ import { PrintDialog } from '../PrintDialog'
 import { queueActions, useComponent } from '../../state/history'
 import { useJob, isActive } from '../../state/job'
 import { displayName } from '../../lib/format'
+import { t } from '../../i18n'
 import { cellText, fmtDateTime, fmtLength, fmtSpan, historyColumns, jobColors, type Column, type Job } from './logic'
 import { Cell, StatusPill, Thumb, confirmDelete } from './bits'
 
@@ -25,7 +26,7 @@ export function JobDialog({ job, onClose }: { job: Job; onClose: () => void }) {
   const enqueue = async () => {
     await attempt(async () => {
       await queueActions.post([job.filename])
-      toast(`Added ${displayName(job.filename)} to the job queue`)
+      toast(t('history.job.added_to_queue', { name: displayName(job.filename) }))
     })
   }
 
@@ -45,16 +46,16 @@ export function JobDialog({ job, onClose }: { job: Job; onClose: () => void }) {
       footer={
         <>
           <button className="btn btn-danger mr-auto" onClick={() => confirmDelete(job).then(onClose)}>
-            <Trash2 size={15} /> Delete
+            <Trash2 size={15} /> {t('common.delete')}
           </button>
           {hasQueue && job.exists && (
             <button className="btn" onClick={enqueue}>
-              <ListPlus size={15} /> Add to queue
+              <ListPlus size={15} /> {t('history.job.add_to_queue')}
             </button>
           )}
           {job.exists && (
-            <button className="btn btn-primary" disabled={printing} onClick={() => setPrint(true)} title={printing ? 'The printer is busy' : undefined}>
-              <Play size={15} /> Print again
+            <button className="btn btn-primary" disabled={printing} onClick={() => setPrint(true)} title={printing ? t('history.job.printer_busy') : undefined}>
+              <Play size={15} /> {t('history.job.print_again')}
             </button>
           )}
         </>
@@ -65,22 +66,22 @@ export function JobDialog({ job, onClose }: { job: Job; onClose: () => void }) {
         <div className="min-w-0">
           <div className="mb-2 text-[12.5px] break-all text-ink-3">
             {job.filename}
-            {!job.exists && <span className="chip ml-2">File deleted</span>}
+            {!job.exists && <span className="chip ml-2">{t('history.job.file_deleted')}</span>}
           </div>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-            <Fact label="Started" value={fmtDateTime(job.start_time)} />
-            <Fact label="Ended" value={job.end_time ? fmtDateTime(job.end_time) : '—'} />
-            <Fact label="Used filament" value={job.filament_used > 0 ? fmtLength(job.filament_used) : '—'} />
-            <Fact label="Print duration" value={fmtSpan(job.print_duration)} />
-            <Fact label="Total duration" value={fmtSpan(job.total_duration)} />
-            {job.user && job.user !== '_TRUSTED_USER_' && <Fact label="User" value={job.user} />}
+            <Fact label={t('history.columns.start_time')} value={fmtDateTime(job.start_time)} />
+            <Fact label={t('history.columns.end_time')} value={job.end_time ? fmtDateTime(job.end_time) : '—'} />
+            <Fact label={t('history.columns.filament_used')} value={job.filament_used > 0 ? fmtLength(job.filament_used) : '—'} />
+            <Fact label={t('history.columns.print_duration')} value={fmtSpan(job.print_duration)} />
+            <Fact label={t('history.columns.total_duration')} value={fmtSpan(job.total_duration)} />
+            {job.user && job.user !== '_TRUSTED_USER_' && <Fact label={t('history.columns.user')} value={job.user} />}
           </div>
         </div>
       </div>
 
       {details.length > 0 && (
         <>
-          <SectionLabel className="mt-5 mb-1">File</SectionLabel>
+          <SectionLabel className="mt-5 mb-1">{t('history.job.file')}</SectionLabel>
           <div className="rows-2 max-sm:!grid-cols-1">
             {details.map((c) => (
               <div key={c.key} className="row-k">
@@ -96,17 +97,17 @@ export function JobDialog({ job, onClose }: { job: Job; onClose: () => void }) {
 
       {aux.length > 0 && (
         <>
-          <SectionLabel className="mt-5 mb-1">Auxiliary data</SectionLabel>
+          <SectionLabel className="mt-5 mb-1">{t('history.job.auxiliary_data')}</SectionLabel>
           <div className="rows-2 max-sm:!grid-cols-1">
             {historyColumns([job])
               .filter((c) => c.key.startsWith('auxiliary_data.'))
               .map((c) => {
-                const t = cellText(job, c)
+                const text = cellText(job, c)
                 const a = aux.find((x) => x.name === c.key.slice(15))
                 return (
                   <div key={c.key} className="row-k" title={a?.provider}>
                     <span className="k">{c.label}</span>
-                    <span className="v">{t == null ? '—' : Array.isArray(t) ? t.join(', ') : t}</span>
+                    <span className="v">{text == null ? '—' : Array.isArray(text) ? text.join(', ') : text}</span>
                   </div>
                 )
               })}

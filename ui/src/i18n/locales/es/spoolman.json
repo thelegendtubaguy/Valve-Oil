@@ -1,0 +1,66 @@
+{
+  "change_spool": "Cambiar bobina",
+  "active_spool": "Bobina activa",
+  "open_in_spoolman": "Abrir en Spoolman",
+  "inactive": "El seguimiento de filamento está inactivo. Para empezar, selecciona una bobina.",
+  "unavailable": "El servidor de Spoolman no está disponible.",
+  "box_slots": "Ranuras del Box",
+  "no_spool": "Sin bobina",
+  "spool_n": "Bobina {{id}}",
+  "loaded": "cargada",
+  "target_external": "La bobina que selecciones pasa a ser la bobina externa.",
+  "target_slot": "La bobina que selecciones pasa a ser la bobina de {{slot}}.",
+  "live": {
+    "cors": "Las actualizaciones en vivo de Spoolman no funcionan. Spoolman está bloqueando el origen de esta página en el navegador; revisa la configuración de Spoolman para permitirlo.",
+    "mixed_content": "Las actualizaciones en vivo de Spoolman no funcionan. Esta página se sirve por HTTPS, pero la dirección de Spoolman usa HTTP, así que el navegador bloquea la conexión directa.",
+    "unreachable": "Las actualizaciones en vivo de Spoolman no funcionan. Este navegador no puede llegar directamente al servidor de Spoolman.",
+    "reachable": "Las actualizaciones en vivo de Spoolman no funcionan. La conexión directa con Spoolman falló por un motivo desconocido."
+  },
+  "row": {
+    "vendor": "Fabricante",
+    "material": "Material",
+    "filament": "Filamento",
+    "colors": "Colores",
+    "remaining": "Restante",
+    "used": "Usado",
+    "location": "Ubicación",
+    "lot_nr": "N.º de lote",
+    "first_used": "Primer uso",
+    "last_used": "Último uso",
+    "never": "Nunca"
+  },
+  "select": {
+    "title": "Selección de bobina",
+    "manage": "Gestionar bobinas",
+    "select": "Seleccionar",
+    "search": "Buscar",
+    "search_label": "Buscar bobinas",
+    "sort_by": "Ordenar por",
+    "ascending": "Ascendente",
+    "descending": "Descendente",
+    "sort_ascending": "Orden ascendente",
+    "sort_descending": "Orden descendente",
+    "all_materials": "Todos los materiales",
+    "none": "No se encontraron bobinas",
+    "last_used": "Último uso {{ago}}",
+    "never_used": "Nunca usada",
+    "confirm": "Confirmar",
+    "continue": "Continuar"
+  },
+  "sort": {
+    "filament_name": "Filamento",
+    "id": "ID",
+    "material": "Material",
+    "remaining_weight": "Peso restante",
+    "used_weight": "Peso usado",
+    "location": "Ubicación",
+    "first_used": "Primer uso",
+    "last_used": "Último uso"
+  },
+  "check": {
+    "no_spool": "No has seleccionado ninguna bobina. ¿Seguro que quieres imprimir sin seguimiento de filamento?",
+    "no_filament": "Puede que a la bobina seleccionada no le quede filamento suficiente para terminar la impresión. ¿Seguro que quieres continuar?",
+    "no_required_length": "Se desconoce la cantidad de filamento necesaria para imprimir el archivo seleccionado. ¿Quieres continuar?",
+    "mismatched_filament": "El material del filamento seleccionado no coincide con el material elegido en el laminador. ¿Seguro que quieres continuar?"
+  }
+}

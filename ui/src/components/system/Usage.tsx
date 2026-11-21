@@ -5,6 +5,7 @@ import { LineChart, type ChartSeries } from './LineChart'
 import { SYSTEM_RETENTION, useSystemBuffers } from './metrics'
 import type { SeriesBuffer } from './chart-data'
 import { mcuLabel } from './bits'
+import { t } from '../../i18n'
 
 type Line = { col: string; label: string }
 
@@ -50,39 +51,39 @@ export function UsageCard({ cores }: { cores: number }) {
   const hasHealth = usePrinter((s) => s.status.tltg_klipper_health != null)
   const has = (buf: SeriesBuffer, col: string) => buf.cols[col]?.some(Number.isFinite)
   return (
-    <Card title="System utilization" icon={<Activity size={15} />} aside="Last 10 minutes">
+    <Card title={t('system.usage.title')} icon={<Activity size={15} />} aside={t('system.usage.last_10')}>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        {has(b.host, 'cpu') && <InlineChart title="Host CPU" buf={b.host} lines={[{ col: 'cpu', label: 'CPU' }]} max={pctMax} />}
-        {has(b.klipper, 'load') && <InlineChart title="System load" buf={b.klipper} lines={[{ col: 'load', label: 'Load' }]} unit={` / ${cores}`} digits={2} max={(m) => Math.max(cores, m)} hint="Load average: how many processes want the CPU, out of its cores" />}
-        {has(b.host, 'memused') && <InlineChart title="System memory" buf={b.host} lines={[{ col: 'memused', label: 'Memory used' }]} max={pctMax} />}
-        {has(b.host, 'cpu_temp') && <InlineChart title="CPU temperature" buf={b.host} lines={[{ col: 'cpu_temp', label: 'CPU' }]} unit=" °C" min={(m: number) => Math.max(0, Math.floor((m - 10) / 10) * 10)} max={(m) => Math.ceil((m + 5) / 10) * 10} />}
+        {has(b.host, 'cpu') && <InlineChart title={t('system.usage.host_cpu')} buf={b.host} lines={[{ col: 'cpu', label: 'CPU' }]} max={pctMax} />}
+        {has(b.klipper, 'load') && <InlineChart title={t('system.usage.system_load')} buf={b.klipper} lines={[{ col: 'load', label: t('system.usage.load') }]} unit={` / ${cores}`} digits={2} max={(m) => Math.max(cores, m)} hint={t('system.usage.system_load_hint')} />}
+        {has(b.host, 'memused') && <InlineChart title={t('system.usage.memory')} buf={b.host} lines={[{ col: 'memused', label: t('system.usage.memory_used') }]} max={pctMax} />}
+        {has(b.host, 'cpu_temp') && <InlineChart title={t('system.usage.cpu_temp')} buf={b.host} lines={[{ col: 'cpu_temp', label: 'CPU' }]} unit=" °C" min={(m: number) => Math.max(0, Math.floor((m - 10) / 10) * 10)} max={(m) => Math.ceil((m + 5) / 10) * 10} />}
         <InlineChart
-          title="Klipper load"
+          title={t('system.usage.klipper_load')}
           buf={b.klipper}
-          lines={hasHealth ? [{ col: 'cputime_change', label: 'Load' }, { col: 'main_thread', label: 'Main thread' }] : [{ col: 'cputime_change', label: 'Load' }]}
+          lines={hasHealth ? [{ col: 'cputime_change', label: t('system.usage.load') }, { col: 'main_thread', label: t('system.usage.main_thread') }] : [{ col: 'cputime_change', label: t('system.usage.load') }]}
           max={pctMax}
-          hint={hasHealth ? 'Klipper’s CPU use, and its main thread, the one that has to keep up with endstops and heaters, as a share of one core' : 'Klipper’s CPU use as a share of one core'}
+          hint={hasHealth ? t('system.usage.klipper_load_hint_thread') : t('system.usage.klipper_load_hint')}
         />
         {hasHealth && (
           <InlineChart
-            title="Klipper timers"
+            title={t('system.usage.timers_title')}
             buf={b.klipper}
-            lines={[{ col: 'timers', label: 'Timers' }]}
+            lines={[{ col: 'timers', label: t('system.usage.timers') }]}
             unit=""
             digits={0}
             min={0}
             max={(m) => Math.max(100, Math.ceil((m * 1.2) / 50) * 50)}
-            hint="Klipper walks every timer on each pass of its main loop, so a count that keeps climbing slows it down"
+            hint={t('system.usage.timers_hint')}
           />
         )}
-        {has(b.host, 'moonraker') && <InlineChart title="Moonraker load" buf={b.host} lines={[{ col: 'moonraker', label: 'Load' }]} max={pctMax} />}
+        {has(b.host, 'moonraker') && <InlineChart title={t('system.usage.moonraker_load')} buf={b.host} lines={[{ col: 'moonraker', label: t('system.usage.load') }]} max={pctMax} />}
         {mcus.map((m) =>
           b.mcus[m] ? (
             <InlineChart
               key={m}
-              title={`${mcuLabel(m)} MCU`}
+              title={t('system.mcu.title', { name: mcuLabel(m) })}
               buf={b.mcus[m]}
-              lines={b.mcus[m].cols.load ? [{ col: 'load', label: 'Load' }, { col: 'awake', label: 'Awake' }] : [{ col: 'awake', label: 'Awake' }]}
+              lines={b.mcus[m].cols.load ? [{ col: 'load', label: t('system.usage.load') }, { col: 'awake', label: t('system.mcu.awake') }] : [{ col: 'awake', label: t('system.mcu.awake') }]}
               max={mcuMax}
               digits={2}
             />

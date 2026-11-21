@@ -3,6 +3,8 @@
 // github.com/thelegendtubaguy/fluidd qidi@6405679. Keep behavior in step with the fork.
 // QIDI Box slots: Box 1 holds slots 0-3 (1A-1D), Box 2 slots 4-7 (2A-2D), and so on; slot 16 is the external spool.
 
+import { t } from '../i18n'
+
 export const QIDI_BOX_EXTERNAL_SLOT = 16
 
 export interface QidiBoxSlot {
@@ -88,7 +90,7 @@ export const qidiBoxFileTools = (file: QidiBoxFileMetadata): QidiBoxFileTools =>
 }
 
 export const qidiBoxSlotLabel = (index: number): string => index === QIDI_BOX_EXTERNAL_SLOT
-  ? 'Ext'
+  ? t('box.external_short')
   : `${Math.floor(index / 4) + 1}${String.fromCharCode(65 + (index % 4))}`
 
 // Saved slot references such as value_tN and slot_sync read 'slotN'.

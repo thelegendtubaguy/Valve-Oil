@@ -4,6 +4,7 @@ import { Dialog, Toggle, confirm } from '../ui'
 import { attempt } from '../toast'
 import { validExpression, type ConsoleFilter, type ConsoleFilterType } from './model'
 import { useConsoleSettings } from './store'
+import { t, type MessageKey } from '../../i18n'
 
 // Fluidd's console filters: "Hide temp waits" and named filters that hide matching lines, stored in its namespace
 // (`uiSettings.general.hideTempWaits`, `console.consoleFilters`), so a filter set up in either UI works in both.
@@ -40,21 +41,21 @@ export function FilterMenu({ onManage }: { onManage: () => void }) {
   )
   return (
     <div className="relative inline-flex" ref={ref}>
-      <button type="button" className={`btn btn-sm ${active ? 'text-accent-ink' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Filter">
+      <button type="button" className={`btn btn-sm ${active ? 'text-accent-ink' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} title={t('console.filters.filter')}>
         <Filter size={14} />
-        <span className="max-sm:hidden">Filter</span>
+        <span className="max-sm:hidden">{t('console.filters.filter')}</span>
         {active > 0 && <span className="num text-[11px]">{active}</span>}
       </button>
       {open && (
         <div className="menu top-[calc(100%+4px)] right-0 max-w-[min(320px,calc(100vw-24px))]" role="menu">
-          <Row on={s.hideTempWaits} label="Hide temp waits" onClick={() => attempt(() => s.setHideTempWaits(!s.hideTempWaits))} />
+          <Row on={s.hideTempWaits} label={t('console.filters.hide_temp_waits')} onClick={() => attempt(() => s.setHideTempWaits(!s.hideTempWaits))} />
           {s.filters.length > 0 && <div className="sep my-1" />}
           {s.filters.map((f) => (
             <Row key={f.id} on={f.enabled} label={f.name || f.value} onClick={() => toggle(f)} />
           ))}
           <div className="sep my-1" />
           <button type="button" onClick={() => (setOpen(false), onManage())}>
-            <Pencil size={14} /> Manage filters…
+            <Pencil size={14} /> {t('console.filters.manage')}
           </button>
         </div>
       )}
@@ -62,11 +63,12 @@ export function FilterMenu({ onManage }: { onManage: () => void }) {
   )
 }
 
-const TYPES: { value: ConsoleFilterType; label: string }[] = [
-  { value: 'contains', label: 'Contains' },
-  { value: 'starts-with', label: 'Starts with' },
-  { value: 'expression', label: 'Expression' },
-]
+const TYPES: ConsoleFilterType[] = ['contains', 'starts-with', 'expression']
+const TYPE_LABEL: Record<ConsoleFilterType, MessageKey> = {
+  contains: 'console.filters.contains',
+  'starts-with': 'console.filters.starts_with',
+  expression: 'console.filters.expression',
+}
 
 /** Add, edit, and remove console filters, as in Fluidd's console settings. */
 export function FiltersDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -77,7 +79,7 @@ export function FiltersDialog({ open, onClose }: { open: boolean; onClose: () =>
   }, [open])
 
   const remove = async (f: ConsoleFilter) => {
-    if (await confirm({ title: 'Remove filter', body: `Are you sure you want to remove the console filter ${f.name}?`, confirm: 'Remove', danger: true }))
+    if (await confirm({ title: t('console.filters.remove_title'), body: t('console.filters.remove_body', { name: f.name }), confirm: t('common.remove'), danger: true }))
       attempt(() => s.setFilters(s.filters.filter((x) => x.id !== f.id)))
   }
   const save = (f: ConsoleFilter) =>
@@ -91,36 +93,36 @@ export function FiltersDialog({ open, onClose }: { open: boolean; onClose: () =>
     <Dialog
       open={open}
       onClose={onClose}
-      title="Console filters"
+      title={t('console.filters.title')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
           <button className="btn btn-primary" onClick={() => setEdit({ id: '', name: '', type: 'contains', value: '', enabled: true })}>
-            <Plus size={15} /> Add filter
+            <Plus size={15} /> {t('console.filters.add')}
           </button>
         </>
       }
     >
-      <p className="mt-0 mb-3 text-ink-2">Lines a filter matches are hidden from the console. Fluidd uses the same filters.</p>
+      <p className="mt-0 mb-3 text-ink-2">{t('console.filters.intro')}</p>
       {s.filters.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line-strong p-4 text-center text-ink-3">No filters yet.</div>
+        <div className="rounded-lg border border-dashed border-line-strong p-4 text-center text-ink-3">{t('console.filters.empty')}</div>
       ) : (
         <div className="grid gap-1.5">
           {s.filters.map((f) => (
             <div key={f.id} className="flex items-center gap-3 rounded-xl bg-inset px-3 py-2 shadow-[inset_0_0_0_1px_var(--line)]">
-              <Toggle checked={f.enabled} onChange={(v) => attempt(() => s.setFilters(s.filters.map((x) => (x.id === f.id ? { ...x, enabled: v } : x))))} label={`Use ${f.name}`} />
+              <Toggle checked={f.enabled} onChange={(v) => attempt(() => s.setFilters(s.filters.map((x) => (x.id === f.id ? { ...x, enabled: v } : x))))} label={t('console.filters.use', { name: f.name })} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-semibold">{f.name}</div>
                 <div className="truncate text-[12px] text-ink-3">
-                  {TYPES.find((t) => t.value === f.type)?.label}: <span className="font-mono">{f.value}</span>
+                  {t(TYPE_LABEL[f.type])}: <span className="font-mono">{f.value}</span>
                 </div>
               </div>
-              <button className="iconbtn" onClick={() => setEdit({ ...f })} aria-label={`Edit ${f.name}`} title="Edit">
+              <button className="iconbtn" onClick={() => setEdit({ ...f })} aria-label={t('console.filters.edit_named', { name: f.name })} title={t('common.edit')}>
                 <Pencil size={15} />
               </button>
-              <button className="iconbtn" onClick={() => remove(f)} aria-label={`Remove ${f.name}`} title="Remove">
+              <button className="iconbtn" onClick={() => remove(f)} aria-label={t('console.filters.remove_named', { name: f.name })} title={t('common.remove')}>
                 <Trash2 size={15} />
               </button>
             </div>
@@ -136,50 +138,51 @@ function FilterEditor({ filter, others, onCancel, onSave }: { filter: ConsoleFil
   const nameTaken = others.some((o) => o.id !== f.id && o.name.toLowerCase() === f.name.trim().toLowerCase())
   const badExpr = f.type === 'expression' && f.value !== '' && !validExpression(f.value)
   const ok = f.name.trim() !== '' && f.value !== '' && !nameTaken && !badExpr
-  const typeLabel = TYPES.find((t) => t.value === f.type)!.label
+  const typeLabel = t(TYPE_LABEL[f.type])
   return (
     <Dialog
       open
       onClose={onCancel}
-      title={f.id ? 'Edit filter' : 'Add filter'}
+      title={f.id ? t('console.filters.edit') : t('console.filters.add')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onCancel}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ ...f, name: f.name.trim() })}>
-            Save
+            {t('common.save')}
           </button>
         </>
       }
     >
       <div className="grid gap-4">
         <label className="flex items-center justify-between gap-3">
-          <span className="font-semibold">Enable</span>
-          <Toggle checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} label="Enable" />
+          <span className="font-semibold">{t('console.filters.enable')}</span>
+          <Toggle checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} label={t('console.filters.enable')} />
         </label>
         <label className="grid gap-1.5">
-          <span className="lbl">Name</span>
+          <span className="lbl">{t('console.filters.name')}</span>
           <input className="field" autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          {nameTaken && <span className="text-[12px] text-bad">A filter with this name already exists.</span>}
+          {nameTaken && <span className="text-[12px] text-bad">{t('console.filters.name_taken')}</span>}
         </label>
         <div className="grid gap-1.5">
-          <span className="lbl">Type</span>
+          <span className="lbl">{t('console.filters.type')}</span>
           <div className="flex flex-wrap gap-1.5">
-            {TYPES.map((t) => (
-              <button key={t.value} type="button" className={`choice ${f.type === t.value ? 'on' : ''}`} onClick={() => setF({ ...f, type: t.value })}>
-                {t.label}
+            {TYPES.map((type) => (
+              <button key={type} type="button" className={`choice ${f.type === type ? 'on' : ''}`} onClick={() => setF({ ...f, type })}>
+                {t(TYPE_LABEL[type])}
               </button>
             ))}
           </div>
         </div>
         <label className="grid gap-1.5">
           <span className="lbl">{typeLabel}</span>
+          {/* i18n-ignore: example console lines, which Klipper writes in English */}
           <input className="field font-mono" spellCheck={false} autoCapitalize="off" value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} placeholder={f.type === 'expression' ? '^// pressure_advance' : 'pressure_advance'} />
           {badExpr ? (
-            <span className="text-[12px] text-bad">This isn’t a valid regular expression.</span>
+            <span className="text-[12px] text-bad">{t('console.filters.bad_expression')}</span>
           ) : (
-            <span className="text-[12px] text-ink-3">{f.type === 'expression' ? 'A JavaScript regular expression, case-sensitive.' : 'Not case-sensitive.'}</span>
+            <span className="text-[12px] text-ink-3">{f.type === 'expression' ? t('console.filters.expression_hint') : t('console.filters.case_hint')}</span>
           )}
         </label>
       </div>

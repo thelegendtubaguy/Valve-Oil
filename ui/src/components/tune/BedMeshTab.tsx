@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Download, FolderOpen, Grid3x3, House, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
 import { Card, Dialog, Segmented, Choices, Toggle, Empty, confirm } from '../ui'
 import { attempt } from '../toast'
@@ -9,9 +9,12 @@ import { MeshSurface3D, type MeshSurfaceHandle } from './MeshSurface3D'
 import { MeshHeatmap } from './MeshHeatmap'
 import { SaveConfigNotice } from './SaveConfigNotice'
 import { bedBounds, fmtMm, gcodeParam, MESH_GRADIENT, meshGrid, meshPreview, meshProfiles, meshScale, meshStats, meshView, type BedMeshStatus, type MeshMarker, type MeshView } from './mesh'
-import { plural, useMedia, usePrinterFlags } from './hooks'
+import { useMedia, usePrinterFlags } from './hooks'
+import { locale, t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 const pointName = (p: { x: number; y: number }) => `X${Math.round(p.x)} Y${Math.round(p.y)}`
+const bold = (c: ReactNode) => <b className="text-ink-2">{c}</b>
 
 export function BedMeshTab() {
   return (
@@ -47,13 +50,13 @@ function MeshCard() {
   const stats = useMemo(() => (grid ? meshStats(grid.z) : null), [grid])
   const bed = useMemo(() => (grid ? bedBounds(toolhead.axis_minimum as number[] | undefined, toolhead.axis_maximum as number[] | undefined, grid) : null), [grid, toolhead.axis_minimum, toolhead.axis_maximum])
   const scale = stats ? meshScale(stats, view.colorScale, view.boxScale, !!preview) : null
-  const markers: MeshMarker[] = preview ? preview.markers : problems.map((p) => ({ x: p.x, y: p.y, label: `${pointName(p)} took ${p.tries} tries` }))
+  const markers: MeshMarker[] = preview ? preview.markers : problems.map((p) => ({ x: p.x, y: p.y, label: t('tune.mesh.point_tries', { point: pointName(p), count: p.tries }) }))
   const unit = preview ? 'µm' : 'mm'
   const height = wide ? 460 : 300
 
   return (
     <Card
-      title="Bed mesh"
+      title={t('tune.mesh.title')}
       icon={<Grid3x3 size={14} />}
       aside={
         <span className="flex items-center justify-end gap-1.5">
@@ -64,9 +67,9 @@ function MeshCard() {
     >
       {preview && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-inset px-3 py-2">
-          <span className="min-w-0 flex-1 text-ink-2">Showing {preview.title}.</span>
+          <span className="min-w-0 flex-1 text-ink-2">{t('tune.mesh.showing', { title: preview.title })}</span>
           <button className="btn btn-sm" onClick={() => meshPreview.set(null)}>
-            Show the loaded mesh
+            {t('tune.mesh.show_loaded')}
           </button>
         </div>
       )}
@@ -74,32 +77,32 @@ function MeshCard() {
         <>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Segmented
-              label="View"
+              label={t('tune.mesh.view')}
               value={view.mode}
               onChange={(mode) => setView({ mode })}
               options={[
                 { value: '3d', label: '3D' },
-                { value: 'map', label: 'Heat map' },
+                { value: 'map', label: t('tune.mesh.heat_map') },
               ]}
             />
             {!preview && (
               <Segmented
-                label="Matrix"
+                label={t('tune.mesh.matrix')}
                 value={view.matrix}
                 onChange={(matrix) => setView({ matrix })}
                 options={[
-                  { value: 'probed_matrix', label: 'Probed' },
-                  { value: 'mesh_matrix', label: 'Interpolated' },
+                  { value: 'probed_matrix', label: t('tune.mesh.probed') },
+                  { value: 'mesh_matrix', label: t('tune.mesh.interpolated') },
                 ]}
               />
             )}
             <span className="flex-1" />
             {view.mode === '3d' && (
               <>
-                <button className="iconbtn" title="Reset the view" aria-label="Reset the view" onClick={() => surface.current?.resetView()}>
+                <button className="iconbtn" title={t('tune.mesh.reset_view')} aria-label={t('tune.mesh.reset_view')} onClick={() => surface.current?.resetView()}>
                   <RotateCcw size={16} />
                 </button>
-                <button className="iconbtn" title="Download bed mesh image" aria-label="Download bed mesh image" onClick={() => surface.current?.download(['bedmesh', preview ? 'bed-soak' : bedMesh.profile_name].filter(Boolean).join('-'))}>
+                <button className="iconbtn" title={t('tune.mesh.download_image')} aria-label={t('tune.mesh.download_image')} onClick={() => surface.current?.download(['bedmesh', preview ? 'bed-soak' : bedMesh.profile_name].filter(Boolean).join('-'))}>
                   <Download size={16} />
                 </button>
               </>
@@ -118,43 +121,43 @@ function MeshCard() {
             </span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat label="Range" value={fmtZ(stats.range, unit)} unit={unit} />
-            <Stat label="Lowest" value={fmtZ(stats.min, unit)} unit={unit} />
-            <Stat label="Highest" value={fmtZ(stats.max, unit)} unit={unit} />
-            <Stat label="Std. deviation" value={fmtZ(stats.deviation, unit)} unit={unit} />
+            <Stat label={t('tune.shared.range')} value={fmtZ(stats.range, unit)} unit={unit} />
+            <Stat label={t('tune.shared.lowest')} value={fmtZ(stats.min, unit)} unit={unit} />
+            <Stat label={t('tune.shared.highest')} value={fmtZ(stats.max, unit)} unit={unit} />
+            <Stat label={t('tune.shared.deviation')} value={fmtZ(stats.deviation, unit)} unit={unit} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2.5">
             <label className="flex items-center gap-2">
-              <Toggle checked={view.wireframe} onChange={(wireframe) => setView({ wireframe })} disabled={view.mode !== '3d'} label="Wireframe" />
-              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>Wireframe</span>
+              <Toggle checked={view.wireframe} onChange={(wireframe) => setView({ wireframe })} disabled={view.mode !== '3d'} label={t('tune.mesh.wireframe')} />
+              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>{t('tune.mesh.wireframe')}</span>
             </label>
             <label className="flex items-center gap-2">
-              <Toggle checked={view.flat} onChange={(flat) => setView({ flat })} disabled={view.mode !== '3d'} label="Show flat plane" />
-              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>Show flat plane</span>
+              <Toggle checked={view.flat} onChange={(flat) => setView({ flat })} disabled={view.mode !== '3d'} label={t('tune.mesh.flat_plane')} />
+              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>{t('tune.mesh.flat_plane')}</span>
             </label>
           </div>
           {!preview && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <span className="section-label">Color scale</span>
+                <span className="section-label">{t('tune.mesh.color_scale')}</span>
                 <Choices
                   value={view.colorScale}
                   onChange={(colorScale) => setView({ colorScale })}
                   options={[
-                    { value: 0, label: 'Fit' },
+                    { value: 0, label: t('tune.mesh.fit') },
                     { value: 0.1, label: '0.1 mm' },
                     { value: 0.2, label: '0.2 mm' },
                   ]}
                 />
               </div>
               <div className="grid gap-1.5">
-                <span className="section-label">Z axis height</span>
+                <span className="section-label">{t('tune.mesh.z_height')}</span>
                 <Choices
                   value={view.boxScale}
                   disabled={view.mode !== '3d'}
                   onChange={(boxScale) => setView({ boxScale })}
                   options={[
-                    { value: 'fit', label: 'Fit' },
+                    { value: 'fit', label: t('tune.mesh.fit') },
                     { value: 1, label: '1 mm' },
                     { value: 1.5, label: '1.5 mm' },
                     { value: 2, label: '2 mm' },
@@ -164,10 +167,10 @@ function MeshCard() {
             </div>
           )}
           {!preview && problems.length > 0 && <ProblemPoints points={problems} measured={report.measured as number | null | undefined} />}
-          <p className="mt-3 mb-0 text-[12px] text-ink-3">{view.mode === '3d' ? 'Drag to turn the bed, scroll or pinch to zoom. X0 Y0 is the front left corner, as you face the printer.' : 'Seen from above, back of the bed at the top. X0 Y0 is the front left corner, as you face the printer.'}</p>
+          <p className="mt-3 mb-0 text-[12px] text-ink-3">{view.mode === '3d' ? t('tune.mesh.hint_3d') : t('tune.mesh.hint_map')}</p>
         </>
       ) : (
-        <Empty>No mesh loaded. Load a profile or calibrate one.</Empty>
+        <Empty>{t('tune.mesh.empty')}</Empty>
       )}
     </Card>
   )
@@ -192,20 +195,20 @@ function ProblemChip({ count, title }: { count: number; title?: string }) {
   return (
     <span className="chip" title={title}>
       <TriangleAlert size={12} className="text-accent-ink" />
-      {plural(count, '{count} problem point', '{count} problem points')}
+      {t('tune.mesh.problem_points', { count })}
     </span>
   )
 }
 
 /** The fork's note under the Bed mesh card: retried points of the loaded mesh. */
 function ProblemPoints({ points, measured }: { points: VoProbeReportPoint[]; measured?: number | null }) {
-  const list = points.map((p) => `${pointName(p)} (${p.tries} tries, ${Math.round(p.spread * 1000)} µm apart)`).join(', ')
+  const list = points.map((p) => t('tune.mesh.retry_item', { point: pointName(p), count: p.tries, um: Math.round(p.spread * 1000) })).join(', ')
   return (
     <div className="tone-warn mt-3 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
       <TriangleAlert size={15} className="mt-0.5 flex-none" />
       <div className="text-ink">
-        {points.length === 1 ? `A probe point needed retries in this mesh, ${list}. Check the plate there.` : `Probe points needed retries in this mesh, ${list}. Check the plate there.`}
-        {measured ? <div className="mt-0.5 text-[12px] text-ink-2">Measured {new Date(measured * 1000).toLocaleString()}</div> : null}
+        {t('tune.mesh.retries', { count: points.length, list })}
+        {measured ? <div className="mt-0.5 text-[12px] text-ink-2">{t('tune.mesh.measured', { time: new Date(measured * 1000).toLocaleString(locale()) })}</div> : null}
       </div>
     </div>
   )
@@ -221,31 +224,33 @@ function ProfilesCard() {
   const [saveOpen, setSaveOpen] = useState(false)
   const run = (g: string) => attempt(() => runGcode(g))
   const problemTitle = problems.length
-    ? `${plural(problems.length, '{count} problem point', '{count} problem points')}${report.measured ? ` in the mesh measured ${new Date((report.measured as number) * 1000).toLocaleString()}` : ''}`
+    ? report.measured
+      ? t('tune.mesh.problem_points_measured', { count: problems.length, time: new Date((report.measured as number) * 1000).toLocaleString(locale()) })
+      : t('tune.mesh.problem_points', { count: problems.length })
     : undefined
 
   const load = async (name: string) => {
-    if (printing && !(await confirm({ title: 'Load profile', body: `The printer is printing. Load profile ${name} anyway?`, confirm: 'Load' }))) return
+    if (printing && !(await confirm({ title: t('tune.mesh.load_profile'), body: t('tune.mesh.load_body', { name }), confirm: t('tune.mesh.load') }))) return
     run(`BED_MESH_PROFILE LOAD=${gcodeParam(name)}`)
   }
   const remove = async (name: string) => {
-    if (await confirm({ title: `Remove ${name} profile`, body: 'Klipper forgets the profile now. printer.cfg keeps it until you save the config.', confirm: 'Remove', danger: true }))
+    if (await confirm({ title: t('tune.mesh.remove_profile_named', { name }), body: t('tune.mesh.remove_body'), confirm: t('common.remove'), danger: true }))
       run(`BED_MESH_PROFILE REMOVE=${gcodeParam(name)}`)
   }
   const clear = async () => {
-    if (printing && !(await confirm({ title: 'Clear mesh', body: 'The printer is printing. Clear the bed mesh anyway?', confirm: 'Clear', danger: true }))) return
+    if (printing && !(await confirm({ title: t('tune.mesh.clear_title'), body: t('tune.mesh.clear_body'), confirm: t('tune.mesh.clear'), danger: true }))) return
     run('BED_MESH_CLEAR')
   }
 
   return (
-    <Card title="Profiles" aside={profiles.length ? String(profiles.length) : undefined}>
+    <Card title={t('tune.mesh.profiles')} aside={profiles.length ? String(profiles.length) : undefined}>
       {profiles.length ? (
         <div className="-mx-2 overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th className="text-right">Range</th>
+                <th>{t('tune.mesh.name')}</th>
+                <th className="text-right">{t('tune.shared.range')}</th>
                 <th />
               </tr>
             </thead>
@@ -255,8 +260,8 @@ function ProfilesCard() {
                   <td>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-semibold">{p.name}</span>
-                      {p.active && <span className="pill tone-accent py-0.5!">active</span>}
-                      {p.adaptive && <span className="chip">not saved</span>}
+                      {p.active && <span className="pill tone-accent py-0.5!">{t('tune.mesh.active')}</span>}
+                      {p.adaptive && <span className="chip">{t('tune.mesh.not_saved')}</span>}
                       {p.active && problems.length > 0 && (
                         <span className="chip" title={problemTitle}>
                           <TriangleAlert size={12} className="text-accent-ink" />
@@ -268,11 +273,11 @@ function ProfilesCard() {
                   <td className="num text-right">{p.range.toFixed(4)}</td>
                   <td className="text-right whitespace-nowrap">
                     {!p.active && (
-                      <button className="iconbtn inline-grid" title="Load profile" aria-label={`Load ${p.name}`} onClick={() => load(p.name)}>
+                      <button className="iconbtn inline-grid" title={t('tune.mesh.load_profile')} aria-label={t('tune.mesh.load_named', { name: p.name })} onClick={() => load(p.name)}>
                         <FolderOpen size={16} />
                       </button>
                     )}
-                    <button className="iconbtn inline-grid" title="Remove profile" aria-label={`Remove ${p.name}`} disabled={p.adaptive || printing} onClick={() => remove(p.name)}>
+                    <button className="iconbtn inline-grid" title={t('tune.mesh.remove_profile')} aria-label={t('tune.mesh.remove_named', { name: p.name })} disabled={p.adaptive || printing} onClick={() => remove(p.name)}>
                       <Trash2 size={15} />
                     </button>
                   </td>
@@ -282,32 +287,26 @@ function ProfilesCard() {
           </table>
         </div>
       ) : (
-        <Empty>No existing bed meshes found.</Empty>
+        <Empty>{t('tune.mesh.no_profiles')}</Empty>
       )}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button className={`btn ${homed ? '' : 'btn-primary'}`} disabled={busy} onClick={() => run('G28')}>
-          <House size={15} /> Home all
+          <House size={15} /> {t('tune.shared.home_all')}
         </button>
-        <button className="btn" disabled={busy || !homed} onClick={() => run('BED_MESH_CALIBRATE')} title={homed ? undefined : 'Home first'}>
-          Calibrate
+        <button className="btn" disabled={busy || !homed} onClick={() => run('BED_MESH_CALIBRATE')} title={homed ? undefined : t('tune.shared.home_first')}>
+          {t('tune.shared.calibrate')}
         </button>
         <button className="btn" disabled={!loaded} onClick={clear}>
-          Clear
+          {t('tune.mesh.clear')}
         </button>
         <button className="btn btn-primary" disabled={!loaded || printing} onClick={() => setSaveOpen(true)}>
-          Save as
+          {t('tune.mesh.save_as')}
         </button>
       </div>
       <ul className="mt-3 mb-0 grid gap-1 pl-4 text-[12.5px] text-ink-3">
-        <li>
-          <b className="text-ink-2">Calibrate</b> probes the whole bed and saves it as profile default, replacing it. QIDI&apos;s BED_MESH_CALIBRATE checks the mesh area first.
-        </li>
-        <li>
-          <b className="text-ink-2">Clear</b> unloads the mesh; no profile changes.
-        </li>
-        <li>
-          <b className="text-ink-2">Save as</b> keeps the loaded mesh under a new name. Profiles reach printer.cfg with Save config.
-        </li>
+        <li>{tr('tune.mesh.help_calibrate', {}, { b: bold })}</li>
+        <li>{tr('tune.mesh.help_clear', {}, { b: bold })}</li>
+        <li>{tr('tune.mesh.help_save_as', {}, { b: bold })}</li>
       </ul>
       {saveOpen && bedMesh.profile_name && (
         <SaveMeshDialog
@@ -335,30 +334,30 @@ function SaveMeshDialog({ existing, adaptive, onClose, onSave }: { existing: str
     <Dialog
       open
       onClose={onClose}
-      title="Save as"
+      title={t('tune.mesh.save_as')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(name.trim(), removeExisting && name.trim() !== existing)}>
-            Save
+            {t('common.save')}
           </button>
         </>
       }
     >
       <label className="grid gap-1.5">
-        <span className="lbl">Profile name</span>
+        <span className="lbl">{t('tune.mesh.profile_name')}</span>
         <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && valid && onSave(name.trim(), removeExisting && name.trim() !== existing)} />
       </label>
       {!adaptive && (
         <>
           <label className={`mt-3 flex items-center gap-2.5 ${name.trim() === existing ? 'opacity-50' : ''}`}>
-            <Toggle checked={removeExisting && name.trim() !== existing} disabled={name.trim() === existing} onChange={setRemoveExisting} label={`Remove ${existing} profile`} />
-            Remove {existing} profile
+            <Toggle checked={removeExisting && name.trim() !== existing} disabled={name.trim() === existing} onChange={setRemoveExisting} label={t('tune.mesh.remove_profile_named', { name: existing })} />
+            {t('tune.mesh.remove_profile_named', { name: existing })}
           </label>
           <p className="mt-2 mb-0 text-[12.5px] text-ink-3">
-            If saving as something other than {existing}, you can choose to also remove the {existing} profile.
+            {t('tune.mesh.remove_hint', { name: existing })}
           </p>
         </>
       )}

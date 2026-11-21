@@ -24,6 +24,8 @@ This project owns Fluidd. Make changes in the fork of upstream `fluidd-core/flui
 
 `ui/` is this project's own web interface (Vite, React, TypeScript), served at `/valve-oil/` beside Fluidd. The bundle builder builds it and pins the archive's sha256 in the bundled manifest. `ui/src/qidi/` ports the Fluidd fork's QIDI Box and printer-warning logic with its tests; keep the two in step when Box behavior changes. Operator docs are `docs/valve-oil-ui.md`; developer notes are `ui/README.md`.
 
+The UI is translated into English, Spanish, and Russian in the browser only; the printer and its services keep sending English. UI text goes in `ui/src/i18n/locales/<language>/<area>.json` with every language in the same change, using `ui/src/i18n/GLOSSARY.md`; `npm run build` runs `ui/scripts/check-i18n.mjs`, which fails on missing translations and on English written in the code. Text the printer sends is shown as it arrives.
+
 ## Docs
 
 - `README.md` is a short landing page: install, then one-line feature summaries linking to `docs/`. Keep it operator-focused and don't link `openspec/` unless asked.

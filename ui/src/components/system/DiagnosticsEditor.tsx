@@ -4,6 +4,7 @@ import { Dialog, Segmented, Spinner, Toggle, confirm } from '../ui'
 import { attempt } from '../toast'
 import { collectorPrinter, defaultMetric, deleteCard, evalCollectors, saveCard, type ChartAxis, type DiagnosticsCardConfig, type Metric } from './diagnostics-store'
 import { StateExplorer } from './StateExplorer'
+import { t } from '../../i18n'
 
 type Tab = 'card' | 'left' | 'right'
 
@@ -31,7 +32,7 @@ export function DiagnosticsEditor({ card: initial, onClose }: { card: Diagnostic
     if (ok) onClose()
   }
   const remove = async () => {
-    if (!(await confirm({ title: 'Remove this chart?', body: `${card.title} is removed from Valve Oil UI and Fluidd.`, confirm: 'Remove', danger: true }))) return
+    if (!(await confirm({ title: t('system.diagnostics.editor.remove_title'), body: t('system.diagnostics.editor.remove_body', { title: card.title }), confirm: t('common.remove'), danger: true }))) return
     if (await attempt(async () => (await deleteCard(card.id), true))) onClose()
   }
   return (
@@ -39,19 +40,19 @@ export function DiagnosticsEditor({ card: initial, onClose }: { card: Diagnostic
       open
       onClose={onClose}
       size="wide"
-      title={isNew ? 'Add chart' : 'Edit chart'}
+      title={isNew ? t('system.diagnostics.add_chart') : t('system.diagnostics.edit_chart')}
       footer={
         <>
           {!isNew && (
             <button className="btn btn-danger mr-auto" onClick={remove}>
-              <Trash2 size={14} /> Remove
+              <Trash2 size={14} /> {t('common.remove')}
             </button>
           )}
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!valid || saving} onClick={save}>
-            {saving && <Spinner size={14} />} {isNew ? 'Add' : 'Save'}
+            {saving && <Spinner size={14} />} {isNew ? t('common.add') : t('common.save')}
           </button>
         </>
       }
@@ -60,26 +61,27 @@ export function DiagnosticsEditor({ card: initial, onClose }: { card: Diagnostic
         <Segmented
           value={tab}
           onChange={setTab}
-          label="Chart settings"
+          label={t('system.diagnostics.editor.settings')}
           options={[
-            { value: 'card', label: 'Card' },
-            { value: 'left', label: `Left Y-axis${card.axes[0].unit ? ` · ${card.axes[0].unit}` : ''}` },
-            { value: 'right', label: `Right Y-axis${card.axes[1].unit ? ` · ${card.axes[1].unit}` : ''}` },
+            { value: 'card', label: t('system.diagnostics.editor.card') },
+            { value: 'left', label: card.axes[0].unit ? t('system.diagnostics.editor.left_axis_unit', { unit: card.axes[0].unit }) : t('system.diagnostics.editor.left_axis') },
+            { value: 'right', label: card.axes[1].unit ? t('system.diagnostics.editor.right_axis_unit', { unit: card.axes[1].unit }) : t('system.diagnostics.editor.right_axis') },
           ]}
         />
       </div>
       {tab === 'card' ? (
         <div className="grid gap-3">
-          <Field label="Title">
+          <Field label={t('system.diagnostics.editor.title')}>
             <input className="field" value={card.title} onChange={(e) => setCard({ ...card, title: e.target.value })} />
           </Field>
-          <Field label="Height" hint="The whole card’s chart area; with both axes on, each gets half.">
+          <Field label={t('system.diagnostics.editor.height')} hint={t('system.diagnostics.editor.height_hint')}>
             <div className="relative max-w-40">
               <input className="field pr-9" inputMode="numeric" value={card.height} onChange={(e) => setCard({ ...card, height: e.target.value as unknown as number })} />
+              {/* i18n-ignore: a unit */}
               <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] text-ink-3">px</span>
             </div>
           </Field>
-          <p className="m-0 text-[12.5px] text-ink-3">Valve Oil UI draws each y-axis as its own chart, one above the other. Fluidd draws them together.</p>
+          <p className="m-0 text-[12.5px] text-ink-3">{t('system.diagnostics.editor.separate_axes')}</p>
         </div>
       ) : (
         <AxisEditor key={tab} axis={card.axes[tab === 'left' ? 0 : 1]} onChange={(a) => setAxis(tab === 'left' ? 0 : 1, a)} />
@@ -113,21 +115,21 @@ function AxisEditor({ axis, onChange }: { axis: ChartAxis; onChange: (a: ChartAx
   return (
     <div className="grid gap-3">
       <div className="grid gap-x-6 sm:grid-cols-2">
-        <SwitchRow label="Enable" checked={axis.enabled} onChange={(v) => onChange({ ...axis, enabled: v })} />
-        <SwitchRow label="Show legend" checked={axis.showLegend} onChange={(v) => onChange({ ...axis, showLegend: v })} />
+        <SwitchRow label={t('system.diagnostics.editor.enable')} checked={axis.enabled} onChange={(v) => onChange({ ...axis, enabled: v })} />
+        <SwitchRow label={t('system.diagnostics.editor.show_legend')} checked={axis.showLegend} onChange={(v) => onChange({ ...axis, showLegend: v })} />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Unit">
+        <Field label={t('system.diagnostics.editor.unit')}>
           <input className="field" value={axis.unit} onChange={(e) => onChange({ ...axis, unit: e.target.value })} />
         </Field>
-        <Field label="Min (optional)">
+        <Field label={t('system.diagnostics.editor.min')}>
           <input className="field" inputMode="decimal" value={axis.min ?? ''} onChange={(e) => onChange({ ...axis, min: e.target.value })} />
         </Field>
-        <Field label="Max (optional)">
+        <Field label={t('system.diagnostics.editor.max')}>
           <input className="field" inputMode="decimal" value={axis.max ?? ''} onChange={(e) => onChange({ ...axis, max: e.target.value })} />
         </Field>
       </div>
-      <div className="section-label mt-1">Metrics</div>
+      <div className="section-label mt-1">{t('system.diagnostics.editor.metrics')}</div>
       <div className="grid gap-2">
         {axis.metrics.map((m, i) => (
           <div key={i} className="min-w-0 rounded-xl bg-inset" style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }}>
@@ -135,10 +137,10 @@ function AxisEditor({ axis, onChange }: { axis: ChartAxis; onChange: (a: ChartAx
               <button className="flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-ink" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
                 {open === i ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                 <span className="swatch" style={{ background: m.style.lineColor }} />
-                <span className="min-w-0 flex-none truncate font-semibold">{m.name || 'Unnamed'}</span>
+                <span className="min-w-0 flex-none truncate font-semibold">{m.name || t('system.diagnostics.editor.unnamed')}</span>
                 <span className="code min-w-0 flex-1 truncate text-ink-3">{m.collector}</span>
               </button>
-              <button className="iconbtn h-7 w-7" onClick={() => onChange({ ...axis, metrics: axis.metrics.filter((_, j) => j !== i) })} aria-label={`Remove ${m.name}`} title="Remove">
+              <button className="iconbtn h-7 w-7" onClick={() => onChange({ ...axis, metrics: axis.metrics.filter((_, j) => j !== i) })} aria-label={t('system.diagnostics.editor.remove_named', { name: m.name })} title={t('common.remove')}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -154,7 +156,7 @@ function AxisEditor({ axis, onChange }: { axis: ChartAxis; onChange: (a: ChartAx
             setOpen(axis.metrics.length)
           }}
         >
-          <Plus size={14} /> Add metric
+          <Plus size={14} /> {t('system.diagnostics.editor.add_metric')}
         </button>
       </div>
     </div>
@@ -181,46 +183,46 @@ function MetricEditor({ metric, unit, onChange }: { metric: Metric; unit: string
   return (
     <div className="grid gap-3 border-t border-line px-3 py-3">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <Field label="Name">
+        <Field label={t('system.diagnostics.editor.name')}>
           <input className="field" value={metric.name} onChange={(e) => onChange({ ...metric, name: e.target.value })} />
         </Field>
-        <Field label="Line color">
+        <Field label={t('system.diagnostics.editor.line_color')}>
           <input type="color" className="h-[34px] w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" value={metric.style.lineColor} onChange={(e) => style({ lineColor: e.target.value })} />
         </Field>
-        <Field label="Fill color">
+        <Field label={t('system.diagnostics.editor.fill_color')}>
           <input type="color" className="h-[34px] w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" value={metric.style.fillColor ?? metric.style.lineColor} onChange={(e) => style({ fillColor: e.target.value })} />
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Line style">
+        <Field label={t('system.diagnostics.editor.line_style')}>
           <select className="field" value={metric.style.lineStyle} onChange={(e) => style({ lineStyle: e.target.value as Metric['style']['lineStyle'] })}>
-            <option value="solid">Solid</option>
-            <option value="dotted">Dotted</option>
-            <option value="dashed">Dashed</option>
+            <option value="solid">{t('system.diagnostics.editor.solid')}</option>
+            <option value="dotted">{t('system.diagnostics.editor.dotted')}</option>
+            <option value="dashed">{t('system.diagnostics.editor.dashed')}</option>
           </select>
         </Field>
-        <Field label={`Fill opacity · ${metric.style.fillOpacity}%`}>
+        <Field label={t('system.diagnostics.editor.fill_opacity', { value: metric.style.fillOpacity })}>
           <input type="range" min={0} max={100} value={metric.style.fillOpacity} onChange={(e) => style({ fillOpacity: Number(e.target.value) })} className="h-[34px] accent-[var(--accent)]" />
         </Field>
       </div>
-      <SwitchRow label="Show legend" checked={metric.style.displayLegend} onChange={(v) => style({ displayLegend: v })} />
-      <Field label="Collector">
+      <SwitchRow label={t('system.diagnostics.editor.show_legend')} checked={metric.style.displayLegend} onChange={(v) => style({ displayLegend: v })} />
+      <Field label={t('system.diagnostics.editor.collector')}>
         <textarea ref={text} className="field code min-h-16" spellCheck={false} rows={2} value={metric.collector} onChange={(e) => onChange({ ...metric, collector: e.target.value })} />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn btn-sm" onClick={() => setBrowse(true)}>
-          <Search size={14} /> Browse available metrics
+          <Search size={14} /> {t('system.diagnostics.editor.browse')}
         </button>
         <button className="btn btn-sm" onClick={run}>
-          <Play size={14} /> Run collector
+          <Play size={14} /> {t('system.diagnostics.editor.run')}
         </button>
-        <span className="ml-auto text-[12.5px] text-ink-3">Last result</span>
+        <span className="ml-auto text-[12.5px] text-ink-3">{t('system.diagnostics.editor.last_result')}</span>
         <span className="code chip">
           {result}
           {unit && result !== '-' && !result.startsWith('Error') ? ` ${unit}` : ''}
         </span>
       </div>
-      <Dialog open={browse} onClose={() => setBrowse(false)} title="Metrics explorer" size="wide">
+      <Dialog open={browse} onClose={() => setBrowse(false)} title={t('system.diagnostics.editor.explorer')} size="wide">
         <StateExplorer onPick={insert} />
       </Dialog>
     </div>

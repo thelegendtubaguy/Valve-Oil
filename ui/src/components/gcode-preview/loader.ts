@@ -3,6 +3,8 @@ import { createStore, useStore } from '../../lib/store'
 import { client } from '../../state/printer'
 import type { ParsedGcode } from './types'
 import type { ParseGcodeWorkerRequestMessage, ParseGcodeWorkerResponseMessage } from '../../workers/parseGcode.worker'
+import type { PreviewErrorCode } from '../../workers/preview-error'
+import { t } from '../../i18n'
 
 // Parsed files, shared by the preview screen and Home's live preview so moving between them doesn't download and
 // parse a file again. Fluidd holds one file; two are kept here so the printing file and another being looked at can
@@ -20,6 +22,9 @@ export type PreviewFile = {
   parsed: number
   data: ParsedGcode | null
   error: string | null
+  /** What went wrong, when the worker knows: preview.errors.<code>, with its values. */
+  errorCode?: PreviewErrorCode
+  errorVars?: Record<string, string | number>
 }
 
 const KEEP = 2
@@ -60,12 +65,12 @@ export function loadGcode(path: string, size: number, modified: number) {
       files.set((all) => all.map((f) => (f.path === path ? { ...f, phase: 'ready', data, parsed: f.size } : f)))
     } else if (m.action === 'error') {
       stop(path)
-      update(path, { phase: 'error', error: m.error || 'Failed to preview G-code file' })
+      update(path, { phase: 'error', error: m.error || t('preview.load.failed_detail'), errorCode: m.code, errorVars: m.vars })
     }
   }
   worker.onerror = (e) => {
     stop(path)
-    update(path, { phase: 'error', error: e.message || 'Failed to preview G-code file' })
+    update(path, { phase: 'error', error: e.message || t('preview.load.failed_detail') })
   }
   const message: ParseGcodeWorkerRequestMessage = { action: 'parse', url: client.fileUrl('gcodes', path), fileSize: size }
   worker.postMessage(message)

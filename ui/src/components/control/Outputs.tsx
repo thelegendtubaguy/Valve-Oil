@@ -3,6 +3,7 @@ import { Card, Empty, Toggle } from '../ui'
 import { ColorInput, Note, Slider, objectLabel, send } from './common'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
+import { t, type MessageKey } from '../../i18n'
 
 // Fans, output pins, and LEDs, as Fluidd's Outputs card lists them (getOutputs): names starting with `_` are hidden.
 
@@ -15,16 +16,17 @@ const nameOf = (obj: string) => (obj.includes(' ') ? obj.slice(obj.indexOf(' ') 
 
 /** A fan's name as the Fluidd fork shows it: the part fan, and QIDI's chamber_circulation_fan as the exhaust fan. */
 export function fanLabel(obj: string) {
-  if (obj === 'fan') return 'Part fan'
-  return QIDI_FAN_NAMES[nameOf(obj)] ?? objectLabel(obj)
+  if (obj === 'fan') return t('control.outputs.fan_names.part_fan')
+  const key = QIDI_FAN_NAMES[nameOf(obj)]
+  return key ? t(key) : objectLabel(obj)
 }
 
 // QIDI's fan names, as Valve Oil's touchscreen labels them.
-const QIDI_FAN_NAMES: Record<string, string> = {
-  cooling_fan: 'Part fan',
-  auxiliary_cooling_fan: 'Auxiliary fan',
-  auxiliary_cooling_fan2: 'Auxiliary fan 2',
-  chamber_circulation_fan: 'Chamber exhaust fan',
+const QIDI_FAN_NAMES: Record<string, MessageKey> = {
+  cooling_fan: 'control.outputs.fan_names.part_fan',
+  auxiliary_cooling_fan: 'control.outputs.fan_names.auxiliary_cooling_fan',
+  auxiliary_cooling_fan2: 'control.outputs.fan_names.auxiliary_cooling_fan2',
+  chamber_circulation_fan: 'control.outputs.fan_names.chamber_circulation_fan',
 }
 const QIDI_FAN_ORDER = Object.keys(QIDI_FAN_NAMES)
 
@@ -55,7 +57,7 @@ function FansCard() {
   const settable = fans.filter((o) => ['fan', 'fan_generic'].includes(typeOf(o))).sort((a, b) => rank(a) - rank(b))
   const auto = fans.filter((o) => !settable.includes(o))
   return (
-    <Card title="Fans" icon={<Fan size={14} />}>
+    <Card title={t('control.outputs.fans')} icon={<Fan size={14} />}>
       {fans.length ? (
         <div className="grid gap-2.5">
           {settable.map((o) => (
@@ -63,7 +65,7 @@ function FansCard() {
           ))}
           {auto.length > 0 && (
             <>
-              <div className="section-label mt-2">Run by Klipper</div>
+              <div className="section-label mt-2">{t('control.outputs.run_by_klipper')}</div>
               <div className="-mt-1 grid">
                 {auto.map((o) => (
                   <FanRow key={o} obj={o} />
@@ -73,10 +75,10 @@ function FansCard() {
           )}
         </div>
       ) : (
-        <Empty>No fans.</Empty>
+        <Empty>{t('control.outputs.no_fans')}</Empty>
       )}
       <div className="mt-3">
-        <Note>Klipper runs the hotend, board, and chamber heater fans by itself. Macros and the chamber guard can change the others again.</Note>
+        <Note>{t('control.outputs.fans_note')}</Note>
       </div>
     </Card>
   )
@@ -90,7 +92,7 @@ function FanRow({ obj }: { obj: string }) {
   const name = nameOf(obj)
   const controllable = type === 'fan' || type === 'fan_generic'
   const value = Math.round((((st.speed as number | undefined) ?? 0) / ((cfg.max_power as number | undefined) || 1)) * 100)
-  const rpm = typeof st.rpm === 'number' && st.rpm > 0 ? `${st.rpm.toFixed(0)} rpm` : null
+  const rpm = typeof st.rpm === 'number' && st.rpm > 0 ? t('control.outputs.rpm', { rpm: st.rpm.toFixed(0) }) : null
   const offBelow = ((cfg.off_below as number | undefined) ?? 0) * 100
   const set = (pct: number) => {
     if (offBelow && pct > 0 && pct < offBelow) pct = offBelow
@@ -105,9 +107,9 @@ function FanRow({ obj }: { obj: string }) {
       <div className={`flex items-baseline gap-2 ${controllable ? '' : 'col-span-2'}`}>
         <span className={`min-w-0 flex-1 truncate ${controllable ? 'font-semibold' : 'text-ink-2'}`}>{fanLabel(obj)}</span>
         {rpm && <span className="num text-[11.5px] text-ink-3">{rpm}</span>}
-        {!controllable && <span className={`num font-semibold ${value > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{value > 0 ? `${value}%` : 'Off'}</span>}
+        {!controllable && <span className={`num font-semibold ${value > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{value > 0 ? `${value}%` : t('common.off')}</span>}
       </div>
-      {controllable && <Slider label={fanLabel(obj)} value={value} onCommit={set} format={(v) => (v > 0 ? `${v}%` : 'Off')} />}
+      {controllable && <Slider label={fanLabel(obj)} value={value} onCommit={set} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />}
     </div>
   )
 }
@@ -116,7 +118,7 @@ function PinsCard() {
   const pins = useOutputs(PIN_TYPES)
   if (!pins.length) return null
   return (
-    <Card title="Output pins" icon={<ToggleRight size={14} />}>
+    <Card title={t('control.outputs.output_pins')} icon={<ToggleRight size={14} />}>
       <div className="grid gap-2.5">
         {pins.map((o) => (
           <PinRow key={o} obj={o} />
@@ -140,13 +142,13 @@ function PinRow({ obj }: { obj: string }) {
     return (
       <div className="grid gap-0.5">
         <span className="font-semibold">{label}</span>
-        <Slider label={label} value={Math.round(value * 100)} disabled={!controllable} onCommit={(pct) => set(Math.round(pct * scale) / 100)} format={(v) => (v > 0 ? `${v}%` : 'Off')} />
+        <Slider label={label} value={Math.round(value * 100)} disabled={!controllable} onCommit={(pct) => set(Math.round(pct * scale) / 100)} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
       </div>
     )
   return (
     <div className="flex items-center gap-3">
       <span className="min-w-0 flex-1 truncate font-semibold">{label}</span>
-      <span className={`text-[12.5px] font-semibold ${value > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{value > 0 ? 'On' : 'Off'}</span>
+      <span className={`text-[12.5px] font-semibold ${value > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{value > 0 ? t('common.on') : t('common.off')}</span>
       <Toggle label={label} checked={value > 0} disabled={!controllable} onChange={(on) => set(on ? scale : 0)} />
     </div>
   )
@@ -156,7 +158,7 @@ function LedsCard() {
   const leds = useOutputs(LED_TYPES)
   if (!leds.length) return null
   return (
-    <Card title="Lights" icon={<Lightbulb size={14} />}>
+    <Card title={t('control.outputs.lights')} icon={<Lightbulb size={14} />}>
       <div className="grid gap-4">
         {leds.map((o) => (
           <LedRow key={o} obj={o} />
@@ -231,30 +233,30 @@ function LedRow({ obj }: { obj: string }) {
         <span className="h-4 w-4 flex-none rounded-full shadow-[0_0_0_1px_var(--line-strong)]" style={{ background: on ? `rgb(${r * 255} ${g * 255} ${b * 255})` : 'transparent' }} />
         <span className="min-w-0 flex-1 truncate font-semibold">{objectLabel(obj)}</span>
         <button className="btn btn-sm" disabled={!on} onClick={() => sendColor({ r: 0, g: 0, b: 0, w: 0 })}>
-          Off
+          {t('common.off')}
         </button>
       </div>
       {hasRgb && (
         <>
           <div className="flex flex-wrap items-center gap-1.5">
             {SWATCHES.map((s) => (
-              <button key={s} type="button" className={`led-swatch ${on && hex === hueHex(s) ? 'on' : ''}`} style={{ background: s }} onClick={() => pick(s)} aria-label={`Set ${objectLabel(obj)} to ${s}`} title={s} />
+              <button key={s} type="button" className={`led-swatch ${on && hex === hueHex(s) ? 'on' : ''}`} style={{ background: s }} onClick={() => pick(s)} aria-label={t('control.outputs.set_color', { name: objectLabel(obj), color: s })} title={s} />
             ))}
             <label className="btn btn-sm relative ml-1 cursor-pointer overflow-hidden">
-              Custom
-              <ColorInput value={hex} onPick={pick} label="Pick a color" />
+              {t('control.outputs.custom')}
+              <ColorInput value={hex} onPick={pick} label={t('control.outputs.pick_color')} />
             </label>
           </div>
           <div className="grid gap-0.5">
-            <span className="section-label">Brightness</span>
-            <Slider label={`${objectLabel(obj)} brightness`} value={Math.round(brightness * 100)} onCommit={setBrightness} format={(v) => (v > 0 ? `${v}%` : 'Off')} />
+            <span className="section-label">{t('control.outputs.brightness')}</span>
+            <Slider label={t('control.outputs.brightness_named', { name: objectLabel(obj) })} value={Math.round(brightness * 100)} onCommit={setBrightness} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
           </div>
         </>
       )}
       {hasW && (
         <div className="grid gap-0.5">
-          <span className="section-label">White</span>
-          <Slider label={`${objectLabel(obj)} white`} value={Math.round(w * 100)} onCommit={(pct) => sendColor({ ...color, w: pct / 100 })} format={(v) => (v > 0 ? `${v}%` : 'Off')} />
+          <span className="section-label">{t('control.outputs.white')}</span>
+          <Slider label={t('control.outputs.white_named', { name: objectLabel(obj) })} value={Math.round(w * 100)} onCommit={(pct) => sendColor({ ...color, w: pct / 100 })} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
         </div>
       )}
     </div>

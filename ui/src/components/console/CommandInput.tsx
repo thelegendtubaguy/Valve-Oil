@@ -4,6 +4,7 @@ import { useStore } from '../../lib/store'
 import { usePrinter } from '../../state/printer'
 import { applyCompletion, completions, currentCommand } from './model'
 import { draftStore, sendCommand, useCommandHistory, useGcodeHelp } from './store'
+import { t } from '../../i18n'
 
 /**
  * The command line: Enter sends, Shift+Enter or a paste adds lines, Up and Down recall what was sent (shared with
@@ -123,7 +124,7 @@ export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?
               <span className="min-w-0 truncate text-[12px] text-ink-3">{help[c]?.split('\n')[0] ?? ''}</span>
             </button>
           ))}
-          {matches.length > shown.length && <div className="px-3 pt-1 pb-0.5 text-[11.5px] text-ink-3">{matches.length - shown.length} more; keep typing</div>}
+          {matches.length > shown.length && <div className="px-3 pt-1 pb-0.5 text-[11.5px] text-ink-3">{t('console.input.more', { n: matches.length - shown.length })}</div>}
         </div>
       )}
       <form className="flex items-end gap-1.5" onSubmit={(e) => (e.preventDefault(), send())}>
@@ -131,7 +132,7 @@ export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?
           ref={field}
           className={`field resize-none font-mono leading-[1.45] ${compact ? 'text-[12.5px]' : 'text-[13px]'}`}
           rows={Math.min(8, lines)}
-          placeholder="Send G-code…"
+          placeholder={t('console.input.placeholder')}
           value={value}
           autoFocus={autoFocus}
           onChange={(e) => {
@@ -148,11 +149,11 @@ export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?
           autoCapitalize="characters"
           autoComplete="off"
           autoCorrect="off"
-          aria-label="G-code command"
+          aria-label={t('console.input.label')}
           disabled={conn !== 'open'}
         />
-        <button className={`btn btn-primary ${compact ? 'px-2.5!' : ''}`} disabled={!value.trim() || conn !== 'open'} aria-label="Send">
-          {compact ? <ChevronRight size={16} /> : 'Send'}
+        <button className={`btn btn-primary ${compact ? 'px-2.5!' : ''}`} disabled={!value.trim() || conn !== 'open'} aria-label={t('console.input.send')}>
+          {compact ? <ChevronRight size={16} /> : t('console.input.send')}
         </button>
       </form>
       {(!compact || (cmd && cmdHelp)) && (
@@ -162,7 +163,7 @@ export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?
               <b className="font-mono font-semibold text-ink-2">{cmd}</b> {cmdHelp}
             </span>
           ) : (
-            <span className="max-sm:hidden">Enter sends · Shift+Enter adds a line · ↑ ↓ recall · Tab completes</span>
+            <span className="max-sm:hidden">{t('console.input.hint')}</span>
           )}
         </div>
       )}

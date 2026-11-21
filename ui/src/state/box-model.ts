@@ -3,6 +3,7 @@
 // hooks and re-exports everything here.
 import type { PrinterState } from './printer'
 import { gcode } from '../components/control/gcode'
+import { t, type MessageKey } from '../i18n'
 import {
   QIDI_BOX_EXTERNAL_SLOT,
   qidiBoxReloadGroups,
@@ -188,31 +189,33 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   }
 }
 
-const STEP_TEXT: Record<string, string> = {
-  heat: 'Heating nozzle',
-  heat_slot: 'Heating nozzle for {slot}',
-  heat_external: 'Heating nozzle for the external spool',
-  heat_temp: 'Heating nozzle to {temp} °C',
-  heat_temp_slot: 'Heating nozzle to {temp} °C for {slot}',
-  heat_temp_external: 'Heating nozzle to {temp} °C for the external spool',
-  cut: 'Cutting filament',
-  wipe: 'Wiping nozzle',
-  bite: "Gripping the external spool's filament",
-  load: 'Loading filament',
-  load_slot: 'Loading {slot}',
-  load_external: 'Loading the external spool',
-  unload: 'Unloading filament',
-  unload_slot: 'Unloading {slot}',
-  unload_external: 'Unloading the external spool',
-  eject: 'Ejecting filament',
-  eject_slot: 'Ejecting {slot}',
-  working: 'Working…',
-}
+// Every step key qidiBoxStepText gives, each with a whole message for the running and the failed step.
+const STEP_KEYS = new Set([
+  'heat',
+  'heat_slot',
+  'heat_external',
+  'heat_temp',
+  'heat_temp_slot',
+  'heat_temp_external',
+  'cut',
+  'wipe',
+  'bite',
+  'load',
+  'load_slot',
+  'load_external',
+  'unload',
+  'unload_slot',
+  'unload_external',
+  'eject',
+  'eject_slot',
+  'working',
+])
 
-function stepText(t: QidiBoxStepText, failed: boolean): string {
-  const text = (STEP_TEXT[t.key] ?? STEP_TEXT.working).replace(/\{(\w+)\}/g, (_, k) => String(t.params[k] ?? ''))
-  if (!failed) return text
-  return t.key === QIDI_BOX_STEP_UNKNOWN ? 'Box step failed' : `${text} failed`
+function stepText(s: QidiBoxStepText, failed: boolean): string {
+  const key = STEP_KEYS.has(s.key) ? s.key : 'working'
+  const vars = { slot: String(s.params.slot ?? ''), temp: String(s.params.temp ?? '') }
+  if (!failed) return t(`box.step.${key}` as MessageKey, vars)
+  return s.key === QIDI_BOX_STEP_UNKNOWN ? t('box.step.unknown_failed') : t(`box.step.${key}_failed` as MessageKey, vars)
 }
 
 // ---- actions: the commands the Fluidd fork sends ----
@@ -249,25 +252,29 @@ export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
 
 function strandedHint(box: BoxState, slot: QidiBoxSlot) {
   const at = box.strandedSlot
-  if (at == null) return 'Filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.'
+  if (at == null) return t('box.slot.stranded')
   const label = qidiBoxSlotLabel(at)
-  return at === slot.index
-    ? `${label}'s filament is stopped between the hub and the toolhead. Unload pulls it back into the Box; Eject removes it from the Box.`
-    : `${label}'s filament is stopped between the hub and the toolhead. Unload or eject ${label} first.`
+  return at === slot.index ? t('box.slot.stranded_here', { slot: label }) : t('box.slot.stranded_elsewhere', { slot: label })
 }
 
 /** What a slot holds, as the Box card's overline: the slot, its tools, and whether it's loaded. */
 export function slotOverline(box: BoxState, slot: QidiBoxSlot) {
   const tools = box.toolsBySlot[slot.index] ?? []
-  return [slot.index === QIDI_BOX_EXTERNAL_SLOT ? 'External spool' : `Slot ${slot.label}`, tools.length ? tools.join(', ') : 'no tool', box.loadedSlot === slot.index ? 'loaded' : null].filter(Boolean).join(' · ')
+  return [
+    slot.index === QIDI_BOX_EXTERNAL_SLOT ? t('box.external_spool') : t('box.slot_n', { slot: slot.label }),
+    tools.length ? tools.join(', ') : t('box.slot.no_tool'),
+    box.loadedSlot === slot.index ? t('box.slot.loaded') : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 /** Automatic reload for a slot, as the fork's card says it. */
 export function reloadText(box: BoxState, slot: QidiBoxSlot) {
-  if (!box.autoReload) return 'Automatic reload is off'
+  if (!box.autoReload) return t('box.slot.reload_off')
   const group = box.reloadGroups[slot.index]
-  if (!group) return 'No auto-reload backup'
-  return `Auto-reload with ${group.members.filter((m) => m !== slot.index).map(qidiBoxSlotLabel).join(', ')}`
+  if (!group) return t('box.slot.reload_none')
+  return t('box.slot.reload_with', { slots: group.members.filter((m) => m !== slot.index).map(qidiBoxSlotLabel).join(', ') })
 }
 
 /** A slot tile's state: loaded to the toolhead, parked at the hub, ready at its inlet, or empty. */

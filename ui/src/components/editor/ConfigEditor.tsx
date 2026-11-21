@@ -8,6 +8,7 @@ import { baseName, configService, isLocked, parentOf, rootProps } from '../files
 import { useJob, isActive } from '../../state/job'
 import { useTheme } from '../../lib/theme'
 import type { EditorHandle } from './codemirror'
+import { t } from '../../i18n'
 
 // ---- unsaved changes ----
 // The editor is a route (#/files/edit/...), and the browser can't be stopped from leaving a hash route, so a dirty
@@ -21,7 +22,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', async () => {
     const g = guard
     if (!g || location.hash === g.hash) return
-    const leave = await confirm({ title: 'Unsaved changes', body: 'You have unsaved changes. Are you sure you want to close this file?', confirm: 'Discard changes', danger: true })
+    const leave = await confirmDiscard()
     if (leave) {
       drafts.delete(g.key)
       dirty.delete(g.key)
@@ -31,6 +32,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', (e) => {
     if (dirty.size) e.preventDefault()
   })
+}
+
+function confirmDiscard() {
+  return confirm({ title: t('editor.unsaved'), body: t('editor.unsaved_body'), confirm: t('editor.discard'), danger: true })
 }
 
 // ---- services a config file can restart (Fluidd's getConfigMapByFilename serviceSupported) ----
@@ -172,12 +177,12 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
     if (ok === undefined) return
     saved.current = text
     markDirty(false)
-    if (!restart || !service) return toast(`Saved ${name}`)
+    if (!restart || !service) return toast(t('editor.saved', { name }))
     if (service.service === 'klipper') {
-      toast(`Saved ${name}. Restarting the firmware…`)
+      toast(t('editor.saved_restarting_firmware', { name }))
       attempt(() => client.call('printer.firmware_restart'))
     } else {
-      toast(`Saved ${name}. Restarting ${SERVICE_NAMES[service.service] ?? service.service}…`)
+      toast(t('editor.saved_restarting', { name, service: SERVICE_NAMES[service.service] ?? service.service }))
       attempt(() => client.call('machine.services.restart', { service: service.service }))
     }
     onClose()
@@ -186,7 +191,7 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
   saveRef.current = save
 
   const close = async () => {
-    if (changedRef.current && !(await confirm({ title: 'Unsaved changes', body: 'You have unsaved changes. Are you sure you want to close this file?', confirm: 'Discard changes', danger: true }))) return
+    if (changedRef.current && !(await confirmDiscard())) return
     markDirty(false)
     onClose()
   }
@@ -201,52 +206,52 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
   return (
     <>
       <div className="flex flex-none items-center gap-1.5 border-b border-line bg-surface px-2 py-2 md:px-3">
-        <button className="iconbtn" onClick={close} aria-label="Close" title="Close">
+        <button className="iconbtn" onClick={close} aria-label={t('common.close')} title={t('common.close')}>
           <ArrowLeft size={18} />
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <b className="truncate text-[14.5px]">{name}</b>
-            {changed && <span className="h-2 w-2 flex-none rounded-full bg-accent" title="Unsaved changes" aria-label="Unsaved changes" />}
+            {changed && <span className="h-2 w-2 flex-none rounded-full bg-accent" title={t('editor.unsaved')} aria-label={t('editor.unsaved')} />}
             {readOnly && (
               <span className="pill tone-muted flex-none px-2! py-0.5! text-[11.5px]!">
-                <Lock size={11} /> Read only
+                <Lock size={11} /> {t('editor.read_only')}
               </span>
             )}
           </div>
           <div className="truncate text-[12px] text-ink-3">{`${root}/${path}`}</div>
         </div>
-        <button className="iconbtn" onClick={() => editor.current?.toggleSearch()} aria-label="Search and replace" title="Search and replace (Ctrl+F)" disabled={state !== 'ready'}>
+        <button className="iconbtn" onClick={() => editor.current?.toggleSearch()} aria-label={t('editor.search')} title={t('editor.search_shortcut')} disabled={state !== 'ready'}>
           <Search size={17} />
         </button>
-        <button className="iconbtn hidden sm:grid" onClick={() => downloadFile(root, path)} aria-label="Download" title="Download">
+        <button className="iconbtn hidden sm:grid" onClick={() => downloadFile(root, path)} aria-label={t('editor.download')} title={t('editor.download')}>
           <Download size={17} />
         </button>
         {service?.link && (
-          <a className="iconbtn hidden sm:grid" href={service.link} target="_blank" rel="noreferrer" aria-label="Configuration reference" title="Configuration reference">
+          <a className="iconbtn hidden sm:grid" href={service.link} target="_blank" rel="noreferrer" aria-label={t('editor.reference')} title={t('editor.reference')}>
             <BookOpen size={17} />
           </a>
         )}
         {!readOnly && (
           <>
-            <button className={`btn ${restartable ? '' : 'btn-primary'} btn-sm h-8`} onClick={() => save(false)} disabled={state !== 'ready' || saving} title="Save (Ctrl+S)">
-              {saving ? <Spinner size={13} /> : <Save size={14} />} <span className="hidden sm:inline">Save</span>
+            <button className={`btn ${restartable ? '' : 'btn-primary'} btn-sm h-8`} onClick={() => save(false)} disabled={state !== 'ready' || saving} title={t('editor.save_shortcut')}>
+              {saving ? <Spinner size={13} /> : <Save size={14} />} <span className="hidden sm:inline">{t('common.save')}</span>
             </button>
             {restartable && (
               <button
                 className="btn btn-primary btn-sm h-8"
                 onClick={() => save(true)}
                 disabled={state !== 'ready' || saving || printing}
-                title={printing ? 'Not while printing' : service.service === 'klipper' ? 'Save, then FIRMWARE_RESTART' : `Save, then restart ${service.service}`}
+                title={printing ? t('editor.not_while_printing') : service.service === 'klipper' ? t('editor.save_then_firmware_restart') : t('editor.save_then_restart', { service: service.service })}
               >
-                <RotateCw size={14} /> <span className="hidden sm:inline">Save and restart</span>
-                <span className="sm:hidden">Restart</span>
+                <RotateCw size={14} /> <span className="hidden sm:inline">{t('editor.save_and_restart')}</span>
+                <span className="sm:hidden">{t('editor.restart')}</span>
               </button>
             )}
           </>
         )}
       </div>
-      {locked && <div className="flex-none border-b border-line bg-inset px-4 py-2 text-[12.5px] text-ink-2">fluidd.cfg is read-only on the printer. Valve Oil leaves it as QIDI ships it.</div>}
+      {locked && <div className="flex-none border-b border-line bg-inset px-4 py-2 text-[12.5px] text-ink-2">{t('editor.locked')}</div>}
       <div className="relative min-h-0 flex-1">
         <div ref={host} className="absolute inset-0" />
         {state === 'loading' && (

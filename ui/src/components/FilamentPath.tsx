@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import { QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../state/box'
 import { SpoolGlyph } from './Spool'
 import { qidiBoxFlowConnections, qidiBoxFlowPath, type QidiBoxFlowConnection } from '../qidi/qidi-box-flow'
+import { t, type MessageKey } from '../i18n'
 
 // Geometry, in SVG units; the drawing scales to the card's width.
 const R = 24
@@ -18,11 +19,11 @@ const UNIT_BOTTOM = 116
 const NODE_W = 188
 const NODE_H = 30
 const NODES = [
-  { key: 'hub', y: 178, label: 'Hub' },
-  { key: 'th', y: 220, label: 'Toolhead sensor' },
-  { key: 'ex', y: 262, label: 'Extruder' },
-  { key: 'noz', y: 304, label: 'Nozzle' },
-] as const
+  { key: 'hub', y: 178, name: 'box.path.hub' },
+  { key: 'th', y: 220, name: 'box.path.toolhead_sensor' },
+  { key: 'ex', y: 262, name: 'box.path.extruder' },
+  { key: 'noz', y: 304, name: 'box.path.nozzle' },
+] as const satisfies readonly { key: string; y: number; name: MessageKey }[]
 const HEIGHT = 330
 
 type Props = {
@@ -68,15 +69,15 @@ export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
       .map(([t]) => Number(t))
 
   const sub: Record<string, string> = {
-    hub: box.hubSensor === 0 ? (hubSlot ? `${hubSlot.label} here` : 'filament here') : 'empty',
-    th: box.toolheadFilament == null ? '' : box.toolheadFilament ? 'filament' : 'empty',
-    ex: toolheadSlot ? `${toolheadSlot.label} loaded` : '',
+    hub: box.hubSensor === 0 ? (hubSlot ? t('box.path.slot_here', { slot: hubSlot.label }) : t('box.path.filament_here')) : t('box.path.empty'),
+    th: box.toolheadFilament == null ? '' : box.toolheadFilament ? t('box.path.filament') : t('box.path.empty'),
+    ex: toolheadSlot ? t('box.path.slot_loaded', { slot: toolheadSlot.label }) : '',
     noz: nozzleTemp != null ? `${Math.round(nozzleTemp)} °C` : '',
   }
   const nodeOn = (k: string) => (k === 'hub' ? box.hubSensor === 0 : k === 'th' ? box.toolheadFilament === true : toolheadSlot != null)
 
   return (
-    <svg viewBox={`-4 -4 ${width + 8} ${HEIGHT + 8}`} className="block h-auto w-full" role="group" aria-label="Filament path">
+    <svg viewBox={`-4 -4 ${width + 8} ${HEIGHT + 8}`} className="block h-auto w-full" role="group" aria-label={t('box.screen.filament_path')}>
       {/* guide strands from every slot with filament at its inlet */}
       {box.slots
         .filter((s) => s.index !== QIDI_BOX_EXTERNAL_SLOT && s.present)
@@ -106,11 +107,11 @@ export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
             <g key={u}>
               <rect x={x0} y={UNIT_TOP} width={w} height={UNIT_BOTTOM - UNIT_TOP} rx={12} fill="var(--inset)" stroke="var(--line)" />
               <text x={x0 + 12} y={UNIT_TOP + 17} fontSize={11} fontWeight={650} fill="var(--ink-2)">
-                {u === 0 ? 'External' : `Box ${u}`}
+                {u === 0 ? t('box.path.external') : t('box.box_n', { n: u })}
               </text>
               {climate && (
                 <text x={x0 + w - 12} y={UNIT_TOP + 17} fontSize={11} fill="var(--ink-3)" textAnchor="end">
-                  {[climate.temperature != null ? `${Math.round(climate.temperature)} °C` : null, climate.target ? `→ ${climate.target}` : null, climate.humidity != null ? `${climate.humidity}% RH` : null].filter(Boolean).join(' · ')}
+                  {[climate.temperature != null ? `${Math.round(climate.temperature)} °C` : null, climate.target ? `→ ${climate.target}` : null, climate.humidity != null ? t('box.humidity_rh', { h: climate.humidity }) : null].filter(Boolean).join(' · ')}
                 </text>
               )}
               {slots.map((s) => s && <SlotGlyph key={s.index} slot={s} x={slotPos.get(s.index)!} tools={toolsFor(s.index)} selected={selected === s.index} loaded={box.loadedSlot === s.index} group={box.reloadGroups[s.index]?.letter} onSelect={onSelect} />)}
@@ -124,7 +125,7 @@ export function FilamentPath({ box, selected, onSelect, nozzleTemp }: Props) {
         <g key={n.key} transform={`translate(${cx - NODE_W / 2} ${n.y - NODE_H / 2})`}>
           <rect width={NODE_W} height={NODE_H} rx={8} fill="var(--surface)" stroke={nodeOn(n.key) ? 'var(--accent)' : 'var(--line-strong)'} strokeWidth={nodeOn(n.key) ? 1.5 : 1} />
           <text x={12} y={19.5} fontSize={12} fontWeight={600} fill="var(--ink)">
-            {n.label}
+            {t(n.name)}
           </text>
           <text x={NODE_W - 12} y={19.5} fontSize={11} fill="var(--ink-3)" textAnchor="end">
             {sub[n.key]}
@@ -152,7 +153,7 @@ function SlotGlyph({ slot, x, tools, selected, loaded, group, onSelect }: { slot
     <g
       role="button"
       tabIndex={0}
-      aria-label={`Slot ${slot.label}`}
+      aria-label={t('box.slot_n', { slot: slot.label })}
       aria-pressed={selected}
       className="cursor-pointer outline-none"
       onClick={() => onSelect(slot.index)}

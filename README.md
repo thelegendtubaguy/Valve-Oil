@@ -83,7 +83,7 @@ No computer handy? [Install from a USB drive](docs/install.md#install-from-a-usb
 [Add-ons →](docs/addons.md)
 
 ### Valve Oil UI
-- This project's own web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, in Valve Oil's look, with everything Fluidd does on these printers plus Valve Oil's updates.
+- This project's own web interface at `http://<your printer's ip>/valve-oil/`, alongside Fluidd, in Valve Oil's look, with everything Fluidd does on these printers plus Valve Oil's updates, in English, Spanish, or Russian.
 
 [Valve Oil UI →](docs/valve-oil-ui.md)
 

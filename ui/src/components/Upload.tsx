@@ -5,6 +5,7 @@ import { filesFromDrop, filesWithPath, hasFiles } from './files/drop'
 import { GCODE_EXTENSIONS } from './files/fs'
 import { fmtBytes } from '../lib/format'
 import { Spinner } from './ui'
+import { t } from '../i18n'
 
 const ACCEPT = GCODE_EXTENSIONS.join(',')
 
@@ -40,12 +41,12 @@ export function DropZone({ children, className = '' }: { children?: ReactNode; c
     >
       <UploadIcon size={22} />
       {progress != null ? (
-        <span className="num font-semibold text-ink-2">Uploading {Math.round(progress * 100)}%</span>
+        <span className="num font-semibold text-ink-2">{t('app.upload.progress', { pct: Math.round(progress * 100) })}</span>
       ) : (
         (children ?? (
           <>
-            <b className="text-ink-2">Drop G-code or .gcode.3mf</b>
-            <span>or click to upload</span>
+            <b className="text-ink-2">{t('app.upload.drop')}</b>
+            <span>{t('app.upload.click')}</span>
           </>
         ))
       )}
@@ -63,9 +64,9 @@ export function UploadsPanel() {
     <div className="fixed right-3 bottom-20 z-50 w-[min(360px,calc(100vw-24px))] rounded-xl bg-surface p-3 md:right-5 md:bottom-5" style={{ boxShadow: 'var(--shadow-overlay)' }}>
       <div className="mb-2 flex items-center gap-2">
         <UploadIcon size={15} className="text-accent-ink" />
-        <b className="flex-1">{active ? `Uploading ${active} ${active === 1 ? 'file' : 'files'}` : 'Uploads'}</b>
+        <b className="flex-1">{active ? t('app.upload.uploading', { count: active }) : t('app.upload.title')}</b>
         {!active && (
-          <button className="iconbtn h-7 w-7" onClick={clearUploads} aria-label="Dismiss">
+          <button className="iconbtn h-7 w-7" onClick={clearUploads} aria-label={t('common.dismiss')}>
             <X size={15} />
           </button>
         )}
@@ -78,9 +79,9 @@ export function UploadsPanel() {
               <span className="min-w-0 flex-1 truncate" title={u.name}>
                 {u.name}
               </span>
-              <span className="num flex-none text-ink-3">{u.state === 'sending' ? `${Math.round((u.loaded / Math.max(1, u.size)) * 100)}%` : u.state === 'waiting' ? fmtBytes(u.size) : u.state === 'cancelled' ? 'Cancelled' : u.state === 'failed' ? 'Failed' : ''}</span>
+              <span className="num flex-none text-ink-3">{u.state === 'sending' ? `${Math.round((u.loaded / Math.max(1, u.size)) * 100)}%` : u.state === 'waiting' ? fmtBytes(u.size) : u.state === 'cancelled' ? t('app.upload.cancelled') : u.state === 'failed' ? t('app.upload.failed') : ''}</span>
               {(u.state === 'waiting' || u.state === 'sending') && (
-                <button className="iconbtn h-6 w-6" onClick={() => cancelUpload(u.id)} aria-label={`Cancel ${u.name}`}>
+                <button className="iconbtn h-6 w-6" onClick={() => cancelUpload(u.id)} aria-label={t('app.upload.cancel_named', { name: u.name })}>
                   <X size={13} />
                 </button>
               )}

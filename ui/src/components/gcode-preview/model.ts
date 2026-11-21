@@ -4,6 +4,7 @@ import type { BBox, ColorMode, ColorStop, ExtrusionRole as ExtrusionRoleType, La
 import { ExtrusionRole, MoveFlags } from './types'
 import { binarySearch, rangeColors } from './gcode-preview'
 import decimalRound from './decimal-round'
+import { t, type MessageKey } from '../../i18n'
 
 const defaultColors = ['#1fb0ff', '#ff5252', '#D67600', '#830EE3', '#B366F2', '#E06573', '#E38819', '#795548', '#607D8B']
 const lightDefaultColors = Object.freeze(['#000', ...defaultColors])
@@ -44,24 +45,28 @@ const lightRoleColors = groupColors(
 const speedColors = groupColors('S', rangeColors)
 const fanColors = groupColors('F', rangeColors)
 
-/** Fluidd's names for each feature type (app.gcode.role). */
-export const roleNames: Record<ExtrusionRoleType, string> = {
-  [ExtrusionRole.None]: 'Unknown',
-  [ExtrusionRole.Perimeter]: 'Perimeter',
-  [ExtrusionRole.ExternalPerimeter]: 'External perimeter',
-  [ExtrusionRole.OverhangPerimeter]: 'Overhang perimeter',
-  [ExtrusionRole.InternalInfill]: 'Internal infill',
-  [ExtrusionRole.SolidInfill]: 'Solid infill',
-  [ExtrusionRole.TopSolidInfill]: 'Top solid infill',
-  [ExtrusionRole.Ironing]: 'Ironing',
-  [ExtrusionRole.BridgeInfill]: 'Bridge infill',
-  [ExtrusionRole.GapFill]: 'Gap fill',
-  [ExtrusionRole.Skirt]: 'Skirt/Brim',
-  [ExtrusionRole.SupportMaterial]: 'Support material',
-  [ExtrusionRole.SupportMaterialInterface]: 'Support material interface',
-  [ExtrusionRole.WipeTower]: 'Wipe tower',
-  [ExtrusionRole.Custom]: 'Custom',
+// Each feature type's message (preview.roles.<key>), Fluidd's names (app.gcode.role). The parser worker reports
+// the role's number; its name is looked up here, in the language shown.
+const roleKeys: Record<ExtrusionRoleType, string> = {
+  [ExtrusionRole.None]: 'none',
+  [ExtrusionRole.Perimeter]: 'perimeter',
+  [ExtrusionRole.ExternalPerimeter]: 'external_perimeter',
+  [ExtrusionRole.OverhangPerimeter]: 'overhang_perimeter',
+  [ExtrusionRole.InternalInfill]: 'internal_infill',
+  [ExtrusionRole.SolidInfill]: 'solid_infill',
+  [ExtrusionRole.TopSolidInfill]: 'top_solid_infill',
+  [ExtrusionRole.Ironing]: 'ironing',
+  [ExtrusionRole.BridgeInfill]: 'bridge_infill',
+  [ExtrusionRole.GapFill]: 'gap_fill',
+  [ExtrusionRole.Skirt]: 'skirt',
+  [ExtrusionRole.SupportMaterial]: 'support_material',
+  [ExtrusionRole.SupportMaterialInterface]: 'support_material_interface',
+  [ExtrusionRole.WipeTower]: 'wipe_tower',
+  [ExtrusionRole.Custom]: 'custom',
 }
+
+/** A feature type's name for the legend. */
+export const roleName = (role: ExtrusionRoleType) => t(`preview.roles.${roleKeys[role]}` as MessageKey)
 
 // same stops as PrusaSlicer's range legend: one per distinct value when there are at most 2
 const rangeStops = (range: Readonly<ValueRange> | null, scale: number): readonly ColorStop[] => {

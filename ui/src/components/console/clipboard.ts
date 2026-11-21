@@ -9,5 +9,6 @@ export async function copyText(text: string) {
   ta.select()
   const ok = document.execCommand('copy')
   ta.remove()
+  // i18n-ignore: never shown; the caller says the copy failed.
   if (!ok) throw new Error('copy failed')
 }

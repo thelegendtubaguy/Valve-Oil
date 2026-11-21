@@ -6,6 +6,7 @@ import { BedMeshTab } from '../components/tune/BedMeshTab'
 import { BedSoakTab } from '../components/tune/BedSoakTab'
 import { CalibrateTab } from '../components/tune/CalibrateTab'
 import { meshPreview } from '../components/tune/mesh'
+import { t } from '../i18n'
 
 // Klipper's BED_SCREWS_ADJUST helper isn't in the app's default subscription.
 registerObjects((name) => name === 'bed_screws')
@@ -23,14 +24,14 @@ export function TuneScreen() {
 
   return (
     <div className="grid min-w-0 gap-3.5">
-      <PageHeader title="Tune">
+      <PageHeader title={t('tune.screen.title')}>
         <Segmented
-          label="Tune"
+          label={t('tune.screen.title')}
           value={tab}
           options={[
-            ...(hasMesh ? [{ value: 'mesh' as const, label: 'Bed mesh', href: href('tune') }] : []),
-            ...(hasSoak ? [{ value: 'soak' as const, label: 'Bed soak', href: href('tune', 'soak') }] : []),
-            { value: 'calibrate' as const, label: 'Calibrate', href: href('tune', 'calibrate') },
+            ...(hasMesh ? [{ value: 'mesh' as const, label: t('tune.screen.tab_mesh'), href: href('tune') }] : []),
+            ...(hasSoak ? [{ value: 'soak' as const, label: t('tune.screen.tab_soak'), href: href('tune', 'soak') }] : []),
+            { value: 'calibrate' as const, label: t('tune.screen.tab_calibrate'), href: href('tune', 'calibrate') },
           ]}
         />
       </PageHeader>

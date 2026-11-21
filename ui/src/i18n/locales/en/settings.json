@@ -1,0 +1,423 @@
+{
+  "general": {
+    "title": "General",
+    "printer_name": "Printer name",
+    "printer_name_sub": "The name Fluidd shows for this printer.",
+    "language": "Language",
+    "language_sub": "Kept in this browser. Messages from the printer stay in English.",
+    "language_auto": "Browser language ({{name}})",
+    "theme": "Theme",
+    "theme_sub": "Kept in this browser.",
+    "theme_dark": "Dark",
+    "theme_light": "Light",
+    "confirm_estop": "Require confirm on Emergency Stop",
+    "warnings": "Warnings",
+    "warnings_footer": "Shared with Fluidd, which shows these warnings.",
+    "warn_cpu": "Warn if CPU throttling is detected",
+    "warn_cpu_sub": "CPU throttling can cause prints to fail.",
+    "warn_drivers": "Warn if stepper driver is over-heating",
+    "warn_drivers_sub": "Trinamic drivers only.",
+    "reset": "Reset Valve Oil UI preferences",
+    "reset_sub": "Puts this app's own preferences back to their defaults: the theme and other choices kept in this browser, and those kept on the printer. Fluidd's settings, cameras, and presets stay as they are.",
+    "reset_button": "Reset",
+    "reset_confirm": "Put Valve Oil UI's preferences back to their defaults, in this browser and on the printer? Fluidd's settings aren't changed."
+  },
+  "sections": {
+    "general": {
+      "label": "General",
+      "sub": "Printer name, theme, warnings"
+    },
+    "toolhead": {
+      "label": "Toolhead",
+      "sub": "Jog distances, speeds, axes"
+    },
+    "cameras": {
+      "label": "Cameras",
+      "sub": "Add, edit, and remove cameras"
+    },
+    "presets": {
+      "label": "Temperature presets",
+      "sub": "Targets for each material"
+    },
+    "files": {
+      "label": "Files and editor",
+      "sub": "Sorting, drag-and-drop, editor"
+    },
+    "gcode_preview": {
+      "label": "G-code preview",
+      "sub": "Line widths, flip, auto load"
+    },
+    "timelapse": {
+      "label": "Timelapse",
+      "sub": "Camera, parking, render"
+    },
+    "addons": {
+      "label": "Add-ons",
+      "sub": "Remote access and networking"
+    },
+    "about": {
+      "label": "About",
+      "sub": "Versions"
+    }
+  },
+  "screen": {
+    "title": "Settings",
+    "back": "Back to Settings",
+    "sections": "Settings sections",
+    "waiting": "Waiting for Moonraker…",
+    "valve_oil_sub": "Updates, automatic updates, LAN only mode",
+    "summary_release": "Valve Oil {{release}}",
+    "summary_release_auto_on": "Valve Oil {{release}}, automatic updates on",
+    "summary_release_auto_off": "Valve Oil {{release}}, automatic updates off",
+    "summary_auto_on": "automatic updates on",
+    "summary_auto_off": "automatic updates off",
+    "update_waiting": "Update waiting"
+  },
+  "common": {
+    "shared_with_fluidd": "Shared with Fluidd: a change here shows there too.",
+    "managed_by_config": "Managed by your Moonraker configuration",
+    "edit_named": "Edit {{name}}",
+    "remove_named": "Remove {{name}}",
+    "add_value": "Add a value",
+    "add_to": "Add to {{label}}"
+  },
+  "toolhead": {
+    "moves": "Moves",
+    "distances": "Toolhead distance values",
+    "distances_sub": "The jog steps to pick from, in mm. Up to six.",
+    "distances_label": "toolhead distance values",
+    "move_length": "Default toolhead move length",
+    "xy_speed": "Default toolhead XY speed",
+    "z_speed": "Default toolhead Z speed",
+    "gcode_coords": "Use G-code coordinates",
+    "gcode_coords_sub": "Show the G-code position instead of the toolhead's position.",
+    "invert_x": "Invert X control",
+    "invert_y": "Invert Y control",
+    "invert_z": "Invert Z control",
+    "extruder": "Extruder",
+    "extrude_length": "Default extrude length",
+    "extrude_speed": "Default extrude speed",
+    "z_offset": "Z offset",
+    "z_adjust": "Z adjust values",
+    "z_adjust_sub": "The steps for adjusting the Z offset, in mm. Up to six.",
+    "confirmations": "Confirmations and helpers",
+    "force_move": "Require confirm when activating FORCE_MOVE",
+    "manual_probe": "Show Manual Probe dialog automatically",
+    "manual_probe_sub": "Shows the helper while a manual probe runs.",
+    "bed_screws": "Show Bed Screws Adjust dialog automatically",
+    "bed_screws_sub": "Shows the helper while BED_SCREWS_ADJUST runs.",
+    "screws_tilt": "Show Screws Tilt Adjust dialog automatically",
+    "screws_tilt_sub": "Shows the helper after SCREWS_TILT_CALCULATE."
+  },
+  "files": {
+    "browser": "File browser",
+    "sort_order": "Text sort order",
+    "sort_order_sub": "How file names sort: as text, by a leading number, or as version numbers.",
+    "sort_default": "Default",
+    "sort_numeric": "Numeric prefix",
+    "sort_version": "Version",
+    "drag_drop": "Drag-and-drop for files and folders",
+    "drag_drop_sub": "Move files by dragging them onto a folder.",
+    "editor": "File editor",
+    "confirm_close": "Require confirm when closing the editor with unsaved changes",
+    "auto_edit": "Extensions to automatically open in edit mode",
+    "add_extension": "Add an extension"
+  },
+  "gcode_preview": {
+    "extrusion_width": "Extrusion line width",
+    "move_width": "Move line width",
+    "retraction_icon": "Retraction icon size",
+    "min_layer_height": "Default minimum layer height",
+    "flip_h": "Horizontal flip",
+    "flip_v": "Vertical flip",
+    "draw_origin": "Draw origin",
+    "draw_background": "Draw background",
+    "show_animations": "Show animations",
+    "auto_load": "Automatically load file on print start",
+    "auto_load_mobile": "Automatically load file on mobile devices",
+    "auto_follow": "Automatically follow progress on file load",
+    "hide_bounding_box": "Hide part bounding box when printing a single part"
+  },
+  "cameras": {
+    "title": "Cameras",
+    "add": "Add camera",
+    "edit": "Edit camera",
+    "remove": "Remove camera",
+    "footer": "Cameras are kept in Moonraker, so Fluidd and the slicers show the same ones.",
+    "empty": "No cameras yet.",
+    "remove_confirm": "Are you sure you want to remove the camera {{name}}?",
+    "enable": "Enable",
+    "name": "Name",
+    "stream_type": "Stream type",
+    "stream_url": "Camera URL stream",
+    "snapshot_url": "Camera URL snapshot",
+    "fps": "FPS target",
+    "fps_idle": "FPS target when not in focus",
+    "aspect": "Aspect ratio",
+    "aspect_sub": "[width : height]",
+    "rotate": "Rotate by",
+    "rotate_none": "None",
+    "flip_h": "Flip horizontally",
+    "flip_v": "Flip vertically",
+    "preview": "Preview",
+    "preview_title": "Camera preview",
+    "no_answer": "The camera didn't answer at this address.",
+    "cant_preview": "Valve Oil UI can't preview this stream type. Fluidd shows it.",
+    "error": {
+      "name_required": "Enter a name.",
+      "name_taken": "Another camera has this name.",
+      "stream_required": "Enter the stream address.",
+      "snapshot_required": "Enter the snapshot address.",
+      "fps_required": "Enter an FPS target.",
+      "aspect_invalid": "Enter the aspect ratio as width:height, such as 16:9."
+    },
+    "service": {
+      "mjpeg_adaptive": "MJPEG Adaptive",
+      "mjpeg": "MJPEG Stream",
+      "uv4l": "UV4L-MJPEG Stream",
+      "hls": "HLS Stream",
+      "ip": "IP Camera",
+      "iframe": "HTTP page"
+    }
+  },
+  "presets": {
+    "title": "Temperature presets",
+    "nozzle": "Nozzle",
+    "bed": "Bed",
+    "box_heater": "Box {{n}} heater",
+    "add": "Add preset",
+    "edit": "Edit preset",
+    "remove": "Remove preset",
+    "footer": "Shared with Fluidd. The Control screen's presets set these targets, then send the preset's G-code.",
+    "empty": "No presets yet. Add one for each material you print, such as PLA or PETG.",
+    "remove_confirm": "Are you sure you want to remove the preset {{name}}?",
+    "sets_nothing": "Sets nothing",
+    "move_up": "Move up",
+    "move_down": "Move down",
+    "move_up_named": "Move {{name}} up",
+    "move_down_named": "Move {{name}} down",
+    "name": "Preset name",
+    "targets": "Tick each target this preset sets",
+    "not_on_printer": "Not on this printer",
+    "target_named": "{{name}} target",
+    "gcode": "G-code, sent after the targets (optional)"
+  },
+  "timelapse": {
+    "title": "Timelapse",
+    "read_failed": "The timelapse settings couldn't be read.",
+    "footer": "Shared with Fluidd. Timelapses are made by moonraker-timelapse on the printer.",
+    "enabled": "Enabled",
+    "camera": "Camera",
+    "default_camera": "Default camera",
+    "mode": "Mode",
+    "mode_sub": "Layer Macro takes a frame each layer; Hyperlapse takes one every few seconds.",
+    "mode_layermacro": "Layer Macro",
+    "mode_hyperlapse": "Hyperlapse",
+    "hyperlapse_cycle": "Hyperlapse Cycle",
+    "delay_compensation": "Delay Compensation",
+    "delay_compensation_sub": "How long the camera stream lags behind the printer.",
+    "verbose_gcode": "Verbose Gcode",
+    "parking": "Toolhead parking",
+    "park_head": "Park Head",
+    "park_head_sub": "Moves the toolhead out of the way for each frame.",
+    "park_position": "Park Position",
+    "park_x": "Park Position X",
+    "park_y": "Park Position Y",
+    "park_z_hop": "Park Position Z-Hop",
+    "park_speed": "Park Travel Speed",
+    "park_time": "Park Time",
+    "fw_retract": "Use Firmware Retraction",
+    "retract_distance": "Park Retraction Distance",
+    "retract_speed": "Park Retraction Speed",
+    "extrude_distance": "Park Extrude Distance",
+    "extrude_speed": "Park Extrude Speed",
+    "render": "Render settings",
+    "autorender": "Auto Render",
+    "autorender_sub": "Makes the video when the print finishes.",
+    "variable_fps": "Variable FPS",
+    "variable_fps_sub": "Picks the framerate to make the video about the target length.",
+    "target_length": "Target Length",
+    "min_fps": "Minimum Framerate",
+    "max_fps": "Maximum Framerate",
+    "output_fps": "Output Framerate",
+    "crf": "Constant Rate Factor",
+    "crf_sub": "Lower is better quality and a bigger file.",
+    "duplicate_frames": "Duplicate last frames",
+    "thumbnail": "Generate Thumbnail",
+    "save_frames": "Save Frames",
+    "save_frames_sub": "Keeps the frames in a zip beside the video.",
+    "park": {
+      "front_left": "Front Left",
+      "front_right": "Front Right",
+      "center": "Center",
+      "back_left": "Back Left",
+      "back_right": "Back Right",
+      "x_only": "Move X only",
+      "y_only": "Move Y only",
+      "custom": "Custom"
+    }
+  },
+  "lan_only": {
+    "title": "LAN only mode",
+    "sub": "Turn off QIDI's cloud connection and remote access, as the touchscreen's LAN Only switch does. The Qidi Joy app and QIDI account sign-in don't work while it's on. Fluidd and the slicers keep working on your network.",
+    "change_failed": "LAN only mode couldn't be changed: {{error}}",
+    "unknown_answer": "Unknown answer"
+  },
+  "about": {
+    "title": "Version information",
+    "dev_build": "Dev build",
+    "dev_build_n": "Dev build {{n}}",
+    "qidi_firmware": "QIDI firmware",
+    "host_name": "Host name",
+    "unknown": "Unknown",
+    "updates": "Valve Oil updates",
+    "github": "Valve Oil on GitHub",
+    "open_fluidd": "Open Fluidd"
+  },
+  "addons": {
+    "title": "Add-ons",
+    "unavailable": "Add-ons aren't available on this printer.",
+    "loading": "Loading add-ons…",
+    "none": "No add-ons are offered for this printer.",
+    "not_connected": "Not connected to this printer",
+    "invalid_response": "Invalid response",
+    "state": {
+      "installed": "Installed",
+      "update_available": "Update available",
+      "foreign": "Installed outside Valve Oil",
+      "not_installed": "Not installed"
+    },
+    "button": {
+      "install": "Install",
+      "update": "Update",
+      "remove": "Remove",
+      "relink": "Restart linking"
+    },
+    "job": {
+      "install": {
+        "running": "Installing {{name}}…",
+        "succeeded": "{{name}} installed",
+        "failed": "Installing {{name}} failed"
+      },
+      "update": {
+        "running": "Updating {{name}}…",
+        "succeeded": "{{name}} updated",
+        "failed": "Updating {{name}} failed"
+      },
+      "remove": {
+        "running": "Removing {{name}}…",
+        "succeeded": "{{name}} removed",
+        "failed": "Removing {{name}} failed"
+      },
+      "relink": {
+        "running": "Restarting {{name}} for linking…",
+        "succeeded": "{{name}} is ready to link",
+        "failed": "Restarting {{name}} for linking failed"
+      }
+    },
+    "version": "Version {{version}}",
+    "version_update": "Version {{installed}}, {{available}} available",
+    "remove_confirm": "Remove {{name}} from the printer?",
+    "website": "{{name}} website",
+    "blocked": "Remove {{names}} first. Only one remote access add-on can be installed.",
+    "printer_busy": "Available when the printer isn't printing or calibrating",
+    "foreign_notice": "{{name}} was installed outside Valve Oil, so it can't be updated or removed here.",
+    "show_log": "Show log",
+    "hide_log": "Hide log",
+    "panel": {
+      "service": "Service",
+      "service_state": {
+        "active": "Running",
+        "activating": "Starting",
+        "failed": "Failed",
+        "inactive": "Stopped",
+        "unknown": "Unknown"
+      },
+      "linked": "Linked",
+      "not_linked": "Not linked",
+      "account": "Account",
+      "address": "Address",
+      "octo": {
+        "no_code": "OctoEverywhere didn't return a link code.",
+        "connected": "Connected",
+        "not_connected": "Not connected",
+        "dashboard": "Dashboard",
+        "link_account": "Link account",
+        "show_code": "Show link code",
+        "enter_code": "Enter this code at {{url}}",
+        "expires": "Expires at {{time}}"
+      },
+      "obico": {
+        "unlink_title": "Unlink Obico",
+        "unlink_body": "Unlink this printer from your Obico account? Obico restarts and waits to be linked again.",
+        "unlink": "Unlink",
+        "server": "Server",
+        "change": "Change",
+        "open": "Open Obico",
+        "link_cloud": "To link this printer, add a printer in the Obico app or at app.obico.io.",
+        "link_self": "To link this printer, add a printer on your Obico server.",
+        "step_device": "For the device, select \"Generic Klipper - Self Installed\".",
+        "step_manual": "Select \"Switch to Manual Linking\".",
+        "step_code": "Enter the code above.",
+        "waiting_code": "Waiting for Obico's link code…",
+        "stopped": "Obico stopped waiting to be linked. Restart linking to link it.",
+        "server_title": "Obico server",
+        "use_server": "Use this server",
+        "change_note": "Changing the server unlinks the printer. Link it again once Obico has restarted.",
+        "own_server": "My own Obico server",
+        "server_invalid": "Enter an http or https address, such as http://192.168.1.10:3334."
+      },
+      "tailscale": {
+        "state": {
+          "running": "Connected",
+          "starting": "Starting",
+          "needs_login": "Not logged in",
+          "needs_approval": "Waiting for approval",
+          "stopped": "Disconnected"
+        },
+        "logout_title": "Log out of Tailscale",
+        "logout_body": "Log this printer out of Tailscale? It leaves your tailnet until you log it in again.",
+        "logout": "Log out",
+        "tailnet": "Tailnet",
+        "name": "Name",
+        "key_expiry": "Sign-in expires",
+        "reach": "Devices on your tailnet can open Fluidd at the name or address above, and reach the printer's other services, such as SSH.",
+        "needs_approval": "This printer is waiting to be approved in your tailnet's admin console at login.tailscale.com.",
+        "login_url_hint": "Open this address on any device and sign in to Tailscale to add this printer to your tailnet.",
+        "login_hint": "Log in to add this printer to your tailnet.",
+        "sign_in": "Sign in to Tailscale",
+        "new_link": "New link",
+        "log_in": "Log in",
+        "connect": "Connect"
+      },
+      "zerotier": {
+        "state": {
+          "ok": "Connected",
+          "requesting_configuration": "Joining",
+          "access_denied": "Waiting for approval",
+          "not_found": "Network not found",
+          "port_error": "Couldn't create its network interface",
+          "client_too_old": "ZeroTier is too old for this network",
+          "authentication_required": "Needs a browser sign-in"
+        },
+        "message_ok": "Devices on this network can open Fluidd at the address above, and reach the printer's other services, such as SSH.",
+        "message_access_denied": "Waiting for approval. In the network's members at my.zerotier.com, authorize node {{node}}.",
+        "message_not_found": "ZeroTier has no network with this ID. Check the ID, then leave this network and join the right one.",
+        "message_authentication_required": "This network needs a sign-in in a browser, which the printer can't do. Turn off SSO for this network to use the printer on it.",
+        "leave_title": "Leave ZeroTier network",
+        "leave_body": "Leave {{name}}? Devices on that network can no longer reach the printer until it joins again.",
+        "leave": "Leave",
+        "online": "Online",
+        "offline": "Offline",
+        "node_id": "Node ID",
+        "no_networks": "This printer isn't on a ZeroTier network. Enter the ID of the network to join.",
+        "network": "Network",
+        "status": "Status",
+        "network_id": "Network ID",
+        "join": "Join",
+        "id_invalid": "A network ID is 16 characters, 0-9 and a-f.",
+        "id_hint": "Enter the 16-character ID of the network to join, from my.zerotier.com."
+      }
+    }
+  }
+}

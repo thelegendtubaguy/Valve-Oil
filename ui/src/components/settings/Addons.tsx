@@ -5,29 +5,21 @@ import { voAddonActions, type VoAddon, type VoAddonAction, type VoAddonJob } fro
 import { actionsDisabled, dismissJob, hasStatusPanel, installBlocked, jobFor, runAddonAction, useAddons, watchAddons } from '../../state/addons'
 import { Notice } from './common'
 import { ObicoPanel, OctoEverywherePanel, TailscalePanel, ZerotierPanel } from './AddonPanels'
+import { t, type MessageKey } from '../../i18n'
 
 // The Fluidd fork's Add-ons section (src/components/settings/addons/) and its wording (app.vo_addons in
 // src/locales/en.yaml there); keep the two in step.
 
-const STATE: Record<VoAddon['state'], { label: string; tone: string }> = {
-  installed: { label: 'Installed', tone: 'tone-good' },
-  update_available: { label: 'Update available', tone: 'tone-accent' },
-  foreign: { label: 'Installed outside Valve Oil', tone: 'tone-warn' },
-  not_installed: { label: 'Not installed', tone: 'tone-muted' },
-}
-const BUTTON: Record<VoAddonAction, string> = { install: 'Install', update: 'Update', remove: 'Remove', relink: 'Restart linking' }
-const JOB: Record<VoAddonAction, Record<VoAddonJob['state'], (name: string) => string>> = {
-  install: { running: (n) => `Installing ${n}…`, succeeded: (n) => `${n} installed`, failed: (n) => `Installing ${n} failed` },
-  update: { running: (n) => `Updating ${n}…`, succeeded: (n) => `${n} updated`, failed: (n) => `Updating ${n} failed` },
-  remove: { running: (n) => `Removing ${n}…`, succeeded: (n) => `${n} removed`, failed: (n) => `Removing ${n} failed` },
-  relink: { running: (n) => `Restarting ${n} for linking…`, succeeded: (n) => `${n} is ready to link`, failed: (n) => `Restarting ${n} for linking failed` },
-}
+const TONE: Record<VoAddon['state'], string> = { installed: 'tone-good', update_available: 'tone-accent', foreign: 'tone-warn', not_installed: 'tone-muted' }
+const stateLabel = (state: VoAddon['state']) => t(`settings.addons.state.${state}` as MessageKey)
+const buttonLabel = (action: VoAddonAction) => t(`settings.addons.button.${action}` as MessageKey)
+const jobText = (action: VoAddonAction, state: VoAddonJob['state'], name: string) => t(`settings.addons.job.${action}.${state}` as MessageKey, { name })
 
 function versionText(addon: VoAddon) {
   const { installed_version: installed, available_version: available } = addon
-  if (addon.state === 'update_available' && installed && available) return `Version ${installed}, ${available} available`
-  if (addon.state !== 'not_installed' && installed) return `Version ${installed}`
-  return available ? `Version ${available}` : ''
+  if (addon.state === 'update_available' && installed && available) return t('settings.addons.version_update', { installed, available })
+  if (addon.state !== 'not_installed' && installed) return t('settings.addons.version', { version: installed })
+  return available ? t('settings.addons.version', { version: available }) : ''
 }
 
 export function AddonsSettings() {
@@ -37,10 +29,10 @@ export function AddonsSettings() {
 
   if (!s.list || addons.length === 0)
     return (
-      <Card title="Add-ons" icon={<Puzzle size={14} />}>
+      <Card title={t('settings.addons.title')} icon={<Puzzle size={14} />}>
         <div className="flex items-center gap-2.5 text-ink-2">
           {!s.list && !s.unavailable && <Spinner size={14} />}
-          {!s.list ? (s.unavailable ? "Add-ons aren't available on this printer." : 'Loading add-ons…') : 'No add-ons are offered for this printer.'}
+          {!s.list ? (s.unavailable ? t('settings.addons.unavailable') : t('settings.addons.loading')) : t('settings.addons.none')}
         </div>
       </Card>
     )
@@ -68,7 +60,7 @@ function AddonCard({ addon }: { addon: VoAddon }) {
 
   const run = async (action: VoAddonAction | null, body?: Record<string, unknown>) => {
     if (!action || actionsDisabled(s) || (action === 'install' && blocked)) return
-    if (action === 'remove' && !(await confirm({ title: `Remove ${addon.name}`, body: `Remove ${addon.name} from the printer?`, confirm: 'Remove', danger: true }))) return
+    if (action === 'remove' && !(await confirm({ title: t('settings.common.remove_named', { name: addon.name }), body: t('settings.addons.remove_confirm', { name: addon.name }), confirm: t('common.remove'), danger: true }))) return
     runAddonAction(addon, action, body)
   }
 
@@ -79,11 +71,11 @@ function AddonCard({ addon }: { addon: VoAddon }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="m-0 text-[15px] font-bold">{addon.name}</h3>
             {addon.homepage && (
-              <a href={addon.homepage} target="_blank" rel="noopener noreferrer" className="text-ink-3 hover:text-accent-ink" aria-label={`${addon.name} website`} title={addon.homepage}>
+              <a href={addon.homepage} target="_blank" rel="noopener noreferrer" className="text-ink-3 hover:text-accent-ink" aria-label={t('settings.addons.website', { name: addon.name })} title={addon.homepage}>
                 <ExternalLink size={14} />
               </a>
             )}
-            <span className={`pill ${STATE[addon.state].tone} py-0.5!`}>{STATE[addon.state].label}</span>
+            <span className={`pill ${TONE[addon.state]} py-0.5!`}>{stateLabel(addon.state)}</span>
           </div>
           {addon.description && <div className="mt-1 text-ink-2">{addon.description}</div>}
           {version && <div className="mt-0.5 text-[12.5px] text-ink-3">{version}</div>}
@@ -92,27 +84,27 @@ function AddonCard({ addon }: { addon: VoAddon }) {
           <div className="flex flex-wrap justify-end gap-2">
             {actions.remove && (
               <button className="btn btn-sm btn-danger" disabled={disabled} onClick={() => run('remove')}>
-                Remove
+                {t('common.remove')}
               </button>
             )}
             {actions.primary && (
               <button className={`btn btn-sm ${actions.primary === 'remove' ? 'btn-danger' : 'btn-primary'}`} disabled={disabled || blocked} onClick={() => run(actions.primary)}>
                 {pending && <Spinner size={12} />}
-                {BUTTON[actions.primary]}
+                {buttonLabel(actions.primary)}
               </button>
             )}
           </div>
           {blocked ? (
-            <div className="max-w-[300px] text-right text-[12px] text-ink-3">Remove {addon.blocked_by.join(', ')} first. Only one remote access add-on can be installed.</div>
+            <div className="max-w-[300px] text-right text-[12px] text-ink-3">{t('settings.addons.blocked', { names: addon.blocked_by.join(', ') })}</div>
           ) : (
-            actions.primary && printerBusyHint && <div className="text-right text-[12px] text-ink-3">Available when the printer isn't printing or calibrating</div>
+            actions.primary && printerBusyHint && <div className="text-right text-[12px] text-ink-3">{t('settings.addons.printer_busy')}</div>
           )}
         </div>
       </div>
 
       {(addon.state === 'foreign' || error || job || hasStatusPanel(addon)) && (
         <div className="mt-3 grid gap-2">
-          {addon.state === 'foreign' && <Notice tone="info">{addon.name} was installed outside Valve Oil, so it can't be updated or removed here.</Notice>}
+          {addon.state === 'foreign' && <Notice tone="info">{t('settings.addons.foreign_notice', { name: addon.name })}</Notice>}
           {error && <Notice tone="bad">{error}</Notice>}
           {job && <AddonJob job={job} name={addon.name} />}
           {hasStatusPanel(addon) && addon.id === 'octoeverywhere' && <OctoEverywherePanel addon={addon} />}
@@ -134,7 +126,7 @@ function AddonJob({ job, name }: { job: VoAddonJob; name: string }) {
     <div className="grid gap-1.5">
       {job.state === 'running' ? (
         <div className="grid gap-1.5 rounded-lg bg-inset px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          <div className="font-medium">{JOB[job.action].running(name)}</div>
+          <div className="font-medium">{jobText(job.action, 'running', name)}</div>
           <div className="bar live">
             <i style={{ width: '100%' }} />
           </div>
@@ -142,7 +134,7 @@ function AddonJob({ job, name }: { job: VoAddonJob; name: string }) {
         </div>
       ) : (
         <Notice tone={job.state === 'failed' ? 'bad' : 'good'} onClose={() => dismissJob(job.id)}>
-          <div className="font-medium">{JOB[job.action][job.state](name)}</div>
+          <div className="font-medium">{jobText(job.action, job.state, name)}</div>
           {job.state === 'failed' && job.message && <div className="text-ink-2">{job.message}</div>}
         </Notice>
       )}
@@ -150,7 +142,7 @@ function AddonJob({ job, name }: { job: VoAddonJob; name: string }) {
         <>
           <button className="btn btn-sm btn-ghost justify-self-start px-1.5!" onClick={() => setShowLog(!logVisible)}>
             <ChevronDown size={14} className={logVisible ? 'rotate-180' : ''} />
-            {logVisible ? 'Hide log' : 'Show log'}
+            {logVisible ? t('settings.addons.hide_log') : t('settings.addons.show_log')}
           </button>
           {logVisible && <Log lines={job.log} />}
         </>

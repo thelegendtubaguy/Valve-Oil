@@ -9,6 +9,7 @@ import { boxCommands, filamentLists, loadFilamentLists, useBox, QIDI_BOX_EXTERNA
 import { matchQidiBoxSlots, qidiBoxFileTools, qidiBoxSlotsForTool, normalizeQidiColor, qidiTextColor, type QidiBoxFileMetadata } from '../qidi/qidi-box'
 import { displayName, fmtBytes, fmtDuration, fmtAgo } from '../lib/format'
 import { useJob, isActive } from '../state/job'
+import { t } from '../i18n'
 
 // Upstream Moonraker reports filament_type as one ';'-separated string; the Box matcher wants one entry per filament.
 function boxMetadata(meta: FileMeta): QidiBoxFileMetadata {
@@ -74,7 +75,7 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
         if (lines.length) await runGcode(lines.join('\n'))
       }
       await client.call('printer.print.start', { filename })
-      toast(`Printing ${displayName(filename)}`)
+      toast(t('app.print.started', { name: displayName(filename) }))
       location.hash = '#/home'
       onClose()
     } catch (e) {
@@ -97,13 +98,13 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
       footer={
         <>
           <HoldButton className="mr-auto" onHold={remove} disabled={busy && job.filename === filename}>
-            <Trash2 size={14} /> Hold to delete
+            <Trash2 size={14} /> {t('app.print.hold_delete')}
           </HoldButton>
           <button className="btn" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
           <button className="btn btn-primary" disabled={busy || !mappingOk || starting || !meta} onClick={start}>
-            <Play size={14} /> Start print
+            <Play size={14} /> {t('app.print.start')}
           </button>
         </>
       }
@@ -119,13 +120,13 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
                 <Clock size={12} /> {fmtDuration(meta.estimated_time)}
               </span>
             )}
-            {meta?.layer_height != null && <span className="chip">{meta.layer_height} mm layers</span>}
-            {meta?.filament_weight_total != null && <span className="chip">{Math.round(meta.filament_weight_total)} g</span>}
+            {meta?.layer_height != null && <span className="chip">{t('app.print.layers', { n: meta.layer_height })}</span>}
+            {meta?.filament_weight_total != null && <span className="chip">{t('app.units.g', { n: Math.round(meta.filament_weight_total) })}</span>}
           </div>
           <div className="text-ink-3">
-            {[meta?.slicer, meta?.size != null ? fmtBytes(meta.size) : null, meta?.modified ? `modified ${fmtAgo(meta.modified)}` : null].filter(Boolean).join(' · ')}
+            {[meta?.slicer, meta?.size != null ? fmtBytes(meta.size) : null, meta?.modified ? t('app.print.modified', { ago: fmtAgo(meta.modified) }) : null].filter(Boolean).join(' · ')}
           </div>
-          {busy && <div className="text-warn">A print is running. Start this one after it finishes.</div>}
+          {busy && <div className="text-warn">{t('app.print.busy')}</div>}
         </div>
       </div>
 
@@ -133,32 +134,32 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
         <div className="mt-4 grid gap-3">
           <div className="flex items-center gap-3 rounded-xl bg-inset px-3.5 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
             <div className="min-w-0 flex-1">
-              <div className="font-semibold">Use QIDI Box</div>
-              <div className="text-[12.5px] text-ink-3">{useBoxForPrint ? 'Each filament prints from the Box slot chosen below.' : 'Prints from the external spool.'}</div>
+              <div className="font-semibold">{t('app.print.use_box')}</div>
+              <div className="text-[12.5px] text-ink-3">{useBoxForPrint ? t('app.print.use_box_on') : t('app.print.use_box_off')}</div>
             </div>
-            <Toggle checked={useBoxForPrint} label="Use QIDI Box" onChange={(v) => attempt(() => runGcode(boxCommands.setting('enable_box', v)))} />
+            <Toggle checked={useBoxForPrint} label={t('app.print.use_box')} onChange={(v) => attempt(() => runGcode(boxCommands.setting('enable_box', v)))} />
           </div>
-          {useBoxForPrint && fileTools.tools.length > 0 && <div className="text-ink-2">Choose the Box slot for each filament in the file. Only loaded slots of the same filament type are listed; slots are matched by nearest color.</div>}
+          {useBoxForPrint && fileTools.tools.length > 0 && <div className="text-ink-2">{t('app.print.choose_slots')}</div>}
           {useBoxForPrint && !fileTools.named && (
-            <div className="text-ink-2">This file doesn’t say which filaments it uses, so every filament in its slicer project is listed. Any left without a slot keep the slot they were last mapped to.</div>
+            <div className="text-ink-2">{t('app.print.unnamed')}</div>
           )}
-          {fileTools.tools.map((t) => {
-            const options = qidiBoxSlotsForTool(t, box.slots)
-            const color = normalizeQidiColor(t.color)
+          {fileTools.tools.map((tool) => {
+            const options = qidiBoxSlotsForTool(tool, box.slots)
+            const color = normalizeQidiColor(tool.color)
             return (
-              <div key={t.tool} className="grid gap-2 rounded-xl px-3.5 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
+              <div key={tool.tool} className="grid gap-2 rounded-xl px-3.5 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
                 <div className="flex items-center gap-2.5">
                   <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12.5px] font-bold" style={{ background: color ?? 'var(--inset)', color: qidiTextColor(color), boxShadow: 'inset 0 0 0 1px rgb(128 128 128 / 0.4)' }}>
-                    T{t.tool} · {t.type || '?'}
+                    T{tool.tool} · {tool.type || '?'}
                   </span>
                   <span className="flex-1" />
-                  {!useBoxForPrint && <span className="text-ink-3">External spool</span>}
+                  {!useBoxForPrint && <span className="text-ink-3">{t('app.print.external_spool')}</span>}
                 </div>
                 {useBoxForPrint &&
                   (options.length ? (
                     <div className="flex flex-wrap gap-1.5">
                       {options.map((s) => (
-                        <button key={s.index} type="button" className={`choice pl-1.5! ${mapping[t.tool] === s.index ? 'on' : ''}`} aria-pressed={mapping[t.tool] === s.index} onClick={() => setMapping((m) => ({ ...m, [t.tool]: m[t.tool] === s.index ? null : s.index }))} title={[s.vendor, s.name].filter(Boolean).join(' ')}>
+                        <button key={s.index} type="button" className={`choice pl-1.5! ${mapping[tool.tool] === s.index ? 'on' : ''}`} aria-pressed={mapping[tool.tool] === s.index} onClick={() => setMapping((m) => ({ ...m, [tool.tool]: m[tool.tool] === s.index ? null : s.index }))} title={[s.vendor, s.name].filter(Boolean).join(' ')}>
                           <Spool slot={s} size={20} label={false} />
                           {s.label}
                           <span className="font-medium text-ink-3">{s.name ?? s.type}</span>
@@ -166,22 +167,22 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
                       ))}
                     </div>
                   ) : (
-                    <div className="text-[12.5px] text-ink-3">No {t.type || 'matching'} filament is loaded in the Box.</div>
+                    <div className="text-[12.5px] text-ink-3">{tool.type ? t('app.print.none_of_type', { type: tool.type }) : t('app.print.none_matching')}</div>
                   ))}
               </div>
             )
           })}
           {useBoxForPrint && !mappingOk && (
             <div className="tone-warn flex items-center gap-2 rounded-lg px-3 py-2 text-ink">
-              <TriangleAlert size={15} className="flex-none" /> Choose a Box slot for every filament, or turn off the QIDI Box to print from the external spool.
+              <TriangleAlert size={15} className="flex-none" /> {t('app.print.map_all')}
             </div>
           )}
           {!useBoxForPrint && box.toolheadFilament === false && (
             <div className="tone-warn flex items-center gap-2 rounded-lg px-3 py-2 text-ink">
-              <TriangleAlert size={15} className="flex-none" /> No filament is detected at the toolhead. Load the external spool before printing.
+              <TriangleAlert size={15} className="flex-none" /> {t('app.print.no_toolhead_filament')}
             </div>
           )}
-          {useBoxForPrint && box.slots.every((s) => s.index === QIDI_BOX_EXTERNAL_SLOT || !s.present) && <div className="text-ink-3">No Box slot has filament loaded.</div>}
+          {useBoxForPrint && box.slots.every((s) => s.index === QIDI_BOX_EXTERNAL_SLOT || !s.present) && <div className="text-ink-3">{t('app.print.no_slots')}</div>}
         </div>
       )}
     </Dialog>

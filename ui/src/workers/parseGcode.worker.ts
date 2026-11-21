@@ -2,6 +2,7 @@
 // (src/workers/parseGcode.worker.ts), with download progress added for 3MF archives.
 import type { ParsedGcode } from '../components/gcode-preview/types'
 import parseGcode from './parseGcode'
+import { PreviewError, type PreviewErrorCode } from './preview-error'
 
 export type ParseGcodeWorkerRequestMessage = {
   action: 'parse'
@@ -15,7 +16,7 @@ export type ParseGcodeWorkerResponseMessage =
   | { action: 'progress'; filePosition: number }
   | { action: 'download'; received: number; total: number }
   | ParseGcodeWorkerResultMessage
-  | { action: 'error'; error?: string }
+  | { action: 'error'; error?: string; code?: PreviewErrorCode; vars?: Record<string, string | number> }
 
 const post = (message: ParseGcodeWorkerResponseMessage, transfer: Transferable[] = []) => self.postMessage(message, { transfer })
 
@@ -47,6 +48,7 @@ self.onmessage = async (event: MessageEvent<ParseGcodeWorkerRequestMessage>) => 
   } catch (e) {
     console.error('[ParseGcode] error in worker', e)
 
-    post({ action: 'error', error: e instanceof Error ? e.message : String(e) })
+    // The main thread shows a known error by its code, in the UI's language.
+    post({ action: 'error', error: e instanceof Error ? e.message : String(e), ...(e instanceof PreviewError ? { code: e.code, vars: e.vars } : {}) })
   }
 }

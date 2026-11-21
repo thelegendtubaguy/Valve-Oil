@@ -3,15 +3,16 @@
 import { Box as BoxIcon, RefreshCw } from 'lucide-react'
 import { Spool } from '../Spool'
 import { slotByIndex, type BoxState } from '../../state/box'
+import { t } from '../../i18n'
 
 export function LoadedSummary({ box, size = 52 }: { box: BoxState; size?: number }) {
   const busy = box.busy && box.task != null && !box.flowPaused
   const slot = slotByIndex(box, box.toolheadSlot ?? box.hubSlot) ?? null
   const loaded = slot != null && slot.index === box.loadedSlot
-  const name = !slot ? '' : !slot.present ? 'Empty' : (slot.name ?? 'Unknown filament')
+  const name = !slot ? '' : !slot.present ? t('box.empty') : (slot.name ?? t('box.unknown_filament'))
   const tools = slot ? (box.toolsBySlot[slot.index] ?? []) : []
-  const overline = busy ? 'Box busy' : !slot ? 'Toolhead' : [loaded ? `Loaded ${slot.label}` : `At hub ${slot.label}`, tools.join(', ')].filter(Boolean).join(' · ')
-  const title = busy ? (box.taskStep ?? 'Box busy') : !slot ? 'No Box filament loaded' : name
+  const overline = busy ? t('box.loaded.busy') : !slot ? t('box.loaded.toolhead') : [loaded ? t('box.loaded.loaded_slot', { slot: slot.label }) : t('box.loaded.at_hub_slot', { slot: slot.label }), tools.join(', ')].filter(Boolean).join(' · ')
+  const title = busy ? (box.taskStep ?? t('box.loaded.busy')) : !slot ? t('box.loaded.none') : name
   const subtitle = !slot ? '' : busy ? `${slot.label} · ${name}` : slot.present ? [slot.vendor, slot.type].filter(Boolean).join(' · ') : ''
   return (
     <div className="flex min-w-0 items-center gap-3">

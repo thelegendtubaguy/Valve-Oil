@@ -6,10 +6,12 @@ import { runGcode } from '../../state/printer'
 import { excludeObjectGcode } from '../control/gcode'
 import { PreviewCanvas, type PreviewCanvasHandle } from './PreviewCanvas'
 import { usePreviewModel, usePrintFollow } from './hooks'
-import { fanStops, layerByFilePosition, moveIndexByFilePosition, roleNames, speedStops } from './model'
+import { fanStops, layerByFilePosition, moveIndexByFilePosition, roleName, speedStops } from './model'
 import { ExtrusionRole, type ColorMode, type ParsedGcode } from './types'
 import type { PreviewSettings } from './settings'
 import type { FileMeta } from '../../state/files'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 import './preview.css'
 
 type Props = {
@@ -20,20 +22,16 @@ type Props = {
   set: <K extends keyof PreviewSettings>(key: K, value: PreviewSettings[K]) => void
 }
 
-const COLOR_MODES: { value: ColorMode; label: string }[] = [
-  { value: 'tool', label: 'Tool' },
-  { value: 'role', label: 'Feature type' },
-  { value: 'speed', label: 'Speed' },
-  { value: 'fan', label: 'Fan speed' },
-]
+const COLOR_MODES: ColorMode[] = ['tool', 'role', 'speed', 'fan']
+const colorModes = () => COLOR_MODES.map((value) => ({ value, label: t(`preview.color_modes.${value}`) }))
 
-/** A slider with − and + steppers either side. */
-export function RangeStepper({ value, min, max, onChange, label, disabled }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string; disabled?: boolean }) {
+/** A slider with − and + steppers either side, named by `label`, `previous`, and `next`. */
+export function RangeStepper({ value, min, max, onChange, label, previous, next, disabled }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string; previous: string; next: string; disabled?: boolean }) {
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
   return (
     <div className="flex items-center gap-2">
-      <button type="button" className="pm" disabled={disabled || value <= min} onClick={() => onChange(clamp(value - 1))} aria-label={`Previous ${label.toLowerCase()}`}>
+      <button type="button" className="pm" disabled={disabled || value <= min} onClick={() => onChange(clamp(value - 1))} aria-label={previous}>
         <Minus size={16} />
       </button>
       <input
@@ -48,7 +46,7 @@ export function RangeStepper({ value, min, max, onChange, label, disabled }: { v
         aria-label={label}
         onChange={(e) => onChange(clamp(Number(e.target.value)))}
       />
-      <button type="button" className="pm" disabled={disabled || value >= max} onClick={() => onChange(clamp(value + 1))} aria-label={`Next ${label.toLowerCase()}`}>
+      <button type="button" className="pm" disabled={disabled || value >= max} onClick={() => onChange(clamp(value + 1))} aria-label={next}>
         <Plus size={16} />
       </button>
     </div>
@@ -112,7 +110,7 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
   }
 
   const exclude = useCallback(async (name: string) => {
-    const ok = await confirm({ title: 'Exclude object', body: <>Are you sure you want to exclude <b>{name}</b> from printing?</>, confirm: 'Exclude', danger: true })
+    const ok = await confirm({ title: t('preview.viewer.exclude_title'), body: tr('preview.viewer.exclude_body', { name }, { b: (c) => <b>{c}</b> }), confirm: t('preview.viewer.exclude'), danger: true })
     if (ok) attempt(() => runGcode(excludeObjectGcode(name)))
   }, [])
 
@@ -127,7 +125,7 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
 
   return (
     <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="gp-view" tabIndex={0} onKeyDown={onKey} aria-label="Layer view. Up and down arrows change the layer, left and right step through its moves.">
+      <div className="gp-view" tabIndex={0} onKeyDown={onKey} aria-label={t('preview.viewer.view_label')}>
         <PreviewCanvas
           ref={view}
           className="absolute inset-0"
@@ -146,29 +144,29 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
           fitPrint={settings.autoZoom}
         />
         <div className="gp-tools">
-          <button className="iconbtn" title={settings.autoZoom ? 'Fit the bed' : 'Fit the print'} aria-label={settings.autoZoom ? 'Fit the bed' : 'Fit the print'} onClick={() => set('autoZoom', !settings.autoZoom)}>
+          <button className="iconbtn" title={settings.autoZoom ? t('preview.viewer.fit_bed') : t('preview.viewer.fit_print')} aria-label={settings.autoZoom ? t('preview.viewer.fit_bed') : t('preview.viewer.fit_print')} onClick={() => set('autoZoom', !settings.autoZoom)}>
             {settings.autoZoom ? <Scan size={18} /> : <ScanSearch size={18} />}
           </button>
-          <button className="iconbtn" title="Zoom in" aria-label="Zoom in" onClick={() => view.current?.zoom(1.5)}>
+          <button className="iconbtn" title={t('preview.viewer.zoom_in')} aria-label={t('preview.viewer.zoom_in')} onClick={() => view.current?.zoom(1.5)}>
             <Plus size={18} />
           </button>
-          <button className="iconbtn" title="Zoom out" aria-label="Zoom out" onClick={() => view.current?.zoom(1 / 1.5)}>
+          <button className="iconbtn" title={t('preview.viewer.zoom_out')} aria-label={t('preview.viewer.zoom_out')} onClick={() => view.current?.zoom(1 / 1.5)}>
             <Minus size={18} />
           </button>
           <MenuButton
-            label="View options"
+            label={t('preview.viewer.view_options')}
             button={<Settings2 size={18} />}
             items={[
-              { label: 'Flip horizontally', icon: <Mark on={settings.flip.horizontal} />, onSelect: () => set('flip', { ...settings.flip, horizontal: !settings.flip.horizontal }) },
-              { label: 'Flip vertically', icon: <Mark on={settings.flip.vertical} />, onSelect: () => set('flip', { ...settings.flip, vertical: !settings.flip.vertical }) },
-              { label: 'Draw origin', icon: <Mark on={settings.drawOrigin} />, onSelect: () => set('drawOrigin', !settings.drawOrigin) },
-              { label: 'Draw background', icon: <Mark on={settings.drawBackground} />, onSelect: () => set('drawBackground', !settings.drawBackground) },
+              { label: t('preview.viewer.flip_horizontal'), icon: <Mark on={settings.flip.horizontal} />, onSelect: () => set('flip', { ...settings.flip, horizontal: !settings.flip.horizontal }) },
+              { label: t('preview.viewer.flip_vertical'), icon: <Mark on={settings.flip.vertical} />, onSelect: () => set('flip', { ...settings.flip, vertical: !settings.flip.vertical }) },
+              { label: t('preview.viewer.draw_origin'), icon: <Mark on={settings.drawOrigin} />, onSelect: () => set('drawOrigin', !settings.drawOrigin) },
+              { label: t('preview.viewer.draw_background'), icon: <Mark on={settings.drawBackground} />, onSelect: () => set('drawBackground', !settings.drawBackground) },
             ]}
           />
         </div>
         {layers.length > 0 && (
           <div className="gp-badge num">
-            Layer {layer + 1} of {layers.length} <span className="text-ink-3">· Z {z.toFixed(2)} mm</span>
+            {t('preview.layer_of', { layer: layer + 1, total: layers.length })} <span className="text-ink-3">· Z {z.toFixed(2)} mm</span>
           </div>
         )}
       </div>
@@ -177,71 +175,71 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
         <Card>
           <div className="flex items-end justify-between gap-3">
             <div>
-              <SectionLabel>Layer</SectionLabel>
+              <SectionLabel>{t('preview.viewer.layer')}</SectionLabel>
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="big num">{layers.length ? layer + 1 : 0}</span>
                 <span className="font-semibold text-ink-3">/ {layers.length}</span>
               </div>
             </div>
             <div className="text-right">
-              <SectionLabel>Layer height</SectionLabel>
+              <SectionLabel>{t('preview.viewer.layer_height')}</SectionLabel>
               <div className="mt-1 text-[18px] font-bold num">
                 {z.toFixed(2)} <small className="text-[12px] text-ink-3">mm</small>
               </div>
             </div>
           </div>
           <div className="mt-3">
-            <RangeStepper label="Layer" value={layer} min={0} max={Math.max(0, layers.length - 1)} onChange={pickLayer} disabled={!layers.length} />
+            <RangeStepper label={t('preview.viewer.layer')} previous={t('preview.viewer.previous_layer')} next={t('preview.viewer.next_layer')} value={layer} min={0} max={Math.max(0, layers.length - 1)} onChange={pickLayer} disabled={!layers.length} />
           </div>
-          <SectionLabel className="mt-3">Progress</SectionLabel>
+          <SectionLabel className="mt-3">{t('preview.viewer.progress')}</SectionLabel>
           <div className="mt-1">
-            <RangeStepper label="Move" value={moveEnd} min={range.min} max={range.max} onChange={pickMove} disabled={!layers.length} />
+            <RangeStepper label={t('preview.viewer.move')} previous={t('preview.viewer.previous_move')} next={t('preview.viewer.next_move')} value={moveEnd} min={range.min} max={range.max} onChange={pickMove} disabled={!layers.length} />
           </div>
           {print.isPrinterFile && (
             <label className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
               <span>
-                <span className="font-semibold">Follow progress</span>
-                <span className="block text-[12px] text-ink-3">Show the layer and move the printer is on.</span>
+                <span className="font-semibold">{t('preview.viewer.follow')}</span>
+                <span className="block text-[12px] text-ink-3">{t('preview.viewer.follow_sub')}</span>
               </span>
-              <Toggle checked={settings.followProgress} onChange={setFollow} label="Follow progress" />
+              <Toggle checked={settings.followProgress} onChange={setFollow} label={t('preview.viewer.follow')} />
             </label>
           )}
-          {data.truncated && <div className="mt-3 rounded-lg bg-warn-tint px-3 py-2 text-[12.5px] text-warn">G-code file is too large, only part of it is previewed.</div>}
+          {data.truncated && <div className="mt-3 rounded-lg bg-warn-tint px-3 py-2 text-[12.5px] text-warn">{t('preview.viewer.truncated')}</div>}
         </Card>
 
-        <Card title="Show">
+        <Card title={t('preview.viewer.show')}>
           <div className="flex flex-wrap gap-1.5">
             <Pill on={settings.showPreviousLayer} onClick={() => set('showPreviousLayer', !settings.showPreviousLayer)}>
-              Previous layer
+              {t('preview.viewer.previous_layer')}
             </Pill>
             <Pill on={settings.showCurrentLayer} onClick={() => set('showCurrentLayer', !settings.showCurrentLayer)}>
-              Current layer
+              {t('preview.viewer.current_layer')}
             </Pill>
             <Pill on={settings.showNextLayer} onClick={() => set('showNextLayer', !settings.showNextLayer)}>
-              Next layer
+              {t('preview.viewer.next_layer')}
             </Pill>
             <Pill on={settings.showExtrusions} onClick={() => set('showExtrusions', !settings.showExtrusions)}>
-              Extrusions
+              {t('preview.viewer.extrusions')}
             </Pill>
             <Pill on={settings.showMoves} onClick={() => set('showMoves', !settings.showMoves)}>
-              Moves
+              {t('preview.viewer.moves')}
             </Pill>
             <Pill on={settings.showRetractions} onClick={() => set('showRetractions', !settings.showRetractions)}>
-              Retractions
+              {t('preview.viewer.retractions')}
             </Pill>
             <Pill on={settings.showParts} onClick={() => set('showParts', !settings.showParts)}>
-              Parts
+              {t('preview.viewer.parts')}
             </Pill>
           </div>
         </Card>
 
-        <Card title="Color by">
-          <Choices value={settings.colorMode} options={COLOR_MODES} onChange={(v) => set('colorMode', v)} />
+        <Card title={t('preview.viewer.color_by')}>
+          <Choices value={settings.colorMode} options={colorModes()} onChange={(v) => set('colorMode', v)} />
           <Legend mode={settings.colorMode} data={data} colors={colors} toolColors={toolColors} currentTool={currentTool} />
         </Card>
 
         {print.objects && (
-          <Card title="Objects" aside={`${print.objects.filter((o) => o.excluded).length} excluded`}>
+          <Card title={t('preview.viewer.objects')} aside={t('preview.viewer.excluded_count', { count: print.objects.filter((o) => o.excluded).length })}>
             <div className="grid min-w-0 gap-1">
               {print.objects.map((o) => (
                 <div key={o.name} className="flex min-w-0 items-center gap-2.5 py-1">
@@ -249,12 +247,12 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
                   <span className={`min-w-0 flex-1 truncate ${o.excluded ? 'text-ink-3 line-through' : ''}`} title={o.name}>
                     {o.name}
                   </span>
-                  {o.current && !o.excluded && <span className="pill tone-info">Printing</span>}
+                  {o.current && !o.excluded && <span className="pill tone-info">{t('preview.printing')}</span>}
                   {o.excluded ? (
-                    <span className="pill tone-bad">Excluded</span>
+                    <span className="pill tone-bad">{t('preview.viewer.excluded')}</span>
                   ) : (
                     <button className="btn btn-sm btn-danger" onClick={() => exclude(o.name)}>
-                      Exclude
+                      {t('preview.viewer.exclude')}
                     </button>
                   )}
                 </div>
@@ -285,8 +283,8 @@ function Legend({ mode, data, colors, toolColors, currentTool }: { mode: ColorMo
   if (mode === 'role') {
     // Fluidd leaves the legend out when the slicer marked no features.
     const roles = data.roles.some((r) => r !== ExtrusionRole.None) ? data.roles : []
-    items = roles.map((r) => ({ key: `R${r}`, label: roleNames[r], color: colors[`R${r}`] }))
-    if (!items.length) caption = 'This file marks no feature types.'
+    items = roles.map((r) => ({ key: `R${r}`, label: roleName(r), color: colors[`R${r}`] }))
+    if (!items.length) caption = t('preview.viewer.no_roles')
   } else if (mode === 'speed') {
     items = speedStops(data.speedRange).map((s) => ({ key: s.color, label: s.value.toFixed(1), color: s.color }))
     caption = 'mm/s'

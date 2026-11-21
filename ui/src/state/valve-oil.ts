@@ -24,6 +24,7 @@ import {
   type VoUpdateView,
   type VoUpdateWindowHours,
 } from '../qidi/vo-status'
+import { t } from '../i18n'
 
 export type ValveOilState = {
   status: VoStatus | null
@@ -109,7 +110,7 @@ const apiBase = () => voStatusApiBase(import.meta.env.DEV ? location.origin : cl
 
 async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>) {
   const base = apiBase()
-  if (!base) throw new VoStatusRequestError(0, 'Not connected to this printer')
+  if (!base) throw new VoStatusRequestError(0, t('updates.status.not_connected'))
   return voStatusRequest(base, path, { method, token: null, signal, body })
 }
 

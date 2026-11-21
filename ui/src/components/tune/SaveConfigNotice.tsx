@@ -3,14 +3,15 @@ import { confirm } from '../ui'
 import { attempt } from '../toast'
 import { runGcode, useObject } from '../../state/printer'
 import { prettyName } from '../../lib/format'
+import { t } from '../../i18n'
 
 /** What a pending SAVE_CONFIG section holds, in plain words. */
 export function pendingLabel(section: string) {
-  if (section.startsWith('bed_mesh ')) return `Bed mesh profile ${section.slice(9)}`
-  if (section === 'input_shaper') return 'Input shaper'
-  if (section === 'probe' || section === 'probe_air' || section === 'bltouch') return 'Probe Z offset'
-  if (section === 'stepper_z') return 'Z endstop position'
-  if (section.startsWith('heater_') || section === 'extruder') return `${prettyName(section)} PID`
+  if (section.startsWith('bed_mesh ')) return t('tune.save_config.pending_mesh', { name: section.slice(9) })
+  if (section === 'input_shaper') return t('tune.save_config.pending_shaper')
+  if (section === 'probe' || section === 'probe_air' || section === 'bltouch') return t('tune.save_config.pending_probe')
+  if (section === 'stepper_z') return t('tune.save_config.pending_endstop')
+  if (section.startsWith('heater_') || section === 'extruder') return t('tune.save_config.pending_pid', { name: prettyName(section) })
   return prettyName(section)
 }
 
@@ -28,9 +29,9 @@ export function SaveConfigNotice({ only }: { only?: (section: string) => boolean
   const save = async () => {
     if (
       await confirm({
-        title: 'Save config',
-        body: 'Klipper writes the pending changes to printer.cfg and restarts. Heaters turn off and the printer has to home again.',
-        confirm: 'Save and restart',
+        title: t('tune.save_config.button'),
+        body: t('tune.save_config.confirm_body'),
+        confirm: t('tune.save_config.confirm_button'),
       })
     )
       attempt(() => runGcode('SAVE_CONFIG'))
@@ -39,15 +40,17 @@ export function SaveConfigNotice({ only }: { only?: (section: string) => boolean
     <div className="tone-warn flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-3.5 py-2.5">
       <Save size={16} className="flex-none" />
       <div className="min-w-0 flex-1 text-ink">
-        <div className="font-semibold">Waiting for Save config</div>
+        <div className="font-semibold">{t('tune.save_config.waiting')}</div>
         <div className="text-[12.5px] text-ink-2">
           {shown.length
-            ? `${shown.map(pendingLabel).join(', ')}${only && items.length > shown.length ? `, and ${items.length - shown.length} more,` : ''} changed since Klipper started.`
-            : 'A removed profile or another change is waiting to be written to printer.cfg.'}
+            ? only && items.length > shown.length
+              ? t('tune.save_config.changed_more', { list: shown.map(pendingLabel).join(', '), more: items.length - shown.length })
+              : t('tune.save_config.changed', { list: shown.map(pendingLabel).join(', ') })
+            : t('tune.save_config.other_change')}
         </div>
       </div>
-      <button className="btn btn-sm btn-primary" disabled={printing} onClick={save} title={printing ? 'Not during a print' : 'Runs SAVE_CONFIG, which restarts Klipper'}>
-        Save config
+      <button className="btn btn-sm btn-primary" disabled={printing} onClick={save} title={printing ? t('tune.save_config.not_printing') : t('tune.save_config.runs_save_config')}>
+        {t('tune.save_config.button')}
       </button>
     </div>
   )

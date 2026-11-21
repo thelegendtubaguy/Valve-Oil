@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { client, printer, usePrinter } from './printer'
 import { createStore, useStore } from '../lib/store'
 import { toast } from '../components/toast'
+import { t } from '../i18n'
 import type { Job, QueuedJob, QueueState, TimelapseFile, TimelapseSettings, Totals } from '../components/history/logic'
 
 /** Fluidd loads this many recent jobs on connect (Globals.JOB_HISTORY_LOAD); Load all fetches the rest. */
@@ -136,7 +137,7 @@ type TimelapseEvent =
 function onTimelapseEvent(e: TimelapseEvent) {
   if (e.action === 'newframe') {
     const f = e as Extract<TimelapseEvent, { action: 'newframe' }>
-    if (f.status === 'error') toast('Error taking timelapse frame', 'error')
+    if (f.status === 'error') toast(t('history.timelapse.frame_error'), 'error')
     // A new frame ends whatever render was showing, as in Fluidd's setLastFrame.
     else timelapse.set((s) => ({ ...s, lastFrame: { framecount: parseInt(f.frame), lastframefile: f.framefile }, render: null }))
     return
@@ -145,11 +146,11 @@ function onTimelapseEvent(e: TimelapseEvent) {
     if (e.status === 'error') {
       const r = e as { msg: string; cmdresponse?: string }
       timelapse.set((s) => ({ ...s, render: null }))
-      toast(r.msg || 'The timelapse didn’t render.', 'error')
+      toast(r.msg || t('history.timelapse.render_failed'), 'error')
       return
     }
     if (e.status === 'started' || e.status === 'running' || e.status === 'success') timelapse.set((s) => ({ ...s, render: e as RenderStatus }))
-    if (e.status === 'success') toast('Timelapse rendered')
+    if (e.status === 'success') toast(t('history.timelapse.rendered'))
   }
 }
 

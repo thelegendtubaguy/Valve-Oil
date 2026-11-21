@@ -3,6 +3,8 @@
 // min_temp and max_temp. A QIDI Box heater is further limited to the lowest Box temperature limit among the filaments
 // loaded in that Box; when that is 0 the target is locked, though a Box already heating can still be turned off.
 
+import { t } from '../../i18n'
+
 export type HeaterConfig = { min_temp?: number; max_temp?: number; target_min_temp?: number; target_max_temp?: number; control?: string }
 
 export type TargetRange = { min: number; max: number; locked: boolean }
@@ -20,11 +22,11 @@ export function targetRange(config: HeaterConfig | undefined, boxLimit: number |
 
 /** Why a target can't be set, or null when it can. 0 always turns the heater off. */
 export function targetError(value: number, range: TargetRange): string | null {
-  if (!Number.isFinite(value)) return 'Enter a number.'
+  if (!Number.isFinite(value)) return t('control.heaters.enter_number')
   if (value === 0) return null
-  if (range.locked || range.max <= 0) return 'This heater can’t be turned on with the filament loaded.'
-  if (value < range.min) return `Enter 0 or at least ${range.min} °C.`
-  if (value > range.max) return `Enter 0 or at most ${range.max} °C.`
+  if (range.locked || range.max <= 0) return t('control.heaters.locked')
+  if (value < range.min) return t('control.heaters.at_least', { min: range.min })
+  if (value > range.max) return t('control.heaters.at_most', { max: range.max })
   return null
 }
 

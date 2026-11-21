@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { attempt, toast } from '../toast'
 import { printer, runGcode, usePrinter } from '../../state/printer'
 import { clampJog, moveGcode } from './gcode'
+import { t } from '../../i18n'
 import './control.css'
 
 /** Runs G-code, logging it to the console and toasting a failure. */
@@ -15,7 +16,7 @@ export function jog(axis: 'X' | 'Y' | 'Z', distance: number, rate: number, clien
   const th = printer.get().status.toolhead ?? {}
   const i = 'XYZ'.indexOf(axis)
   const d = clampJog(th.position?.[i], distance, th.axis_minimum?.[i], th.axis_maximum?.[i])
-  if (d === 0) return toast(`${axis} is at the end of its travel.`, 'error')
+  if (d === 0) return toast(t('control.end_of_travel', { axis }), 'error')
   return send(moveGcode({ [axis]: d }, rate, false, clientMacro))
 }
 

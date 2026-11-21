@@ -9,6 +9,10 @@
 // there is one.
 //
 // Kept free of Vue and the store: Valve Oil UI ports this file and its spec.
+//
+// Valve Oil UI: the few texts this file writes itself, rather than passing on the printer's, are looked up with t()
+// when they're used. The service's own text (messages, step labels) is English and is shown as it arrives.
+import { t } from '../i18n'
 
 export type VoPendingKind = 'release' | 'firmware' | 'board'
 
@@ -371,8 +375,9 @@ export const VO_UPDATE_NOW_BLOCKERS: readonly string[] = [
 ]
 
 // What the printer says for each, for a printer that doesn't send update_now.
-const RUN_IN_PROGRESS: VoStatusBlocker = { code: 'run_in_progress', message: 'another update is still running' }
-const PRINTING: VoStatusBlocker = { code: 'printing', message: 'a print is running or paused' }
+const RUN_IN_PROGRESS_CODE = 'run_in_progress'
+const runInProgress = (): VoStatusBlocker => ({ code: RUN_IN_PROGRESS_CODE, message: t('updates.status.run_in_progress') })
+const printing = (): VoStatusBlocker => ({ code: 'printing', message: t('updates.status.printing') })
 
 // Fallback for a service without run.firmware_update: the steps only a QIDI firmware update reports
 // (installer/runtime/firmware_update.py STEPS), and Update now's "resume", which continues one. Before stop_services
@@ -388,7 +393,7 @@ const BOARD_STATES: readonly string[] = ['current', 'needs_image', 'unrecognized
 const RUN_STATES: readonly string[] = ['running', 'succeeded', 'failed', 'interrupted']
 const RUN_KINDS: readonly string[] = ['update_now', 'automatic', 'install']
 const JOB_STATES: readonly string[] = ['running', 'succeeded', 'failed']
-const BOARD_NAMES: Record<string, string> = { thr: 'THR', mcu: 'Mainboard', closed_loop: 'Closed-loop drivers' }
+const boardNames = (): Record<string, string> => ({ thr: 'THR', mcu: t('updates.boards.mainboard'), closed_loop: t('updates.boards.closed_loop') })
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' &&
@@ -484,7 +489,7 @@ export const voIssueUrlValid = (value: unknown): value is string => {
 export const voBoardName = (id: string): string => {
   const box = /^box(\d+)$/.exec(id)
 
-  return box ? `Box ${box[1]}` : BOARD_NAMES[id] ?? id
+  return box ? `Box ${box[1]}` : boardNames()[id] ?? id
 }
 
 /** Whether a board is a USB Box. */
@@ -790,11 +795,11 @@ const updateNowView = (status: VoStatus, update: VoUpdateView | null): VoUpdateN
   const live = status.update_now
   const blockedBy = live
     ? [...live.blocked_by]
-    : [...(status.busy ? [RUN_IN_PROGRESS] : []), ...(status.printer_busy ? [PRINTING] : [])]
+    : [...(status.busy ? [runInProgress()] : []), ...(status.printer_busy ? [printing()] : [])]
 
   // An update this page knows is running, as just after Update now, blocks another whatever the last answer said.
-  if (status.busy && !blockedBy.some(blocker => blocker.code === RUN_IN_PROGRESS.code)) {
-    blockedBy.unshift(RUN_IN_PROGRESS)
+  if (status.busy && !blockedBy.some(blocker => blocker.code === RUN_IN_PROGRESS_CODE)) {
+    blockedBy.unshift(runInProgress())
   }
 
   let action: VoUpdateNowAction = 'finish'
@@ -1061,7 +1066,7 @@ export const voStatusRequest = async (base: string, path: string, options: VoSta
   }
 
   if (body === null) {
-    throw new VoStatusRequestError(0, 'Invalid response')
+    throw new VoStatusRequestError(0, t('updates.status.invalid_response'))
   }
 
   return body

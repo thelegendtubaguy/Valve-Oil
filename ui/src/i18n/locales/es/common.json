@@ -1,0 +1,41 @@
+{
+  "cancel": "Cancelar",
+  "ok": "Aceptar",
+  "save": "Guardar",
+  "close": "Cerrar",
+  "dismiss": "Descartar",
+  "delete": "Eliminar",
+  "remove": "Quitar",
+  "edit": "Editar",
+  "rename": "Renombrar",
+  "retry": "Reintentar",
+  "apply": "Aplicar",
+  "add": "Añadir",
+  "back": "Atrás",
+  "done": "Hecho",
+  "loading": "Cargando…",
+  "on": "Encendido",
+  "off": "Apagado",
+  "yes": "Sí",
+  "no": "No",
+  "lower": "Bajar",
+  "raise": "Subir",
+  "lower_named": "Bajar {{name}}",
+  "raise_named": "Subir {{name}}",
+  "chamber": "Recinto",
+  "time": {
+    "hours_minutes": "{{h}} h {{mm}} min",
+    "minutes": "{{m}} min",
+    "seconds": "{{s}} s",
+    "just_now": "ahora mismo",
+    "minutes_ago": "hace {{m}} min",
+    "hours_ago": "hace {{h}} h",
+    "days_ago_one": "hace {{count}} día",
+    "days_ago_other": "hace {{count}} días"
+  },
+  "bytes": {
+    "b": "{{n}} B",
+    "kb": "{{n}} KB",
+    "mb": "{{n}} MB"
+  }
+}

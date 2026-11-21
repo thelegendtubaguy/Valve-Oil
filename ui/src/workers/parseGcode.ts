@@ -6,6 +6,7 @@ import decimalRound from '../components/gcode-preview/decimal-round'
 import { parseExtrusionRoleComment } from './gcode-extrusion-roles'
 import { split } from './shlex'
 import { extract3mfGcode, is3mfUrl } from './gcode-3mf'
+import { PreviewError } from './preview-error'
 
 type PositioningMode = 'relative' | 'absolute'
 
@@ -275,7 +276,7 @@ const parseGcode = async (
   const response = await fetch(url)
 
   if (!response.ok || !response.body) {
-    throw new Error(`Failed to download gcode (${response.status} ${response.statusText})`)
+    throw new PreviewError('download_failed', `Failed to download gcode (${response.status} ${response.statusText})`, { status: response.status, statusText: response.statusText }) // i18n-ignore: shown by code on the main thread
   }
 
   // Valve Oil UI: the served size wins over the listed one, so progress ends at 100% even if the file changed since.

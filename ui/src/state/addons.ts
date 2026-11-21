@@ -3,6 +3,7 @@
 // service is polled only while the Add-ons settings are shown.
 import { createStore, useStore } from '../lib/store'
 import { client } from './printer'
+import { t } from '../i18n'
 import {
   parseVoAddonsJob,
   parseVoAddonsList,
@@ -56,7 +57,7 @@ const apiBase = () => voAddonsApiBase(import.meta.env.DEV ? location.origin : cl
 /** Calls the add-ons API; panels use it for their own actions, such as a link code or joining a network. */
 export function addonsRequest(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>): Promise<unknown> {
   const base = apiBase()
-  if (!base) return Promise.reject(new VoAddonsRequestError(0, 'Not connected to this printer'))
+  if (!base) return Promise.reject(new VoAddonsRequestError(0, t('settings.addons.not_connected')))
   return voAddonsRequest(base, path, { method, token: null, signal, body })
 }
 

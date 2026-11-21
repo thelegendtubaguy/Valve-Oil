@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { buildLayerPaths } from './gcode-preview'
 import type { BBox, BuildLayerPathsOptions, Layer, LayerPaths, ParsedGcode, Point } from './types'
 import type { PreviewSettings } from './settings'
+import { t } from '../../i18n'
 
 // The top-down layer view, drawn on a canvas. Layer paths are built once as SVG path data (the Fluidd fork's
 // buildLayerPaths) and turned into Path2D objects, so panning and zooming only re-strokes cached paths: smooth on a
@@ -466,7 +467,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={() => interactive && (fit(), schedule())}
-        aria-label="G-code layer view"
+        aria-label={t('preview.canvas_label')}
         role="img"
       />
     </div>

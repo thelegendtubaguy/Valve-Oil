@@ -3,6 +3,7 @@
 // (getRootProperties), FileSystem.vue (filters, headers), and globals.ts (CONFIG_SERVICE_MAP).
 
 import type { FileMeta, HistoryJob } from '../../state/files'
+import { t, type MessageKey } from '../../i18n'
 
 export type FsEntry = {
   kind: 'dir' | 'file'
@@ -39,15 +40,8 @@ export function rootProps(root: string): RootProps {
   }
 }
 
-export const FILTER_LABELS: Record<FilterType, string> = {
-  crowsnest_backup_files: 'Filter Crowsnest backup files',
-  print_start_time: 'Filter printed',
-  hidden_files: 'Filter hidden files and folders',
-  klipper_backup_files: 'Filter Klipper backup files',
-  moonraker_backup_files: 'Filter Moonraker backup files',
-  moonraker_temporary_upload_files: 'Filter Moonraker temporary upload files',
-  rolled_log_files: 'Filter rolled log files',
-}
+/** A filter's label in the Filters menu. */
+export const filterLabel = (f: FilterType) => t(`files.filters.${f}` as MessageKey)
 
 /** Folders and files Fluidd never lists: thumbnails and git internals. */
 export function alwaysHidden(e: Pick<FsEntry, 'kind' | 'name'>): boolean {
@@ -109,9 +103,9 @@ export function copyName(name: string, taken: Iterable<string>): string {
 /** A file or folder name Moonraker will take: no slashes, not empty, not "." or "..". */
 export function validName(name: string): string | null {
   const n = name.trim()
-  if (!n) return 'Enter a name.'
-  if (n.includes('/') || n.includes('\\')) return 'A name can’t contain a slash.'
-  if (n === '.' || n === '..') return 'Pick another name.'
+  if (!n) return t('files.name.empty')
+  if (n.includes('/') || n.includes('\\')) return t('files.name.slash')
+  if (n === '.' || n === '..') return t('files.name.dots')
   return null
 }
 
@@ -164,45 +158,51 @@ export function configService(filename: string): { service: string; link?: strin
 
 export type Column = { value: string; label: string; /** Valve Oil UI's default; Fluidd shows more. */ visible: boolean; numeric?: boolean }
 
-export const GCODE_COLUMNS: Column[] = [
-  { value: 'history.status', label: 'Status', visible: true },
-  { value: 'object_height', label: 'Height', visible: false, numeric: true },
-  { value: 'first_layer_height', label: 'First layer height', visible: false, numeric: true },
-  { value: 'layer_height', label: 'Layer height', visible: true, numeric: true },
-  { value: 'filament_name', label: 'Filament name', visible: false },
-  { value: 'filament_colors', label: 'Filament colors', visible: false },
-  { value: 'extruder_colors', label: 'Extruder colors', visible: false },
-  { value: 'filament_temps', label: 'Filament temps', visible: false },
-  { value: 'filament_type', label: 'Filament type', visible: true },
-  { value: 'filament_total', label: 'Filament', visible: true, numeric: true },
-  { value: 'filament_change_count', label: 'Filament changes', visible: false, numeric: true },
-  { value: 'filament_weight_total', label: 'Filament weight', visible: false, numeric: true },
-  { value: 'filament_weights', label: 'Filament weights', visible: false },
-  { value: 'mmu_print', label: 'MMU print', visible: false },
-  { value: 'referenced_tools', label: 'Referenced tools', visible: false },
-  { value: 'history.filament_used', label: 'Used filament', visible: false, numeric: true },
-  { value: 'nozzle_diameter', label: 'Nozzle diameter', visible: false, numeric: true },
-  { value: 'slicer', label: 'Slicer', visible: true },
-  { value: 'slicer_version', label: 'Slicer version', visible: false },
-  { value: 'printer_vendor', label: 'Printer vendor', visible: false },
-  { value: 'printer_model', label: 'Printer model', visible: false },
-  { value: 'printer_variant', label: 'Printer variant', visible: false },
-  { value: 'profile_version', label: 'Profile version', visible: false },
-  { value: 'estimated_time', label: 'Estimated time', visible: true, numeric: true },
-  { value: 'history.print_duration', label: 'Print duration', visible: false, numeric: true },
-  { value: 'history.total_duration', label: 'Total duration', visible: false, numeric: true },
-  { value: 'first_layer_bed_temp', label: 'First layer bed temp', visible: false, numeric: true },
-  { value: 'first_layer_extr_temp', label: 'First layer extruder temp', visible: false, numeric: true },
-  { value: 'chamber_temp', label: 'Chamber temp', visible: false, numeric: true },
-  { value: 'file_processors', label: 'File processors', visible: false },
-  { value: 'print_start_time', label: 'Last printed', visible: false, numeric: true },
+// Labels come from files.columns.<value>, with a dot in the value as `_`, when the columns are asked for.
+type ColumnDef = Omit<Column, 'label'>
+
+export const GCODE_COLUMNS: ColumnDef[] = [
+  { value: 'history.status', visible: true },
+  { value: 'object_height', visible: false, numeric: true },
+  { value: 'first_layer_height', visible: false, numeric: true },
+  { value: 'layer_height', visible: true, numeric: true },
+  { value: 'filament_name', visible: false },
+  { value: 'filament_colors', visible: false },
+  { value: 'extruder_colors', visible: false },
+  { value: 'filament_temps', visible: false },
+  { value: 'filament_type', visible: true },
+  { value: 'filament_total', visible: true, numeric: true },
+  { value: 'filament_change_count', visible: false, numeric: true },
+  { value: 'filament_weight_total', visible: false, numeric: true },
+  { value: 'filament_weights', visible: false },
+  { value: 'mmu_print', visible: false },
+  { value: 'referenced_tools', visible: false },
+  { value: 'history.filament_used', visible: false, numeric: true },
+  { value: 'nozzle_diameter', visible: false, numeric: true },
+  { value: 'slicer', visible: true },
+  { value: 'slicer_version', visible: false },
+  { value: 'printer_vendor', visible: false },
+  { value: 'printer_model', visible: false },
+  { value: 'printer_variant', visible: false },
+  { value: 'profile_version', visible: false },
+  { value: 'estimated_time', visible: true, numeric: true },
+  { value: 'history.print_duration', visible: false, numeric: true },
+  { value: 'history.total_duration', visible: false, numeric: true },
+  { value: 'first_layer_bed_temp', visible: false, numeric: true },
+  { value: 'first_layer_extr_temp', visible: false, numeric: true },
+  { value: 'chamber_temp', visible: false, numeric: true },
+  { value: 'file_processors', visible: false },
+  { value: 'print_start_time', visible: false, numeric: true },
 ]
-const COMMON_COLUMNS: Column[] = [
-  { value: 'modified', label: 'Modified', visible: true, numeric: true },
-  { value: 'size', label: 'Size', visible: true, numeric: true },
+const COMMON_COLUMNS: ColumnDef[] = [
+  { value: 'modified', visible: true, numeric: true },
+  { value: 'size', visible: true, numeric: true },
 ]
 
-export const columnsFor = (root: string): Column[] => (root === 'gcodes' ? [...GCODE_COLUMNS, ...COMMON_COLUMNS] : COMMON_COLUMNS)
+/** A column's (or a metadata field's) label: "layer_height" -> "Layer height". */
+export const columnLabel = (value: string) => t(`files.columns.${value.replace('.', '_')}` as MessageKey)
+
+export const columnsFor = (root: string): Column[] => (root === 'gcodes' ? [...GCODE_COLUMNS, ...COMMON_COLUMNS] : COMMON_COLUMNS).map((c) => ({ ...c, label: columnLabel(c.value) }))
 
 /** Fluidd's table-header key: `${root}_${name}`, with name "jobs" on the Jobs page and "configure" on Configure. */
 export const headersKey = (root: string) => `uiSettings.tableHeaders.${root}_${root === 'gcodes' ? 'jobs' : 'configure'}`
@@ -254,6 +254,7 @@ function sortKey(v: unknown): number | string | null {
   return typeof v === 'string' && v.trim() !== '' && Number.isFinite(n) ? n : String(v).toLowerCase()
 }
 
+// Names sort in the browser's own order, whatever language the UI shows. i18n-ignore
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Folders first, then by the column; empty values last either way, names to break ties. */

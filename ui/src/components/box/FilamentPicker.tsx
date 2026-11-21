@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { SectionLabel } from '../ui'
 import type { QidiFilament } from '../../state/box'
+import { t } from '../../i18n'
 
 // Three rows of common filament colors, light to dark within each family.
 export const FILAMENT_PALETTE = [
@@ -36,12 +37,12 @@ export function PillRow({ label, options, value, onChange, show = 8, disabled, r
         ))}
         {options.length > shown.length && (
           <button type="button" className="choice" disabled={disabled} onClick={() => setMore(true)}>
-            More
+            {t('box.picker.more')}
           </button>
         )}
         {more && options.length > show + 1 && (
           <button type="button" className="choice text-ink-3!" onClick={() => setMore(false)}>
-            Fewer
+            {t('box.picker.fewer')}
           </button>
         )}
       </div>
@@ -79,11 +80,11 @@ export function FilamentPicker({ database, value, onChange, disabled }: { databa
 
   return (
     <div className="grid gap-3.5">
-      <PillRow label="Material" options={types} value={shownType} onChange={pickType} disabled={disabled} />
-      <PillRow label="Brand" options={vendors} value={vendor} onChange={pickVendor} show={6} disabled={disabled} />
+      <PillRow label={t('box.picker.material')} options={types} value={shownType} onChange={pickType} disabled={disabled} />
+      <PillRow label={t('box.picker.brand')} options={vendors} value={vendor} onChange={pickVendor} show={6} disabled={disabled} />
       {filaments.length > 1 && (
         <PillRow
-          label="Filament"
+          label={t('box.picker.filament')}
           options={filaments.map((f) => f.id)}
           value={current?.id ?? null}
           onChange={onChange}
@@ -102,7 +103,7 @@ export function ColorSwatches({ value, onChange, palette = FILAMENT_PALETTE, cus
   const isCustom = custom && picked != null && !palette.includes(picked)
   const ring = (on: boolean) => (on ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'inset 0 0 0 1px rgb(128 128 128 / 0.45)')
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Color">
+    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('box.picker.color')}>
       {palette.map((c) => (
         <button
           key={c}
@@ -125,8 +126,8 @@ export function ColorSwatches({ value, onChange, palette = FILAMENT_PALETTE, cus
             onClick={() => input.current?.click()}
             className="grid place-items-center rounded-full border border-dashed border-line-strong p-0 text-ink-2 disabled:opacity-45"
             style={{ width: size, height: size, background: isCustom ? picked! : 'transparent', boxShadow: isCustom ? ring(true) : undefined }}
-            aria-label="Custom color"
-            title="Custom color"
+            aria-label={t('box.picker.custom_color')}
+            title={t('box.picker.custom_color')}
           >
             {!isCustom && <Plus size={14} />}
           </button>

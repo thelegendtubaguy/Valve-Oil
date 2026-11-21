@@ -8,6 +8,7 @@ import { BED_SOAK_SETTLED_MESHES, bedSoakMilestones, bedSoakStartCommand, type B
 import { bedSoakDuration, fmtDate } from './bed-soak-format'
 import { useChamberTemp } from './BedSoakRun'
 import { usePrinterFlags } from './hooks'
+import { t } from '../../i18n'
 
 /** Above this, the bed or chamber is still warm and the cold mesh won't be cold */
 const WARM = 35
@@ -50,12 +51,12 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
 
   const idle = ready && !busy && status.state !== 'running'
   const warning = (() => {
-    if (!idle) return "The printer is busy. Start the test once it's idle."
+    if (!idle) return t('tune.soak.busy')
     const bedWarm = bedNow != null && bedNow > WARM
     const chamberWarm = chamberAvailable && chamberNow != null && chamberNow > WARM
-    if (bedWarm && chamberWarm) return `Bed is ${Math.round(bedNow!)} °C and chamber is ${Math.round(chamberNow!)} °C. Let them cool for a true cold start.`
-    if (bedWarm) return `Bed is ${Math.round(bedNow!)} °C. Let it cool for a true cold start.`
-    if (chamberWarm) return `Chamber is ${Math.round(chamberNow!)} °C. Let it cool for a true cold start.`
+    if (bedWarm && chamberWarm) return t('tune.soak.warm_both', { bed: Math.round(bedNow!), chamber: Math.round(chamberNow!) })
+    if (bedWarm) return t('tune.soak.warm_bed', { bed: Math.round(bedNow!) })
+    if (chamberWarm) return t('tune.soak.warm_chamber', { chamber: Math.round(chamberNow!) })
     return null
   })()
 
@@ -66,8 +67,8 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
     const m = bedSoakMilestones(match.run)
     if (m.bed == null) return null
     return m.settled != null
-      ? `Last finished run at these temperatures (${fmtDate(match.started)}) reached temperature in ${bedSoakDuration(m.bed)} and stopped moving after ${bedSoakDuration(m.settled)}.`
-      : `Last finished run at these temperatures (${fmtDate(match.started)}) reached temperature in ${bedSoakDuration(m.bed)} and was still moving after ${match.run.settings.time_limit ?? '—'} min.`
+      ? t('tune.soak.last_settled', { date: fmtDate(match.started), bed: bedSoakDuration(m.bed), settled: bedSoakDuration(m.settled) })
+      : t('tune.soak.last_moving', { date: fmtDate(match.started), bed: bedSoakDuration(m.bed), limit: match.run.settings.time_limit ?? '—' })
   })()
 
   const start = async () => {
@@ -81,17 +82,19 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
     <div className="grid gap-3.5">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <label className="grid gap-1.5">
-          <span className="section-label">Bed</span>
-          <Stepper value={bed} onChange={setBed} min={1} max={bedMax} step={5} unit="°C" label="Bed" />
+          <span className="section-label">{t('tune.soak.bed')}</span>
+          <Stepper value={bed} onChange={setBed} min={1} max={bedMax} step={5} unit="°C" label={t('tune.soak.bed')} />
         </label>
         {chamberAvailable && (
           <label className="grid gap-1.5">
-            <span className="section-label">Chamber {chamber === 0 && <span className="font-semibold tracking-normal normal-case">· off</span>}</span>
-            <Stepper value={chamber} onChange={setChamber} min={0} max={chamberMax} step={5} unit={chamber > 0 ? '°C' : undefined} label="Chamber" />
+            <span className="section-label">
+              {t('tune.soak.chamber')} {chamber === 0 && <span className="font-semibold tracking-normal normal-case">· {t('tune.soak.off')}</span>}
+            </span>
+            <Stepper value={chamber} onChange={setChamber} min={0} max={chamberMax} step={5} unit={chamber > 0 ? '°C' : undefined} label={t('tune.soak.chamber')} />
           </label>
         )}
         <div className="grid gap-1.5">
-          <span className="section-label">Mesh</span>
+          <span className="section-label">{t('tune.soak.mesh')}</span>
           <Choices
             value={probeCount}
             onChange={setProbeCount}
@@ -99,27 +102,27 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
           />
         </div>
         <label className="grid gap-1.5">
-          <span className="section-label">Time limit</span>
-          <Stepper value={timeLimit} onChange={setTimeLimit} min={1} max={240} step={15} unit="min" label="Time limit" />
+          <span className="section-label">{t('tune.soak.time_limit')}</span>
+          <Stepper value={timeLimit} onChange={setTimeLimit} min={1} max={240} step={15} unit={t('tune.soak.unit_min')} label={t('tune.soak.time_limit')} />
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
-        <label className="flex items-center gap-2.5" title={`Ends the test once the bed moves less than ${speedLimit} µm per minute for ${BED_SOAK_SETTLED_MESHES} meshes in a row. Otherwise it runs to the time limit.`}>
-          <Toggle checked={stopWhenSettled} onChange={setStopWhenSettled} label="Stop when the bed stops moving" />
-          Stop when the bed stops moving
+        <label className="flex items-center gap-2.5" title={t('tune.soak.settled_tip', { speed: speedLimit, count: BED_SOAK_SETTLED_MESHES })}>
+          <Toggle checked={stopWhenSettled} onChange={setStopWhenSettled} label={t('tune.soak.stop_settled')} />
+          {t('tune.soak.stop_settled')}
         </label>
         <label className="flex items-center gap-2.5">
-          <Toggle checked={keepHeating} onChange={setKeepHeating} label="Keep heating afterwards" />
-          Keep heating afterwards
+          <Toggle checked={keepHeating} onChange={setKeepHeating} label={t('tune.soak.keep_heating')} />
+          {t('tune.soak.keep_heating')}
         </label>
         <span className="flex-1" />
         {presetList.length > 0 && (
           <MenuButton
             className="btn btn-sm"
-            label="Presets"
+            label={t('tune.soak.presets')}
             button={
               <>
-                <Flame size={14} /> Presets <ChevronDown size={14} />
+                <Flame size={14} /> {t('tune.soak.presets')} <ChevronDown size={14} />
               </>
             }
             items={presetList.map((p) => ({
@@ -134,11 +137,11 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
           />
         )}
         <button className="btn btn-primary" disabled={!idle || starting} onClick={start}>
-          {starting ? <Spinner size={14} /> : <Play size={14} />} Start
+          {starting ? <Spinner size={14} /> : <Play size={14} />} {t('tune.soak.start')}
         </button>
       </div>
       <p className="m-0 text-[12.5px] text-ink-3">
-        {stopWhenSettled ? `Ends once the bed moves less than ${speedLimit} µm per minute for ${BED_SOAK_SETTLED_MESHES} meshes in a row, or at the time limit.` : 'Runs to the time limit.'}
+        {stopWhenSettled ? t('tune.soak.ends_settled', { speed: speedLimit, count: BED_SOAK_SETTLED_MESHES }) : t('tune.soak.runs_to_limit')}
       </p>
       {warning && (
         <div className="tone-warn flex items-start gap-2 rounded-lg px-3 py-2.5">

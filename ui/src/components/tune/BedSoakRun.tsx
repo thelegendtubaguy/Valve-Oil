@@ -17,6 +17,7 @@ import {
 import { BedSoakRunCharts } from './BedSoakRunCharts'
 import { BedSoakHeatmap } from './BedSoakHeatmap'
 import { bedSoakClock, bedSoakDuration, bedSoakPointName, bedSoakStateLabel, bedSoakTargets, fmtDateTime } from './bed-soak-format'
+import { t } from '../../i18n'
 
 type Stat = { id: string; label: string; value: string; detail?: string; state: 'done' | 'active' | 'warning' | 'none' }
 
@@ -42,61 +43,61 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
   const speedLimit = status?.limits?.speed ?? run?.settings.limits.speed ?? 0.002
   const milestones: VoBedSoakMilestones = isLive ? status!.milestones : run ? bedSoakMilestones(run) : { bed: null, chamber: null, chamber_max: null, settled: null, ready: null }
   const temps = (() => {
-    const t = run?.temps ?? []
-    const lastT = t.length ? t[t.length - 1][0] : -Infinity
-    return live ? [...t, ...liveTemps.filter((x) => x[0] > lastT)] : t
+    const saved = run?.temps ?? []
+    const lastT = saved.length ? saved[saved.length - 1][0] : -Infinity
+    return live ? [...saved, ...liveTemps.filter((x) => x[0] > lastT)] : saved
   })()
 
   const stepText = (() => {
     if (!status) return ''
-    if (status.stop_requested) return 'Stopping after this mesh'
+    if (status.stop_requested) return t('tune.soak.step.stopping')
     switch (status.step) {
       case 'nozzle':
-        return `Heating the nozzle to ${status.settings?.nozzle ?? ''} °C`
+        return t('tune.soak.step.nozzle', { temp: status.settings?.nozzle ?? '' })
       case 'mesh':
-        return `Measuring mesh ${status.meshes}`
+        return t('tune.soak.step.mesh', { n: status.meshes })
       case 'home':
-        return 'Homing'
+        return t('tune.soak.step.home')
       case 'wipe':
-        return 'Wiping the nozzle'
+        return t('tune.soak.step.wipe')
       case 'z_tilt':
-        return 'Running Z tilt adjust'
+        return t('tune.soak.step.z_tilt')
       case 'home_z':
-        return 'Homing Z'
+        return t('tune.soak.step.home_z')
       case 'cold_mesh':
-        return 'Measuring the cold mesh'
+        return t('tune.soak.step.cold_mesh')
       case 'finishing':
-        return 'Finishing'
+        return t('tune.soak.step.finishing')
       default:
-        return 'Running'
+        return t('tune.soak.step.running')
     }
   })()
 
   const targets = bedSoakTargets(settings.bed, settings.chamber)
   const meshSize = `${settings.probeCount} × ${settings.probeCount}`
   const runLine = isLive
-    ? [stepText, ...(status!.elapsed != null ? [`${bedSoakClock(status!.elapsed)} since heaters on`] : []), targets, meshSize]
-    : [...(settings.started ? [fmtDateTime(settings.started)] : []), targets, meshSize, bedSoakStateLabel[run?.result?.state ?? 'incomplete']]
+    ? [stepText, ...(status!.elapsed != null ? [t('tune.soak.since_heaters_on', { time: bedSoakClock(status!.elapsed) })] : []), targets, meshSize]
+    : [...(settings.started ? [fmtDateTime(settings.started)] : []), targets, meshSize, bedSoakStateLabel(run?.result?.state ?? 'incomplete')]
 
   const stats: Stat[] = (() => {
     const heating = isLive ? status!.heaters_on != null : true
     const finished = run?.result?.state === 'finished'
     const start = !isLive && run ? bedSoakStartTemps(run) : null
     const pending = (value: number | undefined): Pick<Stat, 'value' | 'detail' | 'state'> =>
-      isLive && heating ? { value: 'Heating', detail: value != null ? `${value.toFixed(1)} °C` : undefined, state: 'active' } : { value: '—', state: 'none' }
-    const from = (v: number | null | undefined) => (v != null ? `from ${v.toFixed(1)} °C` : undefined)
-    const out: Stat[] = [{ id: 'bed', label: `Bed at ${settings.bed} °C`, ...(milestones.bed != null ? { value: bedSoakDuration(milestones.bed), detail: from(start?.[1]), state: 'done' as const } : pending(bedNow)) }]
-    if (!settings.chamber) out.push({ id: 'chamber', label: 'Chamber', value: 'Off', state: 'none' })
-    else if (milestones.chamber != null) out.push({ id: 'chamber', label: `Chamber at ${settings.chamber} °C`, value: bedSoakDuration(milestones.chamber), detail: from(start?.[2]), state: 'done' })
-    else if (milestones.chamber_max != null) out.push({ id: 'chamber', label: `Chamber at ${settings.chamber} °C`, value: `Stopped warming at ${milestones.chamber_max.toFixed(1)} °C`, state: 'none' })
-    else out.push({ id: 'chamber', label: `Chamber at ${settings.chamber} °C`, ...pending(chamberNow) })
-    if (milestones.settled != null) out.push({ id: 'settled', label: 'Stopped moving', value: bedSoakDuration(milestones.settled), state: 'done' })
+      isLive && heating ? { value: t('tune.soak.heating'), detail: value != null ? `${value.toFixed(1)} °C` : undefined, state: 'active' } : { value: '—', state: 'none' }
+    const from = (v: number | null | undefined) => (v != null ? t('tune.soak.from_temp', { temp: v.toFixed(1) }) : undefined)
+    const out: Stat[] = [{ id: 'bed', label: t('tune.soak.bed_at', { temp: settings.bed }), ...(milestones.bed != null ? { value: bedSoakDuration(milestones.bed), detail: from(start?.[1]), state: 'done' as const } : pending(bedNow)) }]
+    if (!settings.chamber) out.push({ id: 'chamber', label: t('tune.soak.chamber'), value: t('common.off'), state: 'none' })
+    else if (milestones.chamber != null) out.push({ id: 'chamber', label: t('tune.soak.chamber_at', { temp: settings.chamber }), value: bedSoakDuration(milestones.chamber), detail: from(start?.[2]), state: 'done' })
+    else if (milestones.chamber_max != null) out.push({ id: 'chamber', label: t('tune.soak.chamber_at', { temp: settings.chamber }), value: t('tune.soak.chamber_stalled', { temp: milestones.chamber_max.toFixed(1) }), state: 'none' })
+    else out.push({ id: 'chamber', label: t('tune.soak.chamber_at', { temp: settings.chamber }), ...pending(chamberNow) })
+    if (milestones.settled != null) out.push({ id: 'settled', label: t('tune.soak.stopped_moving'), value: bedSoakDuration(milestones.settled), state: 'done' })
     else if (isLive && milestones.bed != null) {
       const under = run ? bedSoakMeshesUnderLimit(run, milestones.bed, speedLimit) : 0
-      out.push({ id: 'settled', label: 'Stopped moving', value: 'Settling', detail: `${under} of ${BED_SOAK_SETTLED_MESHES} meshes`, state: 'active' })
-    } else if (finished) out.push({ id: 'settled', label: 'Stopped moving', value: `Still moving after ${settings.timeLimit ?? '—'} min`, state: 'warning' })
-    else out.push({ id: 'settled', label: 'Stopped moving', value: '—', state: 'none' })
-    out.push({ id: 'ready', label: 'Ready to print', value: milestones.ready != null ? bedSoakDuration(milestones.ready) : '—', state: milestones.ready != null ? 'done' : 'none' })
+      out.push({ id: 'settled', label: t('tune.soak.stopped_moving'), value: t('tune.soak.settling'), detail: t('tune.soak.meshes_of', { under, total: BED_SOAK_SETTLED_MESHES }), state: 'active' })
+    } else if (finished) out.push({ id: 'settled', label: t('tune.soak.stopped_moving'), value: t('tune.soak.still_moving_after', { limit: settings.timeLimit ?? '—' }), state: 'warning' })
+    else out.push({ id: 'settled', label: t('tune.soak.stopped_moving'), value: '—', state: 'none' })
+    out.push({ id: 'ready', label: t('tune.soak.ready_to_print'), value: milestones.ready != null ? bedSoakDuration(milestones.ready) : '—', state: milestones.ready != null ? 'done' : 'none' })
     return out
   })()
 
@@ -106,19 +107,19 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
     const lastUsed = used[used.length - 1]
     const parts: string[] = []
     if (lastUsed && lastUsed.index > 0 && lastUsed.height != null && lastUsed.shape != null)
-      parts.push(`Height ${lastUsed.height >= 0 ? '+' : '−'}${Math.abs(lastUsed.height).toFixed(3)} mm, shape ${lastUsed.shape.toFixed(3)} mm since the cold mesh`)
+      parts.push(t('tune.soak.summary_change', { height: `${lastUsed.height >= 0 ? '+' : '−'}${Math.abs(lastUsed.height).toFixed(3)}`, shape: lastUsed.shape.toFixed(3) }))
     const lastMesh = run.meshes[run.meshes.length - 1]
     const end = run.result?.ended != null && run.heatersOn != null ? run.result.ended - run.heatersOn : (lastMesh?.end ?? lastMesh?.time)
-    if (end != null && end > 0) parts.push(`${run.meshes.length} mesh${run.meshes.length === 1 ? '' : 'es'} over ${bedSoakDuration(end)}`)
-    if (run.result) parts.push(run.result.state === 'finished' && run.settings.keep_heating ? 'heaters kept on at the end' : 'heaters off at the end')
+    if (end != null && end > 0) parts.push(t('tune.soak.summary_meshes', { count: run.meshes.length, duration: bedSoakDuration(end) }))
+    if (run.result) parts.push(run.result.state === 'finished' && run.settings.keep_heating ? t('tune.soak.heaters_kept_on') : t('tune.soak.heaters_off'))
     return parts.length ? parts.join(' · ') : null
   })()
 
   const endNote = (() => {
     const r = run?.result
-    if (!r) return 'This run has no result, as Klipper stopped before the test ended.'
+    if (!r) return t('tune.soak.no_result')
     if (r.state === 'finished') return null
-    return `${r.state === 'failed' ? 'The test failed.' : 'The test was stopped early.'} ${r.reason}`.trim()
+    return `${r.state === 'failed' ? t('tune.soak.failed') : t('tune.soak.stopped_early')} ${r.reason}`.trim()
   })()
 
   const warning = (() => {
@@ -126,10 +127,10 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
     const points = bedSoakRepeatedProblemPoints(run)
     const list = points.slice(0, 3).map(bedSoakPointName).join(', ') + (points.length > 3 ? ` +${points.length - 3}` : '')
     const sentences: string[] = []
-    if (points.length) sentences.push(points.length === 1 ? `${list} had a probe problem in more than one mesh.` : `${list} had probe problems in more than one mesh.`)
+    if (points.length) sentences.push(t('tune.soak.repeat_points', { count: points.length, list }))
     if (run.jumps.length)
-      sentences.push(run.jumps.length === 1 ? `Probe readings jumped in mesh ${run.jumps[0].mesh}, which isn't used.` : `Probe readings jumped in meshes ${run.jumps.map((j) => j.mesh).join(', ')}, which aren't used.`)
-    sentences.push('Check the plate, then run the test again for a clean result.')
+      sentences.push(t('tune.soak.jumped', { count: run.jumps.length, list: run.jumps.map((j) => j.mesh).join(', ') }))
+    sentences.push(t('tune.soak.check_plate'))
     return sentences.join(' ')
   })()
 
@@ -145,7 +146,7 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
         ))}
         <span className="flex-1" />
         {downloadHref && (
-          <a className="iconbtn" href={downloadHref} download={file!.split('/').pop()} title="Download" aria-label="Download">
+          <a className="iconbtn" href={downloadHref} download={file!.split('/').pop()} title={t('tune.shared.download')} aria-label={t('tune.shared.download')}>
             <Download size={15} />
           </a>
         )}
@@ -194,7 +195,7 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
           <BedSoakHeatmap run={run} />
         </div>
       ) : (
-        <div className="mt-3 text-ink-3">The charts start once the cold mesh is measured.</div>
+        <div className="mt-3 text-ink-3">{t('tune.soak.charts_wait')}</div>
       )}
     </div>
   )

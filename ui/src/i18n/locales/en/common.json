@@ -1,0 +1,41 @@
+{
+  "cancel": "Cancel",
+  "ok": "OK",
+  "save": "Save",
+  "close": "Close",
+  "dismiss": "Dismiss",
+  "delete": "Delete",
+  "remove": "Remove",
+  "edit": "Edit",
+  "rename": "Rename",
+  "retry": "Retry",
+  "apply": "Apply",
+  "add": "Add",
+  "back": "Back",
+  "done": "Done",
+  "loading": "Loading…",
+  "on": "On",
+  "off": "Off",
+  "yes": "Yes",
+  "no": "No",
+  "lower": "Lower",
+  "raise": "Raise",
+  "lower_named": "Lower {{name}}",
+  "raise_named": "Raise {{name}}",
+  "chamber": "Chamber",
+  "time": {
+    "hours_minutes": "{{h}} h {{mm}} m",
+    "minutes": "{{m}} min",
+    "seconds": "{{s}} s",
+    "just_now": "just now",
+    "minutes_ago": "{{m}} min ago",
+    "hours_ago": "{{h}} h ago",
+    "days_ago_one": "{{count}} day ago",
+    "days_ago_other": "{{count}} days ago"
+  },
+  "bytes": {
+    "b": "{{n}} B",
+    "kb": "{{n}} KB",
+    "mb": "{{n}} MB"
+  }
+}

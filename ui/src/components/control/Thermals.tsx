@@ -11,13 +11,15 @@ import { usePrinter } from '../../state/printer'
 import { applyPreset, usePresets } from '../../state/presets'
 import { boxHeaterMax, useBox } from '../../state/box'
 import { navigate } from '../../lib/router'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 /** A heater's name as people know it: Nozzle, Bed, Chamber, Box 1 heater. */
 export function heaterLabel(obj: string) {
-  if (obj === 'extruder') return 'Nozzle'
-  if (obj === 'heater_bed') return 'Bed'
+  if (obj === 'extruder') return t('control.temps.nozzle')
+  if (obj === 'heater_bed') return t('control.temps.bed')
   const box = boxHeaterNumber(obj)
-  if (box != null) return `Box ${box} heater`
+  if (box != null) return t('control.temps.box_heater', { n: box })
   return objectLabel(obj)
 }
 
@@ -50,26 +52,26 @@ export function TempsActions() {
     <>
       <MenuButton
         className="btn btn-sm"
-        label="Presets"
+        label={t('control.temps.presets')}
         button={
           <>
-            <Flame size={13} /> Presets <ChevronDown size={13} />
+            <Flame size={13} /> {t('control.temps.presets')} <ChevronDown size={13} />
           </>
         }
         items={
           presets.length
             ? presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) }))
-            : [{ label: 'No presets yet. Add them in Settings.', onSelect: () => navigate('settings') }]
+            : [{ label: t('control.temps.no_presets'), onSelect: () => navigate('settings') }]
         }
       />
       <button
         className="btn btn-sm"
         onClick={async () => {
-          if (active && !(await confirm({ title: 'Turn off the heaters?', body: 'The printer is busy. Turning off the heaters may result in a failed print.', confirm: 'Cool down', danger: true }))) return
+          if (active && !(await confirm({ title: t('control.temps.cool_down_title'), body: t('control.temps.cool_down_body'), confirm: t('control.temps.cool_down'), danger: true }))) return
           send('TURN_OFF_HEATERS')
         }}
       >
-        <Snowflake size={13} /> Cool down
+        <Snowflake size={13} /> {t('control.temps.cool_down')}
       </button>
     </>
   )
@@ -80,14 +82,14 @@ function HeatersCard() {
   const plain = heaters.filter((o) => boxHeaterNumber(o) == null)
   const box = heaters.filter((o) => boxHeaterNumber(o) != null)
   return (
-    <Card title="Heaters" icon={<Flame size={14} />}>
+    <Card title={t('control.temps.heaters')} icon={<Flame size={14} />}>
       <div className="grid gap-1">
         {plain.map((o) => (
           <HeaterRow key={o} obj={o} boxLimit={null} />
         ))}
         {box.length > 0 && <BoxHeaterRows objs={box} />}
       </div>
-      <Note>Targets stay within each heater’s limits. A Box heater is limited by the filament loaded in that Box.</Note>
+      <Note>{t('control.temps.heaters_note')}</Note>
     </Card>
   )
 }
@@ -127,27 +129,27 @@ function HeaterRow({ obj, boxLimit }: { obj: string; boxLimit: number | null }) 
           </span>
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="h-1 flex-1 overflow-hidden rounded-full bg-inset" title="Heater power">
+          <span className="h-1 flex-1 overflow-hidden rounded-full bg-inset" title={t('control.temps.heater_power')}>
             <i className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(power * 100)}%`, background: 'var(--orange)' }} />
           </span>
-          <span className="num w-9 text-right text-[11.5px] text-ink-3" title="Heater power">{target > 0 ? `${Math.round(power * 100)}%` : ''}</span>
+          <span className="num w-9 text-right text-[11.5px] text-ink-3" title={t('control.temps.heater_power')}>{target > 0 ? `${Math.round(power * 100)}%` : ''}</span>
         </div>
       </div>
       <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
-        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(t) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}`)} />
+        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(v) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${v}`)} />
       </div>
       <div className="col-start-2 row-start-1 sm:col-start-3">
         <MenuButton
-          label={`${label} actions`}
+          label={t('control.temps.actions', { name: label })}
           button={<Ellipsis size={16} />}
           items={[
-            { label: 'Turn off', onSelect: () => send(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=0`), disabled: printing || target === 0 },
-            { label: <span className="code">PID_CALIBRATE</span>, onSelect: () => setCalibrate('pid'), disabled: printing },
-            mpc && { label: <span className="code">MPC_CALIBRATE</span>, onSelect: () => setCalibrate('mpc'), disabled: printing || cfg?.control !== 'mpc' },
+            { label: t('control.temps.turn_off'), onSelect: () => send(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=0`), disabled: printing || target === 0 },
+            { label: <span className="code">PID_CALIBRATE</span>, onSelect: () => setCalibrate('pid'), disabled: printing }, // i18n-ignore: command names
+            mpc && { label: <span className="code">MPC_CALIBRATE</span>, onSelect: () => setCalibrate('mpc'), disabled: printing || cfg?.control !== 'mpc' }, // i18n-ignore: command names
           ]}
         />
       </div>
-      {range.locked && <div className="col-span-2 text-[12px] text-ink-3 sm:col-span-3">The filament loaded in this Box can’t be heated.</div>}
+      {range.locked && <div className="col-span-2 text-[12px] text-ink-3 sm:col-span-3">{t('control.temps.box_locked')}</div>}
       {calibrate && <CalibrateDialog obj={obj} kind={calibrate} onClose={() => setCalibrate(null)} />}
     </div>
   )
@@ -158,48 +160,48 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
   const [target, setTarget] = useState('100')
   const [breakpoints, setBreakpoints] = useState('')
   const range = targetRange(cfg, null)
-  const t = Number(target)
-  const error = target.trim() === '' || !(t > 0) ? 'Enter a target above 0 °C.' : targetError(t, range)
+  const value = Number(target)
+  const error = target.trim() === '' || !(value > 0) ? t('control.temps.target_positive') : targetError(value, range)
   const bp = breakpoints.trim() === '' ? null : Number(breakpoints)
-  const bpError = bp != null && !(bp > 0) ? 'Enter a number above 0, or leave it empty.' : null
+  const bpError = bp != null && !(bp > 0) ? t('control.temps.breakpoints_error') : null
   const name = heaterLabel(obj)
   const command = kind === 'pid' ? 'PID_CALIBRATE' : 'MPC_CALIBRATE'
   const run = () => {
     if (error || bpError) return
-    send(gcode`${command} HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${t}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
+    send(gcode`${command} HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${value}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
     onClose()
   }
   return (
     <Dialog
       open
       onClose={onClose}
-      title={`${kind === 'pid' ? 'PID' : 'MPC'} calibrate ${name}`}
+      title={t('control.temps.calibrate_title', { kind: kind === 'pid' ? 'PID' : 'MPC', name })}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!!error || !!bpError} onClick={run}>
-            Calibrate
+            {t('control.temps.calibrate')}
           </button>
         </>
       }
     >
       <div className="grid gap-3">
         <label className="grid gap-1.5">
-          <span className="lbl">Target temperature (°C)</span>
+          <span className="lbl">{t('control.temps.target_temperature')}</span>
           <input className="field" inputMode="numeric" autoFocus value={target} onChange={(e) => setTarget(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} />
           {error && <span className="text-[12px] text-bad">{error}</span>}
         </label>
         {kind === 'mpc' && (
           <label className="grid gap-1.5">
-            <span className="lbl">Fan breakpoints</span>
+            <span className="lbl">{t('control.temps.fan_breakpoints')}</span>
             <input className="field" inputMode="numeric" value={breakpoints} onChange={(e) => setBreakpoints(e.target.value)} />
             {bpError && <span className="text-[12px] text-bad">{bpError}</span>}
           </label>
         )}
         <div className="text-[12.5px] text-ink-2">
-          Runs <span className="code">{command}</span>, which heats the {name.toLowerCase()} and takes a few minutes. Use a target close to what you print at. SAVE_CONFIG keeps the result and restarts Klipper.
+          {tr('control.temps.calibrate_note', { command: <span className="code">{command}</span>, name: name.toLowerCase() })}
         </div>
       </div>
     </Dialog>
@@ -210,7 +212,7 @@ function TemperatureFansCard() {
   const fans = usePrinter((s) => s.objects.filter((o) => o.startsWith('temperature_fan ') && !o.slice(16).startsWith('_')))
   if (!fans.length) return null
   return (
-    <Card title="Temperature fans" icon={<Fan size={14} />}>
+    <Card title={t('control.temps.temperature_fans')} icon={<Fan size={14} />}>
       <div className="grid gap-1">
         {fans.map((o) => (
           <TemperatureFanRow key={o} obj={o} />
@@ -230,10 +232,10 @@ function TemperatureFanRow({ obj }: { obj: string }) {
       <div className="min-w-0">
         <div className="truncate font-semibold">{label}</div>
         <div className="num text-[12.5px] text-ink-3">
-          {typeof st.temperature === 'number' ? `${st.temperature.toFixed(1)} °C` : '—'} · fan {Math.round(((st.speed as number | undefined) ?? 0) * 100)}%
+          {t('control.temps.fan_speed', { temp: typeof st.temperature === 'number' ? `${st.temperature.toFixed(1)} °C` : '—', speed: Math.round(((st.speed as number | undefined) ?? 0) * 100) })}
         </div>
       </div>
-      <TargetStepper label={label} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(gcode`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(obj.slice(16))} TARGET=${t}`)} />
+      <TargetStepper label={label} target={target} range={targetRange(cfg, null, target)} onSet={(v) => send(gcode`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(obj.slice(16))} TARGET=${v}`)} />
     </div>
   )
 }
@@ -241,7 +243,7 @@ function TemperatureFanRow({ obj }: { obj: string }) {
 function SensorsCard() {
   const sensors = usePrinter((s) => s.objects.filter((o) => (o.startsWith('temperature_sensor ') || o.startsWith('temperature_probe ')) && !o.split(' ')[1].startsWith('_')))
   return (
-    <Card title="Sensors" icon={<Thermometer size={14} />}>
+    <Card title={t('control.temps.sensors')} icon={<Thermometer size={14} />}>
       {sensors.length ? (
         <div className="grid">
           {sensors.map((o) => (
@@ -249,7 +251,7 @@ function SensorsCard() {
           ))}
         </div>
       ) : (
-        <Empty>No temperature sensors.</Empty>
+        <Empty>{t('control.temps.no_sensors')}</Empty>
       )}
     </Card>
   )
@@ -257,14 +259,14 @@ function SensorsCard() {
 
 function SensorRow({ obj }: { obj: string }) {
   const st = usePrinter((s) => s.status[obj] ?? {})
-  const t = st.temperature as number | undefined
+  const temp = st.temperature as number | undefined
   const lo = st.measured_min_temp as number | undefined
   const hi = st.measured_max_temp as number | undefined
   return (
     <div className="row-k">
       <span className="k truncate">{objectLabel(obj)}</span>
       <span className="v">
-        {t != null ? `${t.toFixed(1)} °C` : '—'}
+        {temp != null ? `${temp.toFixed(1)} °C` : '—'}
         {lo != null && hi != null && <span className="ml-2 text-[11.5px] font-medium text-ink-3">{`${lo.toFixed(0)}–${hi.toFixed(0)}`}</span>}
       </span>
     </div>

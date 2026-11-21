@@ -26,6 +26,7 @@ import {
 } from '../../../qidi/qidi-filament-config'
 import { FilamentEditDialog, type FilamentSave } from './FilamentEditDialog'
 import { FilamentImportDialog } from './FilamentImportDialog'
+import { t } from '../../../i18n'
 
 const QIDI_CLIENT_SERVICE = 'qidi-client'
 
@@ -89,7 +90,7 @@ export function FilamentsPage() {
       setRestartNeeded(true)
       return true
     } catch (e) {
-      toast(e instanceof InvalidFilamentConfig ? INVALID : `Couldn't save the filament list: ${e instanceof Error ? e.message : String(e)}`, 'error')
+      toast(e instanceof InvalidFilamentConfig ? t('box.filaments.invalid') : t('box.filaments.save_failed', { error: e instanceof Error ? e.message : String(e) }), 'error')
       return false
     } finally {
       setBusy(false)
@@ -105,13 +106,19 @@ export function FilamentsPage() {
     })
   }
   const edit = ({ key, ...draft }: QidiFilamentRow) => setEditor({ draft, previousKey: key })
+  // The copy's name goes into QIDI's filament list, which the touchscreen shows: keep it English. i18n-ignore
   const duplicate = ({ key, ...draft }: QidiFilamentRow) => config && setEditor({ draft: { ...draft, name: `${draft.name} (copy)`, id: nextQidiFilamentId(config, draft.id) ?? '' }, sourceKey: key })
   const save = async ({ draft, previousKey, baseKey }: FilamentSave) => {
     if (await update((c) => setQidiFilament(c, draft, { previousKey, baseKey }))) setEditor(null)
   }
   const remove = async (row: QidiFilamentRow) => {
     const slots = box.slots.filter((s) => s.filamentId === row.id).map((s) => s.label)
-    const ok = await confirm({ title: 'Remove filament', body: `Remove ${row.key} from the filament list?${slots.length ? ` Slots set to it: ${slots.join(', ')}.` : ''}`, confirm: 'Remove', danger: true })
+    const ok = await confirm({
+      title: t('box.filaments.remove_title'),
+      body: slots.length ? t('box.filaments.remove_body_slots', { name: row.key, slots: slots.join(', ') }) : t('box.filaments.remove_body', { name: row.key }),
+      confirm: t('common.remove'),
+      danger: true,
+    })
     if (ok) await update((c) => removeQidiFilament(c, row.key))
   }
 
@@ -128,17 +135,17 @@ export function FilamentsPage() {
       // Deferred, as revoking right after the click can cancel the download.
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
-      toast("Couldn't export the filament list.", 'error')
+      toast(t('box.filaments.export_failed'), 'error')
     }
   }
   const importFile = async (f: File | undefined) => {
     if (!f) return
     try {
       const parsed = parseQidiFilamentConfig(await f.text())
-      if (!parsed) return toast("That file isn't a QIDI filament list.", 'error')
+      if (!parsed) return toast(t('box.filaments.not_a_list'), 'error')
       setImported({ config: parsed, items: diffQidiFilamentImport(await readConfig(), parsed) })
     } catch {
-      toast(UNAVAILABLE, 'error')
+      toast(t('box.filaments.unavailable'), 'error')
     }
   }
   const doImport = async (keys: string[]) => {
@@ -159,31 +166,31 @@ export function FilamentsPage() {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3.5">
       {restartNeeded && (
         <div className="tone-info flex flex-wrap items-center gap-3 rounded-xl px-4 py-2.5">
-          <span className="min-w-0 flex-1 text-ink">Klipper and the touchscreen use the changes once they restart.</span>
+          <span className="min-w-0 flex-1 text-ink">{t('box.filaments.restart_note')}</span>
           <button className="btn btn-sm btn-primary" disabled={printing} onClick={restart}>
-            <RefreshCw size={13} /> {canRestartScreen ? 'Restart Klipper and touchscreen' : 'Restart Klipper'}
+            <RefreshCw size={13} /> {canRestartScreen ? t('box.filaments.restart_both') : t('box.filaments.restart_klipper')}
           </button>
         </div>
       )}
-      {loadError && <div className="tone-bad rounded-xl px-4 py-2.5 text-ink">{loadError === 'invalid' ? INVALID : UNAVAILABLE}</div>}
+      {loadError && <div className="tone-bad rounded-xl px-4 py-2.5 text-ink">{loadError === 'invalid' ? t('box.filaments.invalid') : t('box.filaments.unavailable')}</div>}
       <div className="tone-warn flex items-start gap-2.5 rounded-xl px-4 py-2.5">
         <TriangleAlert size={16} className="mt-0.5 flex-none" />
-        <span className="text-ink">Firmware updates replace this list and remove your changes. Export it before updating, and import it afterwards.</span>
+        <span className="text-ink">{t('box.filaments.update_warning')}</span>
       </div>
       <Card
-        title="QIDI filaments"
+        title={t('box.filaments.title')}
         aside={
           <span className="flex flex-wrap justify-end gap-1.5">
             <button className="btn btn-sm btn-primary" disabled={off} onClick={add}>
-              <Plus size={14} /> Add
+              <Plus size={14} /> {t('common.add')}
             </button>
             <button className="btn btn-sm" disabled={off} onClick={() => file.current?.click()}>
-              <Upload size={13} /> Import
+              <Upload size={13} /> {t('box.filaments.import_button')}
             </button>
             <button className="btn btn-sm" disabled={off} onClick={exportList}>
-              <Download size={13} /> Export
+              <Download size={13} /> {t('box.filaments.export')}
             </button>
-            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={load} aria-label="Refresh" title="Refresh">
+            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={load} aria-label={t('box.filaments.refresh')} title={t('box.filaments.refresh')}>
               <RefreshCw size={13} />
             </button>
           </span>
@@ -192,11 +199,11 @@ export function FilamentsPage() {
         <div className="mb-3 flex flex-wrap items-center gap-2.5">
           <div className="relative w-full sm:w-[240px]">
             <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-            <input className="field pl-8" placeholder="Search" spellCheck={false} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search filaments" />
+            <input className="field pl-8" placeholder={t('box.filaments.search')} spellCheck={false} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t('box.filaments.search_label')} />
           </div>
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             <button className={`choice ${vendor == null ? 'on' : ''}`} onClick={() => setVendor(null)}>
-              All
+              {t('box.filaments.all')}
             </button>
             {vendors.map((v) => (
               <button key={v} className={`choice ${vendor === v ? 'on' : ''}`} onClick={() => setVendor(vendor === v ? null : v)}>
@@ -210,23 +217,23 @@ export function FilamentsPage() {
             <Spinner size={22} />
           </div>
         ) : !config ? (
-          <Empty>No filament list to show.</Empty>
+          <Empty>{t('box.filaments.none')}</Empty>
         ) : shown.length === 0 ? (
-          <Empty>No filaments match.</Empty>
+          <Empty>{t('box.filaments.no_match')}</Empty>
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Vendor</th>
-                    <th>Filament</th>
-                    <th>Type</th>
+                    <th>{t('box.filaments.edit.vendor')}</th>
+                    <th>{t('box.filaments.edit.filament')}</th>
+                    <th>{t('box.filaments.edit.type')}</th>
                     <th>ID</th>
-                    <th>Nozzle</th>
-                    <th>Box max</th>
-                    <th>Chamber</th>
-                    <th>Support</th>
+                    <th>{t('box.filaments.nozzle')}</th>
+                    <th>{t('box.filaments.edit.box_max')}</th>
+                    <th>{t('box.filaments.edit.chamber')}</th>
+                    <th>{t('box.filaments.support')}</th>
                     <th />
                   </tr>
                 </thead>
@@ -242,9 +249,9 @@ export function FilamentsPage() {
                       <td className="num whitespace-nowrap">
                         {r.nozzleMin}–{r.nozzleMax} °C
                       </td>
-                      <td className="num whitespace-nowrap">{r.boxMax ? `${r.boxMax} °C` : <span className="text-ink-3">No heating</span>}</td>
+                      <td className="num whitespace-nowrap">{r.boxMax ? `${r.boxMax} °C` : <span className="text-ink-3">{t('box.filaments.no_heating')}</span>}</td>
                       <td className="num whitespace-nowrap">{r.chamber ? `${r.chamber} °C` : <span className="text-ink-3">–</span>}</td>
-                      <td>{r.support && <Check size={15} className="text-good" aria-label="Support" />}</td>
+                      <td>{r.support && <Check size={15} className="text-good" aria-label={t('box.filaments.support')} />}</td>
                       <td className="whitespace-nowrap text-right">
                         <RowActions busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
                       </td>
@@ -261,7 +268,7 @@ export function FilamentsPage() {
                       {r.vendor} {r.name}
                     </div>
                     <div className="truncate text-[12px] text-ink-3">
-                      {[r.type, r.id, `${r.nozzleMin}–${r.nozzleMax} °C`, r.boxMax ? `Box ${r.boxMax} °C` : 'No heating', r.support ? 'Support' : null].filter(Boolean).join(' · ')}
+                      {[r.type, r.id, `${r.nozzleMin}–${r.nozzleMax} °C`, r.boxMax ? t('box.filaments.box_temp', { temp: r.boxMax }) : t('box.filaments.no_heating'), r.support ? t('box.filaments.support') : null].filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   <RowActions busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
@@ -278,19 +285,16 @@ export function FilamentsPage() {
   )
 }
 
-const INVALID = 'The filament list qidi_filament_config/filament-0.4.json has a JSON error. Fix it in the configuration editor.'
-const UNAVAILABLE = "Valve Oil UI can't read the filament list qidi_filament_config/filament-0.4.json."
-
 function RowActions({ busy, onEdit, onDuplicate, onRemove }: { busy: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void }) {
   return (
     <span className="inline-flex">
-      <button className="iconbtn" disabled={busy} onClick={onEdit} title="Edit" aria-label="Edit">
+      <button className="iconbtn" disabled={busy} onClick={onEdit} title={t('common.edit')} aria-label={t('common.edit')}>
         <Pencil size={14} />
       </button>
-      <button className="iconbtn" disabled={busy} onClick={onDuplicate} title="Duplicate" aria-label="Duplicate">
+      <button className="iconbtn" disabled={busy} onClick={onDuplicate} title={t('box.filaments.duplicate')} aria-label={t('box.filaments.duplicate')}>
         <Copy size={14} />
       </button>
-      <button className="iconbtn" disabled={busy} onClick={onRemove} title="Remove" aria-label="Remove">
+      <button className="iconbtn" disabled={busy} onClick={onRemove} title={t('common.remove')} aria-label={t('common.remove')}>
         <Trash2 size={14} />
       </button>
     </span>

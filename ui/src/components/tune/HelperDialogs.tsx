@@ -9,6 +9,8 @@ import { createStore, useStore } from '../../lib/store'
 import { usePrinterFlags } from './hooks'
 import { useUiSetting } from '../settings/fluidd'
 import { gcode } from '../control/gcode'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 type Helper = 'manual' | 'screws'
 const helperOpen = createStore<Record<Helper, boolean>>({ manual: false, screws: false })
@@ -44,46 +46,46 @@ export function ManualProbeDialog() {
     <Dialog
       open={open}
       onClose={() => setOpen(false)}
-      title="Manual probe"
+      title={t('tune.shared.manual_probe')}
       footer={
         <>
           <button className="btn btn-danger" onClick={() => (run('ABORT'), setOpen(false))}>
-            Abort
+            {t('tune.shared.abort')}
           </button>
           <button className="btn btn-primary" onClick={() => run('ACCEPT')}>
-            Accept
+            {t('tune.shared.accept')}
           </button>
         </>
       }
     >
-      <p className="mt-0 text-ink-2">Lower the nozzle until it just grips a sheet of paper, then Accept. The steps below move Z by that many millimetres.</p>
+      <p className="mt-0 text-ink-2">{t('tune.helpers.manual_hint')}</p>
       <div className="grid grid-cols-3 gap-2">
         {[
-          ['Z min', mp.z_position_lower],
-          ['Z', mp.z_position],
-          ['Z max', mp.z_position_upper],
-        ].map(([k, v]) => (
-          <div key={k as string} className={`tile text-center ${k === 'Z' ? 'hot' : ''}`}>
-            <span className="section-label">{k as string}</span>
+          { k: 'min', label: t('tune.helpers.z_min'), v: mp.z_position_lower },
+          { k: 'z', label: 'Z', v: mp.z_position },
+          { k: 'max', label: t('tune.helpers.z_max'), v: mp.z_position_upper },
+        ].map(({ k, label, v }) => (
+          <div key={k} className={`tile text-center ${k === 'z' ? 'hot' : ''}`}>
+            <span className="section-label">{label}</span>
             <span className="v num">{fmt(v)}</span>
           </div>
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="seg">
-          <button disabled={disabled} onClick={() => run('TESTZ Z=--')} title="Halfway to Z min">
+          <button disabled={disabled} onClick={() => run('TESTZ Z=--')} title={t('tune.helpers.halfway_min')}>
             − −
           </button>
-          <button disabled={disabled} onClick={() => run('TESTZ Z=-')} title="Partway to Z min">
+          <button disabled={disabled} onClick={() => run('TESTZ Z=-')} title={t('tune.helpers.partway_min')}>
             −
           </button>
         </div>
-        <span className="text-[12px] text-ink-3">Bisect</span>
+        <span className="text-[12px] text-ink-3">{t('tune.helpers.bisect')}</span>
         <div className="seg">
-          <button disabled={disabled} onClick={() => run('TESTZ Z=+')} title="Partway to Z max">
+          <button disabled={disabled} onClick={() => run('TESTZ Z=+')} title={t('tune.helpers.partway_max')}>
             +
           </button>
-          <button disabled={disabled} onClick={() => run('TESTZ Z=++')} title="Halfway to Z max">
+          <button disabled={disabled} onClick={() => run('TESTZ Z=++')} title={t('tune.helpers.halfway_max')}>
             + +
           </button>
         </div>
@@ -91,11 +93,11 @@ export function ManualProbeDialog() {
       <div className="mt-3 grid gap-1.5">
         {offsets.map((o) => (
           <div key={o} className="flex items-center gap-2">
-            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=-${o}`)} aria-label={`Lower ${o} mm`}>
+            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=-${o}`)} aria-label={t('common.lower_named', { name: `${o} mm` })}>
               <Minus size={15} />
             </button>
             <div className="num flex-1 text-center font-semibold">{o} mm</div>
-            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=+${o}`)} aria-label={`Raise ${o} mm`}>
+            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=+${o}`)} aria-label={t('common.raise_named', { name: `${o} mm` })}>
               <Plus size={15} />
             </button>
           </div>
@@ -113,7 +115,7 @@ export function BedScrewsDialog() {
   const [open, setOpen] = useAutoOpen('screws', active)
   const run = (g: string) => attempt(() => runGcode(g))
   const screws: string[] = []
-  for (let i = 1; cfg?.[`screw${i}`]; i++) screws.push((cfg[`screw${i}_name`] as string | undefined) || `Screw ${i}`)
+  for (let i = 1; cfg?.[`screw${i}`]; i++) screws.push((cfg[`screw${i}_name`] as string | undefined) || t('tune.helpers.screw_n', { n: i }))
   const current = typeof bs.current_screw === 'number' ? bs.current_screw : 0
   const accepted = typeof bs.accepted_screws === 'number' ? bs.accepted_screws : 0
   const total = screws.length || 1
@@ -121,42 +123,39 @@ export function BedScrewsDialog() {
     <Dialog
       open={open}
       onClose={() => setOpen(false)}
-      title="Bed screws adjust"
+      title={t('tune.shared.bed_screws_adjust')}
       footer={
         <>
           <button className="btn btn-danger" onClick={() => (run('ABORT'), setOpen(false))}>
-            Abort
+            {t('tune.shared.abort')}
           </button>
           <button className="btn" onClick={() => run('ADJUSTED')}>
-            Adjusted
+            {t('tune.helpers.adjusted')}
           </button>
           <button className="btn btn-primary" onClick={() => run('ACCEPT')}>
-            Accept
+            {t('tune.shared.accept')}
           </button>
         </>
       }
     >
       <div className="grid grid-cols-2 gap-2">
         <div className="tile col-span-2">
-          <span className="section-label">Screw</span>
+          <span className="section-label">{t('tune.helpers.screw')}</span>
           <span className="v">{screws[current] ? prettyName(screws[current]) : '—'}</span>
           <span className="text-ink-3">
-            {current + 1} of {total}
-            {bs.state === 'fine' ? ' · fine adjustment' : ''}
+            {bs.state === 'fine' ? t('tune.helpers.screw_of_fine', { current: current + 1, total }) : t('tune.helpers.screw_of', { current: current + 1, total })}
           </span>
         </div>
         <div className="tile col-span-2">
-          <span className="section-label">Accepted screws</span>
-          <span className="v num">
-            {accepted} <small>of {total}</small>
-          </span>
+          <span className="section-label">{t('tune.helpers.accepted_screws')}</span>
+          <span className="v num">{tr('tune.helpers.accepted_of', { accepted, total }, { small: (c) => <small>{c}</small> })}</span>
           <div className="bar mt-1">
             <i style={{ width: `${(accepted / total) * 100}%` }} />
           </div>
         </div>
       </div>
       <p className="mb-0 text-ink-2">
-        Press <b>Adjusted</b> if a significant adjustment is necessary on the current screw; otherwise, press <b>Accept</b> to continue.
+        {tr('tune.helpers.screws_hint', {}, { b: (c) => <b>{c}</b> })}
       </p>
     </Dialog>
   )

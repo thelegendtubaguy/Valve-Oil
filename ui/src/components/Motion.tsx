@@ -5,6 +5,7 @@ import { jog as jogAxis, send } from './control/common'
 import { extrudeGcode } from './control/gcode'
 import { usePrinter } from '../state/printer'
 import { href } from '../lib/router'
+import { t } from '../i18n'
 
 const STEPS = [0.1, 1, 10, 50]
 const EXTRUDE = [5, 10, 50]
@@ -31,12 +32,12 @@ export function Motion({ className = '' }: { className?: string }) {
   return (
     <section className={`card ${className}`}>
       <h3 className="card-title">
-        <Move size={14} /> Toolhead
+        <Move size={14} /> {t('app.motion.title')}
         <span className="aside num">{pos ? `X ${pos[0].toFixed(1)}  Y ${pos[1].toFixed(1)}  Z ${pos[2].toFixed(2)}` : ''}</span>
       </h3>
       <div className="flex flex-wrap items-start gap-x-5 gap-y-3">
         <div className="flex gap-2">
-          <div className="grid grid-cols-3 gap-1" role="group" aria-label="Move X and Y">
+          <div className="grid grid-cols-3 gap-1" role="group" aria-label={t('app.motion.move_xy')}>
             <span />
             <Pad label="Y+" disabled={!can('y')} onClick={() => jog('Y', 1)}>
               <ArrowUp size={16} />
@@ -45,8 +46,9 @@ export function Motion({ className = '' }: { className?: string }) {
             <Pad label="X−" disabled={!can('x')} onClick={() => jog('X', -1)}>
               <ArrowLeft size={16} />
             </Pad>
-            <Pad label="Home X and Y" home disabled={printing} onClick={() => send('G28 X Y')}>
+            <Pad label={t('app.motion.home_xy')} home disabled={printing} onClick={() => send('G28 X Y')}>
               <House size={15} />
+              {/* i18n-ignore: axis names */}
               <span className="ax">XY</span>
             </Pad>
             <Pad label="X+" disabled={!can('x')} onClick={() => jog('X', 1)}>
@@ -58,16 +60,16 @@ export function Motion({ className = '' }: { className?: string }) {
             </Pad>
             <span />
           </div>
-          <div className="grid grid-rows-3 gap-1" role="group" aria-label="Move Z">
-            <Pad label="Z+: the bed moves down" disabled={!can('z')} onClick={() => jog('Z', 1)}>
+          <div className="grid grid-rows-3 gap-1" role="group" aria-label={t('app.motion.move_z')}>
+            <Pad label={t('app.motion.z_up')} disabled={!can('z')} onClick={() => jog('Z', 1)}>
               <ArrowUp size={16} />
               <span className="ax">Z+</span>
             </Pad>
-            <Pad label="Home Z" home disabled={printing} onClick={() => send('G28 Z')}>
+            <Pad label={t('app.motion.home_z')} home disabled={printing} onClick={() => send('G28 Z')}>
               <House size={15} />
               <span className="ax">Z</span>
             </Pad>
-            <Pad label="Z−: the bed moves up" disabled={!can('z')} onClick={() => jog('Z', -1)}>
+            <Pad label={t('app.motion.z_down')} disabled={!can('z')} onClick={() => jog('Z', -1)}>
               <ArrowDown size={16} />
               <span className="ax">Z−</span>
             </Pad>
@@ -75,27 +77,27 @@ export function Motion({ className = '' }: { className?: string }) {
         </div>
         <div className="grid min-w-[190px] flex-1 content-start gap-2.5">
           <div>
-            <div className="section-label mb-1">Step (mm)</div>
+            <div className="section-label mb-1">{t('app.motion.step')}</div>
             <Choices value={step} options={STEPS.map((v) => ({ value: v, label: String(v) }))} onChange={setStep} />
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button className="btn btn-sm" disabled={printing} onClick={() => send('G28')}>
-              Home all
+              {t('app.motion.home_all')}
             </button>
             <button className="btn btn-sm" disabled={printing} onClick={() => send('M84')}>
-              Motors off
+              {t('app.motion.motors_off')}
             </button>
-            <span className={`text-[12px] font-semibold ${missing.length ? 'text-warn' : 'text-good'}`}>{missing.length === 3 ? 'Not homed' : missing.length ? `${missing.join('')} not homed` : 'Homed'}</span>
+            <span className={`text-[12px] font-semibold ${missing.length ? 'text-warn' : 'text-good'}`}>{missing.length === 3 ? t('app.motion.not_homed') : missing.length ? t('app.motion.axes_not_homed', { axes: missing.join('') }) : t('app.motion.homed')}</span>
           </div>
           <div>
-            <div className="section-label mb-1">Extruder (mm)</div>
+            <div className="section-label mb-1">{t('app.motion.extruder')}</div>
             <div className="flex flex-wrap items-center gap-1.5">
               <Choices value={eLen} options={EXTRUDE.map((v) => ({ value: v, label: String(v) }))} onChange={setELen} />
               <button className="btn btn-sm" disabled={printing || !canExtrude} onClick={() => send(extrudeGcode(-eLen, E_SPEED, clientMacro))}>
-                <ArrowUp size={13} /> Retract
+                <ArrowUp size={13} /> {t('app.motion.retract')}
               </button>
               <button className="btn btn-sm" disabled={printing || !canExtrude} onClick={() => send(extrudeGcode(eLen, E_SPEED, clientMacro))}>
-                <ArrowDown size={13} /> Extrude
+                <ArrowDown size={13} /> {t('app.motion.extrude')}
               </button>
             </div>
           </div>
@@ -104,15 +106,17 @@ export function Motion({ className = '' }: { className?: string }) {
       <div className="mt-2.5 flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1 text-[12.5px] text-ink-3">
           {printing
-            ? 'Moving the toolhead is locked while printing. Pause to move it.'
+            ? t('app.motion.locked')
             : missing.length
-              ? 'Home an axis before moving it. Z+ moves the bed down.'
+              ? t('app.motion.home_first')
               : !canExtrude
-                ? `Extruding needs the nozzle hot${nozzle != null ? `; it's ${Math.round(nozzle)} °C` : ''}.`
-                : 'Z+ moves the bed down, away from the nozzle.'}
+                ? nozzle != null
+                  ? t('app.motion.needs_hot_now', { temp: Math.round(nozzle) })
+                  : t('app.motion.needs_hot')
+                : t('app.motion.z_hint')}
         </div>
         <a href={href('control', 'move')} className="inline-flex items-center gap-0.5 text-[12.5px] font-semibold text-accent-ink">
-          More controls <ChevronRight size={13} />
+          {t('app.motion.more')} <ChevronRight size={13} />
         </a>
       </div>
     </section>

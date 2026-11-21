@@ -24,6 +24,8 @@ import { thumbnailUrl, useFileMeta, useFiles, useHistory, useHistoryTotals, type
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
 import { href } from '../lib/router'
+import { locale, t } from '../i18n'
+import { tr } from '../i18n/rich'
 
 const area = (name: string): CSSProperties => ({ gridArea: name })
 
@@ -88,7 +90,14 @@ function JobCard({ style }: { style?: CSSProperties }) {
   const colors = (meta?.filament_colors ?? []).map(normalizeQidiColor)
   const types = (meta?.filament_type ?? '').split(';').map((t) => t.trim())
   const finished = job.state === 'complete' || job.state === 'cancelled' || job.state === 'error'
-  const statusText = { printing: 'Now printing', paused: 'Paused', complete: 'Finished', cancelled: 'Cancelled', error: 'Stopped with an error', standby: '' }[job.state]
+  const statusText = {
+    printing: t('home.job.now_printing'),
+    paused: t('home.job.paused'),
+    complete: t('home.job.finished'),
+    cancelled: t('home.job.cancelled'),
+    error: t('home.job.error'),
+    standby: '',
+  }[job.state]
   const fill = finished ? (job.state === 'complete' ? 1 : p) : p
 
   return (
@@ -141,33 +150,33 @@ function JobCard({ style }: { style?: CSSProperties }) {
             <i style={{ width: `${p * 100}%` }} />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Remaining" value={fmtDuration(remaining)} />
-            <Stat label="Done at" value={fmtEta(remaining)} />
-            <Stat label="Elapsed" value={fmtDuration(job.totalDuration)} />
+            <Stat label={t('home.job.remaining')} value={fmtDuration(remaining)} />
+            <Stat label={t('home.job.done_at')} value={fmtEta(remaining)} />
+            <Stat label={t('home.job.elapsed')} value={fmtDuration(job.totalDuration)} />
           </div>
           <div className="grid grid-cols-3 gap-2">
             {job.state === 'paused' ? (
               <button className="btn btn-primary btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.resume'))}>
-                <Play size={14} /> Resume
+                <Play size={14} /> {t('home.job.resume')}
               </button>
             ) : (
               <button className="btn btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.pause'))}>
-                <Pause size={14} /> Pause
+                <Pause size={14} /> {t('home.job.pause')}
               </button>
             )}
             <button className="btn btn-lg px-2!" onClick={() => setTune(true)}>
-              <SlidersHorizontal size={14} /> Tune
+              <SlidersHorizontal size={14} /> {t('home.job.tune')}
             </button>
             <HoldButton className="btn-lg px-2!" onHold={() => attempt(() => client.call('printer.print.cancel'))}>
-              <X size={14} /> Cancel <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">hold</span>
+              <X size={14} /> {tr('home.job.cancel_hold', {}, { hint: (c) => <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">{c}</span> })}
             </HoldButton>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              Speed {Math.round(job.speedFactor * 100)}%
+              {t('home.job.speed', { pct: Math.round(job.speedFactor * 100) })}
             </button>
             <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              Flow {Math.round(job.extrudeFactor * 100)}%
+              {t('home.job.flow', { pct: Math.round(job.extrudeFactor * 100) })}
             </button>
             <button className="chip num cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
               Z {job.zOffset >= 0 ? '+' : ''}
@@ -181,14 +190,14 @@ function JobCard({ style }: { style?: CSSProperties }) {
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Printing" value={fmtDuration(job.printDuration)} />
-            <Stat label="Filament" value={job.filamentUsed > 0 ? fmtLength(job.filamentUsed) : meta?.filament_total ? fmtLength(meta.filament_total) : '—'} />
-            <Stat label="Slicer" value={meta?.estimated_time ? fmtDuration(meta.estimated_time) : '—'} />
+            <Stat label={t('home.job.printing')} value={fmtDuration(job.printDuration)} />
+            <Stat label={t('home.job.filament')} value={job.filamentUsed > 0 ? fmtLength(job.filamentUsed) : meta?.filament_total ? fmtLength(meta.filament_total) : '—'} />
+            <Stat label={t('home.job.slicer')} value={meta?.estimated_time ? fmtDuration(meta.estimated_time) : '—'} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <ReprintButton filename={job.filename} />
             <button className="btn" onClick={() => attempt(() => runGcode('SDCARD_RESET_FILE'))}>
-              Done
+              {t('common.done')}
             </button>
           </div>
         </>
@@ -204,7 +213,7 @@ function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] 
   return (
     <section className="card grid content-start gap-3" style={style}>
       <div>
-        <div className="lbl">Ready to print</div>
+        <div className="lbl">{t('home.ready.title')}</div>
         {last ? (
           <div className="mt-1 flex items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -212,13 +221,13 @@ function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] 
                 {displayName(last.filename)}
               </div>
               <div className="text-[12.5px] text-ink-3">
-                Last print, {last.status === 'completed' ? 'finished' : last.status === 'cancelled' ? 'cancelled' : 'failed'} {last.end_time ? fmtAgo(last.end_time) : ''}
+                {t(last.status === 'completed' ? 'home.ready.last_finished' : last.status === 'cancelled' ? 'home.ready.last_cancelled' : 'home.ready.last_failed', { ago: last.end_time ? fmtAgo(last.end_time) : '' })}
               </div>
             </div>
             <ReprintButton filename={last.filename} small />
           </div>
         ) : (
-          <div className="mt-1 text-ink-2">Upload a file or send one from your slicer.</div>
+          <div className="mt-1 text-ink-2">{t('home.ready.empty')}</div>
         )}
       </div>
       <DropZone className="py-3!" />
@@ -247,16 +256,16 @@ function RecentFiles({ jobs }: { jobs: HistoryJob[] | null }) {
   return (
     <section className="card grow" style={area('files')}>
       <h3 className="card-title">
-        <Folder size={14} /> Recent files
+        <Folder size={14} /> {t('home.recent.title')}
         <a href={href('files')} className="aside inline-flex items-center gap-1">
-          All files <ChevronRight size={13} />
+          {t('home.recent.all')} <ChevronRight size={13} />
         </a>
       </h3>
       <div className="grow-body -mx-1.5 max-wide:max-h-[340px] max-wide:overflow-auto">
         {recent.map((f) => (
           <FileRow key={f.path} path={f.path} last={byFile.get(f.path)?.last} count={byFile.get(f.path)?.count ?? 0} onOpen={() => setOpen(f.path)} />
         ))}
-        {files && files.length === 0 && <div className="px-1.5 text-ink-3">No files yet.</div>}
+        {files && files.length === 0 && <div className="px-1.5 text-ink-3">{t('home.recent.none')}</div>}
       </div>
       {open && <PrintDialog filename={open} onClose={() => setOpen(null)} />}
     </section>
@@ -277,7 +286,7 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
   return (
     <>
       <button className={`btn ${small ? 'btn-sm' : 'btn-primary'}`} onClick={() => setOpen(true)}>
-        <RotateCcw size={small ? 13 : 14} /> Print again
+        <RotateCcw size={small ? 13 : 14} /> {t('home.job.print_again')}
       </button>
       {open && <PrintDialog filename={filename} onClose={() => setOpen(false)} />}
     </>
@@ -324,12 +333,12 @@ function CameraOrLayers({ cam }: { cam: Webcam | null }) {
   const toggle = cam && (
     <div className="absolute top-2.5 right-2.5 z-10">
       <Segmented
-        label="View"
+        label={t('home.camera.view')}
         value={shown}
         onChange={pick}
         options={[
-          { value: 'camera', label: 'Camera' },
-          { value: 'layers', label: 'Layers' },
+          { value: 'camera', label: t('home.camera.camera') },
+          { value: 'layers', label: t('home.camera.layers') },
         ]}
       />
     </div>
@@ -382,7 +391,7 @@ function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
         ) : (
           <div className="grid h-full place-items-center text-[#9aa1ad]">
             <span className="flex items-center gap-2">
-              <Camera size={16} /> Camera unavailable
+              <Camera size={16} /> {t('home.camera.unavailable')}
             </span>
           </div>
         )}
@@ -390,7 +399,7 @@ function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
           {cam.name}
         </div>
         <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
-          {fs.full ? 'Close' : 'Full screen'}
+          {fs.full ? t('common.close') : t('home.camera.full_screen')}
         </button>
         {!fs.full && toggle}
       </div>
@@ -415,11 +424,11 @@ function BoxCard() {
         <BoxIcon size={14} />
         <a href={href('box')}>QIDI Box</a>
         <span className="aside flex items-center gap-1.5">
-          <span className="text-ink-3">{loaded ? `${loaded.label} loaded` : 'Nothing loaded'}</span>
-          <button className="btn btn-sm px-2! py-0.5! text-[11.5px]" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? 'Tool mapping can be changed while the printer is idle' : 'Change which slot each tool loads'}>
-            Tools
+          <span className="text-ink-3">{loaded ? t('home.box.loaded', { slot: loaded.label }) : t('home.box.nothing_loaded')}</span>
+          <button className="btn btn-sm px-2! py-0.5! text-[11.5px]" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? t('home.box.tools_locked') : t('home.box.tools_hint')}>
+            {t('home.box.tools')}
           </button>
-          <a href={href('box')} className="iconbtn h-6 w-6" title="Open the QIDI Box page" aria-label="Open the QIDI Box page">
+          <a href={href('box')} className="iconbtn h-6 w-6" title={t('home.box.open')} aria-label={t('home.box.open')}>
             <ChevronRight size={14} />
           </a>
         </span>
@@ -437,14 +446,14 @@ function BoxCard() {
             <span className="min-w-0 flex-1 truncate">
               <b>{slot.label}</b> <span className="text-ink-2">{slotTitle(slot)}</span>
             </span>
-            <button className="iconbtn h-6 w-6" onClick={() => setSelected(null)} aria-label="Close">
+            <button className="iconbtn h-6 w-6" onClick={() => setSelected(null)} aria-label={t('common.close')}>
               <X size={14} />
             </button>
           </div>
           <SlotActionButtons box={box} slot={slot} withTagButtons />
         </div>
       ) : (
-        <div className="mt-1.5 text-[12px] text-ink-3">Click a slot for its actions, or a Box’s temperature for its heater.</div>
+        <div className="mt-1.5 text-[12px] text-ink-3">{t('home.box.hint')}</div>
       )}
       {heater != null && <HeaterDialog box={box} boxNumber={heater} onClose={() => setHeater(null)} />}
       <ToolMapDialog box={box} open={mapOpen} onClose={() => setMapOpen(false)} />
@@ -484,11 +493,11 @@ function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
   return (
     <Card
       className="h-full"
-      title={`Last ${weeks} weeks`}
+      title={t('home.history.last_weeks', { count: weeks })}
       icon={<History size={14} />}
       aside={
         <>
-          <span className="text-good">{done} done</span> · <span className="text-bad">{failed} failed</span>
+          <span className="text-good">{t('home.history.done', { count: done })}</span> · <span className="text-bad">{t('home.history.failed', { count: failed })}</span>
         </>
       }
     >
@@ -496,7 +505,7 @@ function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
         {cells.map((c) => (
           <i
             key={c.date.getTime()}
-            title={`${c.date.toLocaleDateString()}: ${c.ok} done${c.bad ? `, ${c.bad} failed` : ''}`}
+            title={t(c.bad ? 'home.history.day_failed' : 'home.history.day', { date: c.date.toLocaleDateString(locale()), count: c.ok, bad: c.bad })}
             className="h-2.5 w-2.5 rounded-[2px]"
             style={{
               background: c.bad ? 'var(--red)' : c.ok ? `color-mix(in srgb, var(--green) ${Math.round(35 + (c.ok / max) * 65)}%, transparent)` : 'var(--inset)',
@@ -507,9 +516,9 @@ function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
       </div>
       {totals && (
         <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-          <Stat label="Print time" value={`${Math.round(totals.total_print_time / 3600)} h`} />
-          <Stat label="Filament" value={`${(totals.total_filament_used / 1000).toFixed(0)} m`} />
-          <Stat label="Jobs" value={String(totals.total_jobs)} />
+          <Stat label={t('home.history.print_time')} value={t('app.units.h', { n: Math.round(totals.total_print_time / 3600) })} />
+          <Stat label={t('home.history.filament')} value={t('app.units.m', { n: (totals.total_filament_used / 1000).toFixed(0) })} />
+          <Stat label={t('home.history.jobs')} value={String(totals.total_jobs)} />
         </div>
       )}
     </Card>
@@ -523,17 +532,18 @@ function QuickActions({ bare }: { bare?: boolean }) {
   const buttons = (
       <div className="flex flex-wrap gap-1.5">
         <button className="btn btn-sm" onClick={() => attempt(() => runGcode('G28'))}>
-          Home all{homed === 'xyz' ? ' ✓' : ''}
+          {t('app.motion.home_all')}
+          {homed === 'xyz' ? ' ✓' : ''}
         </button>
         <button className="btn btn-sm" onClick={() => attempt(() => runGcode('M84'))}>
-          Motors off
+          {t('app.motion.motors_off')}
         </button>
         {lights.map((o, i) => (
           <button key={o} className="btn btn-sm" onClick={() => attempt(() => runGcode(`SET_PIN PIN=${o.slice('output_pin '.length)} VALUE=${lightValues[i] > 0 ? 0 : 1}`))}>
-            {lightValues[i] > 0 ? 'Lights off' : 'Lights on'}
+            {lightValues[i] > 0 ? t('home.quick.lights_off') : t('home.quick.lights_on')}
           </button>
         ))}
       </div>
   )
-  return bare ? buttons : <Card title="Quick actions">{buttons}</Card>
+  return bare ? buttons : <Card title={t('home.quick.title')}>{buttons}</Card>
 }

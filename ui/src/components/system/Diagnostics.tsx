@@ -7,6 +7,8 @@ import { DIAGNOSTICS_RETENTION, allCards, defaultCard, loadLayout, startCollecti
 import type { SeriesBuffer } from './chart-data'
 import { DiagnosticsEditor } from './DiagnosticsEditor'
 import { StateExplorer } from './StateExplorer'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 export function Diagnostics() {
   const { loaded, containers } = useLayout()
@@ -19,26 +21,26 @@ export function Diagnostics() {
   return (
     <div className="grid grid-cols-1 gap-3.5">
       <Card
-        title="Diagnostics"
+        title={t('system.tabs.diagnostics')}
         icon={<ChartLine size={15} />}
         aside={
           <button className="btn btn-sm btn-primary" onClick={() => setEditing({ ...defaultCard(), id: '' })}>
-            <Plus size={14} /> Add chart
+            <Plus size={14} /> {t('system.diagnostics.add_chart')}
           </button>
         }
       >
         <p className="m-0 text-ink-2">
-          Chart any value Klipper reports, live, over the last 20 minutes. Each chart’s lines are collectors: expressions such as <span className="code">printer.motion_report.live_velocity</span>. The charts are shared with
-          Fluidd’s Diagnostics page.
+          {/* i18n-ignore: a collector expression */}
+          {tr('system.diagnostics.about', { example: <span className="code">printer.motion_report.live_velocity</span> })}
         </p>
-        {klippy !== 'ready' && <p className="mb-0 text-warn">Charts pause until Klipper is ready.</p>}
+        {klippy !== 'ready' && <p className="mb-0 text-warn">{t('system.diagnostics.paused')}</p>}
       </Card>
       {!loaded ? (
         <div className="grid place-items-center p-6">
           <Spinner size={20} />
         </div>
       ) : cards.length === 0 ? (
-        <Empty>No charts. Add one to chart a value.</Empty>
+        <Empty>{t('system.diagnostics.none')}</Empty>
       ) : (
         <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-2">
           {cards.map((c) => (
@@ -46,7 +48,7 @@ export function Diagnostics() {
           ))}
         </div>
       )}
-      <Card title="State explorer" icon={<ListTree size={15} />}>
+      <Card title={t('system.diagnostics.state_explorer')} icon={<ListTree size={15} />}>
         <StateExplorer />
       </Card>
       {editing && <DiagnosticsEditor card={editing} onClose={() => setEditing(null)} />}
@@ -63,16 +65,16 @@ function ChartCard({ config, onEdit }: { config: DiagnosticsCardConfig; onEdit: 
   const each = Math.max(110, Math.round((Number(config.height) || 300) / Math.max(1, axes.length)))
   return (
     <Card
-      title={config.title || 'Chart'}
+      title={config.title || t('system.diagnostics.chart')}
       icon={<ChartLine size={15} />}
       aside={
         <button className="btn btn-ghost btn-sm" onClick={onEdit}>
-          <Pencil size={13} /> Edit chart
+          <Pencil size={13} /> {t('system.diagnostics.edit_chart')}
         </button>
       }
     >
       {axes.length === 0 ? (
-        <Empty>This chart has no lines. Edit it to add some.</Empty>
+        <Empty>{t('system.diagnostics.no_lines')}</Empty>
       ) : (
         <div className="grid gap-3">
           {axes.map((a, i) => (

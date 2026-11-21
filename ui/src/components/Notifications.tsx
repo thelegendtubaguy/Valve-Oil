@@ -4,6 +4,7 @@ import { createStore, useStore } from '../lib/store'
 import { fmtAgo } from '../lib/format'
 import { client, usePrinter } from '../state/printer'
 import { attempt } from './toast'
+import { t, type MessageKey } from '../i18n'
 
 // The top bar's notifications, as Fluidd's bell menu: Moonraker announcements (with dismiss and snooze), and the
 // warnings Klipper and Moonraker report about their configuration.
@@ -83,7 +84,7 @@ export function NotificationsButton() {
   const tone = warn || high ? 'bg-accent text-on-accent' : 'bg-[var(--blue)] text-white'
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className={`iconbtn ${open ? 'bg-hover text-ink' : ''}`} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-label={n.count ? `Notifications, ${n.count}` : 'Notifications'} title="Notifications">
+      <button type="button" className={`iconbtn ${open ? 'bg-hover text-ink' : ''}`} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-label={n.count ? t('app.notifications.title_count', { n: n.count }) : t('app.notifications.title')} title={t('app.notifications.title')}>
         <Bell size={17} />
         {n.count > 0 && <span className={`num absolute -top-0.5 -right-0.5 grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10.5px] leading-none font-bold ${tone}`} style={{ boxShadow: '0 0 0 2px var(--page)' }}>{n.count > 99 ? '99+' : n.count}</span>}
       </button>
@@ -98,16 +99,16 @@ function Panel({ n, onClose }: { n: ReturnType<typeof useNotifications>; onClose
       className="fixed inset-x-2 top-[58px] z-50 flex max-h-[calc(100dvh-140px)] flex-col overflow-hidden rounded-2xl bg-surface sm:absolute sm:inset-x-auto sm:top-[calc(100%+6px)] sm:right-0 sm:w-[420px] sm:max-h-[min(80dvh,640px)]"
       style={{ boxShadow: 'var(--shadow-overlay)' }}
       role="dialog"
-      aria-label="Notifications"
+      aria-label={t('app.notifications.title')}
     >
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <div className="flex-1 text-[14px] font-bold">Notifications</div>
+        <div className="flex-1 text-[14px] font-bold">{t('app.notifications.title')}</div>
         {n.announcements.length > 1 && (
           <button className="btn btn-ghost btn-sm" onClick={() => n.announcements.forEach((a) => dismiss(a.entry_id))}>
-            Clear all
+            {t('app.notifications.clear_all')}
           </button>
         )}
-        <button className="iconbtn h-7 w-7" onClick={onClose} aria-label="Close">
+        <button className="iconbtn h-7 w-7" onClick={onClose} aria-label={t('common.close')}>
           <X size={15} />
         </button>
       </div>
@@ -115,25 +116,25 @@ function Panel({ n, onClose }: { n: ReturnType<typeof useNotifications>; onClose
         {n.count === 0 && (
           <div className="grid justify-items-center gap-2 px-4 py-8 text-center text-ink-3">
             <BellOff size={22} />
-            No notifications
+            {t('app.notifications.none')}
           </div>
         )}
         {n.klipper.length > 0 && (
-          <Group label="Klipper warnings">
+          <Group label={t('app.notifications.klipper_warnings')}>
             {n.klipper.map((w, i) => (
               <Item key={`k${i}`} tone="warn" icon={<TriangleAlert size={15} />} title={<Linked text={w.message} />} meta={w.section ? `[${w.section}]${w.option ? ` ${w.option}` : ''}` : undefined} />
             ))}
           </Group>
         )}
         {n.moonraker.length > 0 && (
-          <Group label="Moonraker warnings">
+          <Group label={t('app.notifications.moonraker_warnings')}>
             {n.moonraker.map((w, i) => (
               <Item key={`m${i}`} tone="warn" icon={<TriangleAlert size={15} />} title={<Linked text={w} />} />
             ))}
           </Group>
         )}
         {n.announcements.length > 0 && (
-          <Group label="Announcements">
+          <Group label={t('app.notifications.announcements')}>
             {n.announcements.map((a) => (
               <Item
                 key={a.entry_id}
@@ -146,7 +147,7 @@ function Panel({ n, onClose }: { n: ReturnType<typeof useNotifications>; onClose
                   <>
                     {a.url && (
                       <a className="btn btn-sm" href={a.url} target="_blank" rel="noopener noreferrer" onClick={onClose}>
-                        <ExternalLink size={13} /> More information
+                        <ExternalLink size={13} /> {t('app.notifications.more_info')}
                       </a>
                     )}
                     <Snooze onPick={(s) => dismiss(a.entry_id, s)} />
@@ -185,7 +186,7 @@ function Item({ tone, icon, title, body, meta, actions, onDismiss }: { tone: key
         {actions && <div className="mt-2 flex flex-wrap gap-1.5">{actions}</div>}
       </div>
       {onDismiss && (
-        <button className="iconbtn h-7 w-7 flex-none" onClick={onDismiss} aria-label="Dismiss" title="Dismiss">
+        <button className="iconbtn h-7 w-7 flex-none" onClick={onDismiss} aria-label={t('common.dismiss')} title={t('common.dismiss')}>
           <X size={14} />
         </button>
       )}
@@ -193,10 +194,11 @@ function Item({ tone, icon, title, body, meta, actions, onDismiss }: { tone: key
   )
 }
 
-const SNOOZE = [
-  { label: 'in 1 hour', seconds: 3600 },
-  { label: 'in 1 day', seconds: 86400 },
-  { label: 'in 7 days', seconds: 604800 },
+// Labels are message keys, looked up while rendering.
+const SNOOZE: { labelKey: MessageKey; seconds: number }[] = [
+  { labelKey: 'app.notifications.snooze_hour', seconds: 3600 },
+  { labelKey: 'app.notifications.snooze_day', seconds: 86400 },
+  { labelKey: 'app.notifications.snooze_week', seconds: 604800 },
 ]
 
 /** Fluidd's Snooze: dismiss until a wake time, when Moonraker brings it back. */
@@ -205,13 +207,13 @@ function Snooze({ onPick }: { onPick: (seconds: number) => void }) {
   return (
     <div className="relative">
       <button type="button" className="btn btn-sm" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <Clock size={13} /> Snooze <ChevronDown size={13} className={open ? 'rotate-180' : ''} />
+        <Clock size={13} /> {t('app.notifications.snooze')} <ChevronDown size={13} className={open ? 'rotate-180' : ''} />
       </button>
       {open && (
         <div className="menu top-[calc(100%+4px)] left-0 min-w-[140px]" role="menu">
           {SNOOZE.map((s) => (
             <button key={s.seconds} type="button" role="menuitem" onClick={() => (setOpen(false), onPick(s.seconds))}>
-              <Clock size={14} /> {s.label}
+              <Clock size={14} /> {t(s.labelKey)}
             </button>
           ))}
         </div>

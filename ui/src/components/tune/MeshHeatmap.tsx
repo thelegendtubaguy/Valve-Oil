@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { bedCorners, gridX, gridY, meshColor, nearestCell, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { t } from '../../i18n'
 
 /**
  * The mesh from above, back of the bed at the top, on the bed's outline. Each point's height shows on hover, and in
@@ -58,7 +59,7 @@ export function MeshHeatmap({ grid, bed, zMin, zMax, markers, height, unit = 'mm
 
   return (
     <div ref={wrap} className="relative w-full" style={{ height }}>
-      <svg width={width} height={height} role="img" aria-label="Bed mesh heat map, back of the bed at the top" onPointerLeave={() => setHover(null)}>
+      <svg width={width} height={height} role="img" aria-label={t('tune.mesh.heatmap_label')} onPointerLeave={() => setHover(null)}>
         <rect x={sx(bed.minX)} y={sy(bed.maxY)} width={plotW} height={plotH} rx={6} fill="var(--inset)" stroke="var(--line-strong)" />
         {bedCorners(bed).map((k) => {
           const front = k.y === bed.minY

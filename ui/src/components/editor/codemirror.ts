@@ -15,6 +15,7 @@ import { python } from '@codemirror/legacy-modes/mode/python'
 import { css } from '@codemirror/legacy-modes/mode/css'
 import { toml } from '@codemirror/legacy-modes/mode/toml'
 import { gcodeFile, klipperConfig } from './klipper-mode'
+import { t as tr } from '../../i18n'
 
 export type EditorHandle = {
   getText: () => string
@@ -104,8 +105,26 @@ export function createEditor(parent: HTMLElement, opts: { doc: string; filename:
         ]),
         basicSetup,
         search({ top: true }),
-        // CodeMirror's own words, in the app's sentence case.
-        EditorState.phrases.of({ Find: 'Find', Replace: 'Replace', next: 'Next', previous: 'Previous', all: 'All', 'match case': 'Match case', regexp: 'Regexp', 'by word': 'By word', replace: 'Replace', 'replace all': 'Replace all', close: 'Close', 'Go to line': 'Go to line', go: 'Go' }),
+        // CodeMirror's own words, in the app's sentence case and language.
+        EditorState.phrases.of({
+          Find: tr('editor.phrases.find'),
+          Replace: tr('editor.phrases.replace'),
+          next: tr('editor.phrases.next'),
+          previous: tr('editor.phrases.previous'),
+          all: tr('editor.phrases.all'),
+          'match case': tr('editor.phrases.match_case'),
+          regexp: tr('editor.phrases.regexp'),
+          'by word': tr('editor.phrases.by_word'),
+          replace: tr('editor.phrases.replace'),
+          'replace all': tr('editor.phrases.replace_all'),
+          close: tr('common.close'),
+          'Go to line': tr('editor.phrases.go_to_line'),
+          go: tr('editor.phrases.go'),
+          'Fold line': tr('editor.phrases.fold_line'),
+          'Unfold line': tr('editor.phrases.unfold_line'),
+          'folded code': tr('editor.phrases.folded_code'),
+          unfold: tr('editor.phrases.unfold'),
+        }),
         indentUnit.of('  '),
         EditorState.tabSize.of(2),
         languageFor(opts.filename),

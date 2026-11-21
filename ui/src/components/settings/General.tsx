@@ -5,6 +5,8 @@ import { setTheme, useTheme } from '../../lib/theme'
 import { deleteItem, getItem, VALVE_OIL_UI } from '../../state/database'
 import { Row, SettingsCard, TextField, ToggleRow } from './common'
 import { useUiSetting } from './fluidd'
+import { browserLanguage, LANGUAGES, languageStore, setLanguage, t, type LangChoice } from '../../i18n'
+import { useStore } from '../../lib/store'
 
 export function GeneralSettings() {
   const [theme] = useTheme()
@@ -15,37 +17,57 @@ export function GeneralSettings() {
 
   return (
     <>
-      <SettingsCard title="General" icon={<SlidersHorizontal size={14} />}>
-        <Row title="Printer name" sub="The name Fluidd shows for this printer." wide>
-          <TextField value={name} onSave={setName} placeholder="fluidd" label="Printer name" />
+      <SettingsCard title={t('settings.general.title')} icon={<SlidersHorizontal size={14} />}>
+        <Row title={t('settings.general.printer_name')} sub={t('settings.general.printer_name_sub')} wide>
+          {/* i18n-ignore: Fluidd's own default name */}
+          <TextField value={name} onSave={setName} placeholder="fluidd" label={t('settings.general.printer_name')} />
         </Row>
-        <Row title="Theme" sub="Kept in this browser.">
+        <LanguageRow />
+        <Row title={t('settings.general.theme')} sub={t('settings.general.theme_sub')}>
           <Segmented
-            label="Theme"
+            label={t('settings.general.theme')}
             value={theme}
             onChange={setTheme}
             options={[
-              { value: 'dark', label: <><Moon size={14} /> Dark</> },
-              { value: 'light', label: <><Sun size={14} /> Light</> },
+              { value: 'dark', label: <><Moon size={14} /> {t('settings.general.theme_dark')}</> },
+              { value: 'light', label: <><Sun size={14} /> {t('settings.general.theme_light')}</> },
             ]}
           />
         </Row>
-        <ToggleRow title="Require confirm on Emergency Stop" checked={confirmEstop} onChange={setConfirmEstop} />
+        <ToggleRow title={t('settings.general.confirm_estop')} checked={confirmEstop} onChange={setConfirmEstop} />
       </SettingsCard>
 
-      <SettingsCard title="Warnings" icon={<TriangleAlert size={14} />} footer="Shared with Fluidd, which shows these warnings.">
-        <ToggleRow title="Warn if CPU throttling is detected" sub="CPU throttling can cause prints to fail." checked={cpu} onChange={setCpu} />
-        <ToggleRow title="Warn if stepper driver is over-heating" sub="Trinamic drivers only." checked={drivers} onChange={setDrivers} />
+      <SettingsCard title={t('settings.general.warnings')} icon={<TriangleAlert size={14} />} footer={t('settings.general.warnings_footer')}>
+        <ToggleRow title={t('settings.general.warn_cpu')} sub={t('settings.general.warn_cpu_sub')} checked={cpu} onChange={setCpu} />
+        <ToggleRow title={t('settings.general.warn_drivers')} sub={t('settings.general.warn_drivers_sub')} checked={drivers} onChange={setDrivers} />
       </SettingsCard>
 
       <SettingsCard title="Valve Oil UI" icon={<RotateCcw size={14} />}>
-        <Row title="Reset Valve Oil UI preferences" sub="Puts this app's own preferences back to their defaults: the theme and other choices kept in this browser, and those kept on the printer. Fluidd's settings, cameras, and presets stay as they are.">
+        <Row title={t('settings.general.reset')} sub={t('settings.general.reset_sub')}>
           <button className="btn btn-sm btn-danger" onClick={resetPreferences}>
-            <RotateCcw size={13} /> Reset
+            <RotateCcw size={13} /> {t('settings.general.reset_button')}
           </button>
         </Row>
       </SettingsCard>
     </>
+  )
+}
+
+/** The language picker. Kept in this browser; Fluidd's language is its own. */
+function LanguageRow() {
+  const choice = useStore(languageStore, (s) => s.choice)
+  const auto = LANGUAGES.find((l) => l.code === browserLanguage())!.name
+  return (
+    <Row title={t('settings.general.language')} sub={t('settings.general.language_sub')}>
+      <select className="field w-auto" aria-label={t('settings.general.language')} value={choice} onChange={(e) => void setLanguage(e.target.value as LangChoice)}>
+        <option value="auto">{t('settings.general.language_auto', { name: auto })}</option>
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.name}
+          </option>
+        ))}
+      </select>
+    </Row>
   )
 }
 
@@ -54,9 +76,9 @@ const KEEP = new Set(['vo-moonraker'])
 
 async function resetPreferences() {
   const ok = await confirm({
-    title: 'Reset Valve Oil UI preferences',
-    body: "Put Valve Oil UI's preferences back to their defaults, in this browser and on the printer? Fluidd's settings aren't changed.",
-    confirm: 'Reset',
+    title: t('settings.general.reset'),
+    body: t('settings.general.reset_confirm'),
+    confirm: t('settings.general.reset_button'),
     danger: true,
   })
   if (!ok) return

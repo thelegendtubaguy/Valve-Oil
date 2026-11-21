@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { bedCorners, gridX, gridY, meshColor, nearestCell, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { t } from '../../i18n'
 
 type Props = {
   grid: MeshGrid
@@ -375,7 +376,7 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
         ref={canvas}
         style={{ width: '100%', height, touchAction: 'none', cursor: drag.current ? 'grabbing' : 'grab', display: 'block' }}
         role="img"
-        aria-label="Bed mesh, 3D. Drag to rotate."
+        aria-label={t('tune.mesh.surface_label')}
         onPointerDown={(e) => {
           ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
           const d = drag.current ?? { x: e.clientX, y: e.clientY, pointers: new Map(), pinch: null }
@@ -517,7 +518,7 @@ function drawPrinter(
     ctx.strokeStyle = c.warn
     ctx.lineWidth = 1
     ctx.stroke()
-    if (readable([0, -1, 0])) label('FRONT', [0, -hy, -hz * 0.08], [1, 0, 0], c.accentInk)
+    if (readable([0, -1, 0])) label(t('tune.mesh.printer_front'), [0, -hy, -hz * 0.08], [1, 0, 0], c.accentInk)
   }
   // From above, the top's front edge and FRONT written along it.
   const top = P([-hx, -hy, hz])
@@ -528,10 +529,10 @@ function drawPrinter(
   ctx.moveTo(top.sx, top.sy)
   ctx.lineTo(topR.sx, topR.sy)
   ctx.stroke()
-  if (!readable([0, -1, 0]) && facing([0, 0, 1])) label('FRONT', [0, -hy * 0.62, hz], [1, 0, 0], c.accentInk, [0, 1, 0])
-  if (readable([0, 1, 0])) label('BACK', [0, hy, 0], [-1, 0, 0], c.ink)
-  if (readable([-1, 0, 0])) label('LEFT', [-hx, 0, 0], [0, -1, 0], c.ink)
-  if (readable([1, 0, 0])) label('RIGHT', [hx, 0, 0], [0, 1, 0], c.ink)
+  if (!readable([0, -1, 0]) && facing([0, 0, 1])) label(t('tune.mesh.printer_front'), [0, -hy * 0.62, hz], [1, 0, 0], c.accentInk, [0, 1, 0])
+  if (readable([0, 1, 0])) label(t('tune.mesh.printer_back'), [0, hy, 0], [-1, 0, 0], c.ink)
+  if (readable([-1, 0, 0])) label(t('tune.mesh.printer_left'), [-hx, 0, 0], [0, -1, 0], c.ink)
+  if (readable([1, 0, 0])) label(t('tune.mesh.printer_right'), [hx, 0, 0], [0, 1, 0], c.ink)
 }
 
 function niceStep(raw: number) {

@@ -1,0 +1,66 @@
+{
+  "change_spool": "Change spool",
+  "active_spool": "Active spool",
+  "open_in_spoolman": "Open in Spoolman",
+  "inactive": "Filament tracking is inactive. To get started, please select a spool.",
+  "unavailable": "Spoolman server not available.",
+  "box_slots": "Box slots",
+  "no_spool": "No spool",
+  "spool_n": "Spool {{id}}",
+  "loaded": "loaded",
+  "target_external": "The spool you select becomes the external spool's spool.",
+  "target_slot": "The spool you select becomes {{slot}}'s spool.",
+  "live": {
+    "cors": "Live updates from Spoolman aren't working. Spoolman is blocking this page's browser origin - check your Spoolman configuration to allow it.",
+    "mixed_content": "Live updates from Spoolman aren't working. This page is served over HTTPS but the Spoolman address uses HTTP, so the browser blocks the direct connection.",
+    "unreachable": "Live updates from Spoolman aren't working. This browser can't reach the Spoolman server directly.",
+    "reachable": "Live updates from Spoolman aren't working. The direct connection to Spoolman failed for an unknown reason."
+  },
+  "row": {
+    "vendor": "Vendor",
+    "material": "Material",
+    "filament": "Filament",
+    "colors": "Colors",
+    "remaining": "Remaining",
+    "used": "Used",
+    "location": "Location",
+    "lot_nr": "Lot nr",
+    "first_used": "First used",
+    "last_used": "Last used",
+    "never": "Never"
+  },
+  "select": {
+    "title": "Spool selection",
+    "manage": "Manage spools",
+    "select": "Select",
+    "search": "Search",
+    "search_label": "Search spools",
+    "sort_by": "Sort by",
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "sort_ascending": "Sort ascending",
+    "sort_descending": "Sort descending",
+    "all_materials": "All materials",
+    "none": "No spools found",
+    "last_used": "Last used {{ago}}",
+    "never_used": "Never used",
+    "confirm": "Confirm",
+    "continue": "Continue"
+  },
+  "sort": {
+    "filament_name": "Filament",
+    "id": "ID",
+    "material": "Material",
+    "remaining_weight": "Remaining weight",
+    "used_weight": "Used weight",
+    "location": "Location",
+    "first_used": "First used",
+    "last_used": "Last used"
+  },
+  "check": {
+    "no_spool": "You haven't selected a spool. Are you sure you want to print without filament tracking?",
+    "no_filament": "The spool you selected may not have enough filament left on it to successfully finish the print job. Are you sure you want to continue?",
+    "no_required_length": "The amount of filament required to print the selected file is unknown. Do you wish to continue?",
+    "mismatched_filament": "The material of the selected filament does not match the selected material in the slicer. Are you sure you want to continue?"
+  }
+}

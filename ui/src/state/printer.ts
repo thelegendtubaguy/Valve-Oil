@@ -1,6 +1,7 @@
 import { MoonrakerClient, resolveMoonrakerOrigin, type ConnectionState } from '../moonraker/client'
 import { createStore, useStore } from '../lib/store'
 import { misreadGcodeNumber } from '../components/control/gcode'
+import { t } from '../i18n'
 
 export type KlippyState = 'startup' | 'ready' | 'error' | 'shutdown' | 'disconnected' | 'unknown'
 // Klipper object status: object name -> field -> value. Values are whatever Klipper reports.
@@ -222,7 +223,7 @@ export async function runGcode(script: string, { typed = false }: { typed?: bool
   pushConsole(script, 'command')
   try {
     const misread = typed ? null : misreadGcodeNumber(script)
-    if (misread) throw new Error(`Not sent: Klipper would misread the number in ${misread}`)
+    if (misread) throw new Error(t('app.moonraker.misread', { command: misread }))
     return await client.gcode(script)
   } catch (e) {
     pushConsole(e instanceof Error ? e.message : String(e), 'error')

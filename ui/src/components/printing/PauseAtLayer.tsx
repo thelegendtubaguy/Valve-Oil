@@ -4,6 +4,7 @@ import { Dialog, Toggle } from '../ui'
 import { send } from '../control/common'
 import { encodeGcodeParamValue, gcode } from '../control/gcode'
 import { registerObjects, usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 // Pause at layer, as Fluidd's PauseAtLayerDialog: it needs the SET_PAUSE_NEXT_LAYER or SET_PAUSE_AT_LAYER macros, and
 // reads their state from the SET_PRINT_STATS_INFO macro's variables. QIDI's stock macros don't have them, so this shows
@@ -36,11 +37,11 @@ export function PauseAtLayerButton({ className = 'btn btn-sm' }: { className?: s
   const p = usePauseAtLayer()
   const [open, setOpen] = useState(false)
   if (!p.available) return null
-  const armed = p.pauseNext?.enable ? 'next layer' : p.pauseAt?.enable ? `layer ${p.pauseAt.layer}` : null
+  const armed = p.pauseNext?.enable ? t('home.pause_layer.armed_next') : p.pauseAt?.enable ? t('home.pause_layer.armed_layer', { layer: p.pauseAt.layer }) : null
   return (
     <>
       <button className={`${className} ${armed ? 'text-accent-ink!' : ''}`} onClick={() => setOpen(true)}>
-        <Layers size={13} /> {armed ? `Pause at ${armed}` : 'Pause at layer'}
+        <Layers size={13} /> {armed ?? t('home.pause_layer.button')}
       </button>
       {open && <PauseAtLayerDialog onClose={() => setOpen(false)} />}
     </>
@@ -55,7 +56,7 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
   const [at, setAt] = useState<PauseAtLayerState>({ enable: false, call: 'PAUSE', layer: 0, ...p.pauseAt })
   const [layer, setLayer] = useState(String(at.layer || p.current + 1))
   const n = Number(layer)
-  const layerError = at.enable && !(Number.isInteger(n) && n > p.current && n <= p.total) ? `Enter a layer after ${p.current}, up to ${p.total}.` : null
+  const layerError = at.enable && !(Number.isInteger(n) && n > p.current && n <= p.total) ? t('home.pause_layer.layer_error', { current: p.current, total: p.total }) : null
   const accept = () => {
     if (layerError) return
     const lines: string[] = []
@@ -68,27 +69,25 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
     <Dialog
       open
       onClose={onClose}
-      title="Pause at layer"
+      title={t('home.pause_layer.title')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!!layerError} onClick={accept}>
-            Accept
+            {t('home.pause_layer.accept')}
           </button>
         </>
       }
     >
       <div className="grid gap-4">
-        <div className="text-ink-2">
-          Now on layer {p.current} of {p.total}.
-        </div>
+        <div className="text-ink-2">{t('home.pause_layer.now', { current: p.current, total: p.total })}</div>
         {p.next && (
           <div className="grid gap-2">
             <label className="flex items-center gap-3">
-              <span className="flex-1 font-semibold">Pause at next layer</span>
-              <Toggle label="Pause at next layer" checked={next.enable} onChange={(enable) => setNext((x) => ({ ...x, enable }))} />
+              <span className="flex-1 font-semibold">{t('home.pause_layer.next')}</span>
+              <Toggle label={t('home.pause_layer.next')} checked={next.enable} onChange={(enable) => setNext((x) => ({ ...x, enable }))} />
             </label>
             {next.enable && <CallField value={next.call} onChange={(call) => setNext((x) => ({ ...x, call }))} />}
           </div>
@@ -96,13 +95,13 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
         {p.at && (
           <div className="grid gap-2">
             <label className="flex items-center gap-3">
-              <span className="flex-1 font-semibold">Pause at layer number</span>
-              <Toggle label="Pause at layer number" checked={at.enable} onChange={(enable) => setAt((x) => ({ ...x, enable }))} />
+              <span className="flex-1 font-semibold">{t('home.pause_layer.at')}</span>
+              <Toggle label={t('home.pause_layer.at')} checked={at.enable} onChange={(enable) => setAt((x) => ({ ...x, enable }))} />
             </label>
             {at.enable && (
               <>
                 <label className="grid gap-1">
-                  <span className="lbl">Layer</span>
+                  <span className="lbl">{t('home.pause_layer.layer')}</span>
                   <input className="field" inputMode="numeric" value={layer} onChange={(e) => setLayer(e.target.value)} />
                   {layerError && <span className="text-[12px] text-bad">{layerError}</span>}
                 </label>
@@ -119,7 +118,7 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
 function CallField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <label className="grid gap-1">
-      <span className="lbl">Command</span>
+      <span className="lbl">{t('home.pause_layer.command')}</span>
       <input className="field code" list="vo-pause-calls" value={value} onChange={(e) => onChange(e.target.value)} />
       <datalist id="vo-pause-calls">
         {CALLS.map((c) => (

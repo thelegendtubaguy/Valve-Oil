@@ -4,6 +4,7 @@ import { Dialog, confirm } from '../ui'
 import { send } from '../control/common'
 import { excludeObjectGcode } from '../control/gcode'
 import { usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 type Part = { name: string; center?: [number, number]; polygon?: [number, number][] }
 export type ExcludeObjectState = { objects: Part[]; excluded_objects: string[]; current_object: string | null }
@@ -19,7 +20,7 @@ export function useExcludeObject(): ExcludeObjectState {
 export const partLabel = (name: string) => name.replace(/_/g, ' ')
 
 async function exclude(name: string) {
-  if (!(await confirm({ title: `Exclude ${partLabel(name)}?`, body: 'Are you sure you want to exclude this object from printing? The printer skips it for the rest of this print, and it can’t be added back.', confirm: 'Exclude', danger: true }))) return
+  if (!(await confirm({ title: t('home.exclude.confirm_title', { name: partLabel(name) }), body: t('home.exclude.confirm_body'), confirm: t('home.exclude.confirm'), danger: true }))) return
   send(excludeObjectGcode(name))
 }
 
@@ -31,8 +32,8 @@ export function ExcludeObjectsButton({ className = 'btn btn-sm' }: { className?:
   const excluded = eo.excluded_objects.length
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)} title="Exclude objects">
-        <Shapes size={13} /> Objects <span className="text-ink-3">{excluded ? `${eo.objects.length - excluded} of ${eo.objects.length}` : eo.objects.length}</span>
+      <button className={className} onClick={() => setOpen(true)} title={t('home.exclude.title')}>
+        <Shapes size={13} /> {t('home.exclude.objects')} <span className="text-ink-3">{excluded ? t('home.exclude.count', { left: eo.objects.length - excluded, total: eo.objects.length }) : eo.objects.length}</span>
       </button>
       {open && <ExcludeObjectsDialog onClose={() => setOpen(false)} />}
     </>
@@ -43,7 +44,7 @@ export function ExcludeObjectsDialog({ onClose }: { onClose: () => void }) {
   const eo = useExcludeObject()
   const [hover, setHover] = useState<string | null>(null)
   return (
-    <Dialog open onClose={onClose} title="Exclude objects" size="wide">
+    <Dialog open onClose={onClose} title={t('home.exclude.title')} size="wide">
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,280px)]">
         <ObjectMap eo={eo} hover={hover} onHover={setHover} onPick={exclude} />
         <div className="grid content-start">
@@ -54,9 +55,9 @@ export function ExcludeObjectsDialog({ onClose }: { onClose: () => void }) {
               <div key={o.name} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${hover === o.name ? 'bg-hover' : ''}`} onPointerEnter={() => setHover(o.name)} onPointerLeave={() => setHover(null)}>
                 <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: out ? 'var(--red)' : now ? 'var(--accent)' : 'var(--green)' }} />
                 <span className={`min-w-0 flex-1 text-[12.5px] break-all ${out ? 'text-ink-3 line-through' : ''}`}>{partLabel(o.name)}</span>
-                {now && <span className="pill tone-accent px-2! py-0.5! text-[11px]!">printing</span>}
+                {now && <span className="pill tone-accent px-2! py-0.5! text-[11px]!">{t('home.exclude.printing')}</span>}
                 {!out && (
-                  <button className="btn btn-sm btn-danger px-2!" onClick={() => exclude(o.name)} aria-label={`Exclude ${partLabel(o.name)}`} title="Exclude">
+                  <button className="btn btn-sm btn-danger px-2!" onClick={() => exclude(o.name)} aria-label={t('home.exclude.exclude_named', { name: partLabel(o.name) })} title={t('home.exclude.exclude')}>
                     <Ban size={13} />
                   </button>
                 )}
@@ -65,7 +66,7 @@ export function ExcludeObjectsDialog({ onClose }: { onClose: () => void }) {
           })}
         </div>
       </div>
-      <div className="mt-3 text-[12.5px] text-ink-3">Click an object on the bed or in the list to stop printing it. Green objects are still printing, amber is the one printing now, red ones are excluded.</div>
+      <div className="mt-3 text-[12.5px] text-ink-3">{t('home.exclude.hint')}</div>
     </Dialog>
   )
 }
@@ -82,7 +83,7 @@ function ObjectMap({ eo, hover, onHover, onPick }: { eo: ExcludeObjectState; hov
   // Y grows up on the bed and down in SVG.
   const pt = ([x, y]: [number, number]) => `${x - bed.x0},${bed.y1 - y}`
   return (
-    <svg viewBox={`-4 -4 ${w + 8} ${h + 8}`} className="aspect-square w-full rounded-xl bg-inset" role="img" aria-label="Objects on the bed">
+    <svg viewBox={`-4 -4 ${w + 8} ${h + 8}`} className="aspect-square w-full rounded-xl bg-inset" role="img" aria-label={t('home.exclude.map')}>
       <rect x={0} y={0} width={w} height={h} rx={6} fill="none" stroke="var(--line-strong)" strokeWidth={1.5} />
       {Array.from({ length: Math.floor(w / 50) }, (_, i) => (
         <line key={`x${i}`} x1={(i + 1) * 50} x2={(i + 1) * 50} y1={0} y2={h} stroke="var(--line)" strokeWidth={0.75} />

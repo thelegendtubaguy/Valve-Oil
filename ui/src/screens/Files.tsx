@@ -1,22 +1,19 @@
 import { lazy, Suspense, useState } from 'react'
 import { PageHeader, Segmented, Spinner } from '../components/ui'
-import { FileBrowser } from '../components/files/FileBrowser'
+import { FileBrowser, rootLabel } from '../components/files/FileBrowser'
 import { PrintDialog } from '../components/PrintDialog'
 import { parentOf } from '../components/files/fs'
 import { href, navigate, useSubPath } from '../lib/router'
 import { usePrinter } from '../state/printer'
+import { t } from '../i18n'
 
 // Both are heavy and only needed on their own routes.
 const ConfigEditor = lazy(() => import('../components/editor/ConfigEditor').then((m) => ({ default: m.ConfigEditor })))
 const GcodePreview = lazy(() => import('./GcodePreview').then((m) => ({ default: m.GcodePreview })))
 
 // The roots this screen browses, as Fluidd's Jobs and Configure pages do. Logs live on the System screen.
-const ROOTS = [
-  { value: 'gcodes', label: 'G-code' },
-  { value: 'config', label: 'Configuration' },
-  { value: 'config_examples', label: 'Config examples' },
-  { value: 'docs', label: 'Klipper docs' },
-]
+const ROOTS = ['gcodes', 'config', 'config_examples', 'docs']
+const rootTab = (root: string) => ({ value: root, label: root === 'gcodes' ? 'G-code' : rootLabel(root) })
 
 const segs = (path: string) => (path ? path.split('/') : [])
 
@@ -27,7 +24,7 @@ const segs = (path: string) => (path ? path.split('/') : [])
 export function FilesScreen() {
   const sub = useSubPath()
   const registered = usePrinter((s) => s.server?.registered_directories ?? [])
-  const roots = registered.length ? ROOTS.filter((r) => r.value === 'gcodes' || registered.includes(r.value)) : ROOTS
+  const roots = (registered.length ? ROOTS.filter((r) => r === 'gcodes' || registered.includes(r)) : ROOTS).map(rootTab)
   const [printing, setPrinting] = useState<string | null>(null)
 
   const loading = (
@@ -59,8 +56,8 @@ export function FilesScreen() {
   // min-w-0: the app's screen grid would otherwise grow to the tabs' and table's width on phones.
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3.5">
-      <PageHeader title="Files">
-        <Segmented value={root} label="File roots" options={roots.map((r) => ({ ...r, href: href('files', r.value) }))} />
+      <PageHeader title={t('files.screen.title')}>
+        <Segmented value={root} label={t('files.screen.roots')} options={roots.map((r) => ({ ...r, href: href('files', r.value) }))} />
       </PageHeader>
       <FileBrowser
         key={root}

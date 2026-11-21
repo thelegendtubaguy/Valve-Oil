@@ -3,6 +3,8 @@ import { Lock, LockOpen, Maximize, MonitorSmartphone } from 'lucide-react'
 import { Card, confirm } from '../ui'
 import { client } from '../../state/printer'
 import './system.css'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 // Ported from the Fluidd fork's QidiScreenCard and QidiScreenView: a live view of the printer's touchscreen from Valve
 // Oil's tltg-remote-screen service, which the printer's nginx serves at /tltg-screen/ws on the same origin as Moonraker.
@@ -20,25 +22,25 @@ export function PrinterScreen() {
   const toggleControl = async () => {
     if (control) return setControl(false)
     const ok = await confirm({
-      title: 'Control the printer screen',
-      body: 'Clicks, taps, and drags on the image will press the printer’s touchscreen, including during a print. Turn control on?',
-      confirm: 'Turn control on',
+      title: t('system.screen.control_title'),
+      body: t('system.screen.control_body'),
+      confirm: t('system.screen.control_confirm'),
       danger: true,
     })
     setControl(ok)
   }
   return (
     <Card
-      title="Printer screen"
+      title={t('system.tabs.screen')}
       icon={<MonitorSmartphone size={15} />}
       aside={
         <span className="flex flex-wrap justify-end gap-1.5">
           <button className={`btn btn-sm ${control ? 'btn-primary' : ''}`} disabled={!touch && !control} onClick={toggleControl}>
             {control ? <LockOpen size={14} /> : <Lock size={14} />}
-            {control ? 'Control on' : 'View only'}
+            {control ? t('system.screen.control_on') : t('system.screen.view_only')}
           </button>
           <button className="btn btn-sm" onClick={() => view.current?.requestFullscreen?.()}>
-            <Maximize size={14} /> Full screen
+            <Maximize size={14} /> {t('system.screen.full_screen')}
           </button>
         </span>
       }
@@ -47,7 +49,8 @@ export function PrinterScreen() {
         <ScreenView ref={view} control={control} onTouch={setTouch} />
       </div>
       <p className="mb-0 text-[12.5px] text-ink-3">
-        The touchscreen as it is now. Turn on control to press it from here. To restart the touchscreen if it freezes, restart <span className="code">qidi-client</span> under Services.
+        {/* i18n-ignore: a service name */}
+        {tr('system.screen.about', { service: <span className="code">qidi-client</span> })}
       </p>
     </Card>
   )
@@ -151,7 +154,7 @@ function ScreenView({ control, onTouch, ref }: { control: boolean; onTouch: (v: 
         }
         if (m.type === 'hello') {
           setState('live')
-          setMessage(m.touch ? '' : String(m.touch_error || 'touch input unavailable'))
+          setMessage(m.touch ? '' : String(m.touch_error || t('system.screen.touch_unavailable')))
           setSize({ width: Number(m.width) || 800, height: Number(m.height) || 480 })
           setTouch(!!m.touch)
           retry = 0
@@ -222,13 +225,13 @@ function ScreenView({ control, onTouch, ref }: { control: boolean; onTouch: (v: 
 
   const status =
     state === 'error'
-      ? `Printer screen unavailable: ${message}`
+      ? t('system.screen.unavailable', { message })
       : state === 'disconnected'
-        ? 'Printer screen disconnected. Reconnecting…'
+        ? t('system.screen.disconnected')
         : state === 'paused'
-          ? 'Paused while this tab is hidden.'
+          ? t('system.screen.paused')
           : !hasFrame
-            ? 'Connecting to the printer screen…'
+            ? t('system.screen.connecting')
             : ''
 
   return (
@@ -272,7 +275,7 @@ function ScreenView({ control, onTouch, ref }: { control: boolean; onTouch: (v: 
         onLostPointerCapture={(e) => e.pointerId === pointer.current && release()}
         onContextMenu={(e) => canControl && e.preventDefault()}
       />
-      {status ? <div className="vo-screen__status">{status}</div> : state === 'live' && message ? <div className="vo-screen__notice">View only: {message}</div> : null}
+      {status ? <div className="vo-screen__status">{status}</div> : state === 'live' && message ? <div className="vo-screen__notice">{t('system.screen.view_only_notice', { message })}</div> : null}
     </div>
   )
 }

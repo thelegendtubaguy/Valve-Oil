@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Clock, Ellipsis, Layers } from 'lucide-react'
 import { useFileMeta, thumbnailUrl, type FileMeta, type HistoryJob } from '../state/files'
 import { displayName, fmtDuration } from '../lib/format'
+import { t } from '../i18n'
 
 /** Last outcome of a file, from print history. */
 export function outcomeLabel(job: HistoryJob | undefined, count: number): { text: string; tone: '' | 'bad' | 'good' } {
-  if (!job) return { text: 'New', tone: '' }
-  if (job.status === 'completed') return { text: count > 1 ? `Printed ${count}×` : 'Printed', tone: 'good' }
-  if (job.status === 'cancelled') return { text: 'Cancelled', tone: '' }
-  if (job.status === 'in_progress') return { text: 'Printing', tone: 'good' }
-  return { text: 'Failed', tone: 'bad' }
+  if (!job) return { text: t('app.file.new'), tone: '' }
+  if (job.status === 'completed') return { text: count > 1 ? t('app.file.printed_times', { n: count }) : t('app.file.printed'), tone: 'good' }
+  if (job.status === 'cancelled') return { text: t('app.file.cancelled'), tone: '' }
+  if (job.status === 'in_progress') return { text: t('app.file.printing'), tone: 'good' }
+  return { text: t('app.file.failed'), tone: 'bad' }
 }
 
 /**
@@ -72,11 +73,11 @@ export function FileCard({
       </button>
       {onSelect && (
         <label className={`absolute top-1.5 left-1.5 grid h-7 w-7 cursor-pointer place-items-center rounded-lg bg-surface/90 shadow-[0_0_0_1px_var(--line)] ${selected ? '' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100'}`}>
-          <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={!!selected} onChange={(e) => onSelect(e.target.checked, (e.nativeEvent as MouseEvent).shiftKey)} aria-label={`Select ${displayName(path)}`} />
+          <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={!!selected} onChange={(e) => onSelect(e.target.checked, (e.nativeEvent as MouseEvent).shiftKey)} aria-label={t('app.file.select', { name: displayName(path) })} />
         </label>
       )}
       {onMenu && (
-        <button className="iconbtn absolute top-1.5 right-1.5 h-7 w-7 bg-surface/90 shadow-[0_0_0_1px_var(--line)]" aria-label={`More for ${displayName(path)}`} onClick={(e) => onMenu(e.clientX, e.clientY)}>
+        <button className="iconbtn absolute top-1.5 right-1.5 h-7 w-7 bg-surface/90 shadow-[0_0_0_1px_var(--line)]" aria-label={t('app.file.more_for', { name: displayName(path) })} onClick={(e) => onMenu(e.clientX, e.clientY)}>
           <Ellipsis size={15} />
         </button>
       )}

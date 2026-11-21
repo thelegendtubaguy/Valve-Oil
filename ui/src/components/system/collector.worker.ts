@@ -12,8 +12,10 @@ const disable = (key: string, value?: unknown) => {
   } catch {}
 }
 const blocked = () => {
+  // i18n-ignore: a worker can't translate; these read as JavaScript's own errors in a collector's result
   throw new Error('network disabled in this worker')
 }
+// i18n-ignore: as above
 disable('fetch', () => Promise.reject(new Error('fetch disabled in this worker')))
 disable('XMLHttpRequest', blocked)
 disable('importScripts', blocked)
