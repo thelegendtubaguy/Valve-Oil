@@ -235,15 +235,21 @@ export async function runGcode(script: string, { typed = false }: { typed?: bool
 
 // ---- lifecycle ----
 let klippyPoll: ReturnType<typeof setTimeout> | null = null
+// A Klipper restart can start a second load while one is still waiting on Moonraker; only the newest may store
+// what it read.
+let klippyLoad = 0
 
 async function initKlippy() {
   if (klippyPoll) clearTimeout(klippyPoll)
+  const load = ++klippyLoad
+  const stale = () => load !== klippyLoad
   let info: { klippy_state: KlippyState; components?: string[]; registered_directories?: string[]; warnings?: string[] }
   try {
     info = await client.call('server.info')
   } catch {
     return
   }
+  if (stale()) return
   printer.set((s) => ({ ...s, server: { components: info.components ?? [], registered_directories: info.registered_directories ?? [], warnings: info.warnings ?? [] } }))
   if (info.klippy_state !== 'ready') {
     let message = ''
@@ -251,15 +257,23 @@ async function initKlippy() {
       const pi = await client.call<{ state_message: string }>('printer.info')
       message = pi.state_message
     } catch {}
+    if (stale()) return
     printer.set((s) => ({ ...s, klippy: info.klippy_state, klippyMessage: message }))
     klippyPoll = setTimeout(initKlippy, 2000)
     return
   }
   const { objects } = await client.call<{ objects: string[] }>('printer.objects.list')
+  if (stale()) return
   const sub: Record<string, string[] | null> = {}
   for (const o of objects) if (FIELDS[o]) sub[o] = FIELDS[o]
   else if (wanted(o)) sub[o] = null
   const res = await client.call<{ status: Status }>('printer.objects.subscribe', { objects: sub })
+  if (stale()) return
+  // Store the snapshot before awaiting anything else: Moonraker sends each field only when it changes, so a change
+  // applied to the old status and then overwritten by this snapshot would never come again (a restart's start-up
+  // commands left the top bar on Busy). Updates still queued from before the snapshot are older than it.
+  queued = null
+  printer.set((s) => ({ ...s, objects, status: res.status }))
   let temps: Record<string, TempSeries> = {}
   try {
     const store = await client.call<Record<string, TempSeries>>('server.temperature_store', { include_monitors: false })
@@ -283,7 +297,8 @@ async function initKlippy() {
     const g = await client.call<{ gcode_store: { message: string; time: number; type: 'command' | 'response' }[] }>('server.gcode_store', { count: 200 })
     consoleLines = g.gcode_store.map((l) => ({ id: ++lineId, time: l.time * 1000, text: l.message, kind: l.type === 'command' ? 'command' : l.message.startsWith('!!') ? 'error' : 'response' }))
   } catch {}
-  printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', objects, status: res.status, temps, commands, heaterSettings, settings: allSettings, console: consoleLines }))
+  if (stale()) return
+  printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, commands, heaterSettings, settings: allSettings, console: consoleLines }))
   client
     .call<ProcStat>('machine.proc_stats')
     .then((p) => applyHost(p, true))
