@@ -33,6 +33,17 @@ export async function deleteItem(namespace: string, key: string): Promise<void> 
   })
 }
 
+/** Reads a key again, for a value another browser may have changed since this page loaded it. */
+export async function reloadItem(namespace: string, key: string): Promise<void> {
+  const v = await getItem<unknown>(namespace, key)
+  cache.set((c) => {
+    const next = { ...c }
+    if (v === undefined) delete next[`${namespace}:${key}`]
+    else next[`${namespace}:${key}`] = v
+    return next
+  })
+}
+
 const cache = createStore<Record<string, unknown>>({})
 const loading = new Set<string>()
 const loaded = createStore<Record<string, true>>({})

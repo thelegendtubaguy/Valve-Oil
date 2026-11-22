@@ -21,7 +21,7 @@ const prefs = createStore({ step: 10, eLength: 10, eSpeed: 5, gcodeCoords: false
 const usePrefs = () => useStore(prefs, (s) => s)
 const setPref = (p: Partial<ReturnType<typeof prefs.get>>) => prefs.set((s) => ({ ...s, ...p }))
 
-function useClientMacro() {
+export function useClientMacro() {
   return usePrinter((s) => (s.objects.includes('gcode_macro _CLIENT_LINEAR_MOVE') ? '_CLIENT_LINEAR_MOVE' : null))
 }
 
@@ -214,7 +214,7 @@ function Position() {
 // ---- calibration tools, manual probe, bed screws ----
 type Tool = { name: string; label?: string; disabled?: boolean; homeFirst?: boolean } | null
 
-function useTools(): Tool[] {
+export function useTools(): Tool[] {
   const settings = usePrinter((s) => s.settings)
   const objects = usePrinter((s) => s.objects)
   const probing = usePrinter((s) => s.status.manual_probe?.is_active === true)

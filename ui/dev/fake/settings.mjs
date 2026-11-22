@@ -59,7 +59,7 @@ export function install(fake) {
   const { state, broadcast, now } = fake
 
   // ---------------- webcams ----------------
-  // The core lists one camera; this keeps Moonraker's full entries so they can be added, edited, and removed.
+  // Two cameras, so Home's camera picker and side-by-side view show; this keeps Moonraker's full entries so they can be added, edited, and removed.
   const cams = [
     {
       name: 'Chamber',
@@ -78,6 +78,24 @@ export function install(fake) {
       extra_data: {},
       source: 'database',
       uid: '0b6f5a9e-1c2d-4e3f-8a7b-9c0d1e2f3a4b',
+    },
+    {
+      name: 'Nozzle',
+      location: 'printer',
+      service: 'mjpegstreamer-adaptive',
+      enabled: true,
+      icon: 'mdiWebcam',
+      target_fps: 15,
+      target_fps_idle: 5,
+      stream_url: '/webcam2/?action=stream',
+      snapshot_url: '/webcam2/?action=snapshot',
+      flip_horizontal: false,
+      flip_vertical: false,
+      rotation: 0,
+      aspect_ratio: '16:9',
+      extra_data: {},
+      source: 'database',
+      uid: '5d2c8b1a-7e4f-4a6b-9c3d-2e1f0a9b8c7d',
     },
   ]
   const camsChanged = () => broadcast('notify_webcams_changed', [{ webcams: cams }])

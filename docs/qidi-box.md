@@ -199,7 +199,7 @@ Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `Q
 
 With the Valve Oil Box firmware, you can write a filament to a spool's RFID tag, so the Box sets the slot from it whenever that spool is loaded, like a QIDI spool. Use it for spools with no tag, or for blank tags you stick on yourself: MIFARE Classic 1K, NTAG213, NTAG215, or NTAG216.
 
-On the QIDI Box screen of [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card in Fluidd, select the slot and use the **Write spool tag** button beside the pencil. Pick the vendor, filament, and up to four colors; they start as the slot's.
+On the Box card on Home in [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card in Fluidd, select the slot and use the **Write spool tag** button beside the pencil. Pick the vendor, filament, and up to four colors; they start as the slot's.
 
 - **Spool on an empty slot's rollers, filament not fed:** the Box turns the spool backward until its tag comes past the reader, at most about one and a half turns, and stops once it's written.
 - **Filament fed from the slot:** the Box can't turn the spool without pulling the filament, so turn it slowly backward by hand for up to a minute.

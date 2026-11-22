@@ -5,11 +5,17 @@ import { Plus } from 'lucide-react'
 import { SectionLabel } from '../ui'
 import type { QidiFilament } from '../../state/box'
 
-// Three rows of common filament colors, light to dark within each family.
+// Common filament colors as a rainbow: the strong colors red round to pink, each hue's darker shade beside it, then the
+// pastels in the same order, the earth tones, and white to black. 43 of them, so with the custom swatch they make two
+// full rows of 22 in the filament dialog, the strong colors on the first.
 export const FILAMENT_PALETTE = [
-  '#FFFFFF', '#F2EFE8', '#C8CCD2', '#8A8F98', '#5A6068', '#33373D', '#000000', '#8B5A3C', '#C9A27A', '#E8D9B5', '#F4E9D0', '#D4A82A', '#B87333',
-  '#E5484D', '#FF7A1A', '#F5C542', '#C7D93A', '#30A46C', '#1E7F5C', '#2EC4B6', '#4CC9F0', '#2F6BFF', '#2E3A8C', '#7B5CE5', '#B24BD6', '#E46FA8',
-  '#8B1E2B', '#F2A1A1', '#FFD6A5', '#FFF3B0', '#CDEAC0', '#A0E7D0', '#BDE0FE', '#A2B9FF', '#C9B6FF', '#E7C6FF', '#FFC8DD', '#556B2F',
+  // strong: red, orange and brown, yellow, green, teal, blue, purple, pink
+  '#8B1E2B', '#E5484D', '#FF6F61', '#FF7A1A', '#B87333', '#8B5A3C', '#D4A82A', '#F5C542', '#C7D93A', '#556B2F', '#39FF14',
+  '#30A46C', '#1E7F5C', '#2EC4B6', '#0E4D64', '#4CC9F0', '#2F6BFF', '#2E3A8C', '#7B5CE5', '#B24BD6', '#E5007E', '#E46FA8',
+  // pastels in the same order, earth tones, then white to black
+  '#F2A1A1', '#FFD6A5', '#FFF3B0', '#CDEAC0', '#A0E7D0', '#BDE0FE', '#A2B9FF', '#C9B6FF', '#E7C6FF', '#FFC8DD',
+  '#F4E9D0', '#E8D9B5', '#C9A27A', '#4A2F1F',
+  '#FFFFFF', '#F2EFE8', '#C8CCD2', '#8A8F98', '#5A6068', '#33373D', '#000000',
 ]
 
 const shortName = (f: QidiFilament) => (f.vendor && f.name.startsWith(`${f.vendor} `) ? f.name.slice(f.vendor.length + 1) : f.name)

@@ -24,8 +24,8 @@ let scenario = args.scenario ?? (args.updates ? 'idle' : 'printing')
 
 // ---------- printer model ----------
 const FILAMENTS = {
-  'QIDI PLA Basic': { filament_id: 'QFA01', type: 'PLA', filament_vendor: 'QIDI', nozzle_temperature: [190, 230], box_temperature_range_high: ['50'] },
-  'QIDI PLA Matte': { filament_id: 'QFA02', type: 'PLA', filament_vendor: 'QIDI', nozzle_temperature: [190, 230], box_temperature_range_high: ['50'] },
+  'QIDI PLA Basic': { filament_id: 'QFA01', type: 'PLA', filament_vendor: 'QIDI', nozzle_temperature: [190, 230], box_temperature_range_high: ['0'] },
+  'QIDI PLA Matte': { filament_id: 'QFA02', type: 'PLA', filament_vendor: 'QIDI', nozzle_temperature: [190, 230], box_temperature_range_high: ['0'] },
   'QIDI PETG Tough': { filament_id: 'QFB01', type: 'PETG', filament_vendor: 'QIDI', nozzle_temperature: [230, 260], box_temperature_range_high: ['60'] },
   'Polymaker PETG': { filament_id: 'QFB12', type: 'PETG', filament_vendor: 'Polymaker', nozzle_temperature: [230, 260], box_temperature_range_high: ['60'] },
   'Bambu ABS': { filament_id: 'QFC20', type: 'ABS', filament_vendor: 'Bambu', nozzle_temperature: [240, 270], box_temperature_range_high: ['65'] },
@@ -141,7 +141,7 @@ function baseStatus() {
     display_status: { progress: 0, message: null },
     idle_timeout: { state: 'Idle' },
     pause_resume: { is_paused: false },
-    toolhead: { homed_axes: '', position: [195, 195, 30, 0] },
+    toolhead: { homed_axes: '', position: [195, 195, 30, 0], axis_minimum: [0, 0, 0, 0], axis_maximum: [390, 390, 340, 0] },
     gcode_move: { speed_factor: 1, extrude_factor: 1, homing_origin: [0, 0, 0, 0], gcode_position: [0, 0, 0, 0] },
     extruder: { temperature: 32, target: 0, power: 0 },
     heater_bed: { temperature: 28, target: 0, power: 0 },
@@ -367,6 +367,12 @@ async function gcode(script) {
       if (typeof v === 'string') v = v.replace(/^["']+|["']+$/g, '')
       set('save_variables', { variables: { ...vars(), [p.VARIABLE]: v } })
       if (p.VARIABLE.startsWith('filament_slot') || p.VARIABLE.startsWith('color_slot')) refreshBoxInfo()
+    } else if (C === 'BOX_START_DRYING' || C === 'BOX_STOP_DRYING') {
+      // QIDI's timed drying: TIME is whole hours, and end_time reads the minutes left (hours × 60 − 1 at the start).
+      const b = Number(p.BOX)
+      const on = C === 'BOX_START_DRYING'
+      set('box_extras', { boxes: state.status.box_extras.boxes.map((x, i) => (i === b - 1 ? { ...x, dry_state: on ? 1 : 0, end_time: on ? Number(p.TIME) * 60 - 1 : 0 } : x)) })
+      set(`heater_generic heater_box${b}`, { target: on ? Number(p.TEMP) : 0 })
     } else if (C === 'SET_HEATER_TEMPERATURE') {
       const obj = p.HEATER === 'extruder' || p.HEATER === 'heater_bed' ? p.HEATER : `heater_generic ${p.HEATER}`
       set(obj, { target: Number(p.TARGET) })
@@ -421,6 +427,12 @@ async function gcode(script) {
       pushConsole('// Filament cut.')
     } else if (C === 'VO_BOX_SLOT_JOG') pushConsole(`// Moved slot ${p.SLOT} ${p.DISTANCE} mm.`)
     else if (C === 'M84') set('toolhead', { homed_axes: '' })
+    else if (C === 'SET_KINEMATIC_POSITION') {
+      // Old Klipper (QIDI's): marks every axis homed at the given position.
+      const pos = [...state.status.toolhead.position]
+      for (const [i, ax] of ['X', 'Y', 'Z'].entries()) if (p[ax] != null) pos[i] = Number(p[ax])
+      set('toolhead', { homed_axes: 'xyz', position: pos })
+    }
     else if (C === 'M107' || C === 'M106') {
       /* accepted */
     } else if (/^T\d+$/.test(C)) throw rpcError(`${C} not run: QIDI's tool change runs only during a print. To load a slot, use Load on the QIDI Box card or LOAD_FILAMENT_CONTROL SLOT=<n>.`)
@@ -548,6 +560,7 @@ async function rfidJob(p, operator) {
 function refreshBoxInfo() {
   const v = vars()
   const boxes = state.status.box_extras.boxes.map((b, bi) => ({
+    ...b,
     filament_info: b.filament_info.map((info, i) => {
       const slot = bi * 4 + i
       const id = v[`filament_slot${slot}`]
@@ -586,7 +599,7 @@ const handlers = {
   'printer.objects.query': (p) => {
     const out = {}
     for (const k of Object.keys(p.objects)) {
-      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_HEATER_TEMPERATURE', 'SAVE_VARIABLE', 'VO_CUT_FILAMENT', 'VO_BOX_SLOT_JOG', 'VO_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'VO_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
+      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_KINEMATIC_POSITION', 'SET_HEATER_TEMPERATURE', 'BOX_START_DRYING', 'BOX_STOP_DRYING', 'SAVE_VARIABLE', 'VO_CUT_FILAMENT', 'VO_BOX_SLOT_JOG', 'VO_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'VO_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
       else if (k === 'configfile')
         out.configfile = {
           settings: {
@@ -1183,7 +1196,7 @@ const server = createServer(async (req, res) => {
       return res.end(await readFile(file))
     }
     if (path.startsWith('/tltg-status/')) return await statusApi(req, res, path)
-    if (path.startsWith('/webcam/')) {
+    if (path.startsWith('/webcam/') || path.startsWith('/webcam2/')) {
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' })
       return res.end(camSvg())
     }

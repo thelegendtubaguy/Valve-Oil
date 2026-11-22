@@ -1,4 +1,4 @@
-// QIDI Box state and the commands the Box screen sends, derived with the logic ported from the Fluidd fork
+// QIDI Box state and the commands the Box card sends, derived with the logic ported from the Fluidd fork
 // (src/qidi/). Nothing here touches Moonraker or the browser, so tests import it directly; box.ts adds the stores and
 // hooks and re-exports everything here.
 import type { PrinterState } from './printer'
@@ -35,7 +35,8 @@ import {
 export type Lists = { legacy: QidiFilamentList | null; database: QidiFilament[] | null; databaseError: boolean }
 
 // ---- derived state ----
-export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null }
+/** A Box's climate. drying is QIDI's timed drying (BOX_START_DRYING); a target without it is a plain heater setting. */
+export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null; drying: boolean; dryMinutesLeft: number | null }
 
 /** Valve Oil's turn spools while heating (tltg_box_spool_roll): on, and the slot it's turning now. */
 export type SpoolRoll = { enabled: boolean; rolling: string | null }
@@ -67,6 +68,10 @@ export type BoxState = {
   climates: BoxClimate[]
   printState: string
   canCold: boolean
+  /** QIDI's timed Box drying (BOX_START_DRYING), on firmware that has it. */
+  canDry: boolean
+  /** QIDI's drying turns each slot's motor, and so its spool, every 5 minutes (box_drying_roll_enable, on by default). */
+  dryRolls: boolean
   canJog: boolean
   canCut: boolean
   /** Valve Oil can write spool tags (VO_BOX_RFID_WRITE), with the firmware filament database whose IDs tags carry. */
@@ -121,12 +126,15 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     const aht = st[`aht20_f heater_box${b}`]
     const heaterName = `heater_generic heater_box${b}`
     const heater = st[heaterName]
+    const dry = st.box_extras?.boxes?.[b - 1]
     climates.push({
       box: b,
       humidity: num(aht?.humidity) != null ? Math.round(aht.humidity) : null,
       temperature: num(aht?.temperature) ?? num(heater?.temperature),
       target: num(heater?.target),
       heater: heater ? heaterName : null,
+      drying: Number(dry?.dry_state) === 1,
+      dryMinutesLeft: Number(dry?.dry_state) === 1 ? num(dry?.end_time) : null,
     })
   }
 
@@ -171,6 +179,8 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     climates,
     printState,
     canCold: commands.includes('VO_CUT_FILAMENT'),
+    canDry: commands.includes('BOX_START_DRYING') && commands.includes('BOX_STOP_DRYING'),
+    dryRolls: Number(variables.box_drying_roll_enable ?? 1) !== 0,
     canJog: commands.includes('VO_BOX_SLOT_JOG'),
     canCut: commands.includes('VO_CUT_FILAMENT'),
     canWriteTag: commands.includes('VO_BOX_RFID_WRITE') && hasController && !!lists.database?.length,
@@ -259,7 +269,8 @@ function strandedHint(box: BoxState, slot: QidiBoxSlot) {
 /** What a slot holds, as the Box card's overline: the slot, its tools, and whether it's loaded. */
 export function slotOverline(box: BoxState, slot: QidiBoxSlot) {
   const tools = box.toolsBySlot[slot.index] ?? []
-  return [slot.index === QIDI_BOX_EXTERNAL_SLOT ? 'External spool' : `Slot ${slot.label}`, tools.length ? tools.join(', ') : 'no tool', box.loadedSlot === slot.index ? 'loaded' : null].filter(Boolean).join(' · ')
+  const where = slot.index === QIDI_BOX_EXTERNAL_SLOT ? ['External spool'] : [`Box ${Math.floor(slot.index / 4) + 1}`, slot.label]
+  return [...where, ...tools, box.loadedSlot === slot.index ? 'loaded' : null].filter(Boolean).join(' · ')
 }
 
 /** Automatic reload for a slot, as the fork's card says it. */
@@ -297,6 +308,29 @@ export const boxCommands = {
   setting: (name: BoxSetting, on: boolean) => gcode`SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
   tool: (tool: number) => gcode`T${tool}`,
   heater: (heater: string, target: number) => gcode`SET_HEATER_TEMPERATURE HEATER=${heater.replace(/^heater_generic /, '')} TARGET=${target}`,
+  // TIME is whole hours.
+  dry: (boxNumber: number, temp: number, hours: number) => gcode`BOX_START_DRYING BOX=${boxNumber} TEMP=${temp} TIME=${hours}`,
+  stopDry: (boxNumber: number) => gcode`BOX_STOP_DRYING BOX=${boxNumber}`,
+}
+
+/** Box slot indexes of a Box: Box 1 holds slots 0-3. */
+const boxSlotIndexes = (boxNumber: number) => [0, 1, 2, 3].map((i) => (boxNumber - 1) * 4 + i)
+
+/**
+ * Why a Box can't start drying now, or null. Drying turns every slot's motor, which would drive any filament fed into
+ * the Box, so every slot of the Box must be empty: nothing at its inlet sensor (filament parked between the slot and the
+ * hub, READY), and nothing loaded through the hub to the toolhead. It never starts during a print.
+ */
+export function dryBlocker(box: BoxState, boxNumber: number): string | null {
+  if (box.printState === 'printing' || box.printState === 'paused') return "Drying can't start during a print."
+  if (box.task != null) return 'Wait for the Box to finish what it is doing.'
+  const inBox = boxSlotIndexes(boxNumber)
+  const fed = new Set(box.slots.filter((sl) => inBox.includes(sl.index) && sl.present).map((sl) => sl.index))
+  for (const i of [box.loadedSlot, box.hubSlot]) if (i != null && inBox.includes(i)) fed.add(i)
+  if (!fed.size) return null
+  const labels = [...fed].sort((x, y) => x - y).map((i) => slotByIndex(box, i)?.label ?? String(i))
+  const names = labels.length < 2 ? labels[0] : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
+  return `Eject ${names} first. Drying turns every slot's motor, which would move filament fed into the Box. Leave the spools on the rollers.`
 }
 
 /** Highest Box heater target: the lowest Box limit among loaded filaments, capped by the heater's config. */
@@ -308,6 +342,13 @@ export function boxHeaterMax(box: BoxState, boxNumber: number, configMax: number
   const limit = limits.length ? Math.min(...limits) : null
   const cfg = configMax ?? 65
   return limit == null ? cfg : Math.min(limit, cfg)
+}
+
+/** The present slots of a Box whose filament sets its heater limit, the lowest Box limit among them. */
+export function boxHeatLimiters(box: BoxState, boxNumber: number): QidiBoxSlot[] {
+  const inBox = box.slots.filter((sl) => sl.index !== QIDI_BOX_EXTERNAL_SLOT && Math.floor(sl.index / 4) === boxNumber - 1 && sl.present && sl.boxMaxTemp != null)
+  const low = Math.min(...inBox.map((sl) => sl.boxMaxTemp!))
+  return inBox.filter((sl) => sl.boxMaxTemp === low)
 }
 
 export function slotByIndex(box: BoxState, index: number | null | undefined) {

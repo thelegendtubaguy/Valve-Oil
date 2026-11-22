@@ -1,0 +1,182 @@
+/* Home control deck: the jog wheel and the dense rows the mockups use. */
+.jw { display: block; width: 100%; max-width: 280px; height: auto; user-select: none; }
+.jw-seg path { fill: var(--inset); stroke: var(--surface); stroke-width: 4; transition: fill 0.12s; }
+.jw-seg.outer path { fill: color-mix(in srgb, var(--inset) 70%, var(--surface)); }
+.jw-seg { cursor: pointer; outline: none; }
+.jw-seg:hover path, .jw-seg:focus-visible path { fill: var(--hover-2); }
+.jw-seg:active path { fill: var(--accent-tint); }
+.jw-seg text { fill: var(--ink-2); font-size: 12px; font-weight: 600; pointer-events: none; }
+.jw-seg text.ax { fill: var(--ink); font-size: 14px; font-weight: 700; }
+.jw-seg.off { cursor: default; opacity: 0.45; }
+.jw-seg.off:hover path { fill: var(--inset); }
+.jw-home circle { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; transition: fill 0.12s; }
+.jw-home { cursor: pointer; color: var(--accent-ink); outline: none; }
+.jw-home:hover circle, .jw-home:focus-visible circle { fill: var(--hover-2); }
+.jw-home.off { cursor: default; opacity: 0.45; }
+
+.deck-sec { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+
+.deck { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.deck > .col { display: contents; }
+.deck .card { min-height: 0; }
+@media (min-width: 768px) { .deck { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+@media (min-width: 100rem) {
+  .deck { min-height: max(100%, 740px); align-items: stretch; }
+  .deck-4 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1fr); }
+  .deck > .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .deck .grow { flex: 1 1 0; min-height: auto; display: flex; flex-direction: column; }
+  .deck .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; contain: size; }
+}
+
+/* The left half: the camera across two columns, two columns of cards under it. */
+.deck > .half { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.half-cols { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); flex: 1 1 auto; }
+.half-cols > .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (min-width: 768px) {
+  .deck > .half { grid-column: span 2; }
+  .half-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* Below the four columns the macros scroll in a box of their own. In them the last card of each column stretches, so
+   the columns end together. */
+@media not (min-width: 100rem) { .deck .grow > .grow-body { max-height: 340px; overflow: auto; } }
+@media (min-width: 100rem) { .half-cols > .col > .card:last-child:not(.folded), .deck > .col > .card:last-child:not(.folded) { flex-grow: 1; } }
+
+/* Mockup B's toolhead card. */
+.th .card-title { margin-bottom: 10px; }
+.th-readout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 12px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+.th-readout label { display: flex; align-items: center; gap: 4px; padding-left: 10px; border-radius: 9px; }
+.th-readout label:hover { background: var(--hover); }
+.th-readout .ax { font-size: 12px; font-weight: 800; color: var(--accent-ink); }
+.th-readout .ax.warn { color: var(--ink-3); text-decoration: line-through; }
+.th-readout .field { flex: 1; min-width: 0; height: 34px; padding: 0 10px 0 2px; font-size: 16px; background: transparent; box-shadow: none; }
+.th-readout .field:focus { background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent); }
+.th-readout .field:disabled { opacity: 0.5; }
+
+.th-fold { border-top: 1px solid var(--line); margin-top: 12px; }
+.th-fold + .th-fold { margin-top: 0; }
+.th-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 11px 0; border: 0; background: none; color: var(--ink-3); text-align: left; min-width: 0; }
+.th-head:hover:not(:disabled) .section-label { color: var(--ink); }
+.th-head .chev { flex: none; transition: transform 0.15s; }
+.th-head[aria-expanded='true'] .chev { transform: rotate(90deg); }
+.th-head:disabled { cursor: default; }
+.th-head:disabled .chev { opacity: 0.35; }
+.th-head .sum { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.th-body { padding: 0 0 14px; }
+
+.th-move { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px; align-items: center; gap: 10px; }
+.th-move .jw { max-width: 280px; justify-self: center; }
+.zrock { display: flex; flex-direction: column; gap: 2px; align-self: stretch; justify-content: center; }
+.zrock .cap { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; padding: 2px 0; }
+.zrock button { display: flex; align-items: center; justify-content: center; gap: 3px; height: 34px; border: 0; background: var(--inset); color: var(--ink-2); font-size: 12px; font-weight: 700; }
+.zrock button:nth-of-type(1) { border-radius: 10px 10px 3px 3px; }
+.zrock button:nth-of-type(5) { border-radius: 3px 3px 10px 10px; }
+.zrock button:hover:not(:disabled) { background: var(--hover-2); color: var(--ink); }
+.zrock button:active:not(:disabled) { background: var(--accent-tint); }
+.zrock button:disabled { opacity: 0.45; }
+.zrock button.home { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--accent-ink); border-radius: 3px; }
+
+.th-extrude { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.th-extrude .seg > button { padding: 0 10px; }
+
+.th-tune { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px 10px; }
+.th-tune > .k { display: grid; justify-items: start; gap: 1px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); align-self: center; }
+.th-tune > .k:first-child { align-self: start; padding-top: 8px; }
+.th-reset { border: 0; background: none; padding: 0; font-size: 11px; font-weight: 600; color: var(--accent-ink); }
+.th-reset:hover { text-decoration: underline; }
+.th-zoff { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.th-zoff .v { min-width: 84px; text-align: center; font-size: 18px; font-weight: 700; }
+.th-zoff .v small { margin-left: 3px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.th-chips { display: flex; gap: 2px; }
+.th-chips button { border: 0; background: none; padding: 2px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.th-chips button:hover { color: var(--ink); }
+.th-chips button.on { background: var(--inset); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.th-tune .pm { width: 30px; height: 30px; }
+.th-tune .field { height: 30px; font-size: 14px; }
+
+/* Moving without homing: the controls that ignore limits turn red, inside a striped red frame. */
+.th-move.free { margin: -6px; padding: 6px; border-radius: 14px; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--red) 55%, transparent); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--red) 7%, transparent) 0 10px, transparent 10px 20px); }
+.jw-seg.hot path { fill: color-mix(in srgb, var(--red) 16%, var(--inset)); stroke: var(--surface); }
+.jw-seg.outer.hot path { fill: color-mix(in srgb, var(--red) 24%, var(--inset)); }
+.jw-seg.hot:hover path, .jw-seg.hot:focus-visible path { fill: color-mix(in srgb, var(--red) 38%, var(--inset)); }
+.jw-seg.hot:active path { fill: color-mix(in srgb, var(--red) 55%, var(--inset)); }
+.jw-seg.hot text, .jw-seg.hot text.ax { fill: var(--red); }
+.zrock button.hot { background: color-mix(in srgb, var(--red) 20%, var(--inset)); color: var(--red); }
+.zrock button.hot:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 36%, var(--inset)); color: var(--red); }
+
+/* Left of the wheel: the step sizes, stacked like the Z column, and the no-homing switch under them. */
+.steprock { display: flex; flex-direction: column; gap: 2px; align-self: stretch; }
+.steprock .cap { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; padding: 2px 0; }
+.steprock > button { display: grid; justify-items: center; gap: 0; padding: 6px 2px; border: 0; background: var(--inset); color: var(--ink-3); line-height: 1.15; }
+.steprock > button b { font-size: 12px; font-weight: 700; }
+.steprock > button span { font-size: 10.5px; }
+.steprock > button:nth-of-type(1) { border-radius: 10px 10px 3px 3px; }
+.steprock > button:nth-of-type(3) { border-radius: 3px 3px 10px 10px; }
+.steprock > button:hover { color: var(--ink); background: var(--hover-2); }
+.steprock > button.on { background: var(--accent-tint); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.steprock > button.nohome { display: grid; justify-items: center; gap: 2px; padding: 8px 2px; border-radius: 10px; background: none; color: var(--red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 45%, transparent); font-size: 11px; font-weight: 700; }
+.steprock > button.nohome:hover:not(:disabled) { background: var(--red-tint); }
+.steprock > button.nohome.on { background: var(--red); color: var(--surface); box-shadow: none; }
+.steprock > button.nohome:disabled { opacity: 0.45; }
+.steprock > button.homeall { display: grid; justify-items: center; gap: 2px; padding: 8px 2px; margin-bottom: 4px; border-radius: 10px; background: var(--surface); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 11px; font-weight: 700; }
+.steprock > button.homeall:hover:not(:disabled) { background: var(--hover-2); }
+.steprock > button.homeall.need { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.steprock > button.homeall:disabled { opacity: 0.45; }
+.steprock > button.motoroff { display: grid; justify-items: center; gap: 2px; margin-top: 4px; padding: 7px 2px; border-radius: 10px; background: none; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 11px; font-weight: 700; }
+.steprock > button.motoroff:hover:not(:disabled) { background: var(--hover-2); color: var(--ink); }
+.steprock > button.motoroff:disabled { opacity: 0.45; }
+
+/* Mockup B's temperatures card. */
+.tc { display: flex; flex-direction: column; }
+.tc-heaters { display: grid; gap: 2px; }
+.tc-row { position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto 82px; align-items: center; gap: 8px; min-height: 44px; padding: 4px 4px 4px 0; border-radius: 10px; }
+.tc-row:hover { background: var(--hover); }
+.tc-sw { align-self: stretch; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; }
+.tc-sw > span { width: 4px; height: 26px; border-radius: 3px; background: var(--c); transition: opacity 0.12s; }
+.tc-sw.hid > span { background: none; box-shadow: inset 0 0 0 1.5px var(--c); opacity: 0.6; }
+.tc-sw:disabled { cursor: default; }
+.tc-name { display: grid; min-width: 0; line-height: 1.2; }
+.tc-name b { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-name small { font-size: 11px; color: var(--ink-3); }
+.tc-now { font-size: 18px; font-weight: 700; color: var(--ink-2); }
+.tc-row.on .tc-now { color: var(--ink); }
+.tc-tgt { position: relative; display: flex; align-items: center; height: 32px; border-radius: 8px; padding: 0 8px 0 6px; gap: 4px; cursor: text; }
+.tc-tgt .arrow { font-size: 12px; color: var(--ink-3); }
+.tc-tgt input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; padding: 0; text-align: right; font-size: 14px; font-weight: 700; color: var(--ink-2); outline: none; }
+.tc-tgt input::placeholder { color: var(--ink-3); font-weight: 500; }
+.tc-tgt.set input { color: var(--accent-ink); }
+.tc-tgt .unit { font-size: 13px; font-weight: 700; color: var(--accent-ink); margin-left: -2px; }
+.tc-row:hover .tc-tgt, .tc-tgt:focus-within { background: var(--inset); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tc-tgt:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.tc-tgt:has(input:disabled) { opacity: 0.45; cursor: default; }
+.tc-bar { position: absolute; left: 26px; right: 4px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--inset); overflow: hidden; }
+.tc-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--c); transition: width 0.4s; }
+
+.tc-sensors { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tc-sensor { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 3px 0; font-size: 12.5px; }
+.tc-sensor .k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); }
+.tc-sensor .v { font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.tc-sensor .v small { font-weight: 500; color: var(--ink-3); }
+
+/* A fixed height: stretched to the tallest column, the lines sat below the bottom of the screen. */
+.tc-chart { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); height: clamp(160px, 22vh, 240px); flex: none; }
+.tc-tgt:not(.set):not(:focus-within) .arrow { visibility: hidden; }
+
+/* ---- the filament path in one row ---- */
+.frail { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px 10px; border-radius: 10px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; color: var(--ink-3); }
+.fr-src { display: inline-flex; align-items: center; gap: 4px; flex: none; border: 0; background: transparent; padding: 0; color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
+.fr-src.none { cursor: default; }
+.fr-empty { width: 20px; height: 20px; border-radius: 50%; border: 1.5px dashed var(--line-strong); }
+.fr-seg { flex: 1 1 8px; min-width: 6px; height: 2px; border-radius: 1px; background: var(--line-strong); }
+.fr-seg.on { height: 3px; background: var(--fc); }
+.fr-stop { display: inline-flex; align-items: center; gap: 5px; flex: none; white-space: nowrap; font-weight: 550; }
+.fr-stop i { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.fr-stop.on { color: var(--ink); }
+.fr-stop.on i { background: var(--fc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fc) 30%, transparent); }
+.fr-stop.skip { opacity: .45; text-decoration: line-through; }
+
+/* A card title that folds the card. */
+.card-fold { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+.card-fold .chev { color: var(--ink-3); transition: transform .15s; }
+.card-fold .chev.open { transform: rotate(90deg); }
+.card-fold:hover .chev { color: var(--ink); }
+.card.folded .card-title { margin-bottom: 0 !important; }

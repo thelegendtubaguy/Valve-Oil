@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PrinterState } from './printer'
 import { QIDI_BOX_EXTERNAL_SLOT } from '../qidi/qidi-box'
-import { boxCommands, boxHeaterMax, deriveBox, slotActions, slotByIndex, type BoxState, type Lists, type SlotActions } from './box-model'
+import { boxCommands, boxHeaterMax, deriveBox, dryBlocker, slotActions, slotByIndex, type BoxState, type Lists, type SlotActions } from './box-model'
 
 type Status = PrinterState['status']
 
@@ -138,6 +138,11 @@ describe('Box tag, jog, tool, setting, and dryer commands', () => {
     expect(boxCommands.heater(heater, 0)).toBe('SET_HEATER_TEMPERATURE HEATER=heater_box2 TARGET=0')
   })
 
+  it('starts and stops QIDI’s timed drying by Box number, in whole hours', () => {
+    expect(boxCommands.dry(2, 45, 12)).toBe('BOX_START_DRYING BOX=2 TEMP=45 TIME=12')
+    expect(boxCommands.stopDry(2)).toBe('BOX_STOP_DRYING BOX=2')
+  })
+
   it('retries or stops a paused flow with QIDI’s commands, and cuts with Valve Oil’s', () => {
     expect(boxCommands.retry()).toBe('FLOW_RETRY')
     expect(boxCommands.stop()).toBe('FLOW_STOP')
@@ -268,5 +273,31 @@ describe('boxHeaterMax', () => {
     expect(boxHeaterMax(b, 1, 70)).toBe(70)
     expect(boxHeaterMax(b, 1, undefined)).toBe(65)
     expect(boxHeaterMax(box(), 2, undefined)).toBe(65)
+  })
+})
+
+describe('dryBlocker', () => {
+  // Drying turns every slot's motor, so it must never run with filament fed into the Box, or during a print.
+  it('allows drying a Box with no filament in any slot, whatever the other Box holds', () => {
+    const b = box({ status: inlets(SLOT_2A) })
+    expect(dryBlocker(b, 1)).toBeNull()
+  })
+
+  it('refuses a Box with filament at a slot’s inlet sensor, naming every such slot', () => {
+    const b = box({ status: inlets(SLOT_2A, SLOT_2B) })
+    const why = dryBlocker(b, 2)
+    expect(why).toMatch(/2A/)
+    expect(why).toMatch(/2B/)
+  })
+
+  it('refuses a Box with a slot loaded to the toolhead, but not the other Box', () => {
+    const b = box({ variables: { slot_sync: 'slot5' }, status: inlets(SLOT_2B) })
+    expect(dryBlocker(b, 2)).toMatch(/2B/)
+    expect(dryBlocker(b, 1)).toBeNull()
+  })
+
+  it.each(['printing', 'paused'])('refuses while a print is %s', (state) => {
+    const b = box({ status: { print_stats: { state } } })
+    expect(dryBlocker(b, 1)).not.toBeNull()
   })
 })

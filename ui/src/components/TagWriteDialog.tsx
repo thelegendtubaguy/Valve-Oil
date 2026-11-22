@@ -9,6 +9,7 @@ import { useStore } from '../lib/store'
 import { boxCommands, filamentLists, type BoxState, type QidiBoxSlot } from '../state/box'
 import { runGcode, usePrinter } from '../state/printer'
 import { ColorSwatches, FilamentPicker } from './box/FilamentPicker'
+import { BoxScene } from './box/BoxScene'
 
 export type TagJob = {
   run: number
@@ -184,10 +185,8 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
       }
     >
       <div className="grid gap-3.5">
-        <div className="flex items-center gap-3.5">
-          <Spool slot={preview} size={52} />
-          <div className="min-w-0 flex-1 text-ink-2">Put what’s on this spool on its RFID tag. The Box then sets the slot from the tag whenever the spool is loaded, here or in any Box slot.</div>
-        </div>
+        <BoxScene slots={box.slots} slot={slot} colors={colors} />
+        <div className="text-ink-2">Put what’s on this spool on its RFID tag. The Box then sets the slot from the tag whenever the spool is loaded, here or in any Box slot.</div>
         <FilamentPicker database={database} value={filament?.id ?? null} onChange={setId} />
         <div className="grid gap-1.5">
           <span className="section-label">Colors · up to four for a multicolor spool</span>

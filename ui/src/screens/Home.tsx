@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Box as BoxIcon, Camera, ChevronRight, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Box as BoxIcon, Camera, ChevronRight, Disc3, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { Card, HoldButton, Segmented } from '../components/ui'
 import { LivePreview } from '../components/gcode-preview/LivePreview'
 import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
@@ -14,7 +14,10 @@ import { TuneDialog } from '../components/printing/TunePanel'
 import { ExcludeObjectsButton } from '../components/printing/ExcludeObjects'
 import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
 import { Motion } from '../components/Motion'
-import { HeaterDialog, Operation, SlotActionButtons, ToolMapDialog } from './Box'
+import { HeaterDialog } from '../components/box/HeaterDialog'
+import { Operation } from '../components/box/Operation'
+import { SlotActions as SlotActionButtons } from '../components/box/SlotPanel'
+import { ToolMapDialog } from '../components/box/ToolMapDialog'
 import { Spool, slotTitle } from '../components/Spool'
 import { attempt } from '../components/toast'
 import { client, onKlippyReady, runGcode, usePrinter } from '../state/printer'
@@ -78,7 +81,7 @@ export function HomeScreen() {
 }
 
 // ---- the current or last job ----
-function JobCard({ style }: { style?: CSSProperties }) {
+export function JobCard({ style }: { style?: CSSProperties }) {
   const job = useJob()
   const meta = useFileMeta(job.filename)
   const [tune, setTune] = useState(false)
@@ -199,7 +202,7 @@ function JobCard({ style }: { style?: CSSProperties }) {
 }
 
 // ---- between prints ----
-function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
+export function ReadyCard({ style, jobs, noActions }: { style?: CSSProperties; jobs: HistoryJob[] | null; noActions?: boolean }) {
   const last = jobs?.[0]
   return (
     <section className="card grid content-start gap-3" style={style}>
@@ -222,12 +225,12 @@ function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] 
         )}
       </div>
       <DropZone className="py-3!" />
-      <QuickActions bare />
+      {!noActions && <QuickActions bare />}
     </section>
   )
 }
 
-function RecentFiles({ jobs }: { jobs: HistoryJob[] | null }) {
+export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | null; className?: string }) {
   const files = useFiles()
   const [open, setOpen] = useState<string | null>(null)
   const byFile = useMemo(() => {
@@ -245,7 +248,7 @@ function RecentFiles({ jobs }: { jobs: HistoryJob[] | null }) {
     return [...files].sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified)).slice(0, 20)
   }, [files, byFile])
   return (
-    <section className="card grow" style={area('files')}>
+    <section className={`card grow ${className}`} style={area('files')}>
       <h3 className="card-title">
         <Folder size={14} /> Recent files
         <a href={href('files')} className="aside inline-flex items-center gap-1">
@@ -285,32 +288,37 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
 }
 
 // ---- camera ----
-type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number }
+export type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number; aspect_ratio?: string }
 
-function useWebcam(): Webcam | null {
-  const [cam, setCam] = useState<Webcam | null>(null)
+/** Moonraker's enabled cameras that stream, in its order. */
+export function useWebcams(): Webcam[] {
+  const [cams, setCams] = useState<Webcam[]>([])
   const ready = usePrinter((s) => s.conn === 'open')
   useEffect(() => {
     if (!ready) return
     const load = () =>
       client
         .call<{ webcams: Webcam[] }>('server.webcams.list')
-        .then((r) => setCam(r.webcams.find((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url)) ?? null))
-        .catch(() => setCam(null))
+        .then((r) => setCams(r.webcams.filter((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url))))
+        .catch(() => setCams([]))
     load()
     const off = onKlippyReady(load)
     return () => {
       off()
     }
   }, [ready])
-  return cam
+  return cams
+}
+
+export function useWebcam(): Webcam | null {
+  return useWebcams()[0] ?? null
 }
 
 /**
  * The camera, and while a print runs, the file's current layer from the G-code preview as a second view. Without a
  * camera, the layer view takes the card on its own.
  */
-function CameraOrLayers({ cam }: { cam: Webcam | null }) {
+export function CameraOrLayers({ cam, fit }: { cam: Webcam | null; fit?: boolean }) {
   const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
   const [view, setView] = useState<'camera' | 'layers'>(() => (localStorage.getItem('vo-home-view') === 'layers' ? 'layers' : 'camera'))
   const pick = (v: 'camera' | 'layers') => {
@@ -319,7 +327,7 @@ function CameraOrLayers({ cam }: { cam: Webcam | null }) {
       localStorage.setItem('vo-home-view', v)
     } catch {}
   }
-  if (!printing) return cam ? <CameraCard cam={cam} /> : null
+  if (!printing) return cam ? <CameraCard cam={cam} fit={fit} /> : null
   const shown = cam ? view : 'layers'
   const toggle = cam && (
     <div className="absolute top-2.5 right-2.5 z-10">
@@ -334,11 +342,17 @@ function CameraOrLayers({ cam }: { cam: Webcam | null }) {
       />
     </div>
   )
-  if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} />
+  if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} fit={fit} />
   return (
-    <section className="card grow relative p-2.5! wide:min-h-[280px]" style={area('cam')}>
+    <section className={`card relative p-2.5! ${fit ? '' : 'grow wide:min-h-[280px]'}`} style={area('cam')}>
       {toggle}
-      <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
+      {fit && cam ? (
+        <div style={{ aspectRatio: cameraRatio(cam) }}>
+          <LivePreview className="h-full w-full rounded-[10px]" />
+        </div>
+      ) : (
+        <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
+      )}
     </section>
   )
 }
@@ -368,42 +382,73 @@ function useFullScreen() {
   return { box, page, full: native || page, toggle }
 }
 
-function CameraCard({ cam, toggle }: { cam: Webcam; toggle?: ReactNode }) {
-  const [failed, setFailed] = useState(false)
-  const fs = useFullScreen()
-  const src = new URL(cam.stream_url, client.httpBase + '/').toString()
-  const transform = [cam.flip_horizontal ? 'scaleX(-1)' : '', cam.flip_vertical ? 'scaleY(-1)' : '', cam.rotation ? `rotate(${cam.rotation}deg)` : ''].join(' ')
-  const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
+/** The camera's width over height: Moonraker's aspect_ratio ("4:3"), turned for a 90° or 270° rotation. */
+export function cameraRatio(cam: Webcam, measured?: number | null) {
+  const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(cam.aspect_ratio ?? '')
+  const r = measured ?? (m ? Number(m[1]) / Number(m[2]) : 16 / 9)
+  return cam.rotation % 180 ? 1 / r : r
+}
+
+function CameraCard({ cam, toggle, fit }: { cam: Webcam; toggle?: ReactNode; fit?: boolean }) {
   return (
-    <section className="card grow p-2.5! wide:min-h-[280px]" style={area('cam')}>
-      <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} onDoubleClick={fs.toggle}>
-        {!failed ? (
-          <img src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
-        ) : (
-          <div className="grid h-full place-items-center text-[#9aa1ad]">
-            <span className="flex items-center gap-2">
-              <Camera size={16} /> Camera unavailable
-            </span>
-          </div>
-        )}
-        <div className="absolute top-2.5 left-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
-          {cam.name}
-        </div>
-        <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
-          {fs.full ? 'Close' : 'Full screen'}
-        </button>
-        {!fs.full && toggle}
-      </div>
+    <section className={`card p-2.5! ${fit ? '' : 'grow wide:min-h-[280px]'}`} style={area('cam')}>
+      <CameraView key={cam.name} cam={cam} toggle={toggle} fit={fit} />
     </section>
   )
 }
 
-function BoxCard() {
+/**
+ * One camera's stream with its name and Full screen. `fit` gives it the camera's own shape, and in a row of cameras a
+ * share of the width in proportion to that shape, so cameras side by side are the same height. `name` replaces the
+ * name tag, for a camera picker.
+ */
+export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: ReactNode; fit?: boolean; name?: ReactNode }) {
+  const [failed, setFailed] = useState(false)
+  // The stream's own size, once its first frame arrives, so the card takes the camera's shape without letterboxing.
+  const [measured, setMeasured] = useState<number | null>(null)
+  const img = useRef<HTMLImageElement>(null)
+  useEffect(() => {
+    if (!fit) return
+    const t = setInterval(() => {
+      const el = img.current
+      if (el?.naturalWidth && el.naturalHeight) {
+        setMeasured(el.naturalWidth / el.naturalHeight)
+        clearInterval(t)
+      }
+    }, 250)
+    return () => clearInterval(t)
+  }, [fit, cam.stream_url])
+  const fs = useFullScreen()
+  const src = new URL(cam.stream_url, client.httpBase + '/').toString()
+  const transform = [cam.flip_horizontal ? 'scaleX(-1)' : '', cam.flip_vertical ? 'scaleY(-1)' : '', cam.rotation ? `rotate(${cam.rotation}deg)` : ''].join(' ')
+  const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : fit ? 'relative min-w-0 rounded-[10px]' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
+  const ratio = cameraRatio(cam, measured)
+  return (
+    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0` } : undefined} onDoubleClick={fs.toggle}>
+      {!failed ? (
+        <img ref={img} src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
+      ) : (
+        <div className="grid h-full place-items-center text-[#9aa1ad]">
+          <span className="flex items-center gap-2">
+            <Camera size={16} /> Camera unavailable
+          </span>
+        </div>
+      )}
+      <div className="absolute top-2.5 left-2.5 z-10">{name ?? <span className="cam-tag">{cam.name}</span>}</div>
+      <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
+        {fs.full ? 'Close' : 'Full screen'}
+      </button>
+      {!fs.full && toggle}
+    </div>
+  )
+}
+
+export function BoxCard() {
   const box = useBox()
   const [selected, setSelected] = useState<number | null>(null)
   const [heater, setHeater] = useState<number | null>(null)
   const [mapOpen, setMapOpen] = useState(false)
-  // Filament stuck between the hub and the toolhead selects its slot, as on the Box page.
+  // Filament stuck between the hub and the toolhead selects its slot.
   useEffect(() => {
     if (box.strandedSlot != null) setSelected(box.strandedSlot)
   }, [box.strandedSlot])
@@ -413,14 +458,14 @@ function BoxCard() {
     <section className="card">
       <h3 className="card-title">
         <BoxIcon size={14} />
-        <a href={href('box')}>QIDI Box</a>
+        QIDI Box
         <span className="aside flex items-center gap-1.5">
           <span className="text-ink-3">{loaded ? `${loaded.label} loaded` : 'Nothing loaded'}</span>
           <button className="btn btn-sm px-2! py-0.5! text-[11.5px]" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? 'Tool mapping can be changed while the printer is idle' : 'Change which slot each tool loads'}>
             Tools
           </button>
-          <a href={href('box')} className="iconbtn h-6 w-6" title="Open the QIDI Box page" aria-label="Open the QIDI Box page">
-            <ChevronRight size={14} />
+          <a href={href('filaments')} className="iconbtn h-6 w-6" title="Filament library" aria-label="Filament library">
+            <Disc3 size={14} />
           </a>
         </span>
       </h3>
@@ -452,7 +497,7 @@ function BoxCard() {
   )
 }
 
-function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
+export function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
   const totals = useHistoryTotals()
   const weeks = 20
   const cells = useMemo(() => {

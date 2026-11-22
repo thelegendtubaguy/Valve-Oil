@@ -6,12 +6,12 @@ import { usePrinter } from '../../state/printer'
 
 // Fans, output pins, and LEDs, as Fluidd's Outputs card lists them (getOutputs): names starting with `_` are hidden.
 
-const FAN_TYPES = ['fan', 'fan_generic', 'heater_fan', 'controller_fan', 'temperature_fan']
-const PIN_TYPES = ['output_pin', 'pwm_tool', 'pwm_cycle_time']
-const LED_TYPES = ['led', 'neopixel', 'dotstar', 'pca9533', 'pca9632']
+export const FAN_TYPES = ['fan', 'fan_generic', 'heater_fan', 'controller_fan', 'temperature_fan']
+export const PIN_TYPES = ['output_pin', 'pwm_tool', 'pwm_cycle_time']
+export const LED_TYPES = ['led', 'neopixel', 'dotstar', 'pca9533', 'pca9632']
 
-const typeOf = (obj: string) => obj.split(' ')[0]
-const nameOf = (obj: string) => (obj.includes(' ') ? obj.slice(obj.indexOf(' ') + 1) : obj)
+export const typeOf = (obj: string) => obj.split(' ')[0]
+export const nameOf = (obj: string) => (obj.includes(' ') ? obj.slice(obj.indexOf(' ') + 1) : obj)
 
 /** A fan's name as the Fluidd fork shows it: the part fan, and QIDI's chamber_circulation_fan as the exhaust fan. */
 export function fanLabel(obj: string) {
@@ -26,9 +26,9 @@ const QIDI_FAN_NAMES: Record<string, string> = {
   auxiliary_cooling_fan2: 'Auxiliary fan 2',
   chamber_circulation_fan: 'Chamber exhaust fan',
 }
-const QIDI_FAN_ORDER = Object.keys(QIDI_FAN_NAMES)
+export const QIDI_FAN_ORDER = Object.keys(QIDI_FAN_NAMES)
 
-function useOutputs(types: string[]) {
+export function useOutputs(types: string[]) {
   return usePrinter((s) =>
     s.objects
       .filter((o) => types.includes(typeOf(o)) && (o === 'fan' || !nameOf(o).startsWith('_')))
@@ -82,7 +82,7 @@ function FansCard() {
   )
 }
 
-function FanRow({ obj }: { obj: string }) {
+export function FanRow({ obj, inline }: { obj: string; inline?: boolean }) {
   const st = usePrinter((s) => s.status[obj] ?? {})
   const cfg = usePrinter((s) => s.settings[obj.toLowerCase()] ?? {})
   const hasM106Macro = usePrinter((s) => s.objects.includes('gcode_macro M106'))
@@ -100,6 +100,16 @@ function FanRow({ obj }: { obj: string }) {
     if (name === 'chamber_circulation_fan' && hasM106Macro) return send(gcode`M106 P3 S${Math.ceil(pct * 2.55)}`)
     send(gcode`SET_FAN_SPEED FAN=${encodeGcodeParamValue(name)} SPEED=${pct / 100}`)
   }
+  if (inline && controllable)
+    return (
+      <div className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)] items-center gap-3">
+        <span className="min-w-0">
+          <span className="block truncate font-semibold">{fanLabel(obj)}</span>
+          {rpm && <span className="num block text-[11px] text-ink-3">{rpm}</span>}
+        </span>
+        <Slider label={fanLabel(obj)} value={value} onCommit={set} format={(v) => (v > 0 ? `${v}%` : 'Off')} />
+      </div>
+    )
   return (
     <div className={controllable ? 'grid gap-0.5' : 'row-k'}>
       <div className={`flex items-baseline gap-2 ${controllable ? '' : 'col-span-2'}`}>
@@ -126,7 +136,7 @@ function PinsCard() {
   )
 }
 
-function PinRow({ obj }: { obj: string }) {
+export function PinRow({ obj }: { obj: string }) {
   const value = usePrinter((s) => (s.status[obj]?.value as number | undefined) ?? 0)
   const cfg = usePrinter((s) => s.settings[obj.toLowerCase()] ?? {})
   const type = typeOf(obj)
@@ -202,7 +212,7 @@ export function setLedGcode(name: string, channels: string, c: Rgbw) {
   return `SET_LED LED=${encodeGcodeParamValue(name)}${parts}`
 }
 
-function LedRow({ obj }: { obj: string }) {
+export function LedRow({ obj }: { obj: string }) {
   const data = usePrinter((s) => (s.status[obj]?.color_data?.[0] as number[] | undefined) ?? [0, 0, 0, 0])
   const cfg = usePrinter((s) => s.settings[obj.toLowerCase()])
   const channels = ledChannels(typeOf(obj), cfg).toLowerCase()

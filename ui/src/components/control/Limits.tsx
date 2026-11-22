@@ -38,7 +38,7 @@ function Limit({ label, value, reset, unit, step, min, max, digits = 0, onSet }:
   )
 }
 
-function LimitsCard() {
+export function LimitsCard() {
   const th = usePrinter((s) => s.status.toolhead ?? {})
   const cfg = usePrinter((s) => s.settings.printer ?? {})
   const velocity = (cfg.max_velocity as number | undefined) ?? 100
@@ -67,7 +67,7 @@ function LimitsCard() {
   )
 }
 
-function RunoutCard() {
+export function RunoutCard() {
   const sensors = usePrinter((s) =>
     s.objects.filter((o) => (o === 'hall_filament_width_sensor' || o.startsWith('filament_switch_sensor ') || o.startsWith('filament_motion_sensor ')) && s.status[o]?.filament_detected != null),
   )
@@ -108,7 +108,7 @@ function RunoutRow({ obj }: { obj: string }) {
   )
 }
 
-function RetractCard() {
+export function RetractCard() {
   const st = usePrinter((s) => s.status.firmware_retraction as Record<string, number> | undefined)
   const cfg = usePrinter((s) => s.settings.firmware_retraction as Record<string, number> | undefined)
   if (!cfg || !st) return null

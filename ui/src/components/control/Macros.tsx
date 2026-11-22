@@ -8,13 +8,13 @@ import { addCategory, categoriesOf, listMacros, macroGroups, macroParams, MACROS
 import { runGcode, usePrinter } from '../../state/printer'
 import { FLUIDD, useDbItem } from '../../state/database'
 
-function useMacrosDb() {
+export function useMacrosDb() {
   const [db, setDb, loaded] = useDbItem<MacrosDb>(FLUIDD, MACROS_KEY, {})
   const save = (next: MacrosDb) => attempt(() => setDb(next))
   return { db, save, loaded }
 }
 
-function useMacros(db: MacrosDb) {
+export function useMacros(db: MacrosDb) {
   const objects = usePrinter((s) => s.objects)
   const settings = usePrinter((s) => s.settings)
   return useMemo(() => listMacros(objects, settings, db), [objects, settings, db])
@@ -67,7 +67,7 @@ export function MacrosActions() {
   )
 }
 
-function MacroButton({ macro }: { macro: Macro }) {
+export function MacroButton({ macro }: { macro: Macro }) {
   const printing = usePrinting()
   const [params, setParams] = useState(false)
   const fields = macroParams(macro)

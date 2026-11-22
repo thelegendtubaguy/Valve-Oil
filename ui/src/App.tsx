@@ -7,7 +7,6 @@ import {
   Grid3x3,
   History,
   House,
-  LayoutGrid,
   LoaderCircle,
   Moon,
   Move,
@@ -21,7 +20,7 @@ import {
 import { href, useRoute, type Route } from './lib/router'
 import { client, runGcode, usePrinter } from './state/printer'
 import { useJob, jobProgress } from './state/job'
-import { useBoxPresent, useBoxBusy } from './state/box'
+import { useBoxBusy, useBoxPresent } from './state/box'
 import { useWarnings } from './state/warnings'
 import { Toasts, attempt } from './components/toast'
 import { UploadsPanel } from './components/Upload'
@@ -29,9 +28,9 @@ import { BedScrewsDialog, ManualProbeDialog } from './components/tune/HelperDial
 import { AskHost, Spinner, confirm } from './components/ui'
 import { LogoMark } from './components/Logo'
 import { NotificationsButton } from './components/Notifications'
+import { HealthButton } from './components/Panels'
 import { useUiSetting } from './components/settings/fluidd'
 import { HomeScreen } from './screens/Home'
-import { BoxScreen } from './screens/Box'
 import { DONT_POWER_OFF, UpdatesScreen } from './screens/Updates'
 import { useUpdateRunning, valveOil } from './state/valve-oil'
 import { useStore } from './lib/store'
@@ -39,13 +38,15 @@ import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
 
-// Screens other than Home, the Box, and Updates load when first opened, so the first page a tablet shows is small.
+// Screens other than Home and Updates load when first opened, so the first page a tablet shows is small.
 const FilesScreen = lazy(() => import('./screens/Files').then((m) => ({ default: m.FilesScreen })))
 const ControlScreen = lazy(() => import('./screens/Control').then((m) => ({ default: m.ControlScreen })))
 const ConsoleScreen = lazy(() => import('./screens/Console').then((m) => ({ default: m.ConsoleScreen })))
 const TuneScreen = lazy(() => import('./screens/Tune').then((m) => ({ default: m.TuneScreen })))
 const HistoryScreen = lazy(() => import('./screens/History').then((m) => ({ default: m.HistoryScreen })))
 const SystemScreen = lazy(() => import('./screens/System').then((m) => ({ default: m.SystemScreen })))
+const MockScreen = lazy(() => import('./screens/HomeMockups').then((m) => ({ default: m.HomeMockups })))
+const FilamentsScreen = lazy(() => import('./screens/Filaments').then((m) => ({ default: m.FilamentsScreen })))
 const SettingsScreen = lazy(() => import('./screens/Settings').then((m) => ({ default: m.SettingsScreen })))
 
 type NavItem = { route: Route; label: string; icon: ReactNode; mobile?: boolean }
@@ -53,7 +54,6 @@ const I = 22
 const NAV: NavItem[] = [
   { route: 'home', label: 'Home', icon: <House size={I} />, mobile: true },
   { route: 'files', label: 'Files', icon: <Folder size={I} />, mobile: true },
-  { route: 'box', label: 'Box', icon: <LayoutGrid size={I} />, mobile: true },
   { route: 'control', label: 'Control', icon: <Move size={I} />, mobile: true },
   { route: 'console', label: 'Console', icon: <SquareTerminal size={I} /> },
   { route: 'tune', label: 'Tune', icon: <Grid3x3 size={I} /> },
@@ -67,12 +67,12 @@ const NAV_END: NavItem[] = [
 
 // Screens that only make sense with Klipper running. The rest need only Moonraker, so the configuration can be fixed
 // and the logs read while Klipper is stopped, and Updates needs neither.
-const NEEDS_KLIPPER: Route[] = ['home', 'box', 'control', 'tune']
+const NEEDS_KLIPPER: Route[] = ['home', 'filaments', 'control', 'tune', 'mock']
 
 const SCREENS: Record<Route, () => ReactNode> = {
   home: () => <HomeScreen />,
   files: () => <FilesScreen />,
-  box: () => <BoxScreen />,
+  filaments: () => <FilamentsScreen />,
   control: () => <ControlScreen />,
   console: () => <ConsoleScreen />,
   tune: () => <TuneScreen />,
@@ -80,6 +80,7 @@ const SCREENS: Record<Route, () => ReactNode> = {
   system: () => <SystemScreen />,
   settings: () => <SettingsScreen />,
   updates: () => <UpdatesScreen />,
+  mock: () => <MockScreen />,
 }
 
 export function App() {
@@ -87,8 +88,7 @@ export function App() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const boxPresent = useBoxPresent()
-  const nav = NAV.filter((n) => n.route !== 'box' || boxPresent)
-  const shown: Route = route === 'box' && !boxPresent && klippy === 'ready' ? 'home' : route
+  const shown: Route = route === 'filaments' && !boxPresent && klippy === 'ready' ? 'home' : route
 
   let body: ReactNode
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
@@ -97,14 +97,14 @@ export function App() {
   else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
   else body = <Suspense fallback={<div className="grid place-items-center py-16"><Spinner size={24} /></div>}>{SCREENS[shown]()}</Suspense>
 
-  const cockpit = shown === 'home' && conn === 'open' && klippy === 'ready'
+  const cockpit = (shown === 'home' || shown === 'mock') && conn === 'open' && klippy === 'ready'
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">
         <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil">
           <LogoMark height={46} />
         </a>
-        {nav.map((n) => (
+        {NAV.map((n) => (
           <RailItem key={n.route} item={n} on={shown === n.route} />
         ))}
         <div className="mt-auto" />
@@ -124,7 +124,7 @@ export function App() {
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : 'mx-auto grid max-w-[1500px] content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px]'}>{body}</div>
         </div>
-        <MobileNav nav={nav} route={shown} />
+        <MobileNav nav={NAV} route={shown} />
       </main>
       <Toasts />
       {/* Uploads started on any screen keep showing their progress here. */}
@@ -146,7 +146,6 @@ function RailItem({ item, on }: { item: NavItem; on: boolean }) {
     <a href={href(item.route)} className={`rail-item ${on ? 'on' : ''}`} aria-current={on ? 'page' : undefined}>
       {item.icon}
       {item.label}
-      {item.route === 'box' && <BoxBusyBadge />}
       {item.route === 'updates' && <UpdatingBadge />}
     </a>
   )
@@ -190,10 +189,6 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
       </nav>
     </>
   )
-}
-
-function BoxBusyBadge() {
-  return useBoxBusy() ? <span className="badge" title="Box busy" /> : null
 }
 
 function UpdatingBadge() {
@@ -325,6 +320,7 @@ function TopBar() {
       <div className="flex-1" />
       <SaveConfigButton />
       <MiniTemps />
+      <HealthButton />
       <NotificationsButton />
       <button className="iconbtn" onClick={toggleTheme} aria-label="Switch theme" title="Switch theme">
         {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}

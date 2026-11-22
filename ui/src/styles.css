@@ -158,6 +158,8 @@
   .btn:disabled { opacity: 0.45; }
   .btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px var(--accent); }
   .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
+  /* The loaded tool: the selected look of chips and segments. It stays at full strength when the buttons are disabled during a print. */
+  .btn.tool-on { background: var(--accent-tint); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
   .btn-ghost { box-shadow: none; background: none; color: var(--ink-2); }
   .btn-ghost:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
   .btn-danger { background: transparent; color: var(--red); box-shadow: 0 0 0 1px var(--crimson); }
@@ -212,6 +214,45 @@
   .tile.hot { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
   .tile .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .tile .v small { font-size: 13px; color: var(--ink-3); font-weight: 600; }
+
+  /* The spool tag writer's Box sketch: graphite on the panel color, the reader and tag in colored pencil. */
+  .bs { --bs-paper: var(--inset); --bs-ink: color-mix(in srgb, var(--ink) 78%, transparent); --bs-faint: color-mix(in srgb, var(--ink) 38%, transparent);
+    position: relative; border-radius: 12px; background: var(--bs-paper); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+  .bs svg { display: block; width: 100%; height: auto; }
+  .bs .bs-replay { position: absolute; top: 6px; right: 6px; }
+  .bs-reader, .bs-tag { animation: bs-pulse 1.4s ease-in-out infinite; }
+  @keyframes bs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @media (prefers-reduced-motion: reduce) { .bs-reader, .bs-tag { animation: none; } }
+
+  /* The selected Box slot's filament name, which opens its editor. */
+  .sp-edit { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin: -2px -6px; padding: 2px 6px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; font-size: 18px; font-weight: 700; text-align: left; cursor: pointer; }
+  .sp-edit svg { flex: none; color: var(--ink-3); }
+  .sp-edit:hover:not(:disabled) { background: var(--hover-2); }
+  .sp-edit:hover:not(:disabled) svg { color: var(--accent-ink); }
+  .sp-edit:disabled { cursor: default; }
+  .sp-edit:disabled svg { display: none; }
+
+  /* The Box heater dialog: a readings strip, Dry and Heat as two cards, the running heater's status, and its fields. */
+  .hd-read { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 12px; border-radius: 12px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+  .hd-read > span { display: inline-flex; align-items: center; gap: 6px; }
+  .hd-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .hd-mode { display: grid; gap: 3px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--inset); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); text-align: left; font: inherit; cursor: pointer; }
+  .hd-mode:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--line-strong); }
+  .hd-mode:disabled { cursor: default; opacity: 0.5; }
+  .hd-mode .t { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--ink); }
+  .hd-mode .t .w { margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+  .hd-mode .d { font-size: 12.5px; line-height: 1.35; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-mode.on .t .w { color: var(--accent-ink); }
+  .hd-mode.on { background: var(--accent-tint); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .hd-mode.on .t { color: var(--accent-ink); }
+  .hd-mode.on .d { color: var(--ink-2); }
+  .hd-status { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .hd-bar { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 18%, transparent); overflow: hidden; }
+  .hd-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.6s; }
+  .hd-field { display: grid; gap: 6px; }
+  .hd-field > .k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
+  .hd-warn { display: flex; gap: 8px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--orange) 12%, transparent); color: var(--ink); line-height: 1.4; }
+  .hd-warn svg { color: var(--orange); }
 
   /* A row that opens something: the touchscreen's Settings tiles. */
   .link-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-card); color: inherit; min-width: 0; text-align: left; border: 0; width: 100%; }
@@ -316,3 +357,8 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* A camera's name over its stream; a button when it picks the camera. */
+.cam-tag { display: inline-flex; align-items: center; gap: 3px; border: 0; border-radius: 9999px; background: rgb(0 0 0 / .55); padding: 2px 8px; font: inherit; font-size: 11px; font-weight: 600; color: #fff; backdrop-filter: blur(8px); }
+button.cam-tag { cursor: pointer; }
+button.cam-tag:hover, button.cam-tag[aria-expanded="true"] { background: rgb(0 0 0 / .75); }

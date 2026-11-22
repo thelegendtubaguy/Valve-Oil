@@ -17,7 +17,7 @@
 ## Giving each slot its spool
 
 - **In Fluidd:** with a slot loaded, choose **Change spool** on the Spoolman card. The spool becomes that slot's spool, and the console shows, for example, `Spoolman: 1B is spool 12.` With no Box slot loaded, it becomes the external spool's spool.
-- **In Valve Oil UI:** the same, with **Change spool** on the Spoolman card on Home or the Box screen, which also lists each slot's spool.
+- **In Valve Oil UI:** the same, with **Change spool** on the Spoolman card on Home, which also lists each slot's spool.
 - **In the console:** `VO_SPOOLMAN_SLOT SLOT=<n> SPOOL=<id>` sets any slot's spool without loading it. Slots are numbered from 0, the same as `VO_BOX_MOTION SLOT=`, so 1A is slot 0 and 2A is slot 4. The external spool is slot 16. Spool IDs are shown in Spoolman.
 
 | Command | What it does |

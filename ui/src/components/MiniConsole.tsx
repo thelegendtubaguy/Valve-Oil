@@ -6,9 +6,12 @@ import { ConsoleOutput } from './console/ConsoleOutput'
 import { CommandInput } from './console/CommandInput'
 import { fillCommand, useConsoleEntries, useConsoleSettings, useGcodeHelp } from './console/store'
 import './console/console.css'
+import { FoldTitle, useFold } from './home-deck/fold'
 
 /** Recent printer messages with the Console screen's filters, its command line, and the printer's macros. */
-export function MiniConsole({ className = '' }: { className?: string }) {
+export function MiniConsole({ className = '', noMacros, fold }: { className?: string; noMacros?: boolean; fold?: string }) {
+  const [unfolded, toggle] = useFold(fold ?? 'vo-home-console-open')
+  const folded = !!fold && !unfolded
   const { shown } = useConsoleEntries()
   const { flip } = useConsoleSettings()
   const { help, known } = useGcodeHelp()
@@ -23,10 +26,31 @@ export function MiniConsole({ className = '' }: { className?: string }) {
   const filteredMacros = macros.filter((m) => !macroFilter || m.includes(macroFilter.toUpperCase()))
   const input = <CommandInput compact dropUp={!flip} />
 
+  const title = (
+    <>
+      <Terminal size={14} /> Console
+    </>
+  )
+  if (folded)
+    return (
+      <section className="card folded">
+        <h3 className="card-title m-0!">
+          <FoldTitle open={false} onToggle={toggle}>
+            {title}
+          </FoldTitle>
+        </h3>
+      </section>
+    )
   return (
     <section className={`card grow flex flex-col gap-2.5 ${className}`}>
       <h3 className="card-title m-0!">
-        <Terminal size={14} /> Console
+        {fold ? (
+          <FoldTitle open onToggle={toggle}>
+            {title}
+          </FoldTitle>
+        ) : (
+          title
+        )}
         <a href={href('console')} className="iconbtn -my-1.5 ml-auto h-7 w-7" title="Open the console" aria-label="Open the console">
           <Maximize2 size={14} />
         </a>
@@ -34,7 +58,7 @@ export function MiniConsole({ className = '' }: { className?: string }) {
       {flip && input}
       <ConsoleOutput entries={recent} known={known} flip={flip} showTime={false} className="grow-body min-h-[160px] flex-1 max-md:h-[300px] max-md:flex-none md:max-wide:h-0" />
       {!flip && input}
-      {macros.length > 0 && (
+      {!noMacros && macros.length > 0 && (
         <div className="grid gap-1.5">
           <div className="flex items-center gap-2">
             <span className="lbl">Macros</span>

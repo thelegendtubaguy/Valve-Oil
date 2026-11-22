@@ -26,11 +26,16 @@ const WINDOWS = [
   { label: '20 min', s: 1200 },
 ]
 
-export function TempChart({ className = '' }: { className?: string }) {
+/**
+ * The heater history chart. `bare` drops the card, title, and legend for a card that lists the heaters itself; it then
+ * takes which series are hidden from `hidden`, and puts the time range on the chart.
+ */
+export function TempChart({ className = '', bare, hidden: hiddenProp }: { className?: string; bare?: boolean; hidden?: Set<string> }) {
   const series = useSeries()
   const temps = usePrinter((s) => s.temps)
   const live = usePrinter((s) => Object.fromEntries(series.map((x) => [x.obj, { t: s.status[x.obj]?.temperature as number | undefined, target: s.status[x.obj]?.target as number | undefined }])))
-  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const [ownHidden, setHidden] = useState<Set<string>>(new Set())
+  const hidden = hiddenProp ?? ownHidden
   const [win, setWin] = useState(600)
   const [hover, setHover] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -57,17 +62,29 @@ export function TempChart({ className = '' }: { className?: string }) {
     [series, temps, n],
   )
 
-  const pad = { l: 34, r: 10, t: 8, b: 20 }
+  const pad = { l: 34, r: 10, t: bare ? 34 : 8, b: 20 }
   const W = size.w
   const H = size.h
   const iw = W - pad.l - pad.r
   const ih = H - pad.t - pad.b
-  let hi = 50
-  for (const x of shown) for (const v of [...data[x.obj].temps, ...data[x.obj].targets]) if (v > hi) hi = v
-  const top = Math.ceil((hi + 5) / 50) * 50
-  const step = top > 200 ? 100 : 50
+  // The Y axis fits the shown lines and targets, with three or four gridlines at a round step, so a Box at 30 °C and a
+  // cold nozzle fill the chart instead of a sliver at the bottom of 0–100°.
+  let lo = Infinity
+  let hi = -Infinity
+  for (const x of shown)
+    for (const vals of [data[x.obj].temps, data[x.obj].targets])
+      for (const v of vals)
+        if (v > 0) {
+          if (v < lo) lo = v
+          if (v > hi) hi = v
+        }
+  if (lo > hi) [lo, hi] = [20, 40]
+  const step = [5, 10, 20, 25, 50, 100].find((s) => s >= Math.max(hi - lo, 6) / 3) ?? 100
+  const bottom = Math.max(0, Math.floor(lo / step) * step)
+  // A reading a little over a gridline, like a bed overshooting 100°, runs into the top padding instead of adding a step.
+  const top = Math.max(bottom + 2 * step, Math.ceil((hi - step / 10) / step) * step)
   const xAt = (i: number) => pad.l + (n <= 1 ? iw : (i / (win - 1)) * iw) + (n < win ? ((win - n) / (win - 1)) * iw : 0)
-  const yAt = (v: number) => pad.t + ih - (v / top) * ih
+  const yAt = (v: number) => pad.t + ih - ((v - bottom) / (top - bottom)) * ih
   // Downsample to about one point per 2 px.
   const stride = Math.max(1, Math.floor(n / (iw / 2)))
   const path = (vals: number[]) => {
@@ -108,44 +125,51 @@ export function TempChart({ className = '' }: { className?: string }) {
   const minutes = win / 60
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ x: pad.l + f * iw, label: f === 1 ? 'now' : `−${Math.round(minutes * (1 - f))}m` }))
 
+  const windows = (
+    <div className="ml-auto flex gap-0.5 rounded-lg bg-canvas p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
+      {WINDOWS.map((w) => (
+        <button key={w.s} onClick={() => setWin(w.s)} className={`rounded-md border-0 px-2 py-0.5 text-[11.5px] font-medium ${win === w.s ? 'bg-surface text-ink shadow-[var(--shadow-btn)]' : 'bg-transparent text-ink-3'}`}>
+          {bare ? w.label.replace(' min', 'm') : w.label}
+        </button>
+      ))}
+    </div>
+  )
+  const Outer = bare ? 'div' : 'section'
   return (
-    <section className={`card flex flex-col ${className}`}>
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <h3 className="card-title m-0!">Temperatures</h3>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {series.map((x) => {
-            const off = hidden.has(x.obj)
-            const l = live[x.obj]
-            return (
-              <button
-                key={x.obj}
-                type="button"
-                aria-pressed={!off}
-                title={off ? `Show ${x.label}` : `Hide ${x.label}`}
-                onClick={() => setHidden((h) => new Set(h.has(x.obj) ? [...h].filter((o) => o !== x.obj) : [...h, x.obj]))}
-                className={`flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-0.5 text-[12px] hover:bg-hover ${off ? 'opacity-40' : ''}`}
-              >
-                <svg width="14" height="4" aria-hidden>
-                  <line x1="1" x2="13" y1="2" y2="2" stroke={`var(--series-${x.slot})`} strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <span className="text-ink-2">{x.label}</span>
-                <span className="num font-semibold text-ink">{l?.t != null ? `${Math.round(l.t)}°` : '—'}</span>
-                {l?.target ? <span className="num text-ink-3">/{Math.round(l.target)}</span> : null}
-              </button>
-            )
-          })}
+    <Outer className={`${bare ? '' : 'card'} flex flex-col ${className}`}>
+      {bare ? null : (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h3 className="card-title m-0!">Temperatures</h3>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {series.map((x) => {
+              const off = hidden.has(x.obj)
+              const l = live[x.obj]
+              return (
+                <button
+                  key={x.obj}
+                  type="button"
+                  aria-pressed={!off}
+                  title={off ? `Show ${x.label}` : `Hide ${x.label}`}
+                  onClick={() => setHidden((h) => new Set(h.has(x.obj) ? [...h].filter((o) => o !== x.obj) : [...h, x.obj]))}
+                  className={`flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-0.5 text-[12px] hover:bg-hover ${off ? 'opacity-40' : ''}`}
+                >
+                  <svg width="14" height="4" aria-hidden>
+                    <line x1="1" x2="13" y1="2" y2="2" stroke={`var(--series-${x.slot})`} strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-ink-2">{x.label}</span>
+                  <span className="num font-semibold text-ink">{l?.t != null ? `${Math.round(l.t)}°` : '—'}</span>
+                  {l?.target ? <span className="num text-ink-3">/{Math.round(l.target)}</span> : null}
+                </button>
+              )
+            })}
+          </div>
+          {windows}
         </div>
-        <div className="ml-auto flex gap-0.5 rounded-lg bg-canvas p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          {WINDOWS.map((w) => (
-            <button key={w.s} onClick={() => setWin(w.s)} className={`rounded-md border-0 px-2 py-0.5 text-[11.5px] font-medium ${win === w.s ? 'bg-surface text-ink shadow-[var(--shadow-btn)]' : 'bg-transparent text-ink-3'}`}>
-              {w.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
       <div ref={box} className="relative min-h-[150px] flex-1">
+        {bare && <div className="absolute top-0 right-0 z-[1]">{windows}</div>}
         <svg width={W} height={H} className="absolute inset-0 block touch-none" onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img" aria-label="Temperature history">
-          {Array.from({ length: top / step + 1 }, (_, i) => i * step).map((v) => (
+          {Array.from({ length: (top - bottom) / step + 1 }, (_, i) => bottom + i * step).map((v) => (
             <g key={v}>
               <line x1={pad.l} x2={W - pad.r} y1={yAt(v)} y2={yAt(v)} stroke="var(--line)" strokeWidth={1} />
               <text x={pad.l - 6} y={yAt(v) + 3.5} textAnchor="end" fontSize={10.5} fill="var(--ink-3)" className="num">
@@ -199,6 +223,6 @@ export function TempChart({ className = '' }: { className?: string }) {
           </div>
         )}
       </div>
-    </section>
+    </Outer>
   )
 }

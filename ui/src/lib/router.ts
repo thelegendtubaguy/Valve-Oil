@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react'
 
 // Hash routes: #/<route>[/<sub>/<path>...]. Each segment is URI-encoded, so file paths with spaces survive.
-export type Route = 'home' | 'files' | 'box' | 'control' | 'console' | 'tune' | 'history' | 'system' | 'settings' | 'updates'
-const ROUTES: Route[] = ['home', 'files', 'box', 'control', 'console', 'tune', 'history', 'system', 'settings', 'updates']
+export type Route = 'home' | 'files' | 'filaments' | 'control' | 'console' | 'tune' | 'history' | 'system' | 'settings' | 'updates' | 'mock'
+const ROUTES: Route[] = ['home', 'files', 'filaments', 'control', 'console', 'tune', 'history', 'system', 'settings', 'updates', 'mock']
 
 function segments(): string[] {
   return location.hash
@@ -20,6 +20,8 @@ function segments(): string[] {
 
 function current(): Route {
   const r = segments()[0] as Route
+  // The Box page became Home's Box card; its Filaments tab is the filament library.
+  if ((r as string) === 'box') return segments()[1] === 'filaments' ? 'filaments' : 'home'
   return ROUTES.includes(r) ? r : 'home'
 }
 
