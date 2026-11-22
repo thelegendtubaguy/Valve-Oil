@@ -28,6 +28,7 @@ class Host:
         self.original = dict(states)
         self.fail_start = fail_start
         self.stops = self.service_changes = self.tool_runs = 0
+        self.enabled = set()
 
     def run(self, command, **kwargs):
         command = list(command)
@@ -43,6 +44,17 @@ class Host:
             if command[2] not in self.states:
                 return result(1, "LoadState=not-found\nActiveState=inactive\n")
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
+        if command[:3] == ["install", "-m", "0644"]:
+            shutil.copyfile(command[3], command[4])
+            return result()
+        if command == ["systemctl", "daemon-reload"]:
+            return result()
+        if command[:2] == ["systemctl", "enable"]:
+            self.enabled.add(command[2])
+            return result()
+        if command[:2] == ["systemctl", "is-active"]:
+            state = self.states.get(command[2], "inactive")
+            return result(0 if state == "active" else 3, state + "\n")
         if command[0] == "systemctl" and command[1] in ("stop", "start"):
             self.service_changes += 1
             self.stops += command[1] == "stop"

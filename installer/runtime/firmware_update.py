@@ -371,8 +371,8 @@ RECOVERY_STEPS = (
     (safety.MAINBOARD_RECOVERY_MARKER, "a mainboard firmware write wasn't verified; run ./mainboard-firmware.sh rescue "
                                        "first"),
     (safety.BOX_RECOVERY_MARKER, "a Box firmware write wasn't verified; run ./box-firmware.sh rescue first"),
-    (safety.THR_RECOVERY_MARKER, "a THR firmware operation didn't finish; recover the THR with the recovery files the "
-                                 "installer named first"),
+    (safety.THR_RECOVERY_MARKER, "a THR firmware flash didn't finish; turn the printer off and"
+                                 " on, or run ./install.sh, and Valve Oil finishes it"),
 )
 SENTINEL_STEP = "an earlier install's recovery didn't complete; restore a backup with ./restore.sh first"
 

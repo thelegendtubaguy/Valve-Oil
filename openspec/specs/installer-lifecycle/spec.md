@@ -585,7 +585,7 @@ The update check SHALL be scheduled on every installation. Installing a release,
 - **AND** an ended hold is removed at the next Klipper start, a light that is on or can't be read gets no hold, and a check that holds the light and then changes nothing removes the hold it wrote
 
 ### Requirement: THR transfer is admitted and byte-verified
-The THR transfer SHALL require supported firmware, idle ready state, zero heater targets, exclusive service ownership, and exact known THR application/bootloader identities. It MUST preserve stock recovery files before erase and verify the complete resulting application and unchanged bootloader before success. It MUST NOT change `printer.cfg`.
+The THR transfer SHALL require supported firmware, idle ready state, zero heater targets, exclusive service ownership, and exact known THR application/bootloader identities with validated recovery timing. It MUST preserve stock recovery files before erase, run in recovery mode with a journal, and verify the complete resulting application and unchanged bootloader before success. It MUST NOT change `printer.cfg`.
 
 #### Scenario: Known stock or patched application is detected
 - **WHEN** safe preconditions hold and readback matches an admitted image
@@ -614,8 +614,23 @@ The THR transfer SHALL require supported firmware, idle ready state, zero heater
 #### Scenario: Admission fails or firmware work is interrupted
 - **WHEN** firmware admission fails or firmware work does not reach verified readback
 - **THEN** no unknown image is programmed and verified configuration installation is preserved
-- **AND** potentially changed or unverified firmware retains recovery evidence, stopped serial-owning services, and a durable blocker against later installer operations
+- **AND** potentially changed or unverified firmware retains recovery evidence, stopped serial-owning services, and a durable record against later installer operations until a rescue verifies the THR
 - **AND** configuration restore and uninstall never claim to revert MCU firmware
+
+#### Scenario: A transfer that doesn't reach verified readback is rescued
+- **WHEN** the transfer fails or its readback doesn't verify
+- **THEN** the installer runs the THR tool's rescue of the record before anything else
+- **AND** a rescue that verifies the pinned image counts as flashed, and one that verifies another admitted image counts as not applied; either restores previous service states and removes the record
+
+#### Scenario: A flash the installer didn't finish is finished later
+- **WHEN** the record remains because the installer was stopped, the printer restarted or lost power, or a rescue couldn't finish
+- **THEN** a unit the installer enabled before the first erase runs the rescue at boot, before Klipper and the touchscreen start, and settles the record when the rescue verifies the THR
+- **AND** the next install, update, or enrolled automatic update runs the rescue first, after any running rescue unit ends, and otherwise stops at the record
+- **AND** a record without the rescue's inputs, from an earlier release, is left for manual recovery
+
+#### Scenario: Bootloader without validated recovery timing
+- **WHEN** an admitted bootloader has no validated recovery timing
+- **THEN** no erase or transfer occurs and previous service states are restored
 
 #### Scenario: Dry run
 - **WHEN** the installer runs with `--dry-run`

@@ -120,6 +120,12 @@ def main(argv: list[str] | None = None) -> int:
 
             def cli_main(*, argv, bundle_root):
                 return update_now_main(argv=argv[1:], bundle_root=bundle_root)
+        elif argv and argv[0] == "thr-rescue":
+            # vo-thr-firmware.service, after its THR tool step (installer/runtime/thr_firmware.py).
+            from installer.runtime.thr_firmware import boot_main as thr_rescue_main
+
+            def cli_main(*, argv, bundle_root):
+                return thr_rescue_main(argv=argv[1:], bundle_root=bundle_root)
         elif argv and argv[0] == "firmware-update":
             # tltg-firmware-update.service: the QIDI firmware update run (installer/runtime/firmware_update.py).
             from installer.runtime.firmware_update import main as firmware_update_main

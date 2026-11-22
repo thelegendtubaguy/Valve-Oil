@@ -4,6 +4,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.parse
@@ -94,6 +95,18 @@ def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None, s
 CURRENT, FLASHED, FELL_BACK, NOT_ADMITTED = "current", "flashed", "fell_back", "not_admitted"
 BACKUP_DIRECTORY = ".tltg_thr_firmware_backups"
 
+# Finishes, at boot, a flash that the installer started and didn't finish: the record (THR_RECOVERY_MARKER) is in place
+# from the first erase until the THR is verified. Installed and enabled before the first erase; it runs nothing while
+# no record exists.
+RESCUE_UNIT = "vo-thr-firmware.service"
+RESCUE_UNIT_MARKER = "# valve-oil:thr-firmware-rescue\n"
+SYSTEMD_DIR = Path("/etc/systemd/system")
+# The unit's first step, root-owned: it reaches the THR before the THR tool can (installer/system/vo_thr_catch.py).
+CATCH_SCRIPT = Path("/usr/local/lib/vo_thr_catch.py")
+RESCUE_WAIT_SECONDS = 30 * 60
+POWER_CYCLE = ("Turn the printer off with its power switch, wait 10 seconds, and turn it on again: Valve Oil finishes the "
+               "THR firmware as the printer starts.")
+
 
 def _stock_thr_image(paths, backup_root, manifest) -> bytes | None:
     from scripts.flash_thr_firmware import digest
@@ -163,9 +176,8 @@ def flash_thr_firmware(
         if result.returncode or values.get("LoadState") != "loaded" or values.get("ActiveState") not in {"active", "inactive"}:
             raise ThrFirmwareError("Cannot establish serial service ownership: " + service)
         states[service] = values["ActiveState"]
-    password = None
+    password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
     if not services_stopped:
-        password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
         wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock, reporter=reporter)
     backup_root.mkdir(mode=0o700, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix="thr-", dir=backup_root))
@@ -180,18 +192,7 @@ def flash_thr_firmware(
 
     # From here to the services' restart the terminal's hangup and Ctrl-C can't stop the work (board_guard).
     session = detached(run)
-
-    def command(operation, *arguments, allow=()):
-        result = session(
-            [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed",
-             "--manifest", Path(manifest_path).name],
-            capture_output=True, text=True, timeout=960,
-        )
-        atomic_write_text(directory / (operation + ".stdout"), result.stdout or "", mode=0o600)
-        atomic_write_text(directory / (operation + ".stderr"), result.stderr or "", mode=0o600)
-        if result.returncode and result.returncode not in allow:
-            raise ThrFirmwareError("THR " + operation + " failed; see recovery files: " + str(directory))
-        return result
+    command = _tool_command(session, python, tool, Path(manifest_path).name, directory)
 
     def service_action(action, service):
         result = run_sudo(["systemctl", action, service], run=session, password=password, timeout=60)
@@ -248,22 +249,33 @@ def flash_thr_firmware(
                 image = patch_thr(app, manifest) if pinned.is_project_build else app
                 if protocol.digest(image) != pinned.sha256:
                     raise ThrFirmwareError("The THR image does not match the image pinned for QIDI firmware " + pinned.firmware)
+                if not protocol.identify_bootloader(boot).recoverable:
+                    raise ThrFirmwareError("This THR bootloader has no validated recovery; THR firmware was not changed.")
                 image_path = directory / "patched-thr.bin"
                 atomic_write_bytes(image_path, image, mode=0o600)
-                record["phase"] = "programming"
+                progress = directory / "progress.json"
+                # Before the first erase: what the boot unit, or a later run, needs to finish the flash.
+                install_rescue_unit(paths, run=session, password=password)
+                record.update(phase="programming", rescue={
+                    "image": str(image_path), "backup": str(stock_backup), "progress": str(progress),
+                    "manifest": Path(manifest_path).name, "firmware": pinned.firmware})
                 atomic_write_text(marker, json.dumps(record, indent=2) + "\n", mode=0o600)
                 firmware_may_have_changed = True
                 reporter.line("Flashing Valve Oil's THR firmware; keep printer power on...")
-                recovery = ("--recover-to-stock",) if protocol.identify_bootloader(boot).recoverable else ()
-                transfer = command("transfer", "--image", image_path, "--backup-dir", stock_backup, "--reset", "--confirm-write",
-                                   "--firmware", pinned.firmware, *recovery,
-                                   allow=(protocol.FELL_BACK, protocol.END_UNCONFIRMED) if recovery else ())
-                fell_back = transfer.returncode == protocol.FELL_BACK
-                sleep(12)
-                after = directory / "after"
-                reporter.line("Reading back the complete THR application and bootloader...")
-                command("snapshot", "--output-dir", after)
-                evidence = protocol.verify_readback(app if fell_back else image, after, manifest, expected_bootloader=boot)
+                try:
+                    transfer = command("transfer", "--image", image_path, "--backup-dir", stock_backup, "--reset",
+                                       "--confirm-write", "--firmware", pinned.firmware, "--recover-to-stock",
+                                       "--progress", progress, allow=(protocol.FELL_BACK, protocol.END_UNCONFIRMED))
+                    fell_back = transfer.returncode == protocol.FELL_BACK
+                    sleep(12)
+                    after = directory / "after"
+                    reporter.line("Reading back the complete THR application and bootloader...")
+                    command("snapshot", "--output-dir", after)
+                    evidence = protocol.verify_readback(app if fell_back else image, after, manifest, expected_bootloader=boot)
+                except Exception as exc:
+                    reporter.line("The THR flash didn't finish (" + str(exc) + "). Finishing it...")
+                    outcome, evidence = rescue(paths, record, command=command, manifest=manifest)
+                    fell_back = outcome == FELL_BACK
             atomic_write_text(directory / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
             verified = True
         except Exception as exc:
@@ -292,12 +304,247 @@ def flash_thr_firmware(
                     reporter.line("Valve Oil's THR firmware is unavailable for this bootloader. Your THR firmware was not changed. Please attach this shareable summary to a GitHub issue at " + ISSUES_URL + ": " + str(unsupported_summary))
             else:
                 reporter.line("THR firmware is unverified. Serial-owning services remain stopped. Recovery files: " + str(directory))
-                reporter.line("Recover and verify THR before removing the firmware blocker: " + str(marker))
+                reporter.line(POWER_CYCLE)
     if fell_back:
-        reporter.line("Valve Oil's THR firmware was not applied: the transfer failed and the stock THR firmware was reprogrammed and verified. Previous service states restored. Recovery files: " + str(directory))
+        reporter.line("Valve Oil's THR firmware was not applied: the transfer failed and the THR runs a verified firmware it held before. Previous service states restored. Recovery files: " + str(directory))
         return FELL_BACK
     reporter.line("THR firmware verified; bootloader unchanged and previous service states restored.")
     if not firmware_may_have_changed:
         return CURRENT
     reporter.line("Run input shaper calibration now, before bed leveling or printing: your saved calibration was measured with the old THR firmware. The installer has not run calibration.")
     return FLASHED
+
+
+def _tool_command(session, python, tool, manifest_name, directory):
+    """The THR tool, with its output kept in the run's backup directory."""
+    def command(operation, *arguments, allow=()):
+        result = session(
+            [str(python), str(tool), operation, *map(str, arguments), "--printer-idle-confirmed",
+             "--manifest", manifest_name],
+            capture_output=True, text=True, timeout=None if operation == "rescue" else 960,
+        )
+        atomic_write_text(directory / (operation + ".stdout"), result.stdout or "", mode=0o600)
+        atomic_write_text(directory / (operation + ".stderr"), result.stderr or "", mode=0o600)
+        if result.returncode and result.returncode not in allow:
+            raise ThrFirmwareError("THR " + operation + " failed; see recovery files: " + str(directory))
+        return result
+    return command
+
+
+def rescue(paths, record, *, command, manifest):
+    """Finish the record's flash with the tool's rescue and settle it; returns (FLASHED or FELL_BACK, evidence)."""
+    from scripts import flash_thr_firmware as protocol
+    directory = Path(record["backup_directory"])
+    (directory / protocol.RESCUE_RESULT).unlink(missing_ok=True)
+    command("rescue", "--record", paths.printer_data_root / THR_RECOVERY_MARKER, allow=(protocol.FELL_BACK,))
+    return settle(record, manifest)
+
+
+def settle(record, manifest):
+    """The verified outcome of the record's last rescue: (FLASHED, evidence) when the THR holds the pinned image,
+    (FELL_BACK, evidence) when it holds another admitted image. Raises ThrFirmwareError otherwise."""
+    from scripts import flash_thr_firmware as protocol
+    job = record["rescue"]
+    directory = Path(record["backup_directory"])
+    try:
+        result = json.loads((directory / protocol.RESCUE_RESULT).read_text())
+        readback = Path(result["readback"])
+        image = Path(job["image"]).read_bytes()
+        boot = (Path(job["backup"]) / "bootloader.bin").read_bytes()
+        if result["exit"] not in (0, protocol.FELL_BACK):
+            raise ThrFirmwareError("The THR rescue did not finish the flash; THR state is unknown.")
+        held = image if result["exit"] == 0 else (readback / "application.bin").read_bytes()
+        evidence = protocol.verify_readback(held, readback, manifest, expected_bootloader=boot)
+    except ThrFirmwareError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ThrFirmwareError("The THR rescue's readback could not be verified: " + str(exc)) from exc
+    atomic_write_text(directory / "verification.json", json.dumps(evidence, indent=2) + "\n", mode=0o600)
+    return (FLASHED if result["exit"] == 0 else FELL_BACK), evidence
+
+
+def _record(paths):
+    marker = paths.printer_data_root / THR_RECOVERY_MARKER
+    try:
+        record = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) and isinstance(record.get("rescue"), dict) else None
+
+
+def _manifest(paths, record):
+    return json.loads((paths.bundle_root / "firmware" / Path(record["rescue"]["manifest"]).name).read_text())
+
+
+def _unit_active(run) -> bool:
+    try:
+        result = run(["systemctl", "is-active", RESCUE_UNIT], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return (result.stdout or "").strip() in ("active", "activating", "deactivating", "reloading")
+
+
+def finish_pending(*, paths, reporter, environ=None, input_stream=None, run=None, urlopen=urllib.request.urlopen,
+                   sleep=time.sleep, clock=time.monotonic) -> str | None:
+    """A THR flash an earlier run left unfinished, finished before this run does anything else, as the boot unit would.
+    Returns FLASHED or FELL_BACK, or None when there is nothing to finish here. A record written before this release
+    has no rescue in it and stays for ensure_no_pending_firmware to stop at. Raises ThrFirmwareError when the flash
+    can't be finished; the record stays."""
+    from scripts import flash_thr_firmware as protocol
+    from .board_firmware import mark_thr_flashed
+
+    run = subprocess.run if run is None else run
+    env = {} if environ is None else environ
+    marker = paths.printer_data_root / THR_RECOVERY_MARKER
+    if _record(paths) is None:
+        return None
+    deadline = clock() + RESCUE_WAIT_SECONDS
+    while _unit_active(run):
+        if clock() >= deadline:
+            raise ThrFirmwareError(f"{RESCUE_UNIT} is still finishing the THR firmware; try again when it has stopped.")
+        sleep(5)
+    record = _record(paths)
+    if record is None:
+        return None  # the boot unit finished it
+    reporter.line("A THR firmware flash didn't finish; finishing it now. Keep the printer powered on.")
+    try:
+        check_thr_printer_ready(paths, urlopen=urlopen)
+    except ThrPrinterNotReady:
+        pass  # Klipper can't be ready without a working THR, and with it neither prints nor heats.
+    password = authenticate_sudo(run=run, environ=env, reporter=reporter, input_stream=input_stream)
+    states = {}
+    for service in protocol.SERVICES:
+        result = run(["systemctl", "is-active", service], capture_output=True, text=True, timeout=5)
+        states[service] = "active" if (result.stdout or "").strip() == "active" else "inactive"
+    session = detached(run)
+    directory = Path(record["backup_directory"])
+    python = paths.printer_data_root.parent / "klippy-env/bin/python"
+    command = _tool_command(session, python, paths.bundle_root / "scripts/flash_thr_firmware.py",
+                            record["rescue"]["manifest"], directory)
+    with critical_window(reporter) as reporter:
+        # The boot unit this bundle writes, should this rescue not finish either.
+        install_rescue_unit(paths, run=session, password=password)
+        for service in reversed(protocol.SERVICES):
+            if states[service] == "active":
+                run_sudo(["systemctl", "stop", service], run=session, password=password, timeout=60)
+        try:
+            outcome, _ = rescue(paths, record, command=command, manifest=_manifest(paths, record))
+        except ThrFirmwareError as exc:
+            reporter.line("The THR firmware could not be finished: " + exc.message + " " + POWER_CYCLE)
+            raise
+        if outcome == FLASHED:
+            mark_thr_flashed(paths)
+        for service in protocol.SERVICES:
+            if states[service] == "active" or service == "klipper.service":
+                run_sudo(["systemctl", "start", service], run=session, password=password, timeout=60)
+        wait_for_thr_printer_ready(paths, urlopen=urlopen, sleep=sleep, clock=clock)
+        atomic_delete(marker)
+    reporter.line("The THR firmware is finished and verified." if outcome == FLASHED else
+                  "The THR runs a verified firmware it held before; Valve Oil's THR firmware is flashed again on the "
+                  "next install or update.")
+    if outcome == FLASHED:
+        reporter.line("Run input shaper calibration now, before bed leveling or printing.")
+    return outcome
+
+
+def boot_main(argv, *, bundle_root) -> int:
+    """The boot unit's second step, after the tool's rescue: settle the record. Klipper starts after the unit, so no
+    service is touched here."""
+    from .board_firmware import mark_thr_flashed
+    from .cli import resolve_runtime_paths
+
+    paths = resolve_runtime_paths(bundle_root=bundle_root, environ=dict(os.environ))
+    record = _record(paths)
+    if record is None:
+        return 0
+    try:
+        outcome, _ = settle(record, _manifest(paths, record))
+    except ThrFirmwareError as exc:
+        sys.stderr.write(exc.message + "\n")
+        return 1
+    if outcome == FLASHED:
+        mark_thr_flashed(paths)
+    atomic_delete(paths.printer_data_root / THR_RECOVERY_MARKER)
+    return 0
+
+
+# ---- the boot unit --------------------------------------------------------------------------------------------------
+
+
+def rescue_unit_text(paths, bundle: Path) -> str:
+    from .auto_update import current_user
+    record = paths.printer_data_root / THR_RECOVERY_MARKER
+    klippy = paths.printer_data_root.parent / "klippy-env/bin/python"
+    python = sys.executable or "/usr/bin/python3"
+    return (RESCUE_UNIT_MARKER
+            + "# Finishes, at boot, a THR firmware flash the installer didn't finish, before Klipper starts. Runs only "
+            "while its record exists. Installed by Valve Oil.\n"
+            "[Unit]\n"
+            "Description=Valve Oil THR firmware rescue\n"
+            "DefaultDependencies=no\n"
+            "After=local-fs.target\n"
+            "Before=klipper.service qidi-client.service tltg-optimized-auto-update.service\n"
+            f"ConditionPathExists={record}\n\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            f"User={current_user()}\n"
+            f"WorkingDirectory={bundle}\n"
+            f"Environment=TLTG_OPTIMIZED_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
+            # Reach the THR inside its startup window, and give its port, still root's alone, the group udev gives it
+            # later in boot.
+            f"ExecStartPre=-+/usr/bin/python3 -I -S {CATCH_SCRIPT}\n"
+            # The tool next, without the installer's imports.
+            f"ExecStart=-{klippy} {bundle / 'scripts/flash_thr_firmware.py'} rescue --record {record} "
+            "--printer-idle-confirmed --at-boot\n"
+            f"ExecStart={python} -I -S {bundle / 'installer/runtime/bootstrap.py'} thr-rescue --plain\n"
+            f"TimeoutStartSec={RESCUE_WAIT_SECONDS}\n\n"
+            "[Install]\n"
+            "WantedBy=sysinit.target\n")
+
+
+def install_rescue_unit(paths, *, run, password) -> None:
+    from .firmware_update import _settled_bundle
+    target = SYSTEMD_DIR / RESCUE_UNIT
+    bundle = _settled_bundle(paths)
+    catch = bundle / "installer/system/vo_thr_catch.py"
+    try:
+        current_catch = CATCH_SCRIPT.read_bytes()
+    except OSError:
+        current_catch = None
+    if current_catch != catch.read_bytes():
+        if run_sudo(["install", "-m", "0644", str(catch), str(CATCH_SCRIPT)], run=run, password=password,
+                    timeout=60).returncode:
+            raise ThrFirmwareError(f"Could not install {CATCH_SCRIPT}; THR firmware was not changed.")
+    text = rescue_unit_text(paths, bundle)
+    try:
+        current = target.read_text(encoding="utf-8")
+    except OSError:
+        current = None
+    if current is not None and not current.startswith(RESCUE_UNIT_MARKER):
+        raise ThrFirmwareError(f"Existing {target} is unrecognized and was preserved; THR firmware was not changed.")
+    if current != text:
+        staged = paths.printer_data_root / BACKUP_DIRECTORY / RESCUE_UNIT
+        atomic_write_text(staged, text, mode=0o644)
+        try:
+            for step in (["install", "-m", "0644", str(staged), str(target)], ["systemctl", "daemon-reload"]):
+                if run_sudo(step, run=run, password=password, timeout=60).returncode:
+                    raise ThrFirmwareError(f"Could not install {target}; THR firmware was not changed.")
+        finally:
+            staged.unlink(missing_ok=True)
+    if run_sudo(["systemctl", "enable", RESCUE_UNIT], run=run, password=password, timeout=60).returncode:
+        raise ThrFirmwareError(f"Could not enable {RESCUE_UNIT}; THR firmware was not changed.")
+    # Neither install nor systemctl writes through to storage; a power cut after the first erase must find the unit.
+    os.sync()
+
+
+def remove_rescue_unit(*, run, password) -> None:
+    """Uninstall: disable and remove the unit, which an uninstall leaves only when no THR record exists."""
+    target = SYSTEMD_DIR / RESCUE_UNIT
+    try:
+        if not target.read_text(encoding="utf-8").startswith(RESCUE_UNIT_MARKER):
+            return
+    except OSError:
+        return
+    for step in (["systemctl", "disable", RESCUE_UNIT], ["rm", "-f", str(target), str(CATCH_SCRIPT)],
+                 ["systemctl", "daemon-reload"]):
+        run_sudo(step, run=run, password=password, timeout=60)

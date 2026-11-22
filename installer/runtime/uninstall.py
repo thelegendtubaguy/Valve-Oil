@@ -17,7 +17,7 @@ from .auto_update import (
 )
 from . import update_check, update_window
 from .box_enablement import saved_variable_verify_marker_path
-from . import firmware_update
+from . import firmware_update, thr_firmware
 from .board_firmware import ADMISSION_FILE
 from .box_firmware import HOLD_FILE
 from .sudo import SudoError, authenticate_sudo
@@ -618,14 +618,19 @@ def _remove_firmware_delivery_state(*, paths: RuntimePaths, reporter, input_stre
         except OSError:
             pass
     firmware_update.remove_files(paths)
-    if not (firmware_update.SYSTEMD_DIR / firmware_update.UNIT).exists():
+    units = [(directory / name, remove) for directory, name, remove in (
+        (firmware_update.SYSTEMD_DIR, firmware_update.UNIT, firmware_update.remove_unit),
+        (thr_firmware.SYSTEMD_DIR, thr_firmware.RESCUE_UNIT, thr_firmware.remove_rescue_unit))]
+    if not any(target.exists() for target, _ in units):
         return
     try:
         password = authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
     except SudoError as exc:
-        reporter.line(f"{firmware_update.UNIT} was not removed: {exc.message}")
+        reporter.line(f"{firmware_update.UNIT} and {thr_firmware.RESCUE_UNIT} were not removed: {exc.message}")
         return
-    firmware_update.remove_unit(run=run, password=password)
+    for target, remove in units:
+        if target.exists():
+            remove(run=run, password=password)
 
 
 def _uninstall_patch_ledger(

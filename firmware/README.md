@@ -66,7 +66,7 @@ The installer flashes it on the Smart 5 as it flashes the Max 4 build on the Max
 
 Use this procedure to remove the FIFO fix and put QIDI's stock THR application back. Configuration restore (`restore.sh`), uninstall, and Valve Oil's QIDI firmware update do not restore THR firmware. While Valve Oil is installed, the next install, or the next update check with automatic updates on, flashes the fix again. Run every command on the printer over SSH as `qidi`.
 
-Restoring erases and reprograms the THR application, the same operation as flashing the fix. Keep printer power on until verification completes. If `~/printer_data/.tltg_thr_firmware_pending.json` exists, an installer firmware operation did not finish; follow the failure procedure in [THR-only operations](FLASHING.md) instead.
+Restoring erases and reprograms the THR application, the same operation as flashing the fix. Keep printer power on until verification completes. If `~/printer_data/.tltg_thr_firmware_pending.json` exists, an installer flash didn't finish: turn the printer off and on, or run `./install.sh`, and Valve Oil finishes it first (see [Interrupted transfers](FLASHING.md#interrupted-transfers)).
 
 ### 1. Find the stock backup
 
