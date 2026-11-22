@@ -776,6 +776,14 @@ Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing
 - **THEN** that Box is told the buffer wants no feed and its auto-feed is aborted twice, waiting after each abort for a stopped feed's step clock to be put back, so no feed steps the slot when it is tied to the extruder and its step clock is Klipper's
 - **AND** the vendor's record of the buffer switch is left as the switch set it, so the vendor's next arm of auto-feed sends that state
 
+### Requirement: QIDI Box auto-feed arms stop a running feed first
+Valve Oil's configuration SHALL stop auto-feed on the Box that drives a slot, as for an unload's step clock reset, before each vendor arm of auto-feed on that slot (`box_autofeed.auto_start`), and SHALL then run the vendor's arm unchanged, wherever the vendor Box code has auto-feed. It SHALL call whatever was installed on that method before it. Where Klipper cannot wait, such as outside Klipper's main thread, the vendor's arm SHALL run unchanged and `klippy.log` SHALL say so.
+
+#### Scenario: Print start re-arms auto-feed during a feed
+- **WHEN** the vendor arms auto-feed on a slot while its Box is feeding it, or in the moments after a feed
+- **THEN** the feed is stopped and the slot's step clock put back first, the slot's step clock stays Klipper's, and auto-feed is armed on the slot with the buffer switch's state
+- **AND** when Valve Oil's Box watcher had a feed running, `klippy.log` says the feed was stopped first
+
 ### Requirement: Filament changes and pauses move inside cancelled parts
 Valve Oil's configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
 

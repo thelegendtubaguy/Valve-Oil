@@ -688,6 +688,50 @@ class BoxUnloadSetup:
         gcode.handlers["UNLOAD_FILAMENT_CONTROL"](FilamentCommand(SLOT=2))
 
 
+class AutoFeedArmTest(BoxUnloadSetup, unittest.TestCase):
+    """QIDI arming auto-feed on a slot whose Box is feeding, as print start's tool change does after the purge,
+    leaves the slot's step clock where Klipper has it."""
+
+    def test_qidi_arm_keeps_the_slots_step_clock_whatever_the_box_is_doing(self) -> None:
+        for name, since_feed in (("feeding", FEED_TIME / 2), ("in the 10 ms after a feed", FEED_TIME + .005),
+                                 ("between feeds", None)):
+            with self.subTest(name):
+                printer, gcode, manager, stepper = self.setup(40., box=True)
+                autofeed = self.autofeed
+                arm(autofeed, stepper)
+                autofeed.buffer(True)
+                if since_feed is None:
+                    autofeed.buffer(False)
+                    since_feed = 2 * FEED_TIME
+                self.reactor.now += since_feed
+                arm(autofeed, stepper)
+                autofeed.buffer(False)
+                self.reactor.now += 2 * FEED_TIME
+                self.assertEqual(autofeed.offset("slot2"), 0.)
+                self.assertEqual((autofeed.bind_stepper, autofeed.device("slot2").state), ("slot2", 1))
+                self.assertFalse(autofeed.box_shut_down)
+
+    def test_other_wrappers_of_qidis_arm_still_run(self) -> None:
+        printer, gcode, manager, stepper = self.setup(40., box=True)
+        autofeed, calls = self.autofeed, []
+        inner = autofeed.auto_start
+        autofeed.auto_start = lambda *args: (calls.append(args[4].stepper_name), inner(*args))[1]
+        arm(autofeed, stepper)
+        self.assertEqual(calls, ["slot2"])
+        self.assertEqual(autofeed.bind_stepper, "slot2")
+        self.assertGreater(autofeed.aborts, 0)
+
+    def test_arm_where_klipper_cant_wait_is_left_as_qidis(self) -> None:
+        # Klipper's reactor can't pause in the serial reader's thread.
+        printer, gcode, manager, stepper = self.setup(40., box=True)
+        autofeed, now = self.autofeed, self.reactor.now
+        thread = threading.Thread(target=arm, args=(autofeed, stepper))
+        thread.start()
+        thread.join()
+        self.assertEqual(autofeed.bind_stepper, "slot2")
+        self.assertEqual((autofeed.aborts, self.reactor.now), (0, now))
+
+
 class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
     """Filament caught at the toolhead stops a Box unload 20 mm past its
     pull-back, instead of three rounds of pull-backs, and a tool change

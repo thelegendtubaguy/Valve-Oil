@@ -199,7 +199,7 @@ A filament change ran while the print was inside a part you'd cancelled, and Kli
 
 While printing, the Box feeds filament on its own whenever its buffer asks, timing the slot motor itself. When print start, or `MCB_AUTO_START`, turns that feeding back on while the Box is feeding, the Box keeps the slot motor's timing off from Klipper's, by up to 51 seconds, for the rest of the print. An unload's pull-back then runs that slot's motor late or in bursts, and the toolhead sensor never clears. Diagnostics names the slot and how many seconds it's off.
 
-Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
+Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. Valve Oil now also stops a running feed, and lets the Box put the slot motor's timing back, before QIDI's code turns feeding back on, so the timing no longer goes off at print start. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
 
 ### The Box fed a slot during a Valve Oil move
 
