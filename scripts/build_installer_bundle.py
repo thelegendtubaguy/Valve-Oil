@@ -73,6 +73,8 @@ ALLOWED_DIRECTORIES = [
     "installer/klipper/extras",
     "installer/stock",
     "installer/system",
+    # Valve Oil's Klipper, which the installer builds its tree from on the printer.
+    "klipper",
 ]
 # Release downloads are cached by checksum outside the bundled tree.
 DOWNLOAD_CACHE = REPO_ROOT / "build/downloads"

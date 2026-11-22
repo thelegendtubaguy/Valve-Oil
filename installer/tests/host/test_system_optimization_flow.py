@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import io
 import json
 import os
@@ -22,7 +23,7 @@ from installer.runtime import adb_usb_only
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
 from installer.runtime import box_config as box_monitor
-from installer.runtime import klipper_chelper, qidiclient_firmware_popup
+from installer.runtime import klipper_chelper, klipper_tree, qidiclient_firmware_popup
 from installer.runtime import moonraker_fixes
 from installer.runtime import restart_on_exit
 from installer.runtime import webcam_id
@@ -37,7 +38,7 @@ from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.compatibility import load_supported_upgrade_sources
 from installer.runtime.errors import InstalledPackageValidationError
 from installer.runtime.manifest import load_manifest
-from installer.runtime.models import SystemOptimizationCliOptions
+from installer.runtime.models import InstalledState, ManagedTreeState, SystemOptimizationCliOptions
 from installer.runtime.reporter import PlainReporter
 from installer.runtime.runner import run_install
 from installer.runtime.safety import FIRMWARE_UPDATE_RUN_ENV
@@ -50,7 +51,10 @@ from installer.runtime.system_optimizations import (
     _replace_system_ledger,
     apply_system_optimizations,
     _journal_path,
+    _write_host_journal,
+    carried_system_ledger,
     recover_pending_system_optimization,
+    restore_system_optimizations,
     validate_system_ledger,
 )
 from installer.runtime.uninstall import run_uninstall
@@ -62,10 +66,12 @@ from installer.tests.helpers import (
     copy_base_runtime,
     earlier_blocked_qidiclient,
     fake_host_run,
+    fake_klipper_tree,
     fake_qidiclient,
     fake_system_root,
     moonraker_urlopen,
     snapshot_tree,
+    stock_printer_data,
     with_fluidd_build,
     with_moonraker_speedups,
     with_valve_oil_ui,
@@ -362,6 +368,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.OPERATION]["status"], "missing")
             self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.PATH_OPERATION]["status"], "skipped")
             self.assertEqual(state.system_ledger["outcomes"][moonraker_speedups.KLIPPER_PATH_OPERATION]["status"], "skipped")
+            # Valve Oil's Klipper isn't checked with QIDI's modules of this firmware, and this host has no QIDI
+            # klipper.service for the launcher's drop-in: Klipper stays QIDI's, and the install goes on.
+            self.assertEqual(state.system_ledger["outcomes"][klipper_tree.OPERATION]["status"], "unsupported")
+            self.assertEqual(state.system_ledger["outcomes"][klipper_tree.DROPIN_OPERATION]["status"], "unsupported")
+            self.assertFalse((system_root / klipper_tree.TREE_ROOT.lstrip("/")).exists())
+            self.assertFalse((system_root / klipper_tree.DROPIN_FILE.lstrip("/")).exists())
             self.assertEqual(asvc.read_bytes(), asvc_before + b"\nqidi-client\n")
             fluidd_current = fluidd.read_bytes()
 
@@ -590,6 +602,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                     raise urllib.error.URLError("Moonraker is restarting")
                 return base_uninstall_urlopen(request, *args, **kwargs)
 
+            # The operator's Klipper choice and what the launcher and Klipper recorded go with Valve Oil.
+            for name in klipper_tree.STATE_FILES:
+                (paths.printer_data_root / name).write_text("{}\n", encoding="utf-8")
             with mock.patch("installer.runtime.safety.time.sleep"):
                 run_uninstall(
                     paths,
@@ -635,6 +650,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertFalse(addons_server.exists())
             self.assertFalse(status_unit.exists())
             self.assertFalse(status_server.exists())
+            self.assertFalse((system_root / klipper_tree.LAUNCHER_FILE.lstrip("/")).exists())
+            self.assertFalse(any((paths.printer_data_root / name).exists() for name in klipper_tree.STATE_FILES))
             self.assertFalse(any(path.exists() for path in monitor_files))
             self.assertFalse(installed_monitor["app_patched"](str(qidiclient)))
             self.assertFalse(check_service.exists() or check_timer.exists())
@@ -1462,6 +1479,195 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         after = {name: data for name, data in snapshot_tree(system_root).items()
                  if name in before or not name.startswith(("systemd/", "run/"))}
         self.assertEqual(after, {**before, moonraker: newer, hook: hook_bytes, "etc/resolv.conf": resolv.read_bytes()})
+
+    def test_valve_oils_klipper_installs_beside_qidis_and_uninstall_removes_it(self):
+        """Valve Oil's Klipper on a Plus 5 through its life: installed beside QIDI's ~/klipper, which nothing changes,
+        with the launcher and the klipper.service drop-in that runs it; replaced by later packages; left as it is where
+        QIDI's modules or unit aren't the ones it was made for; removed by uninstall after the drop-in and launcher."""
+        manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+        printer_root = stock_printer_data(manifest, "01.01.02.01", homing=b"# QIDI's homing.py\n")
+        root = fake_system_root()
+        manifest, tree_source = fake_klipper_tree(root, manifest, "01.01.02.01")
+        env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+        env[SYSTEM_ROOT_ENV] = str(root)
+        paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+        host_run = fake_host_run(root)
+        tree = root / klipper_tree.TREE_ROOT.lstrip("/")
+        qidi = root / "home/qidi/klipper"
+        unit = root / klipper_tree.UNIT_FILE.lstrip("/")
+        launcher = root / klipper_tree.LAUNCHER_FILE.lstrip("/")
+        dropin = root / klipper_tree.DROPIN_FILE.lstrip("/")
+        operations = (klipper_tree.OPERATION, klipper_tree.LAUNCHER_OPERATION, klipper_tree.DROPIN_OPERATION)
+        qidi_before = snapshot_tree(qidi)
+
+        def apply(ledger, run=host_run, source="yes_install"):
+            return apply_system_optimizations(
+                paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()),
+                input_stream=None, environ=env, source=source, block_qidi_updates=True, manifest=manifest, run=run,
+                urlopen=moonraker_urlopen(),
+            )
+
+        reload_failures = []
+
+        def failing_reload(command, **kwargs):
+            # The first reload fails, and the rollback's succeeds.
+            if list(command)[-2:] == ["systemctl", "daemon-reload"] and not reload_failures:
+                reload_failures.append(True)
+                return CompletedProcess(command, 1, stdout="", stderr="reload failed")
+            return host_run(command, **kwargs)
+
+        def marker():
+            return json.loads((tree / klipper_tree.MARKER).read_text(encoding="utf-8"))
+
+        with tree_source:
+            source = klipper_tree.TREE_SOURCE
+            with self.subTest("a dry run changes nothing"):
+                report = io.StringIO()
+                system_optimizations.maybe_emit_system_dry_run(
+                    paths=paths, manifest=manifest, reporter=PlainReporter(report), prior_state=None,
+                    cli_options=SystemOptimizationCliOptions(), environ=env, block_qidi_updates=None, run=host_run,
+                )
+                self.assertIn(f"would install Valve Oil's Klipper v0.14.0-valve-oil-{manifest.package.version} at "
+                              f"{klipper_tree.TREE_ROOT}", report.getvalue())
+                self.assertFalse(tree.exists() or launcher.exists() or dropin.exists())
+
+            with self.subTest("install"):
+                ledger = apply({"policy": {"system_optimizations": "disabled", "ai_detection": "unset"}})
+                # The tree is the source's klippy with the Plus 5's files over it, Valve Oil's modules where QIDI's
+                # tree has them, and QIDI's compiled modules; its C helper library is the package's, newer than its
+                # sources, so Klipper never rebuilds it.
+                self.assertEqual((tree / "klippy/klippy.py").read_text(encoding="utf-8"), "# Valve Oil's klippy.py\n")
+                self.assertEqual((tree / "klippy/extras/heaters.py").read_text(encoding="utf-8"), "# Plus 5 heaters\n")
+                self.assertFalse((tree / "klippy/mcu.py").exists())
+                module = manifest.install.extra_modules[0]
+                self.assertEqual((tree / module.destination).read_bytes(), (paths.installer_root / module.source).read_bytes())
+                self.assertEqual((tree / "klippy/extras/box_stepper.so").read_bytes(), (qidi / "klippy/extras/box_stepper.so").read_bytes())
+                self.assertEqual((tree / klipper_tree.CHELPER).read_bytes(), klipper_tree.CHELPER_PAYLOAD.read_bytes())
+                self.assertTrue(klipper_tree.chelper_newest(tree))
+                self.assertEqual((tree / "klippy/.version").read_text(encoding="utf-8"),
+                                 f"v0.14.0-valve-oil-{manifest.package.version}\n")
+                self.assertEqual({key: marker()[key] for key in ("printer", "firmware", "soc")}, {
+                    "printer": "plus5", "firmware": "01.01.02.01",
+                    "soc": {"version": "01.01.02.01", "file": "QD_PLUS5_SOC_01.01.02.01_Release_NA"}})
+                self.assertEqual(snapshot_tree(qidi), qidi_before)
+                # Klipper starts through the launcher, which runs QIDI's command until the operator chooses otherwise,
+                # so nothing restarts Klipper for it.
+                self.assertEqual(launcher.read_bytes(), klipper_tree.LAUNCHER_PAYLOAD.read_bytes())
+                self.assertEqual(dropin.read_text(encoding="utf-8"), klipper_tree.DROPIN_CONTENT)
+                self.assertEqual([ledger["outcomes"][operation]["status"] for operation in operations], ["applied"] * 3)
+                self.assertEqual([operation for operation in ledger["restore_preimages"] if operation in operations],
+                                 list(operations))
+                installed = marker()
+                self.assertEqual(apply(ledger)["restore_preimages"], ledger["restore_preimages"])
+                self.assertEqual(marker(), installed)
+
+            with self.subTest("a later package replaces the tree; a failure puts the earlier one back"):
+                (source / "klippy/klippy.py").write_text("# a later klippy.py\n", encoding="utf-8")
+                dropin.unlink()
+                with self.assertRaises(SystemOptimizationApplyError) as failed:
+                    apply(ledger, run=failing_reload)
+                self.assertEqual(marker(), installed)
+                self.assertFalse(dropin.exists())
+                self.assertFalse(root.joinpath(klipper_tree.PREVIOUS.lstrip("/")).exists())
+                self.assertFalse(root.joinpath(klipper_tree.STAGING.lstrip("/")).exists())
+                # A reconcile starts the new tree when it is the operator's choice.
+                (paths.printer_data_root / klipper_tree.CHOICE_FILE).write_text('{"use": "valve_oil"}\n', encoding="utf-8")
+                restarted = []
+
+                def reconcile_run(command, **kwargs):
+                    if list(command)[-3:-1] == ["systemctl", "restart"]:
+                        restarted.append(list(command)[-1])
+                    return host_run(command, **kwargs)
+
+                ledger = apply(failed.exception.ledger, run=reconcile_run, source="auto_update_reconcile")
+                self.assertEqual((tree / "klippy/klippy.py").read_text(encoding="utf-8"), "# a later klippy.py\n")
+                self.assertFalse(root.joinpath(klipper_tree.PREVIOUS.lstrip("/")).exists())
+                self.assertIn("klipper.service", restarted)
+                self.assertEqual(ledger["restore_preimages"][klipper_tree.OPERATION], klipper_tree.PREIMAGE)
+
+            with self.subTest("a power cut while the tree is swapped is finished by the next run"):
+                (source / "klippy/klippy.py").write_text("# the newest klippy.py\n", encoding="utf-8")
+                installed = marker()
+                previous = root / klipper_tree.PREVIOUS.lstrip("/")
+                _write_host_journal(paths, operation_id=klipper_tree.OPERATION, transaction_id="cut", phase="apply",
+                                    preimage=klipper_tree.UPDATE_PREIMAGE)
+                # The cut came between moving the installed tree aside and putting the new one in its place.
+                tree.rename(previous)
+                staging = root / klipper_tree.STAGING.lstrip("/")
+                (staging / "klippy").mkdir(parents=True)
+                self.assertTrue(recover_pending_system_optimization(
+                    paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=None,
+                    environ=env, run=host_run, urlopen=moonraker_urlopen()))
+                self.assertEqual(marker(), installed)
+                self.assertFalse(previous.exists())
+                ledger = apply(ledger)
+                self.assertFalse(staging.exists())
+                self.assertEqual((tree / "klippy/klippy.py").read_text(encoding="utf-8"), "# the newest klippy.py\n")
+
+            with self.subTest("QIDI's modules or unit not the ones it was made for"):
+                # A QIDI package changed QIDI's modules: the tree stays, unused by the launcher, and uninstall still
+                # removes it. A later package checked with the new modules replaces it.
+                installed = marker()
+                box_stepper = qidi / "klippy/extras/box_stepper.so"
+                box_stepper.write_bytes(b"QIDI's newer box_stepper\n")
+                ledger = apply(ledger)
+                self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "unsupported")
+                self.assertEqual(marker(), installed)
+                self.assertIn(klipper_tree.OPERATION, ledger["restore_preimages"])
+                spec = manifest.system_optimizations
+                pins = dict(spec.klipper_tree.modules_for("01.01.02.01"))
+                pins["extras/box_stepper.so"] = dataclasses.replace(
+                    pins["extras/box_stepper.so"], size=box_stepper.stat().st_size,
+                    sha256=__import__("hashlib").sha256(box_stepper.read_bytes()).hexdigest())
+                manifest = dataclasses.replace(manifest, system_optimizations=dataclasses.replace(
+                    spec, klipper_tree=dataclasses.replace(spec.klipper_tree, qidi_modules=(("01.01.02.01", tuple(sorted(pins.items()))),))))
+                ledger = apply(ledger)
+                self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "applied")
+                self.assertEqual((tree / "klippy/extras/box_stepper.so").read_bytes(), box_stepper.read_bytes())
+                # A unit QIDI changed leaves the drop-in in place but inactive, and it is active again once the unit is
+                # QIDI's again.
+                unit_text = unit.read_text(encoding="utf-8")
+                unit.write_text(unit_text.replace("$KLIPPER_ARGS", "-u $KLIPPER_ARGS"), encoding="utf-8")
+                ledger = apply(ledger)
+                self.assertEqual(dropin.read_text(encoding="utf-8"), klipper_tree.DROPIN_INACTIVE)
+                unit.write_text(unit_text, encoding="utf-8")
+                ledger = apply(ledger)
+                self.assertEqual(dropin.read_text(encoding="utf-8"), klipper_tree.DROPIN_CONTENT)
+
+            with self.subTest("a QIDI firmware update carries ownership across QIDI's package"):
+                carried = carried_system_ledger(ledger, manifest=manifest, paths=paths, environ=env, run=host_run)
+                self.assertEqual({operation: carried["restore_preimages"][operation] for operation in operations},
+                                 {operation: ledger["restore_preimages"][operation] for operation in operations})
+                # QIDI's package left its units without Valve Oil's drop-ins; the update's install puts them back.
+                shutil.rmtree(dropin.parent)
+                ledger = apply(carried)
+                self.assertEqual(dropin.read_text(encoding="utf-8"), klipper_tree.DROPIN_CONTENT)
+
+            with self.subTest("uninstall removes the drop-in, then the launcher, then the tree"):
+                restored = []
+                real_journal = system_optimizations._write_host_journal
+
+                def journal(paths_, *, operation_id, **kwargs):
+                    if operation_id in operations:
+                        restored.append(operation_id)
+                    return real_journal(paths_, operation_id=operation_id, **kwargs)
+
+                state = InstalledState(
+                    schema_version=1, package_id=manifest.package.id, package_version=manifest.package.version,
+                    runtime_firmware="01.01.02.01", backup_label="test", installed_at="2026-11-22T00:00:00Z",
+                    managed_tree=ManagedTreeState(root="config/tltg-optimized-macros", files=()), patch_ledger=(),
+                    system_ledger=ledger,
+                )
+                with mock.patch.object(system_optimizations, "_write_host_journal", journal):
+                    restore_system_optimizations(
+                        paths=paths, manifest=manifest, state=state, reporter=PlainReporter(io.StringIO()),
+                        input_stream=None, environ=env, include_optional=True, run=host_run, urlopen=moonraker_urlopen(),
+                    )
+                self.assertEqual(restored, list(reversed(operations)))
+                self.assertFalse(tree.exists() or launcher.exists() or dropin.exists())
+                self.assertEqual(unit.read_text(encoding="utf-8"), unit_text)
+                self.assertEqual({name: data for name, data in snapshot_tree(qidi).items() if name != "klippy/extras/box_stepper.so"},
+                                 {name: data for name, data in qidi_before.items() if name != "klippy/extras/box_stepper.so"})
 
     def _legacy_host_context(self):
         paths, manifest, env, root = self._installed_host_context()

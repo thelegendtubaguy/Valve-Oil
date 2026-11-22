@@ -30,6 +30,7 @@ from .fluidd_box_filaments import (
 )
 from .klipper_box_config import OPERATION as KLIPPER_BOX_OPERATION, patch_box_config
 from . import klipper_chelper
+from . import klipper_tree
 from .klipper_print_stats_manager import OPERATION as KLIPPER_PRINT_STATS_OPERATION, patch_print_stats_manager
 from .fluidd_filament_config import OPERATION as FILAMENT_CONFIG_OPERATION
 from .moonraker_file_manager import OPERATION as MOONRAKER_CACHE_OPERATION, patch_file_manager
@@ -54,6 +55,7 @@ from . import boot_screen
 from . import box_config
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
+from .firmware import detect_firmware, detect_supported_firmware_best_effort
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
 from .host_reboot import HostRebootError, clear_host_reboot_marker, read_host_reboot_marker, recommend_reboot, write_host_reboot_marker
 from .interaction import confirm_yes, prompt_yes
@@ -112,6 +114,10 @@ FLUIDD_BUILD_OPERATION = static_build.FLUIDD.operation
 VALVE_OIL_UI_OPERATION = static_build.VALVE_OIL_UI.operation
 # Package-built web front ends, each installed before the nginx site that serves it and removed after it.
 STATIC_BUILDS = {build.operation: build for build in (static_build.FLUIDD, static_build.VALVE_OIL_UI)}
+KLIPPER_TREE_OPERATION = klipper_tree.OPERATION
+# Restored after everything else: the static builds once nginx stops serving them, and Valve Oil's Klipper once the
+# drop-in and launcher that start it are gone.
+RESTORED_LAST = frozenset({*STATIC_BUILDS, KLIPPER_TREE_OPERATION})
 ZRAM_SWAP_OPERATION = zram_swap.OPERATION
 # The modules directory is only ever created where nothing existed or over an earlier package directory, so
 # restoration is removal.
@@ -163,6 +169,7 @@ STEP_LABELS = {
     VALVE_OIL_UI_OPERATION: "Installing Valve Oil UI",
     MOONRAKER_SPEEDUPS_OPERATION: "Installing Moonraker speedups",
     ZRAM_SWAP_OPERATION: "Installing zram swap",
+    KLIPPER_TREE_OPERATION: "Installing Valve Oil's Klipper",
 }
 SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
@@ -576,6 +583,29 @@ GUARDED_FILE_PATCHES = {
         # Enabled, it starts at the next boot anyway; a failed start doesn't undo the install's host changes.
         restart_optional=True,
     ),
+    # The launcher goes before the drop-in that runs it, so restoration removes the drop-in first. Neither restarts
+    # Klipper: until the operator chooses Valve Oil's Klipper, the launcher starts QIDI's command unchanged.
+    klipper_tree.LAUNCHER_OPERATION: _GuardedFilePatch(
+        label="Valve Oil's Klipper launcher",
+        file=lambda spec: klipper_tree.LAUNCHER_FILE,
+        patch=klipper_tree.patch_launcher,
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    klipper_tree.DROPIN_OPERATION: _GuardedFilePatch(
+        label="Valve Oil's Klipper drop-in",
+        file=lambda spec: klipper_tree.DROPIN_FILE,
+        patch=klipper_tree.patch_dropin,
+        restart_service=None,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        reloads_units=True,
+        patch_options=lambda spec, root: {"unit_recognized": _klipper_unit_recognized(root)},
+        patch_variants=({"unit_recognized": True}, {"unit_recognized": False}),
+    ),
     remote_screen.NGINX_OPERATION: _GuardedFilePatch(
         label="Fluidd nginx site",
         file=lambda spec: remote_screen.NGINX_SITE,
@@ -646,6 +676,7 @@ def maybe_apply_system_optimizations(
             environ=environ,
             source="auto_update_child" if auto_update_child else "yes_install" if input_stream is None else "interactive_install",
             package_version=manifest.package.version,
+            manifest=manifest,
             block_qidi_updates=block_qidi_updates,
             run=run,
             urlopen=urlopen,
@@ -757,6 +788,7 @@ def maybe_reconcile_system_optimizations(
             environ=environ,
             source="auto_update_reconcile",
             package_version=manifest.package.version,
+            manifest=manifest,
             block_qidi_updates=block_qidi_updates,
             run=run,
             urlopen=urlopen,
@@ -816,6 +848,21 @@ def maybe_emit_system_dry_run(
                 static_build.OUTDATED: f"  - would replace {build.destination} with {label}",
                 static_build.CURRENT: f"  - {operation_id}: already current",
                 static_build.FOREIGN: f"  - would preserve existing {build.destination}",
+            }[state])
+            continue
+        if operation_id == KLIPPER_TREE_OPERATION and _system_root_allowed(paths=paths, environ=environ):
+            try:
+                state, tree, why = _klipper_tree_plan(paths, manifest.system_optimizations, _system_root(environ), manifest)
+            except InstallerError as exc:
+                reporter.line(f"  - would fail {operation_id}: {getattr(exc, 'message', str(exc))}")
+                continue
+            reporter.line({
+                "missing": f"  - {operation_id}: {why}",
+                "unsupported": f"  - {operation_id}: {why}",
+                klipper_tree.ABSENT: f"  - would install Valve Oil's Klipper {tree.version if tree else ''} at {klipper_tree.TREE_ROOT}",
+                klipper_tree.OUTDATED: f"  - would replace {klipper_tree.TREE_ROOT} with Valve Oil's Klipper {tree.version if tree else ''}",
+                klipper_tree.CURRENT: f"  - {operation_id}: already current",
+                klipper_tree.FOREIGN: f"  - would preserve existing {klipper_tree.TREE_ROOT}",
             }[state])
             continue
         if operation_id == MOONRAKER_SPEEDUPS_OPERATION and _system_root_allowed(paths=paths, environ=environ):
@@ -1056,6 +1103,69 @@ def _restore_static_build(operation_id: str, preimage: dict[str, Any], *, root: 
             build.remove(destination, removing)
     except static_build.StaticBuildError as exc:
         raise SystemOptimizationRecoveryError(exc.message) from exc
+
+
+def _klipper_tree_plan(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path,
+                      manifest: Manifest) -> tuple[str, klipper_tree.Plan | None, str]:
+    """The state of Valve Oil's Klipper for the detected printer and firmware, the tree to install, and, when it isn't
+    installed here ("missing" or "unsupported"), why. Raises KlipperTreeError on a package that can't make the tree."""
+    source = klipper_tree.TREE_SOURCE
+    if not (source / "klippy" / "klippy.py").is_file():
+        return "missing", None, "The package has no Valve Oil's Klipper; Klipper stays QIDI's."
+    found = detect_supported_firmware_best_effort(paths.firmware_manifest_path, manifest)
+    if found is None:
+        return "unsupported", None, "Valve Oil's Klipper needs a QIDI firmware Valve Oil supports; Klipper stays QIDI's."
+    printer, firmware = found
+    pins = spec.klipper_tree.modules_for(firmware)
+    if pins is None:
+        return "unsupported", None, (f"Valve Oil's Klipper isn't checked with QIDI's Klipper modules of firmware "
+                                     f"{printer.soc_version(firmware)} yet; Klipper stays QIDI's.")
+    destination = _map_path(root, klipper_tree.TREE_ROOT)
+    _reject_parent_symlink_path(destination, root=root)
+    qidi_klippy = _map_path(root, klipper_tree.QIDI_KLIPPY)
+    if _path_has_symlink_component(qidi_klippy, root=root) or not klipper_tree.qidi_modules_match(qidi_klippy, pins):
+        return "unsupported", None, ("QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was "
+                                     "checked with; Klipper stays QIDI's.")
+    tree = klipper_tree.plan(
+        source=source, printer=printer.id, firmware=firmware, package_version=manifest.package.version,
+        extra_modules=[(paths.installer_root / module.source, module.destination) for module in manifest.install.extra_modules],
+        qidi_modules=pins,
+    )
+    return klipper_tree.state(destination, tree), tree, ""
+
+
+def _restore_klipper_tree(preimage: dict[str, Any], *, root: Path) -> None:
+    destination = _map_path(root, klipper_tree.TREE_ROOT)
+    previous = _map_path(root, klipper_tree.PREVIOUS)
+    removing = _map_path(root, klipper_tree.REMOVING)
+    for path in (destination, previous, removing):
+        _reject_parent_symlink_path(path, root=root)
+    try:
+        if preimage.get("exists"):
+            # Without a moved-aside tree, the replaced tree is still in place.
+            if previous.is_symlink() or not previous.is_dir():
+                return
+            if destination.exists() or destination.is_symlink():
+                klipper_tree.remove(destination, removing)
+            previous.rename(destination)
+        elif destination.exists() or destination.is_symlink():
+            klipper_tree.remove(destination, removing)
+    except klipper_tree.KlipperTreeError as exc:
+        raise SystemOptimizationRecoveryError(exc.message) from exc
+
+
+def _klipper_unit_recognized(root: Path) -> bool:
+    unit = _map_path(root, klipper_tree.UNIT_FILE)
+    return not _path_has_symlink_component(unit, root=root) and klipper_tree.unit_recognized(
+        unit, _map_path(root, klipper_tree.UNIT_FILE + ".d"))
+
+
+def _klipper_launcher_current(root: Path) -> bool:
+    launcher = _map_path(root, klipper_tree.LAUNCHER_FILE)
+    try:
+        return not launcher.is_symlink() and launcher.read_text(encoding="utf-8") == klipper_tree.launcher_source()
+    except (OSError, UnicodeDecodeError, InstallerError):
+        return False
 
 
 def _moonraker_speedup_wheels(spec: SystemOptimizationsSpec) -> list[tuple[Path, str]]:
@@ -1404,6 +1514,9 @@ def _restore_decision(operation_id: str, *, preimage: dict[str, Any], outcome: d
         build = STATIC_BUILDS[operation_id]
         if build.installed_sha256(_map_path(root, build.destination)) is None:
             return _PRESERVE, f"{build.destination} was replaced after install and was preserved."
+    elif operation_id == KLIPPER_TREE_OPERATION:
+        if klipper_tree.read_marker(_map_path(root, klipper_tree.TREE_ROOT)) is None:
+            return _PRESERVE, f"{klipper_tree.TREE_ROOT} was replaced after install and was preserved."
     elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         if moonraker_speedups.installed_digest(_map_path(root, moonraker_speedups.DESTINATION)) is None:
             return _PRESERVE, f"{moonraker_speedups.DESTINATION} was replaced after install and was preserved."
@@ -1539,9 +1652,10 @@ def restore_system_optimizations(
     reporter.line(messages.SYSTEM_CHANGES_RESTORING)
     rockchip_restored = False
     outcomes = ledger.get("outcomes") if isinstance(ledger.get("outcomes"), dict) else {}
-    # The static builds go last, after nginx stops serving them.
-    order = [operation_id for operation_id in reversed(list(preimages)) if operation_id not in STATIC_BUILDS]
-    order.extend(operation_id for operation_id in preimages if operation_id in STATIC_BUILDS)
+    # The static builds go last, after nginx stops serving them, and Valve Oil's Klipper after the drop-in and launcher
+    # that start it.
+    order = [operation_id for operation_id in reversed(list(preimages)) if operation_id not in RESTORED_LAST]
+    order.extend(operation_id for operation_id in preimages if operation_id in RESTORED_LAST)
     restarts = _ServiceRestarts(paths=paths, root=root, sudo_password=sudo_password, run=run, urlopen=urlopen, reporter=reporter)
     try:
         for operation_id in order:
@@ -1586,6 +1700,8 @@ def restore_system_optimizations(
                 _restore_filament_config_link(paths, manifest.system_optimizations)
             elif operation_id in STATIC_BUILDS:
                 _restore_static_build(operation_id, preimage, root=root)
+            elif operation_id == KLIPPER_TREE_OPERATION:
+                _restore_klipper_tree(preimage, root=root)
             elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
                 _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
             elif operation_id == ZRAM_SWAP_OPERATION:
@@ -1676,11 +1792,13 @@ def apply_system_optimizations(
     source: str,
     block_qidi_updates: bool | None,
     package_version: str = "unknown",
+    manifest: Manifest | None = None,
     run=subprocess.run,
     urlopen=urllib.request.urlopen,
 ) -> dict[str, Any]:
     """Apply the package's host changes. block_qidi_updates decides whether a reviewed touchscreen app is patched to
-    refuse QIDI firmware packages and hide QIDI's online update, or keeps only the firmware-version notice fix."""
+    refuse QIDI firmware packages and hide QIDI's online update, or keeps only the firmware-version notice fix. Valve
+    Oil's Klipper needs the manifest's printers and Klipper modules; without it the tree is left as it is."""
     root = _system_root(environ)
     sudo_password = None if _is_fake_root(root) else _sudo_password(
         reporter=reporter, input_stream=input_stream, environ=environ, run=run
@@ -1795,6 +1913,8 @@ def apply_system_optimizations(
                 moonraker_speedups.KLIPPER_PATH_OPERATION: lambda: _klippy_env_present(root) and _moonraker_speedups_current(spec, root),
                 moonraker_fixes.MODULE_OPERATION: lambda: _moonraker_env_present(root),
                 moonraker_fixes.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_fixes_module_current(root),
+                # Klipper never starts through a launcher that isn't in place.
+                klipper_tree.DROPIN_OPERATION: lambda: _klipper_launcher_current(root),
             }.get(operation_id)
             if env_ready is not None and not env_ready():
                 # Never point Moonraker or Klipper at packages or a module that aren't in place.
@@ -1980,6 +2100,84 @@ def apply_system_optimizations(
                     )
                 )
                 restore_preimages.setdefault(operation_id, build.preimage)
+                _settle_host_journal(paths, rockchip_journal)
+                applied_any = True
+                continue
+            if operation_id == KLIPPER_TREE_OPERATION:
+                if manifest is None:
+                    continue
+                destination = _map_path(root, klipper_tree.TREE_ROOT)
+                state, tree, why = _klipper_tree_plan(paths, spec, root, manifest)
+                if why:
+                    reporter.line(why)
+                elif state == klipper_tree.FOREIGN:
+                    reporter.line(f"{klipper_tree.TREE_ROOT} already exists and was preserved; Klipper stays QIDI's.")
+                if state in {"missing", "unsupported", klipper_tree.FOREIGN, klipper_tree.CURRENT}:
+                    if state == klipper_tree.CURRENT and operation_id in restore_preimages:
+                        continue
+                    actions.append(
+                        _action_record(
+                            operation_id=operation_id,
+                            status={klipper_tree.FOREIGN: "preserved", klipper_tree.CURRENT: "already_current"}.get(state, state),
+                            started_at=started_at,
+                            preimage=None,
+                            desired=_desired(operation_id, spec),
+                            postflight={"path": klipper_tree.TREE_ROOT, "state": state},
+                            source=source,
+                            reconciled=False,
+                        )
+                    )
+                    # A package tree, even one for other firmware, which the launcher no longer starts, is removed by
+                    # uninstall.
+                    if state != klipper_tree.FOREIGN and klipper_tree.read_marker(destination) is not None:
+                        restore_preimages.setdefault(operation_id, dict(klipper_tree.PREIMAGE))
+                    continue
+                staging = _map_path(root, klipper_tree.STAGING)
+                previous = _map_path(root, klipper_tree.PREVIOUS)
+                _report_step(reporter, operation_id, spec)
+                for leftover in (staging, previous):
+                    _reject_parent_symlink_path(leftover, root=root)
+                    klipper_tree.discard(leftover)
+                detected = detect_firmware(paths.firmware_manifest_path)
+                try:
+                    klipper_tree.stage(tree, staging, qidi_klippy=_map_path(root, klipper_tree.QIDI_KLIPPY),
+                                       soc={"version": detected.version, "file": detected.soc_file})
+                except BaseException:
+                    with suppress(OSError):
+                        klipper_tree.discard(staging)
+                    raise
+                preimage = dict(klipper_tree.PREIMAGE if state == klipper_tree.ABSENT else klipper_tree.UPDATE_PREIMAGE)
+                current_preimages[operation_id] = preimage
+                _write_host_journal(
+                    paths,
+                    operation_id=operation_id,
+                    transaction_id=uuid.uuid4().hex,
+                    phase="apply",
+                    preimage=preimage,
+                    preimages=current_preimages,
+                )
+                if state == klipper_tree.OUTDATED:
+                    destination.rename(previous)
+                staging.rename(destination)
+                if klipper_tree.state(destination, tree) != klipper_tree.CURRENT:
+                    raise SystemOptimizationError("Valve Oil's Klipper failed postflight.")
+                # An install restarts Klipper when it ends; a reconcile starts the new tree now, if it is the one chosen.
+                if source == "auto_update_reconcile" and klipper_tree.choice(paths.printer_data_root) == "valve_oil":
+                    restarts.request(KLIPPER_SERVICE)
+                actions.append(
+                    _action_record(
+                        operation_id=operation_id,
+                        status="applied",
+                        started_at=started_at,
+                        preimage=preimage,
+                        desired=_desired(operation_id, spec),
+                        postflight={"path": klipper_tree.TREE_ROOT, "state": klipper_tree.CURRENT,
+                                    "firmware": tree.firmware, "version": tree.version},
+                        source=source,
+                        reconciled=source in {"auto_update_child", "auto_update_reconcile"},
+                    )
+                )
+                restore_preimages.setdefault(operation_id, dict(klipper_tree.PREIMAGE))
                 _settle_host_journal(paths, rockchip_journal)
                 applied_any = True
                 continue
@@ -2452,6 +2650,10 @@ def apply_system_optimizations(
         _reject_parent_symlink_path(previous, root=root)
         moonraker_speedups.discard(previous)
     with suppress(OSError, InstallerError):
+        previous = _map_path(root, klipper_tree.PREVIOUS)
+        _reject_parent_symlink_path(previous, root=root)
+        klipper_tree.discard(previous)
+    with suppress(OSError, InstallerError):
         _reject_parent_symlink_path(_map_path(root, zram_swap.PREVIOUS), root=root)
         _remove_root_tree(zram_swap.PREVIOUS, root=root, sudo_password=sudo_password, run=run)
     if any(
@@ -2896,6 +3098,8 @@ def _restore_preimage_map(preimages: dict[str, Any], *, paths: RuntimePaths, spe
             _restore_filament_config_link(paths, spec)
         elif operation_id in STATIC_BUILDS:
             _restore_static_build(operation_id, preimage, root=root)
+        elif operation_id == KLIPPER_TREE_OPERATION:
+            _restore_klipper_tree(preimage, root=root)
         elif operation_id == MOONRAKER_SPEEDUPS_OPERATION:
             _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
         elif operation_id == ZRAM_SWAP_OPERATION:
@@ -2931,7 +3135,11 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     original = Path(preimage["backup_path"]).read_bytes() if preimage.get("exists") else None
     if original is None and not target.exists():
         return
-    expected = [guarded.patch((original or b"").decode("utf-8"), **options).encode("utf-8") for options in guarded.patch_variants]
+    expected = []
+    for options in guarded.patch_variants:
+        # A variant the package never makes from this original, such as a drop-in on an unrecognized unit.
+        with suppress(InstallerError):
+            expected.append(guarded.patch((original or b"").decode("utf-8"), **options).encode("utf-8"))
     if not target.is_file() or target.read_bytes() not in (original, *expected):
         raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
     _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
@@ -2990,6 +3198,12 @@ def _operation_matches_preimage(
         if preimage.get("exists"):
             previous = _map_path(root, build.previous)
             return not previous.exists() and not previous.is_symlink() and build.installed_sha256(destination) is not None
+        return not destination.exists() and not destination.is_symlink()
+    if operation_id == KLIPPER_TREE_OPERATION:
+        destination = _map_path(root, klipper_tree.TREE_ROOT)
+        if preimage.get("exists"):
+            previous = _map_path(root, klipper_tree.PREVIOUS)
+            return not previous.exists() and not previous.is_symlink() and klipper_tree.read_marker(destination) is not None
         return not destination.exists() and not destination.is_symlink()
     if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         destination = _map_path(root, moonraker_speedups.DESTINATION)
@@ -3546,6 +3760,9 @@ def _operation_needs_apply(operation_id: str, *, spec: SystemOptimizationsSpec, 
         guarded = GUARDED_FILE_PATCHES[operation_id]
         path = _map_path(root, guarded.file(spec))
         if not path.exists():
+            if guarded.create_if_missing and guarded.binary is None:
+                # Raises for a file the package doesn't create on this host.
+                guarded.patched("", spec=spec, root=root)
             return guarded.create_if_missing
         return _guarded_file_needs_patch(guarded, path, spec=spec, root=root, block_qidi_updates=block_qidi_updates)
     if operation_id == MOONRAKER_METADATA_OPERATION:
@@ -3941,6 +4158,10 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         wifi_wait.RULE_OPERATION,
         *service_priority.SERVICES,
         *cpu_tuning.FILES,
+        # Valve Oil's Klipper, then the launcher, then the drop-in that runs it; restoration removes them the other way.
+        KLIPPER_TREE_OPERATION,
+        klipper_tree.LAUNCHER_OPERATION,
+        klipper_tree.DROPIN_OPERATION,
         # The path files go after the packages they point at, so restoration removes them first.
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
@@ -4034,6 +4255,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         }
     if operation_id == ZRAM_SWAP_OPERATION:
         return {"path": zram_swap.DESTINATION, "modules_sha256": [module.sha256 for module in spec.zram_swap.modules]}
+    if operation_id == KLIPPER_TREE_OPERATION:
+        return {"path": klipper_tree.TREE_ROOT}
     if operation_id in (
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, klipper_chelper.OPERATION,
@@ -4047,6 +4270,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         boot_screen.PLAYER_OPERATION, boot_screen.UNIT_OPERATION,
         box_config.MONITOR_OPERATION, box_config.UNIT_OPERATION, box_config.RULE_OPERATION,
         auto_update.SERVICE_OPERATION, auto_update.TIMER_OPERATION,
+        klipper_tree.LAUNCHER_OPERATION, klipper_tree.DROPIN_OPERATION,
     ):
         guarded = GUARDED_FILE_PATCHES[operation_id]
         return {"path": guarded.file(spec), "restart_service": guarded.restart_service}
@@ -4523,6 +4747,9 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             adb_usb_only.OPERATION,
             FILAMENT_CONFIG_OPERATION,
             *STATIC_BUILDS,
+            KLIPPER_TREE_OPERATION,
+            klipper_tree.LAUNCHER_OPERATION,
+            klipper_tree.DROPIN_OPERATION,
             remote_screen.UNIT_OPERATION,
             remote_screen.SERVER_OPERATION,
             addons_service.UNIT_OPERATION,
@@ -4580,6 +4807,10 @@ def _validate_host_preimage(
         build = STATIC_BUILDS[operation_id]
         if preimage not in (build.preimage, build.update_preimage):
             raise StateValidationError(f"{build.name} build restoration preimage is invalid.")
+        return
+    if operation_id == KLIPPER_TREE_OPERATION:
+        if preimage not in (klipper_tree.PREIMAGE, klipper_tree.UPDATE_PREIMAGE):
+            raise StateValidationError("Valve Oil's Klipper restoration preimage is invalid.")
         return
     if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         if preimage not in (MOONRAKER_SPEEDUPS_PREIMAGE, MOONRAKER_SPEEDUPS_UPDATE_PREIMAGE):
@@ -5050,6 +5281,9 @@ def _restore_preimage_for_operation(
         return
     if operation_id in STATIC_BUILDS:
         _restore_static_build(operation_id, preimage, root=root)
+        return
+    if operation_id == KLIPPER_TREE_OPERATION:
+        _restore_klipper_tree(preimage, root=root)
         return
     if operation_id == MOONRAKER_SPEEDUPS_OPERATION:
         _restore_moonraker_speedups(preimage, root=root, restarts=restarts)
