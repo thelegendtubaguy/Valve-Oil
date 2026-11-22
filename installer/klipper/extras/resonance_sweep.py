@@ -443,6 +443,59 @@ def _differs(tester):
     return differs
 
 
+class NativeSweepLimits:
+    """Klipper 0.14 sweeps natively and fades out low frequencies itself.
+    Keep this module's switch and acceleration limits on its test
+    generator: vo_resonance_sweep false turns sweeping off, and a sweeping
+    X/Y run is fitted to max_accel and the printer profile's
+    resonance_sweep_max_accel as on QIDI's Klipper."""
+    def __init__(self, printer, generator):
+        self.printer = printer
+        self.generator = generator
+        self.helper = SweepingTest.__new__(SweepingTest)
+        self.helper.printer = printer
+        self.prepare_test = generator.prepare_test
+        generator.prepare_test = self._prepare_test
+
+    def _prepare_test(self, gcmd, is_z):
+        self.prepare_test(gcmd, is_z)
+        generator = self.generator
+        vibrations = generator.vibration_generator
+        if (gcmd.get("SWEEPING_PERIOD", None) is None
+                and not self.helper._enabled()):
+            generator.test_sweeping_period = 0.
+        _last_test_swept[0] = bool(generator.test_sweeping_period)
+        if is_z or not generator.test_sweeping_period:
+            return
+        accel_cap = getattr(self.printer.lookup_object('toolhead'),
+                            'max_accel_cap', None)
+        cap_name = "max_accel"
+        profile_cap = self.helper._profile_sweep_limit()
+        if profile_cap is not None and (accel_cap is None
+                                        or profile_cap < accel_cap):
+            accel_cap, cap_name = profile_cap, "this printer's sweeping limit"
+        if accel_cap is None:
+            return
+        top_freq = vibrations.freq_end
+        sweeping_accel = generator.test_sweeping_accel
+        needed = vibrations.test_accel_per_hz * top_freq + sweeping_accel
+        if needed <= accel_cap:
+            return
+        fitted = math.floor((accel_cap - sweeping_accel) / top_freq)
+        if fitted < 1. or any(gcmd.get(name, None) is not None
+                              for name in ACCEL_PARAMS):
+            raise gcmd.error(
+                "The sweeping resonance test needs %.0f mm/s^2, above %s"
+                " %.0f. Lower ACCEL_PER_HZ, SWEEPING_ACCEL, or FREQ_END."
+                % (needed, cap_name, accel_cap))
+        gcmd.respond_info(
+            "ACCEL_PER_HZ lowered from %g to %g: the sweeping resonance test"
+            " would need %.0f mm/s^2, above %s %.0f"
+            % (vibrations.test_accel_per_hz, fitted, needed, cap_name,
+               accel_cap))
+        vibrations.test_accel_per_hz = float(fitted)
+
+
 class ResonanceSweep:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -452,6 +505,13 @@ class ResonanceSweep:
         tester = self.printer.lookup_object('resonance_tester', None)
         if tester is None:
             logging.info("tltg_resonance_sweep: no [resonance_tester]")
+            return
+        generator = getattr(tester, 'generator', None)
+        if hasattr(generator, 'vibration_generator') \
+                and hasattr(generator, 'prepare_test'):
+            NativeSweepLimits(self.printer, generator)
+            logging.info("tltg_resonance_sweep: Klipper sweeps natively;"
+                         " sweeping switch and acceleration limits installed")
             return
         try:
             differs = _differs(tester)

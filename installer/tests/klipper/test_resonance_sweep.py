@@ -263,3 +263,51 @@ class ResonanceSweepTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NativeGenerator:
+    """Klipper 0.14's SweepingVibrationsTestGenerator, which sweeps itself."""
+
+    def __init__(self):
+        self.vibration_generator = types.SimpleNamespace()
+
+    def prepare_test(self, gcmd, is_z):
+        vib = self.vibration_generator
+        vib.freq_end = gcmd.get_float("FREQ_END", 100. if is_z else 133.33)
+        vib.test_accel_per_hz = gcmd.get_float("ACCEL_PER_HZ", 15. if is_z else 150.)
+        self.test_sweeping_accel = gcmd.get_float("SWEEPING_ACCEL", 50. if is_z else 400.)
+        self.test_sweeping_period = gcmd.get_float("SWEEPING_PERIOD", 1.2)
+
+
+class NativeSweepTest(unittest.TestCase):
+    """On Klipper 0.14 the module keeps its switch and acceleration limits on
+    Klipper's own sweeping test."""
+
+    def prepare(self, variables=None, cap=20000., profile=None, is_z=False, **params):
+        printer = Printer(variables, toolhead=FakeToolHead(max_accel_cap=cap))
+        printer.tester.generator = generator = NativeGenerator()
+        if profile is not None:
+            printer.objects["gcode_macro _vo_printer"] = types.SimpleNamespace(
+                variables={"resonance_sweep_max_accel": profile})
+        printer.connect()
+        gcmd = GCmd(**params)
+        generator.prepare_test(gcmd, is_z)
+        return generator, gcmd
+
+    def test_switch_and_limits(self) -> None:
+        cases = [
+            # (variables, cap, profile, is_z, params, accel_per_hz, period)
+            (None, 30000., None, False, {}, 150., 1.2),
+            ({"vo_resonance_sweep": 0}, 30000., None, False, {}, 150., 0.),
+            ({"vo_resonance_sweep": 0}, 30000., None, False, {"SWEEPING_PERIOD": 1.2}, 150., 1.2),
+            (None, 20000., None, False, {}, 147., 1.2),     # Plus 5
+            (None, 20000., 13000., False, {}, 94., 1.2),    # Smart 5
+            (None, 20000., 13000., True, {}, 15., 1.2),     # Z is left alone
+        ]
+        for variables, cap, profile, is_z, params, accel_per_hz, period in cases:
+            with self.subTest(variables=variables, cap=cap, profile=profile, is_z=is_z, params=params):
+                generator, _ = self.prepare(variables, cap, profile, is_z, **params)
+                self.assertEqual(generator.vibration_generator.test_accel_per_hz, accel_per_hz)
+                self.assertEqual(generator.test_sweeping_period, period)
+        with self.assertRaisesRegex(CommandError, "above this printer's sweeping limit 13000"):
+            self.prepare(profile=13000., ACCEL_PER_HZ=150)
