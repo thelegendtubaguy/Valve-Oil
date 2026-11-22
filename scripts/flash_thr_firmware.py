@@ -34,7 +34,7 @@ DEVICE = "/dev/ttyS4"
 UNSUPPORTED_BOOTLOADER = 3
 FELL_BACK = 4
 END_UNCONFIRMED = 5
-# The update check's timer, under its name before 26.11.22.1 too; either may be absent.
+# The update check's timer, under its name before 26.11.22.2 too; either may be absent.
 SERVICES = ("klipper.service", "qidi-client.service", "vo-auto-update.timer", "tltg-optimized-auto-update.timer")
 
 

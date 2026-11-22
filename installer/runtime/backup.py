@@ -299,7 +299,7 @@ def load_external_backup_entries(
             names = [info.filename for info in infos]
             if len(names) != len(set(names)):
                 raise BackupArchiveError("Backup archive contains duplicate members.")
-            # Backups from releases before 26.11.22.1 name the same manifest .tltg-external-files.json.
+            # Backups from releases before 26.11.22.2 name the same manifest .tltg-external-files.json.
             manifest_name = next(
                 (name for name in (EXTERNAL_FILES_MANIFEST, EARLIER_EXTERNAL_FILES_MANIFEST) if name in names),
                 EXTERNAL_FILES_MANIFEST,

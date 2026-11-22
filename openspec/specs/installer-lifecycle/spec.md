@@ -51,7 +51,7 @@ Every installer launcher, including the release download, automatic updates, res
 
 #### Scenario: Files an earlier root run left are given back
 - **WHEN** any launcher run other than a dry run or Box firmware status starts, before it takes the installer lock or reads installer state
-- **THEN** every path named `vo_`, `vo-`, `.vo_`, or `.vo-`, or `tltg` or `.tltg` as releases before 26.11.22.1 named them, in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
+- **THEN** every path named `vo_`, `vo-`, `.vo_`, or `.vo-`, or `tltg` or `.tltg` as releases before 26.11.22.2 named them, in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
 - **AND** QIDI's files, including root-owned ones, are not changed
 - **AND** nothing runs through sudo when every such path already belongs to the user
 - **AND** the run stops before taking the lock when sudo can't make the change
@@ -1316,7 +1316,7 @@ Where QIDI's firmware installs its dhcpcd exit hook that writes `/etc/resolv.con
 - **THEN** it adds the fallback DNS servers as before, and uninstall can restore their preimages
 
 ### Requirement: Earlier tltg names move to vo names
-Every installer run SHALL first move what releases before 26.11.22.1 named `tltg` in `printer_data` to its `vo` name, rewriting the paths that installed state and recovery records hold, and SHALL point `printer.cfg` at `vo-macros/`. Install and uninstall SHALL remove the earlier services, units, host files, Klipper modules, and package folders, each only when it carries the package's marker, once their replacements are in place.
+Every installer run SHALL first move what releases before 26.11.22.2 named `tltg` in `printer_data` to its `vo` name, rewriting the paths that installed state and recovery records hold, and SHALL point `printer.cfg` at `vo-macros/`. Install and uninstall SHALL remove the earlier services, units, host files, Klipper modules, and package folders, each only when it carries the package's marker, once their replacements are in place.
 
 #### Scenario: An update from an earlier release
 - **WHEN** an install runs on a printer an earlier release left under its `tltg` names

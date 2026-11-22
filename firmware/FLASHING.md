@@ -21,7 +21,7 @@ Before contacting the printer, query its print state. Stop if the state is unava
 Record which services are active. Stop Valve Oil's update timer, touchscreen client, and Klipper before opening the UART:
 
 ```bash
-sudo systemctl stop vo-auto-update.timer  # tltg-optimized-auto-update.timer before 26.11.22.1
+sudo systemctl stop vo-auto-update.timer  # tltg-optimized-auto-update.timer before 26.11.22.2
 sudo systemctl stop qidi-client.service
 sudo systemctl stop klipper.service
 ```

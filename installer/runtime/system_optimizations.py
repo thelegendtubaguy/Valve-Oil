@@ -202,7 +202,7 @@ class _GuardedFilePatch:
     binary: Any = None
 
     def patched(self, text: str, *, spec: SystemOptimizationsSpec, root: Path) -> str:
-        # A release before 26.11.22.1 wrote the same changes under tltg names.
+        # A release before 26.11.22.2 wrote the same changes under tltg names.
         text = earlier_names.current_text(text)
         return self.patch(text, **(self.patch_options(spec, root) if self.patch_options is not None else {}))
 
@@ -1327,7 +1327,7 @@ def _retire_services(restore_preimages: dict[str, Any], actions: list[dict[str, 
 
 
 def retire_earlier_host_names(*, paths: RuntimePaths, reporter, input_stream, environ: dict[str, str], run=subprocess.run) -> None:
-    """Uninstall: remove what releases before 26.11.22.1 installed on the host under tltg names, ledger or not."""
+    """Uninstall: remove what releases before 26.11.22.2 installed on the host under tltg names, ledger or not."""
     if not _system_root_allowed(paths=paths, environ=environ):
         return
     root = _system_root(environ)
@@ -1340,7 +1340,7 @@ def retire_earlier_host_names(*, paths: RuntimePaths, reporter, input_stream, en
 
 
 def retire_earlier_names(*, root: Path, sudo_password: str | None, run, reporter, folders: bool) -> None:
-    """Remove what releases before 26.11.22.1 installed on the host under tltg names (earlier_names). A folder the
+    """Remove what releases before 26.11.22.2 installed on the host under tltg names (earlier_names). A folder the
     nginx site still serves stays."""
     served = ""
     with suppress(OSError, UnicodeDecodeError):
@@ -1733,7 +1733,7 @@ def apply_system_optimizations(
         restarts=restarts,
         reporter=reporter,
     )
-    # Units, files, and Klipper-side .pth files from releases before 26.11.22.1 go before their replacements start.
+    # Units, files, and Klipper-side .pth files from releases before 26.11.22.2 go before their replacements start.
     retire_earlier_names(root=root, sudo_password=sudo_password, run=run, reporter=reporter, folders=False)
     selected_ids = _selected_operation_ids(spec, policy)
     if "qidiclient_static_gifs" in selected_ids:

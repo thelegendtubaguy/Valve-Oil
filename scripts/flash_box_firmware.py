@@ -27,7 +27,7 @@ else:
     from klipper_debug_read import read_bytes
 
 UNSUPPORTED = 3
-# The update check's timer, under its name before 26.11.22.1 too; either may be absent.
+# The update check's timer, under its name before 26.11.22.2 too; either may be absent.
 SERVICES = ("klipper.service", "qidi-client.service", "vo-auto-update.timer", "tltg-optimized-auto-update.timer")
 APP_IDS = ("1d50", "614e")
 BOOT_IDS = ("0483", "5740")

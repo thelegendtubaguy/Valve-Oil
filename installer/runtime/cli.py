@@ -193,7 +193,7 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
             )
             return 0
 
-        # Releases before 26.11.22.1 named Valve Oil's files tltg; everything below reads them by their current names.
+        # Releases before 26.11.22.2 named Valve Oil's files tltg; everything below reads them by their current names.
         if earlier_names.migrate_when_free(paths):
             reporter.debug(event="cli.earlier_names.moved")
 

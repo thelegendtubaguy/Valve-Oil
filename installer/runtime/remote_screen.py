@@ -22,7 +22,7 @@ NGINX_SITE = "/etc/nginx/sites-available/fluidd"
 QIDI_FLUIDD_ROOT = "/home/qidi/fluidd"
 NGINX_QIDI_ROOT = f"\n    root {QIDI_FLUIDD_ROOT};\n"
 NGINX_BUILD_ROOT = f"\n    root {FLUIDD.destination};\n"
-# Where releases before 26.11.22.1 installed the package Fluidd.
+# Where releases before 26.11.22.2 installed the package Fluidd.
 EARLIER_NGINX_BUILD_ROOT = "\n    root /home/qidi/tltg-fluidd;\n"
 # The package Fluidd ships a gzip copy of each text asset, so nginx sends it instead of compressing every request.
 NGINX_GZIP_STATIC = "    gzip_static on;\n"
@@ -135,7 +135,7 @@ NGINX_BLOCK = NGINX_START + """\
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    # The same routes under the names releases before 26.11.22.1 used, for pages loaded before an update.
+    # The same routes under the names releases before 26.11.22.2 used, for pages loaded before an update.
     location /tltg-screen/ {
         rewrite ^/tltg-screen/(.*)$ /vo-screen/$1 last;
     }

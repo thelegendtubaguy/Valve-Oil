@@ -618,7 +618,7 @@ def install_rescue_unit(paths, *, run, password) -> None:
 
 def refresh_rescue_unit(paths, *, run, password) -> bool:
     """Rewrite an installed rescue unit, its generator, and the catch where they still name what releases before
-    26.11.22.1 called tltg. Nothing is installed where there is no rescue unit, or while a flash is unfinished."""
+    26.11.22.2 called tltg. Nothing is installed where there is no rescue unit, or while a flash is unfinished."""
     try:
         current = (SYSTEMD_DIR / RESCUE_UNIT).read_text(encoding="utf-8")
     except OSError:

@@ -3,7 +3,7 @@
 schema_version: 1
 
 package:
-  # Installed state records it; state from releases before 26.11.22.1 records qidi-max4-optimized, which an install
+  # Installed state records it; state from releases before 26.11.22.2 records qidi-max4-optimized, which an install
   # moves to this id (earlier_names).
   id: valve-oil
   display_name: Valve Oil
