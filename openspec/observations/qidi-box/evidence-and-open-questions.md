@@ -82,9 +82,9 @@ A command returning `ok` proves acceptance in that captured state; it does not p
 ### Autofeed and anti-wrap
 
 - `MCB_STATE`, `MCB_DONE`, and `MCB_ERROR` payload schemas.
-- `MCB_AUTO_START` physical behavior and active abort semantics.
-- `limit_a_event`, wrapping count/event gate, `QDE_004_013`, and pause behavior.
-- The physical input behind `limit_a_event` during box-only motion, and whether MCU feed-assist steps are reflected in the slot stepper's MCU position.
+- `limit_a_event` wrapping count/event gate, `QDE_004_013`, and pause behavior.
+- The physical input behind `limit_a_event` during box-only motion.
+- Why one operator's retry right after a failed unload cleared the hub with the slot's step clock still off.
 - Whether pressure-sensor status reflects all autofeed/anti-wrap states.
 
 ### Recovery, dryer, and failures

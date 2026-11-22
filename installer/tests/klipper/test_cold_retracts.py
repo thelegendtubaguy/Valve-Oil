@@ -130,7 +130,7 @@ class Printer:
         return self.objects.get(name, default)
 
     def get_reactor(self):
-        return types.SimpleNamespace(monotonic=lambda: 0.)
+        return types.SimpleNamespace(monotonic=lambda: 0., pause=lambda waketime: waketime)
 
     def is_shutdown(self):
         return self.shutdown
@@ -545,6 +545,11 @@ class BoxStepper:
     def extruder_unload_single_func(self):
         self.start = len(self.printer.moves)
         getattr(self, "during_unload", lambda: None)()
+        # QIDI aborts auto-feed, unbinds the slot, and ties it to the extruder for the pull-back.
+        extruder_stepper = getattr(self, "extruder_stepper", None)
+        if extruder_stepper is not None:
+            self.printer.lookup_object("box_autofeed").auto_abort()
+            extruder_stepper.sync_to_extruder("extruder")
         sensor = self.printer.lookup_object(box_flow_recovery.TOOLHEAD_SENSOR)
         for attempt in range(3):
             if attempt:
@@ -647,6 +652,34 @@ class ToolheadUnloadTest(unittest.TestCase):
         self.assertIn("didn't move the extruder for the 105 mm", message)
         self.assertNotIn("Something is holding", message)
 
+    def test_slot_step_clock_is_reset_with_auto_feed_aborted_before_the_pull_back(self) -> None:
+        printer, gcode, manager, stepper = self.setup(40.)
+        events = []
+
+        class ExtruderStepper:
+            def __init__(self):
+                self.stepper = types.SimpleNamespace(note_homing_end=lambda: events.append("reset clock"))
+
+            def sync_to_extruder(self, name):
+                events.append("sync %s" % (name,))
+
+        stepper.extruder_stepper = ExtruderStepper()
+        printer.objects["box_autofeed"] = types.SimpleNamespace(auto_abort=lambda: events.append("abort feed"))
+        printer.objects["toolhead"].wait_moves = lambda: events.append("wait moves")
+        printer.objects["toolhead"].flush_step_generation = lambda: None
+        gcode.handlers["SET_LIMIT_A"] = lambda gcmd: events.append("no feed signal" if gcmd.get("STATE") == "0" else gcmd.line)
+        real_move = printer.move
+        printer.move = lambda e: (events.append("pull"), real_move(e))
+        for unloads in (1, 2):
+            events.clear()
+            self.unload(gcode)
+            first_pull = events.index("pull")
+            self.assertEqual(events[:first_pull], ["abort feed", "wait moves", "no feed signal", "abort feed", "abort feed",
+                                                   "reset clock", "sync extruder"])
+            self.assertEqual(stepper.box_pulls, unloads)
+        # The hook is gone after the unload.
+        self.assertNotIn("sync_to_extruder", vars(stepper.extruder_stepper))
+
     def test_unload_log_counts_the_box_buffer_feeds_before_and_during_it(self) -> None:
         logging.disable(logging.NOTSET)
         root = logging.getLogger()
@@ -663,9 +696,17 @@ class ToolheadUnloadTest(unittest.TestCase):
             logging.info(feed)
             logging.info("[MCB] limit_a_event: raw_state=1 normalized=0")
         stepper.during_unload = lambda: logging.info(feed)
+        # Klipper makes the slot motor's steps, synced to the extruder, when the M400 after a pull runs.
+        flushed = []
+        real_run = gcode.run_script_from_command
+        gcode.run_script_from_command = lambda script: (real_run(script), script.strip() == "M400"
+                                                        and flushed.append(sum(printer.moves)))
+        stepper.stepper = types.SimpleNamespace(get_mcu_position=lambda: flushed[-1] * 100 if flushed else 0,
+                                                get_step_dist=lambda: .01)
         self.unload(gcode)
         self.unload(gcode)
         unloads = [line for line in lines if "1C unload from the toolhead" in line]
+        self.assertIn("slot motor moved -85 mm during the pulls", unloads[0])
         self.assertIn("3 feeds before it since the last unload from the toolhead, 1 during it, switch pressed", unloads[0])
         self.assertIn("0 feeds before it since the last unload from the toolhead, 1 during it", unloads[1])
 

@@ -84,6 +84,19 @@
 # extruder was asked to pull and how far it moved, and where the toolhead
 # sensor cleared.
 #
+# The slot motor's step clock: QIDI's Box auto-feed steps a slot on the Box
+# itself, saving the slot's step clock when a feed starts and putting it back
+# when the feed ends. Re-arming auto-feed while a feed runs, as print start
+# does when the purge has just tripped the buffer, drops the feed without
+# putting the clock back, so the next feed saves a clock that is off from
+# Klipper's by up to 51 s and keeps it for the rest of the print. A load
+# homes the slot, which lines the clocks up again, but an unload ties the slot
+# to the extruder for its pull-back first, so the slot's steps ran up to 25 s
+# late, holding the filament while the extruder slipped on it, or all at once
+# as fast as the Box allows. Before the pull-back, with QIDI's auto-feed
+# aborted and the slot idle, the slot's step clock is now reset as a homing
+# move resets it.
+#
 # Cancelled parts: Klipper's exclude_object drops every move while the print
 # is inside a cancelled part, extruder-only moves included. OrcaSlicer closes
 # a part's EXCLUDE_OBJECT_START/END block only when the next part starts, so
@@ -144,6 +157,10 @@ PULLBACK_MOVES = 2
 EXTRA_PULL_MM = 20.
 TOOLHEAD_SENSOR = "filament_switch_sensor filament_switch_sensor"
 RETRACT_LINE = re.compile(r"G1 E-(\d+(?:\.\d+)?) F\d+(?:\.\d+)?$")
+# QIDI's auto-feed abort puts a running feed's saved step clock back 10 ms
+# after it; resetting the clock is only safe once that is done, in seconds.
+# SET_LIMIT_A is box_autofeed's buffer signal to the Box.
+FEED_ABORT_SETTLE = .1
 # QIDI's box_autofeed log line for the Box buffer switch.
 BUFFER_EVENT = "[MCB] limit_a_event: raw_state="
 # Below this share of the pulls asked for, the extruder counts as not moved.
@@ -256,10 +273,13 @@ class _UnloadWatch:
         self.moves = 0
         self.pullback = 0.
         self.extra = 0.
-        # How far the extruder moved back for the pulls, and how far Klipper
-        # moved the slot's motor during them; None if unknown.
+        # How far the extruder moved back for the pulls; None if unknown.
         self.moved = 0.
-        self.slot_moved = 0.
+        # Where Klipper had the slot's motor at the first pull and after the
+        # last script before the toolhead sensor cleared: its steps are made
+        # when QIDI's M400 after a pull runs, not with the pull.
+        self._slot_start = None
+        self._slot_end = None
         self.cleared_at = None
 
     @property
@@ -280,14 +300,24 @@ class _UnloadWatch:
 
     def _run(self, run, script):
         self._before(script)
-        start = (self._extruder_position(), self._slot_position())
+        retract = any(RETRACT_LINE.match(line)
+                      for line in self._lines(script))
+        start = self._extruder_position()
+        if retract and self.moves == 0:
+            self._slot_start = self._slot_position()
         result = run(script)
-        end = (self._extruder_position(), self._slot_position())
-        if any(RETRACT_LINE.match(line) for line in self._lines(script)):
-            self.moved = _add(self.moved, start[0], end[0])
-            self.slot_moved = _add(self.slot_moved, end[1], start[1])
+        if retract:
+            self.moved = _add(self.moved, start, self._extruder_position())
+        if self.moves and self.cleared_at is None:
+            self._slot_end = self._slot_position()
         self._after(script)
         return result
+
+    @property
+    def slot_moved(self):
+        """How far Klipper moved the slot's motor during the pulls, in mm
+        as the slot counts them; None if unknown."""
+        return _add(0., self._slot_end, self._slot_start)
 
     @property
     def skipped(self):
@@ -571,6 +601,7 @@ class BoxFlowRecovery:
             before = (self._toolhead_filament(), self._hub_filament(),
                       self._feeds())
             stepper.gcode = watch
+            unhook = self._reset_clock_before_sync(slot, stepper)
             outcome = "raised"
             try:
                 result = original(*args, **kwargs)
@@ -582,12 +613,66 @@ class BoxFlowRecovery:
             finally:
                 if stepper.gcode is watch:
                     stepper.gcode = real
+                unhook()
                 try:
                     self._log_unload(slot, before, watch, outcome)
                 except Exception:
                     logging.exception("tltg_box_flow_recovery: logging the "
                                       "unload failed")
         return extruder_unload_single_func
+
+    def _reset_clock_before_sync(self, slot, box_stepper):
+        """Reset the slot's step clock right before QIDI's unload ties the
+        slot to the extruder; returns what undoes the hook."""
+        extruder_stepper = getattr(box_stepper, "extruder_stepper", None)
+        sync = getattr(extruder_stepper, "sync_to_extruder", None)
+        mcu_stepper = getattr(extruder_stepper, "stepper", None)
+        autofeed = self.printer.lookup_object("box_autofeed", None)
+        abort = getattr(autofeed, "auto_abort", None)
+        if not callable(sync) or not callable(abort) or not callable(
+                getattr(mcu_stepper, "note_homing_end", None)):
+            return lambda: None
+        own = "sync_to_extruder" in vars(extruder_stepper)
+        done = []
+
+        def sync_to_extruder(extruder_name, *args, **kwargs):
+            if extruder_name and not done:
+                done.append(True)
+                try:
+                    self._reset_slot_clock(slot, abort, mcu_stepper)
+                except Exception:
+                    logging.exception("tltg_box_flow_recovery: resetting %s's "
+                                      "step clock failed", slot_label(slot))
+            return sync(extruder_name, *args, **kwargs)
+        extruder_stepper.sync_to_extruder = sync_to_extruder
+
+        def unhook():
+            if vars(extruder_stepper).get("sync_to_extruder") \
+                    is not sync_to_extruder:
+                return
+            if own:
+                extruder_stepper.sync_to_extruder = sync
+            else:
+                del extruder_stepper.sync_to_extruder
+        return unhook
+
+    def _reset_slot_clock(self, slot, abort, mcu_stepper):
+        toolhead = self.printer.lookup_object("toolhead")
+        toolhead.wait_moves()
+        # QIDI's unload aborts auto-feed just before this. An abort that
+        # lands in the Box's pause between two feeds is ignored and the Box
+        # starts the next feed itself while the buffer signal says to, so
+        # that signal is cleared first, then auto-feed is aborted twice, each
+        # time waiting for the Box to put a dropped feed's clock back. No
+        # feed can be stepping the slot when its clock is reset.
+        self.gcode.run_script_from_command("SET_LIMIT_A STATE=0")
+        for _ in range(2):
+            abort()
+            self.reactor.pause(self.reactor.monotonic() + FEED_ABORT_SETTLE)
+        toolhead.flush_step_generation()
+        mcu_stepper.note_homing_end()
+        logging.info("tltg_box_flow_recovery: %s step clock reset before the "
+                     "unload's pull-back", slot_label(slot))
 
     def _log_unload(self, slot, before, watch, outcome):
         def state(value):
