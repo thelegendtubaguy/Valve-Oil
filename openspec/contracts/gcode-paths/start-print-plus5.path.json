@@ -288,6 +288,7 @@
       },
       "must_include_order": [
         "SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}",
+        "SAVE_VARIABLE VARIABLE=retained_filament_id VALUE='\"{current_filament_id}\"'",
         "OPTIMIZED_MOVE_TO_TRASH",
         "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
         "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",

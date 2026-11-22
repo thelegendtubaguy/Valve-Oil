@@ -85,6 +85,8 @@ Needs files sliced with the current start G-code from this repo or the OrcaCloud
 
 After a completed print, the Box filament stays loaded. The installer turns this on unless you've already chosen, and updates keep your choice.
 
+The next print reuses it only if it starts from the same slot and that slot's filament and vendor haven't changed since. Otherwise the Box unloads and loads as usual.
+
 To cut and unload after each print the way QIDI does:
 
 ```gcode

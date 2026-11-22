@@ -141,6 +141,12 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **THEN** vendor loading and rear purge/cleanup actions are skipped
 - **AND** common temperature waits, tilt, selected mesh preparation, offset, and sensor preparation still run
 
+#### Scenario: Retained material identity compares saved filament IDs as text
+- **WHEN** retained-filament reuse compares the slot's saved filament ID with the retained one
+- **THEN** both compare as trimmed text, so string IDs such as `QFA94` and `QFA00` stay distinct and numeric IDs keep matching themselves
+- **AND** end-print retention saves the filament ID as a string
+- **AND** a retained filament ID that is not a string, such as one saved by an earlier release, does not prove reuse
+
 #### Scenario: Fresh Box filament retains vendor ownership
 - **WHEN** the Box is enabled and retained reuse is not proven
 - **THEN** start delegates feeder, cutter, retry, runout, RFID, and vendor cleaning ownership to the Box stack

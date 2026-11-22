@@ -140,7 +140,7 @@ Forbidden patterns:
 
 Condition: `keep filament loaded between prints is on, the Box is in use, and filament is at the toolhead`
 
-Source: `installer/klipper/macros/filament.cfg:406-413`
+Source: `installer/klipper/macros/filament.cfg:410-417`
 
 Direct visible macro calls in branch slice:
 
@@ -152,7 +152,7 @@ Ordered invariants:
 - `SAVE_VARIABLE VARIABLE=retained_tool VALUE={active_tool.value}`
 - `SAVE_VARIABLE VARIABLE=retained_tool_ready VALUE=1`
 - `SAVE_VARIABLE VARIABLE=retained_slot VALUE='"{active_slot}"'`
-- `SAVE_VARIABLE VARIABLE=retained_filament_id VALUE={active_filament_id}`
+- `SAVE_VARIABLE VARIABLE=retained_filament_id VALUE='"{active_filament_id}"'`
 - `SAVE_VARIABLE VARIABLE=retained_vendor_id VALUE={active_vendor_id}`
 
 Forbidden patterns:
@@ -166,7 +166,7 @@ Forbidden patterns:
 
 Condition: `filament is not kept loaded for the next print`
 
-Source: `installer/klipper/macros/filament.cfg:414-429`
+Source: `installer/klipper/macros/filament.cfg:418-433`
 
 Direct visible macro calls in branch slice:
 
@@ -198,7 +198,7 @@ Forbidden patterns:
 
 Condition: `every print end; tool mappings reset only after a print that ended normally`
 
-Source: `installer/klipper/macros/filament.cfg:463-496`
+Source: `installer/klipper/macros/filament.cfg:467-500`
 
 Direct visible macro calls in branch slice:
 
@@ -236,7 +236,7 @@ Forbidden patterns:
 
 Condition: `after the cooldown starts; each wipe waits for the nozzle to cool to its stage`
 
-Source: `installer/klipper/macros/filament.cfg:509-524`
+Source: `installer/klipper/macros/filament.cfg:513-528`
 
 Direct visible macro calls in branch slice:
 
@@ -267,7 +267,7 @@ Forbidden patterns:
 
 Condition: `older slicer packs' single end-cleanup command`
 
-Source: `installer/klipper/macros/filament.cfg:528-531`
+Source: `installer/klipper/macros/filament.cfg:532-535`
 
 Direct visible macro calls in branch slice:
 

@@ -269,7 +269,7 @@ Forbidden patterns:
 
 Condition: `all Valve Oil starts`
 
-Source: `installer/klipper/macros/filament.cfg:207-259`
+Source: `installer/klipper/macros/filament.cfg:207-262`
 
 Direct visible macro calls in branch slice:
 
@@ -292,7 +292,7 @@ Forbidden patterns:
 
 Condition: `USB Box stack loaded, Box enabled, and the start tool's slot is on no connected USB Box (prints from the external spool); a later start on a Box slot or normal end turns the Box back on`
 
-Source: `installer/klipper/macros/filament.cfg:232-255`
+Source: `installer/klipper/macros/filament.cfg:232-258`
 
 Direct visible macro calls in branch slice:
 
@@ -320,7 +320,7 @@ Forbidden patterns:
 
 Condition: `vo_keep_loaded_between_prints == 1 and retained physical state is proven`
 
-Source: `installer/klipper/macros/filament.cfg:260-298`
+Source: `installer/klipper/macros/filament.cfg:263-301`
 
 Direct visible macro calls in branch slice:
 
@@ -342,6 +342,7 @@ Direct visible macro calls in branch slice:
 Ordered invariants:
 
 - `SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}`
+- `SAVE_VARIABLE VARIABLE=retained_filament_id VALUE='"{current_filament_id}"'`
 - `OPTIMIZED_MOVE_TO_TRASH`
 - `VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp`
 - `VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}`
@@ -369,7 +370,7 @@ Forbidden patterns:
 
 Condition: `box_enabled and retention is disabled or retained physical state is not proven`
 
-Source: `installer/klipper/macros/filament.cfg:299-342`
+Source: `installer/klipper/macros/filament.cfg:302-345`
 
 Direct visible macro calls in branch slice:
 
@@ -422,7 +423,7 @@ Forbidden patterns:
 
 Condition: `!box_available || !enable_box || start tool on no connected USB Box`
 
-Source: `installer/klipper/macros/filament.cfg:343-379`
+Source: `installer/klipper/macros/filament.cfg:346-382`
 
 Direct visible macro calls in branch slice:
 
@@ -755,7 +756,7 @@ Forbidden patterns:
 
 Condition: `PRE_SCRAPE=1 selects mixed-speed start wiping; omitted or zero retains fast non-start cleanup`
 
-Source: `installer/klipper/macros/filament.cfg:536-582`
+Source: `installer/klipper/macros/filament.cfg:540-586`
 
 Direct visible macro calls in branch slice:
 
