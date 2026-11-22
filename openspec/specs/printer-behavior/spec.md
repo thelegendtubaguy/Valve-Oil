@@ -942,6 +942,12 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 - **WHEN** the repeated X touch is stopped the same way, the Y touch after X homed is stopped, or a repeated Y touch is stopped after X homed during this Y home
 - **THEN** homing fails with an error that names the axis, says it happened twice or again after homing X, and asks to check for obstructions and belt tension
 
+#### Scenario: Failed touch leaves the drivers in working mode
+- **WHEN** a closed-loop X or Y touch, or arming the drivers for it, raises an error, whether from the guard, a missing trigger, or anything else
+- **THEN** homing runs QIDI's recover script (`SET_HOMING_STATE` 2 and `SET_HOMING_MODE` 2 on both X/Y drivers) before the error propagates
+- **AND** an error from the recover script is logged and the touch's own error is the one reported
+- **AND** a touch that succeeds runs the recover script once, as QIDI's homing does
+
 #### Scenario: Drivers stop answering during a touch
 - **WHEN** the guard is on and two position-error queries in a row go unanswered during an X or Y homing move
 - **THEN** the guard triggers the move's endstop trsync from the host

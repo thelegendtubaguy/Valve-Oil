@@ -303,13 +303,26 @@ class Toolhead:
         self.position[0] = 392.
 
 
+ARM = "SET_HOMING_STATE STEPPER=x VALUE=1"
+RECOVER = "SET_HOMING_STATE STEPPER=x VALUE=2"
+
+
 class Gcode:
-    def __init__(self):
+    def __init__(self, fail_recover=False):
         self.scripts = []
         self.console = []
+        self.fail_recover = fail_recover
 
     def run_script_from_command(self, script):
         self.scripts.append(script)
+        if self.fail_recover and RECOVER in script:
+            raise CommandError("Unable to set the drivers' homing state")
+
+    def homing_scripts(self):
+        """The arm and recover scripts run, in order."""
+        return ["arm" if ARM in script else "recover"
+                for script in self.scripts
+                if ARM in script or RECOVER in script]
 
     def respond_raw(self, message):
         self.console.append(message)
@@ -327,9 +340,9 @@ class Guard:
 class HomingPrinter:
     command_error = CommandError
 
-    def __init__(self, guard=True):
+    def __init__(self, guard=True, fail_recover=False):
         self.toolhead = Toolhead()
-        self.gcode = Gcode()
+        self.gcode = Gcode(fail_recover)
         self.guard = Guard()
         self.objects = {"toolhead": self.toolhead, "gcode": self.gcode}
         if guard:
@@ -340,6 +353,9 @@ class HomingPrinter:
 
     def send_event(self, event, *args):
         pass
+
+    def is_shutdown(self):
+        return False
 
 
 class HomingMove:
@@ -389,14 +405,15 @@ AXES = {
 }
 
 
-def home(source, outcomes, axis="x", guard=True):
+def home(source, outcomes, axis="x", guard=True, fail_recover=False):
     a = AXES[axis]
     module = load_source("qidi_homing", REPO_ROOT / source)
     module.HomingMove = HomingMove
     HomingMove.outcomes = list(outcomes)
     HomingMove.touches = []
     HomingMove.axis = a["index"]
-    printer = HomingPrinter(guard=guard)
+    printer = HomingMove.printer = HomingPrinter(guard=guard,
+                                                fail_recover=fail_recover)
     homing = module.Homing(printer)
     rail = types.SimpleNamespace(get_name=lambda: a["rail"],
                                  get_range=lambda: a["range"])
@@ -494,6 +511,41 @@ class GuardedHomingTest(unittest.TestCase):
                     with self.assertRaisesRegex(CommandError, error):
                         home(source, outcomes, axis="y")
                     self.assertEqual(len(HomingMove.touches), len(outcomes))
+
+    def test_every_touch_leaves_the_drivers_in_working_mode(self) -> None:
+        # QIDI's homing arms the drivers before each touch and sets them back
+        # to working mode after it; a touch that raised skipped that, leaving
+        # both on their homing current and stall detection armed.
+        cases = (
+            ("x", [150, 20]),
+            ("x", ["error"]),
+            ("x", [150, "error"]),
+            ("x", ["guard", "error"]),
+            ("x", [150, "silent"]),
+            ("x", [150, "guard", "guard"]),
+            ("y", ["guard", "guard", "guard"]),
+        )
+        for source in HOMING_SOURCES:
+            for axis, outcomes in cases:
+                with self.subTest(source=source, axis=axis, outcomes=outcomes):
+                    try:
+                        home(source, outcomes, axis=axis)
+                    except CommandError:
+                        pass
+                    self.assertEqual(len(HomingMove.touches), len(outcomes))
+                    # Each arm is followed by exactly one recover, whether the
+                    # touch succeeded or raised.
+                    scripts = HomingMove.printer.gcode.homing_scripts()
+                    self.assertEqual(scripts,
+                                     ["arm", "recover"] * len(outcomes))
+
+    def test_recover_failure_keeps_the_touch_error(self) -> None:
+        for source in HOMING_SOURCES:
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(CommandError,
+                                            "Communication timeout"), \
+                        self.assertLogs(level="ERROR"):
+                    home(source, ["error"], fail_recover=True)
 
     def test_other_homing_errors_are_unchanged(self) -> None:
         for source in HOMING_SOURCES:
