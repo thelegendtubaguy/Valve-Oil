@@ -17,7 +17,7 @@ The screens are along the left, or along the bottom on a phone with the rest und
 - **Console** sends G-code and shows Klipper's replies, with errors in red. It completes commands with Tab, recalls earlier ones with the arrow keys, lists every command with its help, and has Fluidd's filters. It works while Klipper is stopped, to read why.
 - **Tune** shows the bed mesh in 3D or as a heat map, with its range and the probe points that needed a retry, and loads, saves, removes, and calibrates mesh profiles. The mesh's corners are named as you face the printer, front left to back right; X0 Y0 is the front left on every supported printer. In 3D a small printer in the corner turns with the bed, its front marked, so you can tell which side faces you. **Bed soak** runs the [bed soak test](tools.md#bed-soak-test) and charts its runs, as Fluidd's Bed soak card does. **Calibrate** has what the printer has: Z tilt, the bed screws, endstops, probe accuracy and calibration, the load-cell check, and input shaper calibration.
 - **History** lists past prints with their details and statistics, and prints one again. **Queue** is Moonraker's job queue, and **Timelapse** has the timelapse settings, render progress, and the rendered videos to play or download.
-- **System** shows the printer's computer, each board's load and firmware, and live charts, including Klipper's main thread. The pulse icon at the top of every screen opens the same readings in brief, and turns orange or red when the Klipper or host load, memory, free space, or an MCU's load is high. **Services** restarts, stops, and starts each service, including `qidi-client`, QIDI's touchscreen app, and reboots or shuts down the printer. **Logs** shows and downloads the logs. **Printer screen** shows the touchscreen, as Fluidd's Printer screen card does. **Diagnostics** browses everything Klipper reports and charts what you pick.
+- **System** shows the printer's computer, each board's load and firmware, and live charts, including Klipper's main thread. The pulse icon at the top of every screen opens the same readings in brief, and turns orange or red when the Klipper or host load, memory, free space, or an MCU's load is high. **Services** restarts, stops, and starts each service, including `qidi-client`, QIDI's touchscreen app, and reboots or shuts down the printer. **Logs** shows and downloads the logs. **Printer screen** shows the touchscreen, as Fluidd's Printer screen card does. **Diagnostics** checks the printer's logs for known faults (see [Diagnostics](#diagnostics)), browses everything Klipper reports, and charts what you pick.
 - **Settings** has the printer's name, the language, the theme, jog and extrude defaults, cameras, temperature presets, file and preview options, timelapse, and [Add-ons](addons.md).
 - **Updates** shows the Valve Oil release, the printer's QIDI firmware, and each board's firmware, what's waiting to install, the **Automatic updates** and **LAN only mode** switches, each install's steps as it runs, and the installer's logs, and installs updates with **Update now**. See [Updates](#updates).
 - Across the top: the printer's state, its temperatures, **Save config** when Klipper has changes waiting for `SAVE_CONFIG`, notifications (Klipper's and Moonraker's warnings and Moonraker's announcements), the light or dark switch, and **Emergency stop**, which asks first when **Require confirm on Emergency Stop** is on in Settings, as in Fluidd.
@@ -52,6 +52,27 @@ The **Updates** screen has everything the **Valve Oil** section of Fluidd's Sett
 - **A board Valve Oil doesn't support yet,** such as a Box with a bootloader or firmware it doesn't recognize, says what that means for the printer and asks you to open a support issue. **Open a support issue** opens a GitHub issue with the printer, its QIDI firmware, and the board's report filled in; the form also asks how the board got its firmware. **Download the report** saves the board's report, to attach when the form says it was too long for the link. For a Box on firmware QIDI's firmware doesn't carry, it also says to update that Box from the touchscreen's firmware page first. A Box put back on QIDI's firmware stays on it until the next Valve Oil release. When a QIDI firmware update left the Max 4's closed-loop motor drivers on their firmware, the screen says why and to update them from the touchscreen's firmware page, and **Report this board** opens an issue.
 
 The screen checks the printer every 10 seconds while it's open, and every 2 seconds while an update runs. Valve Oil UI also checks once when it opens and whenever it loses the printer, so it notices an automatic update that has started. The printer warnings at the top also say when an update is waiting.
+
+## Diagnostics
+
+**System → Diagnostics → Fault check** reads the printer's logs, `klippy.log` and the older ones beside it, for the faults Valve Oil knows of. For each one it finds, it says what happened, what it means, and what to do, with **Read more** for the docs, how many times it was seen and when, and the log lines that showed it under **log lines**. The check runs at low priority, so it doesn't slow a print. It reads up to a set size of log within a set time, newest first, then stops.
+
+Pick how far back to look, then press **Check the logs**:
+
+- **Since Klipper started:** from Klipper's last start.
+- **Last 24 hours:** the last day of the log.
+- **Whole log:** all of the logs, as far back as the check can read. This is the default.
+
+The screen always says how far back the check reached, in the printer's time. On a large log it reads only the newest part and says so. With nothing found, it says no known faults were found.
+
+Each finding is marked:
+
+- **Needs attention:** it happened, and the Valve Oil installed now doesn't fix it. Do what it says.
+- **Fixed by the release installed now:** it happened on an earlier release, and the one installed now fixes it.
+- **Valve Oil repaired it:** each time it happened, Valve Oil put it right before it failed anything.
+- **For reference:** worth knowing when reporting a problem, such as QIDI's error codes.
+
+**Download report** saves what the check found as a text file, with the printer's details first, to attach to an issue. **Report a problem** on the Updates screen also puts the last check's report in its support bundle. The check needs a Valve Oil release that has it; on an older one, the card says to update Valve Oil.
 
 ## What the installer does
 

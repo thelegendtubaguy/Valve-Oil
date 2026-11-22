@@ -59,6 +59,7 @@ The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer stat
 | `--scenario bed-soak` | Starts with a bed soak test running, 20 times faster than on a printer |
 | `--gcode-kbps <n>` | Slows G-code downloads so the preview's progress shows |
 | `--addons <state>`, `VO_ADDONS NAME=<state>` | The add-ons service: `none`, `installed`, `linking`, `busy`, `foreign`, `failed`, `absent` |
+| `--diagnostics <scenario>`, `VO_DIAGNOSTICS NAME=<scenario>` | System → Diagnostics' fault check (`/tltg-status/api/diagnostics`): `found` (the default: a Box step clock the installed release fixes and a QIDI error code), `clean`, `partial` (only the newest part of a large log read), `failed`, `idle` (no check run yet), `absent` (404, an older Valve Oil). A check runs for about 3 seconds |
 | `--lan-mode 0\|1\|none` | QIDI's LAN only mode off, on, or missing |
 | `--spoolman` | Loads Moonraker's `spoolman` component with made-up spools |
 | `VO_KLIPPY_SHUTDOWN [SECONDS=30]` | Shuts Klipper down for a while, for the stop screen |

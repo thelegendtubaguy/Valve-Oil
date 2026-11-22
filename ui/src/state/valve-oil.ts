@@ -117,6 +117,9 @@ async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: Ab
   return voStatusRequest(base, path, { method, token: null, signal, body })
 }
 
+/** Calls the status service of the page's own printer, as the Updates screen does: for the System screen's Diagnostics check. */
+export const statusRequest = request
+
 // ---- polling ----
 let watchers = 0
 let timer: ReturnType<typeof setTimeout> | undefined

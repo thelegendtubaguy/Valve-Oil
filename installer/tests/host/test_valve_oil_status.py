@@ -4,7 +4,9 @@ import io
 import json
 import os
 import shutil
+import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.parse
@@ -17,7 +19,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from installer.runtime import progress, update_window, valve_oil_status as status_file
-from installer.tests.helpers import load_source, temp_path
+from installer.tests.helpers import FIXTURES_ROOT, REPO_ROOT, load_source, temp_path
 
 
 def _load_server():
@@ -83,7 +85,20 @@ class StatusServiceTests(unittest.TestCase):
         server.start_update_now = start
         server.MACRO_GLOBALS.write_text('[gcode_macro _vo_globals]\nvariable_package_version: "26.11.11.3"\n')
         server.FIRMWARE_MANIFEST.write_text(json.dumps({"SOC": {"version": "01.01.06.02"}}))
+        # The Diagnostics check runs the bundle's checker, which waits for the test to let it go.
+        checker = server.BUNDLE / "installer/runtime/diagnostics.py"
+        shutil.copy(REPO_ROOT / "installer/runtime/diagnostics.py", server.BUNDLE / "installer/runtime/checker.py")
+        cls.checker_go = root / "checker-go"
+        checker.write_text(
+            "import os, runpy, sys, time\n"
+            f"while not os.path.exists({str(cls.checker_go)!r}):\n    time.sleep(0.01)\n"
+            "sys.argv[0] = 'checker.py'\n"
+            f"runpy.run_path({str(server.BUNDLE / 'installer/runtime/checker.py')!r}, run_name='__main__')\n")
+        server.DIAGNOSTICS = (sys.executable, "-I", str(checker))
+        server.DIAGNOSTICS_FILE = server.STATE_DIR / "diagnostics.json"
+        server.DIAGNOSTICS_REPORT = server.STATE_DIR / "diagnostics.txt"
         server.Handler.jobs = server.Jobs()
+        server.Handler.diagnostics = server.Diagnostics()
         cls.server = server
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         threading.Thread(target=cls.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
@@ -410,6 +425,42 @@ class StatusServiceTests(unittest.TestCase):
             self.server.SUPPORT_LOG_BYTES = 16 * 1024 * 1024
             metadata.unlink(missing_ok=True)
             shutil.rmtree(logs, ignore_errors=True)
+
+
+    def test_diagnostics_check_the_logs_one_at_a_time_and_the_support_bundle_carries_the_report(self) -> None:
+        logs = self.server.LOGS
+        logs.mkdir(exist_ok=True)
+        shutil.copy(FIXTURES_ROOT / "diagnostics/step-clock-offset.log", logs / "klippy.log")
+        try:
+            self.assertEqual(self.request("/api/diagnostics", method="GET"), (200, {
+                "state": "idle", "since": None, "started_at": None, "finished_at": None, "error": None, "result": None,
+                "report": None}))
+            self.assertEqual(self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "week"}')[0], 400)
+            self.assertEqual(self.request("/api/diagnostics", body=b'{"since": "all"}')[0], 403)
+            status, check = self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "all"}')
+            self.assertEqual((status, check["state"], check["since"]), (202, "running", "all"))
+            self.assertEqual(self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "all"}')[0], 409)
+            self.checker_go.touch()
+            for _ in range(500):
+                check = self.request("/api/diagnostics", method="GET")[1]
+                if check["state"] != "running":
+                    break
+                time.sleep(0.01)
+            self.assertEqual(check["state"], "done", check.get("error"))
+            self.assertEqual({finding["id"] for finding in check["result"]["findings"]},
+                             {"autofeed_rearmed_during_feed", "box_step_clock_offset", "unload_toolhead_sensor_stuck",
+                              "qidi_error"})
+            # The installed release (26.11.11.3) predates the fix, so the offset needs attention.
+            offset = next(f for f in check["result"]["findings"] if f["id"] == "box_step_clock_offset")
+            self.assertEqual(offset["severity"], "fault")
+            self.assertTrue(check["report"].startswith("Printer details:\nValve Oil: 26.11.11.3"))
+            with urllib.request.urlopen(self.base + "/api/support-bundle", timeout=5) as response:
+                archive = zipfile.ZipFile(io.BytesIO(response.read()))
+            self.assertEqual(archive.read("valve-oil/diagnostics.txt").decode(), check["report"])
+        finally:
+            shutil.rmtree(logs, ignore_errors=True)
+            for path in (self.server.DIAGNOSTICS_FILE, self.server.DIAGNOSTICS_REPORT, self.checker_go):
+                path.unlink(missing_ok=True)
 
 
 class UpdateNowRunTests(unittest.TestCase):

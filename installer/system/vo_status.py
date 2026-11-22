@@ -15,6 +15,9 @@ API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
                         is false
   GET  api/support-bundle  a zip of what a support issue needs (see support_bundle), named in Content-Disposition;
                         409 while another is being made
+  GET  api/diagnostics  the last Diagnostics check (see Diagnostics)
+  POST api/diagnostics  {"since": "all" | "day" | "start"}; starts a check of the printer's logs for Valve Oil's known
+                        fault signatures and answers 202 with the check, or 409 while one runs
 POSTs need the X-Valve-Oil: status header and a JSON body, and a same-origin Origin when a browser sends one.
 
 The status: {schema, updated_at, release: {installed, channel, commit}, printer: {id, name, firmware, target_firmware},
@@ -143,6 +146,15 @@ LOGS = PRINTER_DATA / "logs"
 BOX_CFG = PRINTER_DATA / "config/box.cfg"
 CACHE = HOME / ".cache/valve-oil"
 FIRMWARE_UPDATE_RESULT = PRINTER_DATA / ".tltg_firmware_update_result.json"
+# The Diagnostics check: installer/runtime/diagnostics.py from the bundle, at the lowest priority, with its own time
+# limit; this service stops one that outlives it by DIAGNOSTICS_GRACE seconds.
+DIAGNOSTICS = (sys.executable or "/usr/bin/python3", "-I", str(BUNDLE / "installer/runtime/diagnostics.py"))
+DIAGNOSTICS_SINCE = ("all", "day", "start")
+DIAGNOSTICS_TIME_LIMIT = 90
+DIAGNOSTICS_GRACE = 60
+DIAGNOSTICS_FILE = STATE_DIR / "diagnostics.json"
+DIAGNOSTICS_REPORT = STATE_DIR / "diagnostics.txt"
+MAX_DIAGNOSTICS_BYTES = 2 * 1024 * 1024
 # Only values of known shape go in printer details: versions, QIDI's file names, and counts.
 PLAIN = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
@@ -280,6 +292,87 @@ class Jobs:
         tmp = JOB_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(job), encoding="utf-8")
         tmp.replace(JOB_FILE)
+
+
+class Diagnostics:
+    """The Diagnostics check this service ran last: one at a time, its result kept in DIAGNOSTICS_FILE and its report,
+    which the support bundle carries, in DIAGNOSTICS_REPORT.
+
+    The check: {state: "idle" | "running" | "done" | "failed", since, started_at, finished_at, error, result, report}.
+    result is diagnostics.py's (its schema 1), report the text to attach to an issue, with the printer details first.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        check = self._read()
+        if check.get("state") == "running":
+            # This service restarted during a check, which stopped with it.
+            self._write({**check, "state": "failed", "finished_at": _now(), "error": "The check was interrupted."})
+
+    def current(self) -> dict:
+        check = self._read()
+        if not check:
+            return {"state": "idle", "since": None, "started_at": None, "finished_at": None, "error": None,
+                    "result": None, "report": None}
+        return check
+
+    def start(self, since: str, status: dict) -> dict:
+        if since not in DIAGNOSTICS_SINCE:
+            raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"since": "all"}, "day", or "start".')
+        if not Path(DIAGNOSTICS[-1]).is_file():
+            raise RequestError(HTTPStatus.CONFLICT, UPDATE_NOW_BLOCKERS["installer_missing"] + ".")
+        with self._lock:
+            if self._read().get("state") == "running":
+                raise RequestError(HTTPStatus.CONFLICT, "A check is already running.")
+            check = {"state": "running", "since": since, "started_at": _now(), "finished_at": None, "error": None,
+                     "result": None, "report": None}
+            self._write(check)
+        threading.Thread(target=self._run, args=(since, status), daemon=True).start()
+        log(f"Started a Diagnostics check ({since})")
+        return check
+
+    def _run(self, since: str, status: dict) -> None:
+        check = self._read()
+        try:
+            result = run_diagnostics(since, status["release"]["installed"])
+            report = "Printer details:\n" + printer_details(status) + "\n\n" + result.pop("report")
+            check.update(state="done", result=result, report=report)
+            DIAGNOSTICS_REPORT.write_text(report, encoding="utf-8")
+            log(f"Diagnostics check found {len(result['findings'])} signatures")
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            log(f"Diagnostics check failed: {exc}")
+            reason = _text(str(exc))
+            check.update(state="failed", error=f"The check could not be run: {reason}" if reason else
+                         "The check could not be run.")
+        check["finished_at"] = _now()
+        with self._lock:
+            self._write(check)
+
+    def _read(self) -> dict:
+        data = _read_json(DIAGNOSTICS_FILE, limit=MAX_DIAGNOSTICS_BYTES + 65536)
+        return data if isinstance(data, dict) and data.get("state") in ("running", "done", "failed") else {}
+
+    def _write(self, check: dict) -> None:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = DIAGNOSTICS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(check), encoding="utf-8")
+        tmp.replace(DIAGNOSTICS_FILE)
+
+
+def run_diagnostics(since: str, installed: str | None) -> dict:
+    """Run the bundle's checker on the printer's logs at the lowest CPU and disk priority, returning its result with its
+    report."""
+    low = [*(["nice", "-n", "19"] if shutil.which("nice") else []), *(["ionice", "-c", "3"] if shutil.which("ionice") else [])]
+    command = [*low, *DIAGNOSTICS, "--json", "--report", "--since", since, "--time-limit", str(DIAGNOSTICS_TIME_LIMIT),
+               *(["--installed", installed] if installed and PLAIN.match(installed) else []), str(LOGS)]
+    done = subprocess.run(command, cwd=str(BUNDLE), stdin=subprocess.DEVNULL, capture_output=True,
+                          timeout=DIAGNOSTICS_TIME_LIMIT + DIAGNOSTICS_GRACE, check=False)
+    if done.returncode != 0 or len(done.stdout) > MAX_DIAGNOSTICS_BYTES:
+        raise ValueError((done.stderr.decode("utf-8", "replace").strip().splitlines() or ["the checker failed"])[-1])
+    result = json.loads(done.stdout)
+    if not isinstance(result, dict) or result.get("schema") != 1 or not isinstance(result.get("report"), str):
+        raise ValueError("the checker's result wasn't one this service reads")
+    return result
 
 
 def start_update_now(output, job_id: str) -> subprocess.Popen:
@@ -502,7 +595,7 @@ def support_issue_url(status: dict) -> str:
 
 def support_files() -> list[tuple[str, Path]]:
     """What a support issue needs, by its name in the bundle: Klipper's and Moonraker's logs, today's and the last
-    rotated one, Valve Oil's Box link log, and what Valve Oil's own runs wrote."""
+    rotated one, Valve Oil's Box link log, what Valve Oil's own runs wrote, and the last Diagnostics report."""
     files = []
     for name in ("klippy.log", "moonraker.log"):
         files.append((f"logs/{name}", LOGS / name))
@@ -516,6 +609,7 @@ def support_files() -> list[tuple[str, Path]]:
         ("valve-oil/firmware-update.log", CACHE / "firmware-update/update.log"),
         ("valve-oil/qidi-package.log", CACHE / "firmware-update/qidi-package.log"),
         ("valve-oil/firmware-update-result.json", FIRMWARE_UPDATE_RESULT),
+        ("valve-oil/diagnostics.txt", DIAGNOSTICS_REPORT),
         ("valve-oil/RELEASE_METADATA.yaml", RELEASE_METADATA),
         ("firmware_manifest.json", FIRMWARE_MANIFEST),
     ]
@@ -890,6 +984,7 @@ def _qidi_firmware() -> str | None:
 class Handler(BaseHTTPRequestHandler):
     server_version = "tltg-status"
     jobs: Jobs
+    diagnostics: Diagnostics
     # One support bundle at a time: each reads tens of megabytes of logs.
     bundling = threading.Lock()
 
@@ -908,6 +1003,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, status_body(self.jobs))
         elif route == "support-bundle":
             self._send_support_bundle()
+        elif route == "diagnostics":
+            self._send(HTTPStatus.OK, self.diagnostics.current())
         elif route in ("auto-update", "update-now"):
             self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Use POST."}, allow="POST")
         else:
@@ -929,6 +1026,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise Conflict("Update now can't start: " + "; ".join(item["message"] for item in blocked) + ".",
                                    blocked)
                 self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(status)})
+            elif route == "diagnostics":
+                if set(body) - {"since"}:
+                    raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"since": "all"}, "day", or "start".')
+                self._send(HTTPStatus.ACCEPTED, self.diagnostics.start(body.get("since", "all"), status_body(self.jobs)))
             elif route in ("status", "support-bundle"):
                 raise RequestError(HTTPStatus.METHOD_NOT_ALLOWED, "Use GET.")
             else:
@@ -995,7 +1096,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self) -> str | None:
         # nginx strips its /tltg-status/ prefix; the API is exactly api/<name>.
         parts = self.path.split("?", 1)[0].split("/")
-        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle"):
+        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle",
+                                                                                     "diagnostics"):
             return parts[2]
         return None
 
@@ -1088,6 +1190,7 @@ def _alive(pid) -> bool:
 
 def main() -> None:
     Handler.jobs = Jobs()
+    Handler.diagnostics = Diagnostics()
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     server.daemon_threads = True
     log(f"Listening on {LISTEN_HOST}:{LISTEN_PORT}")

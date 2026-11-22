@@ -468,6 +468,10 @@ const fake = {
   get scenario() {
     return scenario
   },
+  /** Valve Oil's status service is away: down for a simulated update, or absent (`--updates absent`). */
+  get statusServiceDown() {
+    return outage || Boolean(vo?.absent)
+  },
   /** The JSON-RPC handlers, so a plugin can wrap one (for example printer.gcode.script). */
   get handlers() {
     return handlers

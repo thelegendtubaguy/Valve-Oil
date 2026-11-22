@@ -1,0 +1,27 @@
+# Operator klippy.log, Max 4 01.01.07.01, Valve Oil 26.11.22.1, 2026-11-22, trimmed to the lines the checker reads.
+# Print start re-arms the Box's auto-feed while it feeds slot oid 1; every clock after it is 22 s off, and later
+# unloads stop with filament at the toolhead.
+2026-11-22 09:59:06 - Start printer at Sun Nov 22 09:59:06 2026 (1795337946.2 89048.9)
+variable_package_version = "26.11.22.1"
+MCU 'mcu_box1' config: ADC_MAX=4095 CLOCK_FREQ=84000000 MCU=stm32f401xc PWM_MAX=255
+2026-11-22 10:40:30 - Status changed: ready: -> print_start:
+2026-11-22 10:42:34 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 91656.942512038, '#receive_time': 91656.960689288}
+2026-11-22 10:42:35 - mcu 'mcu_box1': got {'now': 3027010534, 'next_s': 270260911, 'diff': 1538217672, '#name': 'STEP-set_last_step', '#sent_time': 91657.989279205, '#receive_time': 91658.045833664}
+2026-11-22 10:42:35 - mcu 'mcu_box1': got {'oid': 1, 'clk': 270260911, '#name': 'last_step_clk', '#sent_time': 91657.989279205, '#receive_time': 91658.054260205}
+2026-11-22 10:42:35 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 91657.989279205, '#receive_time': 91658.054300455}
+2026-11-22 10:42:36 - mcu 'mcu_box1': got {'now': 3118873097, 'next_s': 270260911, 'diff': 1446355109, '#name': 'STEP-set_last_step', '#sent_time': 91659.134292831, '#receive_time': 91659.139374831}
+2026-11-22 10:48:33 - mcu 'mcu_box1': got {'oid': 23, 'stepper_oid': 1, 'state': 0, 'polarity': 0, 'pullup': 0, '#name': 'MCB_CONFIG_STEPPER', '#sent_time': 92016.387316751, '#receive_time': 92016.387903001}
+2026-11-22 10:48:33 - mcu 'mcu_box1': got {'oid': 1, 'clk': 270260911, '#name': 'last_step_clk', '#sent_time': 92016.402520751, '#receive_time': 92016.404180626}
+2026-11-22 10:48:33 - [MCB] STATE {'oid': 23, 'state': 1, '#name': 'MCB_STATE', '#sent_time': 92016.402520751, '#receive_time': 92016.404229335}
+2026-11-22 10:49:12 - mcu 'mcu_box1': got {'oid': 1, 'clk': 270260911, '#name': 'last_step_clk', '#sent_time': 92055.33315377, '#receive_time': 92055.334592853}
+2026-11-22 10:49:12 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 92055.33315377, '#receive_time': 92055.334636311}
+2026-11-22 10:49:13 - Status changed: print_start:auto_bed_adjust -> printing:
+2026-11-22 10:49:13 - mcu 'mcu_box1': got {'oid': 23, 'stepper_oid': 1, 'state': 0, 'polarity': 0, 'pullup': 0, '#name': 'MCB_CONFIG_STEPPER', '#sent_time': 92056.000845562, '#receive_time': 92056.001495687}
+2026-11-22 10:49:13 - mcu 'mcu_box1': got {'oid': 1, 'clk': 2097966579, '#name': 'last_step_clk', '#sent_time': 92056.001455437, '#receive_time': 92056.00233102}
+2026-11-22 10:49:13 - [MCB] STATE {'oid': 23, 'state': 1, '#name': 'MCB_STATE', '#sent_time': 92056.001455437, '#receive_time': 92056.002333937}
+2026-11-22 10:49:13 - mcu 'mcu_box1': got {'oid': 1, 'clk': 2100079791, '#name': 'last_step_clk', '#sent_time': 92056.001455437, '#receive_time': 92056.029642395}
+2026-11-22 10:49:13 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 92056.001455437, '#receive_time': 92056.029729603}
+2026-11-22 10:49:14 - mcu 'mcu_box1': got {'now': 2191233530, 'next_s': 2100079791, 'diff': 4203813556, '#name': 'STEP-set_last_step', '#sent_time': 92057.095761646, '#receive_time': 92057.112846312}
+2026-11-22 12:22:34 - tltg_box_flow_recovery: Box unload of 1A stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, 20 mm more than its 85 mm pull-back. Something at the toolhead is holding the filament, such as a cutter blade that hasn't sprung back or a swollen cut end, so the Box hasn't pulled it, and QIDI's further pulls would only grind it. Fr
+2026-11-22 12:22:34 - tltg_box_flow_recovery: 1A unload from the toolhead: toolhead sensor filament -> filament; hub sensor filament -> filament; extruder pulled back 105 mm, 20 of them after its pull-back; raised CommandError: Box unload of 1A stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, 20 mm more than its 85 mm pull-back. Something at th
+2026-11-22 12:52:22 - Code:QDE_004_024; Message:The filament failed to enter the extruder.

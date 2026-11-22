@@ -218,6 +218,7 @@ install:
       - "box_spool_roll.cfg"
       - "box_rfid.cfg"
       - "box_flow_recovery.cfg"
+      - "box_watch.cfg"
       - "cold_cut.cfg"
       - "box485_monitor.cfg"
       - "spoolman.cfg"
@@ -336,6 +337,9 @@ install:
     - id: prime_handoff
       source: "klipper/extras/prime_handoff.py"
       destination: "klippy/extras/vo_prime_handoff.py"
+    - id: box_watch
+      source: "klipper/extras/box_watch.py"
+      destination: "klippy/extras/vo_box_watch.py"
 
   source_patches:
     - id: qidi_homing

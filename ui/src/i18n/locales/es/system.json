@@ -240,6 +240,45 @@
       "run": "Ejecutar colector",
       "last_result": "Último resultado",
       "explorer": "Explorador de métricas"
+    },
+    "check": {
+      "title": "Comprobación de fallos",
+      "about": "Busca en los registros de la impresora los fallos que Valve Oil conoce, y dice qué significa cada uno y qué hacer. Se ejecuta con prioridad baja, así que no ralentiza una impresión.",
+      "period": "Registros que comprobar",
+      "since": {
+        "start": "Desde que arrancó Klipper",
+        "day": "Últimas 24 horas",
+        "all": "Todo el registro"
+      },
+      "run": "Comprobar los registros",
+      "run_again": "Comprobar de nuevo",
+      "download_report": "Descargar informe",
+      "running": "Comprobando los registros de la impresora. Puede tardar un minuto.",
+      "failed": "La comprobación no pudo terminar.",
+      "unreadable": "La respuesta de la impresora no es una que esta página pueda leer.",
+      "needs_newer": "La comprobación de fallos necesita una versión más reciente de Valve Oil. Actualiza Valve Oil en la pantalla Actualizaciones para usarla.",
+      "not_run": "Todavía no se ha hecho ninguna comprobación.",
+      "none_found": "No se encontraron fallos conocidos.",
+      "found_one": "Se encontró {{count}} problema conocido.",
+      "found_other": "Se encontraron {{count}} problemas conocidos.",
+      "reach": "Se comprobaron los registros desde {{from}} hasta {{to}}, en la hora de la impresora.",
+      "reach_unknown": "La comprobación no encontró líneas del registro con hora, así que no puede decir hasta cuándo miró.",
+      "partial": "Solo leyó la parte más reciente del registro, dentro del límite de tamaño de la comprobación.",
+      "stopped_time": "Se detuvo en su límite de tiempo, así que solo leyó la parte más reciente del registro.",
+      "finished": "Comprobado {{when}}.",
+      "report_hint": "Para informar de uno, descarga el informe y adjúntalo a un issue. <b>Informar de un problema</b> en la pantalla Actualizaciones también incluye el último informe en su paquete de soporte.",
+      "times_one": "Visto {{count}} vez",
+      "times_other": "Visto {{count}} veces",
+      "what_to_do": "Qué hacer:",
+      "docs": "Más información",
+      "evidence_one": "{{count}} línea del registro",
+      "evidence_other": "{{count}} líneas del registro",
+      "severity": {
+        "fault": "Requiere atención",
+        "fixed": "Corregido en la versión instalada",
+        "repaired": "Valve Oil lo reparó",
+        "info": "Para referencia"
+      }
     }
   },
   "explorer": {

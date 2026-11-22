@@ -178,11 +178,58 @@ It writes `printer_data/logs/vo_box_link.log`, separate from `klippy.log` so it 
 
   `FIRMWARE_RESTART` changes `PowerOn` to `Software`, but it can't hide `IndependentWatchdog`.
 
+## Diagnostics
+
+**Diagnostics**, on the Diagnostics tab of Valve Oil UI's [System](valve-oil-ui.md#diagnostics) screen, checks the printer's `klippy.log` for faults Valve Oil knows, and says what each one means and what to do. It reads the newest part of the log, up to 48 MB, at the lowest priority, so it doesn't slow a print; it says how far back it reached. Pick how far back to look: since Klipper last started, the last 24 hours, or the whole log. **Download report** saves what it found, with the log lines that show it, to attach to an issue, and [Report a problem](#reporting-a-problem)'s support bundle carries the last report.
+
+Each finding says whether it needs you:
+
+- **Needs attention:** it happened, and the Valve Oil release installed now doesn't fix it.
+- **Fixed by the release installed now:** it happened on an earlier release.
+- **Valve Oil repaired it:** it happened, and Valve Oil repaired it each time before it failed anything.
+- **For reference:** QIDI's error codes, with the lines before each.
+
+Valve Oil also writes a `vo_box_watch:` line to `klippy.log` the moment one of the Box faults below happens, on every printer with a USB Box. To check a log someone sent, run `python3 scripts/check_klippy_log.py klippy.log` from a copy of this repository; it also takes a support bundle's zip.
+
+### Box unload stopped inside a cancelled part
+
+A filament change ran while the print was inside a part you'd cancelled, and Klipper dropped its moves, so the filament wasn't cut or pulled back and the [unload stopped](qidi-box.md#filament-caught-at-the-toolhead). Valve Oil 26.11.22.2 and later let a filament change's moves through a [cancelled part](qidi-box.md#filament-changes-inside-a-cancelled-part). On an earlier release, update Valve Oil.
+
+### Box slot step clock
+
+While printing, the Box feeds filament on its own whenever its buffer asks, timing the slot motor itself. When print start, or `MCB_AUTO_START`, turns that feeding back on while the Box is feeding, the Box keeps the slot motor's timing off from Klipper's, by up to 51 seconds, for the rest of the print. An unload's pull-back then runs that slot's motor late or in bursts, and the toolhead sensor never clears. Diagnostics names the slot and how many seconds it's off.
+
+Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
+
+### The Box fed a slot during a Valve Oil move
+
+The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed.
+
+### Box unload stopped with filament at the toolhead
+
+An unload pulled the filament back and the toolhead filament sensor still detected it. Something held it: at the toolhead, in the Box, or a slot motor running late. If Diagnostics also shows a [slot step clock](#box-slot-step-clock) or a [cancelled part](#box-unload-stopped-inside-a-cancelled-part), that's the cause. Otherwise see [Filament caught at the toolhead](qidi-box.md#filament-caught-at-the-toolhead).
+
+### QIDI error codes
+
+Diagnostics lists every error code QIDI's Box code reported, `Code:QDE_004_008; Message:Extruder unloading failure.` for example, with the lines before it. The Box's codes:
+
+| Code | Means |
+|---|---|
+| `QDE_004_001` | A slot didn't load to the Box hub; check the slot's filament and reload it |
+| `QDE_004_003` | A slot didn't unload; unload it again |
+| `QDE_004_005` | Load the slot named first |
+| `QDE_004_006`, `QDE_004_024` | The filament didn't reach, or enter, the extruder |
+| `QDE_004_008`, `QDE_004_009`, `QDE_004_025` | The extruder didn't unload; see [Box unload stopped with filament at the toolhead](#box-unload-stopped-with-filament-at-the-toolhead) |
+| `QDE_004_013` | The Box detected filament wrapping around a spool |
+| `QDE_004_016` | A slot ran out |
+| `QDE_004_019` | Check that the PTFE tube isn't bent |
+| `QDE_004_023` | Automatic reload after a runout failed |
+
 ## Reporting a problem
 
 Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues/new/choose) and pick the form that fits. Each form asks for the printer details below, and for the logs that show what happened.
 
-The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
+The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, the last [Diagnostics](#diagnostics) report, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
 
 For a board Valve Oil doesn't support yet, use the link in the installer's output or in the board's printer warning instead: it opens the support form with the printer details and the board's report already filled in.
 

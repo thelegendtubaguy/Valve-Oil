@@ -102,13 +102,14 @@ No computer handy? [Install from a USB drive](docs/install.md#install-from-a-usb
 - On the Max 4, an optional monitor that pauses the print when an X or Y motor slips, or corrects the position and keeps printing.
 - Input shaper calibration with newer Klipper's sweeping resonance test, with a switch back to QIDI's.
 - A bed soak test that shows how long the bed and chamber take to reach temperature and the bed to stop moving.
+- A [Diagnostics](docs/troubleshooting.md#diagnostics) check in Valve Oil UI that finds known faults in the printer's logs and says what to do.
 
 [Tools →](docs/tools.md)
 
 ## More
 
 - [Every setting and command in one table](docs/settings.md)
-- [If something goes wrong](docs/troubleshooting.md): restoring backups and reporting problems
+- [If something goes wrong](docs/troubleshooting.md): Diagnostics, restoring backups, and reporting problems
 - [Board firmware](docs/firmware.md): fixes for the toolhead board, the QIDI Box, and the Max 4 mainboard, which the installer flashes
 - [What the installer changes on your printer](docs/under-the-hood.md)
 - [Changelog](CHANGELOG.md)

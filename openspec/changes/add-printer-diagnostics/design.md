@@ -28,11 +28,13 @@ QIDI's host code doesn't handle those replies, so Klipper logs them raw as `mcu 
 
 Each watcher runs in the Valve Oil Klipper module that owns the subsystem and writes one `vo_<module>:` line per event, with the numbers needed to judge it. The checker then mostly needs those short lines, found with a bounded scan from the last `Start printer at`, or a time window the operator picks. It reads QIDI's raw lines only for signatures that have no watcher, such as logs from releases before the watcher shipped.
 
-### Catch Box replies with handlers where Klipper allows it
+### Read Box replies where Klipper hands over the unhandled ones
 
-Klipper modules can register a response handler for a message name on an MCU. QIDI's code leaves `last_step_clk` and `STEP-set_last_step` unhandled, so a Valve Oil handler gets them directly, with no log parsing. Doing so stops Klipper's raw `got {...}` line for those messages, so the handler writes the same numbers in its own `vo_` line.
+Klipper's serial reader gives each reply to the handler registered for its name and oid, and every other reply to its default handler, which logs it as `got {...}`. QIDI's code leaves `last_step_clk`, `STEP-set_last_step`, and `MCB_CONFIG_STEPPER` unhandled, so `vo_box_watch` wraps each Box MCU's default handler: it reads those three, counts every unhandled reply by name, and passes each on, so the raw lines stay in the log. It registers no handler of its own, so it never takes a message from QIDI's code; if QIDI's code starts handling one, the reply stops reaching the default handler and the watcher stands down for it without a check at start-up. The serial reader runs handlers in its own thread, so the wrapper only hands each reply to Klipper's reactor.
 
-Where QIDI does handle a message, such as `MCB_STATE` (`_on_state`), the watcher wraps QIDI's method the way Valve Oil's Box modules already wrap theirs. The Box buffer counter shipped in 26.11.22.2 parses QIDI's log line instead. It moves to a handler or wrapper once one is proven on the printer.
+Where QIDI does handle a message, such as `MCB_STATE` (`_on_state`), the watcher wraps the handler QIDI registered on the serial reader, which still runs. The Box buffer counter shipped in 26.11.22.2 parses QIDI's log line instead. It moves to the `MCB_STATE` wrapper once that is proven on the printer.
+
+A slot's clock changed behind Klipper when the Box reports a clock for it that differs from the one it last reported while Klipper's position of the slot, the clock of Klipper's newest step of it, and its homing ends are unchanged. Klipper's own step history holds only about 30 s, so the watcher keeps the newest step's clock rather than asking whether any step is recent: a re-arm in the seconds after a load's purge is still caught.
 
 ### One signature catalog, two runners
 
@@ -42,7 +44,9 @@ Signatures live in one Python module, run by `tltg-status` on the printer and by
 - what it means, what the operator should do, and which release fixed it, if any;
 - a docs anchor.
 
-The checker streams the file and never holds it in memory, stops at a size or time budget, and runs at the service's low priority.
+The checker streams the file and never holds it in memory, stops at a size or time budget, and runs at the service's low priority. The status service runs it from the installer bundle in `~/valve-oil`, which every install keeps, as a separate process under `nice` and `ionice`, so the service file stays one file and a check can't take the service's memory.
+
+A finding's severity follows the release that ran when it happened, read from the `variable_package_version` line of the config Klipper logs at each start, and the release installed now: a fault the running release repaired is "repaired", one the installed release fixes is "fixed", any other is a "fault". A session that logged Valve Oil's own repair, such as a step clock reset before an unload, counts as repaired whatever release its config named, as a sideloaded build keeps the version it replaced. Raw QIDI lines are read only in a Klipper session without the watcher's start-up line, so a fault is never counted twice.
 
 ### Warnings only when the operator must act
 
@@ -70,8 +74,8 @@ The soak runner drives a Max 4 through Box cycles: print starts whose purge pull
 - **Log size and CPU.** Scans are bounded and run at low priority. The checker never runs on its own during a print.
 - **False alarms erode trust.** A signature ships only with a log that shows it and a log that doesn't.
 
-## Open Questions
+### Where Diagnostics lives, how far it looks, and the support bundle
 
-- Whether Diagnostics also goes in the Fluidd fork's settings, or only in Valve Oil UI.
-- How far back the checker looks by default: since the last start, the last day, or the whole file.
-- Whether the support bundle includes the Diagnostics result automatically.
+- Diagnostics is in Valve Oil UI only, at the top of System → Diagnostics. The Fluidd fork can call the same service route later; nothing in the check depends on the UI.
+- By default it reads the whole log within its budget, the newest 48 MB of `klippy.log` and the rotated logs beside it, since both faults of 2026-11-22 sat in logs for days. The operator can pick since Klipper last started, which seeks back to that start instead of reading the file, or the last 24 hours of the log, timed from its newest line rather than the printer's clock. On the Max 4 the whole-log check of 48 MB took 25 s, and since the last start under 1 s of reading.
+- The support bundle carries the last Diagnostics report when there is one. It doesn't run a check, since the bundle already reads tens of megabytes of logs.
