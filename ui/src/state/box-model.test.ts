@@ -210,9 +210,15 @@ describe('slotActions', () => {
     expect(offered(box({ commands: VALVE_OIL_COMMANDS, lists: DATABASE, ...options }), SLOT_2B)).toEqual([])
   })
 
-  it('still loads and ejects while a print is paused, but doesn’t jog or cut', () => {
+  it('still loads, ejects, and jogs while a print is paused, but doesn’t cut', () => {
     const b = box({ commands: VALVE_OIL_COMMANDS, lists: DATABASE, status: { ...inlets(SLOT_2B), print_stats: { state: 'paused' } } })
-    expect(offered(b, SLOT_2B)).toEqual(['edit', 'eject', 'load', 'rfid', 'writeTag'])
+    expect(offered(b, SLOT_2B)).toEqual(['edit', 'eject', 'jog', 'load', 'rfid', 'writeTag'])
+  })
+
+  it('jogs, and offers nothing else, while a failed Box step waits for Retry or Stop', () => {
+    const failed = { task: { current_queue: ['BOX_UNLOAD'], current_step: 'BOX_UNLOAD', is_paused: true } }
+    const b = box({ commands: VALVE_OIL_COMMANDS, lists: DATABASE, status: { ...inlets(SLOT_2B), multi_color_controller: failed } })
+    expect(offered(b, SLOT_2B)).toEqual(['jog'])
   })
 
   describe('with filament stopped between the hub and the toolhead', () => {

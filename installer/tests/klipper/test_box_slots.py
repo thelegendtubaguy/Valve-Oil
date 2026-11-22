@@ -644,10 +644,8 @@ class BoxFeedTestTests(QuietTestCase):
 class BoxSlotJogTests(QuietTestCase):
     def test_jog_that_cant_run_is_refused_without_touching_a_motor(self):
         jog = "VO_BOX_SLOT_JOG SLOT=1 DISTANCE=30"
-        cases = {name: (arrange, jog) for name, arrange in BUSY.items()}
+        cases = {name: (arrange, jog) for name, arrange in BUSY.items() if name != "print paused"}
         cases.update({
-            # A flow stopped at a failed step still owns its slot until FLOW_RETRY or FLOW_STOP.
-            "QIDI Box flow paused": (lambda box: box.controller.task.update(is_paused=True), jog),
             "slot the Box doesn't have": (lambda box: None, "VO_BOX_SLOT_JOG SLOT=9 DISTANCE=30"),
             "no distance": (lambda box: None, "VO_BOX_SLOT_JOG SLOT=1 DISTANCE=0"),
         })
@@ -658,6 +656,23 @@ class BoxSlotJogTests(QuietTestCase):
                 with self.assertRaises(CommandError):
                     box.run(command)
                 self.assertEqual(box.moves, [])
+                self.assertEqual(box.motor(1), QIDIS_MOTOR_1)
+
+    def test_jog_works_stuck_filament_while_a_print_or_a_failed_box_step_is_paused(self):
+        def flow_paused(box):
+            box.controller.task.update(flow_id=13, current_queue=["BOX_UNLOAD", "BOX_LOAD"],
+                                       current_step="BOX_UNLOAD", is_paused=True)
+        cases = {
+            "print paused": BUSY["print paused"],
+            "Box flow paused on a failed step": flow_paused,
+            "tool change paused with its print": lambda box: (BUSY["print paused"](box), flow_paused(box)),
+        }
+        for name, arrange in cases.items():
+            with self.subTest(name):
+                box = Box(("box_slot_jog",))
+                arrange(box)
+                box.run("VO_BOX_SLOT_JOG SLOT=1 DISTANCE=-20")
+                self.assertAlmostEqual(box.slot(1).stepper.filament, -20.)
                 self.assertEqual(box.motor(1), QIDIS_MOTOR_1)
 
     def test_jog_moves_only_its_slot_by_the_distance_asked_and_hands_the_motor_back(self):

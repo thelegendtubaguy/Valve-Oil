@@ -578,7 +578,7 @@ Optimized configuration SHALL record which QIDI Box slot's own motion brought fi
 - **THEN** the vendor unload runs unchanged
 
 ### Requirement: Manual QIDI Box slot jog
-Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is running or paused or a vendor Box task is running.
+Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is printing or a vendor Box task is moving. It SHALL run while a print is paused and while a vendor Box task is paused at a failed step.
 
 #### Scenario: An idle jog
 - **WHEN** the printer is idle and the command names a configured slot, a distance, and optionally a speed
@@ -587,9 +587,12 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **AND** saved vendor Box state is unchanged and no runout pause runs
 
 #### Scenario: A jog while the printer or Box is busy
-- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
+- **WHEN** a print is printing, or a vendor Box task is running and not paused
 - **THEN** the command refuses without moving the slot
-- **AND** for a paused Box task the console names the failed step and says that `FLOW_RETRY` retries it and `FLOW_STOP` ends it
+
+#### Scenario: A jog while a print or a failed Box step is paused
+- **WHEN** a print is paused, or a vendor Box task is paused at a failed step, such as an unload that stopped with filament caught
+- **THEN** the slot moves as for an idle jog and the motor is handed back afterwards, so `RESUME` or `FLOW_RETRY` carries on from the sensors
 
 #### Scenario: A jog changes the hub sensor
 - **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
@@ -729,7 +732,7 @@ Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called 
 - **THEN** the print pauses as above, and the console names the slot that ran out, says `RESUME` loads the new tool's slot, and says to put filament in the slot that ran out before the print needs it again
 
 ### Requirement: QIDI Box unload with filament caught at the toolhead
-Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor unload's pull-back, its first two extruder pulls, while the toolhead sensor detects filament. When the vendor asks for another pull with the sensor still detecting filament, the unload SHALL stop before the Box pulls, with an error that names the slot, says how far the extruder pulled, and says to free the filament at the toolhead.
+Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor unload's pull-back, its first two extruder pulls, while the toolhead sensor detects filament. When the vendor asks for another pull with the sensor still detecting filament, the unload SHALL stop before the Box pulls, with an error that names the slot, says how far the extruder pulled, and says why it stopped.
 
 #### Scenario: The sensor clears within two pulls
 - **WHEN** the toolhead sensor clears during the pull-back or within 20 mm past it
@@ -738,19 +741,52 @@ Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor 
 #### Scenario: Filament caught at the toolhead outside a tool change
 - **WHEN** the sensor still detects filament 20 mm past the pull-back, in an unload that is not a print's tool change
 - **THEN** no further extruder pull or Box pull runs, a vendor Box flow is paused on its unload step, and the console reports the error and says that `FLOW_RETRY` retries the unload and `FLOW_STOP` ends it
+- **AND** when the extruder moved for the pulls, the error says something at the toolhead or in the Box holds the filament and to free it
 - **AND** once the filament is free, `FLOW_RETRY` unloads it
 
 #### Scenario: Filament caught at the toolhead in a tool change
 - **WHEN** the same happens during a print's tool change
 - **THEN** the print pauses as for a tool-change step that raises, and the console says `RESUME` tries the tool change again
 
+#### Scenario: Klipper did not move the extruder
+- **WHEN** the unload stops this way and the toolhead's extruder position moved less than half of the pulls asked for
+- **THEN** the error says Klipper didn't move the extruder for the pull-back, and names the cancelled part when the print is inside one, instead of saying something holds the filament
+
 #### Scenario: Every unload from the toolhead is logged
 - **WHEN** a vendor unload from the toolhead ends, however it ends
-- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder pulled, and where the toolhead sensor cleared
+- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during the pulls, the Box buffer's feed triggers since the last unload from the toolhead and during this one, and where the toolhead sensor cleared
 
 #### Scenario: Box code with other pulls
 - **WHEN** the vendor Box code pulls past the pull-back in steps other than 10 mm, or at another speed
 - **THEN** the unload stops once those pulls reach 20 mm with the sensor still detecting filament, the same as with 10 mm pulls
+
+### Requirement: QIDI Box slot step clock before an unload's pull-back
+Optimized configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with auto-feed aborted again, all moves finished, and the slot idle, wherever the vendor Box code has auto-feed and that unload path.
+
+#### Scenario: Auto-feed left the slot's step clock off
+- **WHEN** print start re-armed auto-feed while a feed was running, so the Box kept a step clock for the slot that is off from Klipper's
+- **THEN** the next unload from the toolhead moves the slot motor with the extruder from its first pull-back step, and the toolhead sensor clears as it does after a fresh load
+
+#### Scenario: Every unload from the toolhead
+- **WHEN** a vendor unload from the toolhead ties a slot to the extruder
+- **THEN** the reset happens once, before the first pull-back, and `klippy.log` says so, and the vendor's tie to the extruder and pull-backs then run unchanged
+
+### Requirement: Filament changes and pauses move inside cancelled parts
+Optimized configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
+
+#### Scenario: Filament change inside a cancelled part
+- **WHEN** a print reaches `TOOL_CHANGE_START` while inside a cancelled part, after the slicer's lift was dropped
+- **THEN** before any other move, the nozzle moves straight up to the G-code's height at its position, and the cut, the extruder's pull-back and load, and the purge and wipe all move the toolhead and extruder
+- **AND** after `TOOL_CHANGE_END`, the cancelled part's lines are dropped and the next part prints where the G-code puts it
+
+#### Scenario: Paused inside a cancelled part
+- **WHEN** the print is paused while inside a cancelled part
+- **THEN** the pause's moves and any moves or extrusion made while paused move the toolhead and extruder
+- **AND** once the print runs again, the cancelled part's lines are dropped
+
+#### Scenario: A filament change that never ends
+- **WHEN** `TOOL_CHANGE_START` is not followed by `TOOL_CHANGE_END` before the next `EXCLUDE_OBJECT_START` or `EXCLUDE_OBJECT_END`, or before the print file is reset
+- **THEN** the filament change ends there, and the cancelled part's lines after it are dropped
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.

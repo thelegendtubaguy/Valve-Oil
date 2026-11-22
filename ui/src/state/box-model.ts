@@ -74,6 +74,8 @@ export type BoxState = {
   /** QIDI's drying turns each slot's motor, and so its spool, every 5 minutes (box_drying_roll_enable, on by default). */
   dryRolls: boolean
   canJog: boolean
+  /** Valve Oil's slot jog runs: no print printing and no Box task moving; a paused print or a failed Box step waits. */
+  jogFree: boolean
   canCut: boolean
   /** Valve Oil can write spool tags (VO_BOX_RFID_WRITE), with the firmware filament database whose IDs tags carry. */
   canWriteTag: boolean
@@ -183,6 +185,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     canDry: commands.includes('BOX_START_DRYING') && commands.includes('BOX_STOP_DRYING'),
     dryRolls: Number(variables.box_drying_roll_enable ?? 1) !== 0,
     canJog: commands.includes('VO_BOX_SLOT_JOG'),
+    jogFree: ready && printState !== 'printing' && !st.box_extras?.box_button_state && (task == null || task.paused),
     canCut: commands.includes('VO_CUT_FILAMENT'),
     canWriteTag: commands.includes('VO_BOX_RFID_WRITE') && hasController && !!lists.database?.length,
     fromTag,
@@ -254,7 +257,7 @@ export function slotActions(box: BoxState, slot: QidiBoxSlot): SlotActions {
     edit: !box.busy && slot.present && box.canEditFilament,
     // A spool on an empty slot's rollers can be tagged before its filament is fed.
     writeTag: box.canWriteTag && isBox && !box.busy,
-    jog: box.canJog && isBox && !box.mappingLocked,
+    jog: box.canJog && isBox && box.jogFree,
     cut: box.canCut && !box.mappingLocked,
     hint: box.strandedRecovery ? strandedHint(box, slot) : null,
   }

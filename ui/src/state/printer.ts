@@ -10,7 +10,8 @@ export type Status = Record<string, Record<string, any>>
 
 export type ConsoleLine = { id: number; time: number; text: string; kind: 'command' | 'response' | 'error' }
 
-export type TempSeries = { temperatures: number[]; targets?: number[] }
+/** `end` counts every sample this page has had for the series, so the chart can tell samples apart as old ones drop off. */
+export type TempSeries = { temperatures: number[]; targets?: number[]; end?: number }
 
 export type HostStats = {
   cpuTemp: number | null
@@ -202,6 +203,7 @@ setInterval(() => {
     temps[name] = {
       temperatures: [...series.temperatures.slice(-(TEMP_POINTS - 1)), st.temperature],
       targets: series.targets && typeof st.target === 'number' ? [...series.targets.slice(-(TEMP_POINTS - 1)), st.target] : series.targets,
+      end: (series.end ?? series.temperatures.length) + 1,
     }
   }
   if (changed) printer.set({ ...s, temps })

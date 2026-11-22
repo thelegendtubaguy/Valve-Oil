@@ -159,7 +159,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
 - The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
-- A jog is refused while a print is running or paused or the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
+- A jog is refused while a print is printing or the Box is moving filament. It works while a print is paused and while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`, for example to work filament free after [an unload stops](#filament-caught-at-the-toolhead).
 - Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
 - A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
 
@@ -269,14 +269,26 @@ When a step of a filament change during a print fails, QIDI pauses the print, an
 
 ### Filament caught at the toolhead
 
-An unload pulls the filament back with the extruder until the toolhead filament sensor is clear, and only then does the Box pull it back. While the sensor still detects filament, QIDI pulls 10 mm more at a time, up to seven times, then moves or shakes the toolhead and starts over, three times in all, before `Code:QDE_004_008; Message:Extruder unloading failure.` That's more than 400 mm and about a minute and a half of pulling on filament that isn't moving, which grinds it.
+An unload pulls the filament back with the extruder, with the slot's feeder turning along with it, until the toolhead filament sensor is clear, and only then does the Box pull it back. While the sensor still detects filament, QIDI pulls 10 mm more at a time, up to seven times, then moves or shakes the toolhead and starts over, three times in all, before `Code:QDE_004_008; Message:Extruder unloading failure.` That's more than 400 mm and about a minute and a half of pulling on filament that isn't moving, which grinds it.
 
-The unload now stops once the extruder has pulled 20 mm past the pull-back without the sensor clearing, 105 mm in all with the Max 4's default pull-back, and the console says what's wrong, for example `Box unload of 1D stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, ...`. Something at the toolhead is holding the filament, such as a cutter blade that hasn't sprung back or a swollen cut end. Free it there, then:
+The unload now stops once the extruder has pulled 20 mm past the pull-back without the sensor clearing, 105 mm in all with the Max 4's default pull-back, and the console says what's wrong, for example `Box unload of 1D stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, ...`. Something is holding the filament: at the toolhead, such as a cutter blade that hasn't sprung back or a swollen cut end, or in the Box, such as a slot feeder that won't turn. Free it, then:
 
 - During a print, **Resume** tries the tool change again.
 - Otherwise, **Retry** (`FLOW_RETRY`) repeats the unload, or **Stop** (`FLOW_STOP`) ends it.
 
-`klippy.log` gets a line for every unload from the toolhead, with both sensors before and after, how far the extruder pulled, and where the toolhead sensor cleared, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`.
+Before 26.11.22.2, this also happened with nothing caught, on the first unload after a long run on one slot, with the Box clicking. While printing, the Box feeds filament on its own whenever the buffer asks for it. When print start turned that feeding back on in the second a feed was running, the Box lost the slot motor's timing for the rest of the print, and the unload's pull-back, which runs the slot motor with the extruder, ran it up to 25 seconds late or in bursts. The unload now lines the slot motor's timing up before it pulls back, as a load does.
+
+The slot can be [jogged](#moving-a-slot-by-hand) while the print or the failed unload is paused, for example `VO_BOX_SLOT_JOG SLOT=2 DISTANCE=-20` to pull 1C back, or the **Out** button on the Box card in Valve Oil UI.
+
+When Klipper didn't move the extruder for those pulls at all, the message says so instead, for example `Box unload of 1D stopped: Klipper didn't move the extruder for the 105 mm of pull-back QIDI's unload asked for, ...`, and names the [cancelled part](#filament-changes-inside-a-cancelled-part) the print is inside when that's why.
+
+`klippy.log` gets a line for every unload from the toolhead, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, and how many times the Box's buffer switch made the Box feed filament forward since the last unload and during this one. Attach it when you report an unload that stopped.
+
+### Filament changes inside a cancelled part
+
+Klipper drops every move while a print is inside a part you've cancelled (skipped), extruder moves included. OrcaSlicer marks where a part ends only when the next part starts, so a filament change right after a part's last line runs inside that part. When that part was cancelled, the change ran with the Box motors but without the toolhead or extruder: no cut, no pull-back, no purge. The unload then stopped as if filament were [caught at the toolhead](#filament-caught-at-the-toolhead), and the paused print stayed inside the cancelled part, so retracting, unloading, and loading by hand did nothing either.
+
+Moves now go through during a filament change, from QIDI's `TOOL_CHANGE_START` to its `TOOL_CHANGE_END`, and while the print is paused. A change that starts inside a cancelled part first raises the nozzle straight up to the height the change expects, since the slicer's lift before it was dropped, then cuts, unloads, loads, and purges as usual. The cancelled part's own lines are still skipped, before and after the change. This works with any slicer and with files already sliced.
 
 ### A slot that runs out during a tool change
 
