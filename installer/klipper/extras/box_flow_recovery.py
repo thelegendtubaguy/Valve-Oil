@@ -845,16 +845,29 @@ class BoxFlowRecovery:
             self.reactor.pause(self.reactor.monotonic() + FEED_ABORT_SETTLE)
         return True
 
-    def _feeding(self, mcu_stepper):
-        """The slot vo_box_watch has the Box of MCU_STEPPER feeding, and the
-        Box's number; None if no feed is known to be running."""
+    def _watched_box(self, mcu_stepper):
+        """vo_box_watch's record of the Box that drives MCU_STEPPER, or
+        None."""
         watch = self.printer.lookup_object("vo_box_watch", None)
         boxes = getattr(watch, "boxes", None)
         try:
-            box = boxes.get(mcu_stepper.get_mcu().get_name())
+            return boxes.get(mcu_stepper.get_mcu().get_name())
         except Exception:
             return None
-        if not getattr(box, "feeding", False):
+
+    def _aborted_feeds(self, mcu_stepper):
+        """How many feeds an abort has stopped on the Box of MCU_STEPPER, as
+        vo_box_watch counts the Box's MCB_ABORT replies, which the Box sends
+        only for an abort that finds a feed running."""
+        counts = getattr(self._watched_box(mcu_stepper), "unhandled", None)
+        return counts.get("MCB_ABORT", 0) if isinstance(counts, dict) else 0
+
+    def _feeding(self, mcu_stepper, stopped=False):
+        """The slot vo_box_watch has the Box of MCU_STEPPER feeding, or that
+        a feed was just STOPPED on, and the Box's number; None if no feed is
+        known to be running."""
+        box = self._watched_box(mcu_stepper)
+        if box is None or not (stopped or getattr(box, "feeding", False)):
             return None
         slot = (getattr(box, "slots", None) or {}).get(
             getattr(box, "active", None))
@@ -895,6 +908,7 @@ class BoxFlowRecovery:
             return
         self._arms[slot] = (tuple(args), dict(kwargs))
         feeding = self._feeding(mcu_stepper)
+        aborted = self._aborted_feeds(mcu_stepper)
         if not self._stop_feeds(mcu_stepper):
             logging.info("vo_box_flow_recovery: QIDI armed auto-feed on %s "
                          "without a running feed stopped first: %s",
@@ -902,6 +916,10 @@ class BoxFlowRecovery:
                          "its Box's auto-feed wasn't found"
                          if self._can_wait() else "Klipper can't wait here")
             return
+        # A feed that started just before the stop is known only from the
+        # Box's answer to the abort, which comes while the stop waits.
+        if feeding is None and self._aborted_feeds(mcu_stepper) > aborted:
+            feeding = self._feeding(mcu_stepper, stopped=True)
         if feeding is not None:
             logging.info("vo_box_flow_recovery: auto-feed was feeding slot %s "
                          "(Box %s) when QIDI armed it on %s; the feed was "
