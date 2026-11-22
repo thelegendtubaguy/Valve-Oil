@@ -851,6 +851,11 @@ class KlipperFixes:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.heaters = []
+        if self.printer.lookup_object("motion_queuing", None) is not None:
+            # Klipper 0.14 and later: Valve Oil's Klipper already has these.
+            logging.info("tltg_klipper_fixes: not needed; this Klipper has "
+                         "these fixes")
+            return
         fixes = [
             ("homing endstop sync", lambda: _replace(
                 mcu.MCU_trsync, "start", "MCU_trsync.start", _trsync_start)),
