@@ -650,7 +650,7 @@ def watch_command(mcu, command, msgformat):
     margin = LATE_COMMAND_MARGIN * freq
     name = parts[0]
 
-    def send_checked(data=(), minclock=0, reqclock=0):
+    def send_checked(data=(), minclock=0, reqclock=0, **kw):
         try:
             clock = data[index]
         except (IndexError, KeyError, TypeError):
@@ -670,7 +670,8 @@ def watch_command(mcu, command, msgformat):
             if ahead < margin or ahead >= MAX_AHEAD_TICKS:
                 _late_command(mcu, name, ahead / freq,
                               MAX_AHEAD_TICKS / freq)
-        return send(data, minclock, reqclock)
+        # Klipper 0.14's query commands also take retry=.
+        return send(data, minclock, reqclock, **kw)
     command.send = send_checked
     return True
 

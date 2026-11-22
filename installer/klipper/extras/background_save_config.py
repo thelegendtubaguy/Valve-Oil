@@ -76,7 +76,7 @@ class BackgroundSaveConfig:
         pconfig = self.printer.lookup_object("configfile")
         if not pconfig.autosave.fileconfig.sections():
             return
-        autosave_text = pconfig._build_config_string(pconfig.autosave)
+        autosave_text = _config_api(pconfig).to_text(pconfig.autosave)
         cfgname = self.printer.get_start_args()["config_file"]
         _save_thread = threading.Thread(
             target=self._save, args=(pconfig, autosave_text, cfgname),
@@ -103,15 +103,16 @@ class BackgroundSaveConfig:
         lines.insert(0, "\n" + configfile.AUTOSAVE_HEADER.rstrip())
         lines.append("")
         autosave_data = "\n".join(lines)
-        data = pconfig._read_config_file(cfgname)
-        regular_data, _old_autosave = pconfig._find_autosave_data(data)
-        pconfig._build_config_wrapper(regular_data, cfgname)
-        autosave = pconfig._build_config_wrapper(autosave_text, cfgname)
-        regular_data = pconfig._strip_duplicates(regular_data, autosave)
-        included = pconfig._build_config_wrapper(regular_data, cfgname)
-        for section in autosave.fileconfig.sections():
-            for option in autosave.fileconfig.options(section):
-                if included.fileconfig.has_option(section, option):
+        api = _config_api(pconfig)
+        data = api.read(cfgname)
+        regular_data, _old_autosave = api.find_autosave(data)
+        api.parse(regular_data, cfgname)
+        autosave = api.parse(autosave_text, cfgname)
+        regular_data = api.strip_duplicates(regular_data, autosave)
+        included = api.parse(regular_data, cfgname)
+        for section in autosave.sections():
+            for option in autosave.options(section):
+                if included.has_option(section, option):
                     raise configfile.error(
                         "SAVE_CONFIG section '%s' option '%s' conflicts with"
                         " included value" % (section, option))
@@ -133,6 +134,37 @@ class BackgroundSaveConfig:
         os.link(cfgname, backup_name)
         os.replace(temp_name, cfgname)
         _fsync_path(os.path.dirname(os.path.abspath(cfgname)))
+
+
+class _config_api:
+    """PrinterConfig's save helpers, on both Klipper layouts: 0.14 moved them
+    to ConfigFileReader and ConfigAutoSave and works on fileconfigs, older
+    Klipper keeps them on PrinterConfig and works on ConfigWrappers. Parsed
+    configs come back as fileconfigs either way."""
+
+    def __init__(self, pconfig):
+        reader_cls = getattr(configfile, "ConfigFileReader", None)
+        if reader_cls is not None:
+            reader, autosave = reader_cls(), pconfig.autosave
+            self.to_text = lambda wrapper: reader.build_config_string(
+                wrapper.fileconfig)
+            self.read = reader.read_config_file
+            self.find_autosave = autosave._find_autosave_data
+            self.parse = reader.build_fileconfig_with_includes
+            self.strip_duplicates = autosave._strip_duplicates
+        else:
+            self.to_text = pconfig._build_config_string
+            self.read = pconfig._read_config_file
+            self.find_autosave = pconfig._find_autosave_data
+            self.parse = lambda data, filename: pconfig._build_config_wrapper(
+                data, filename).fileconfig
+            self.strip_duplicates = lambda data, fileconfig: \
+                pconfig._strip_duplicates(data, _Wrapped(fileconfig))
+
+
+class _Wrapped:
+    def __init__(self, fileconfig):
+        self.fileconfig = fileconfig
 
 
 def _fsync_path(path):

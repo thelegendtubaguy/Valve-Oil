@@ -454,11 +454,15 @@ class VelocityLimitTest(unittest.TestCase):
             def respond_info(self, message):
                 self.messages.append(message)
 
-        commands = {"SET_VELOCITY_LIMIT": object()}
         toolhead = Toolhead()
+        # Klipper registers its own handler, which re-reads the command line.
+        commands = {"SET_VELOCITY_LIMIT": toolhead.cmd_SET_VELOCITY_LIMIT}
 
         class Gcode:
             gcode_help = {}
+
+            def create_gcode_command(self, command, commandline, params):
+                return Gcmd(params)
 
             def register_command(self, name, handler, desc=None):
                 old = commands.pop(name, None)
@@ -718,8 +722,8 @@ class PrimeHandoffTest(unittest.TestCase):
             "gcode": gcode,
             "print_stats": print_stats,
             "gcode_move": types.SimpleNamespace(
-                absolute_extrude=absolute,
-                get_status=lambda eventtime=None: {"gcode_position": (10., 0., 1., e_position)}),
+                get_status=lambda eventtime=None: {"absolute_extrude": absolute,
+                                                   "gcode_position": (10., 0., 1., e_position)}),
         }
         events = {}
         printer = types.SimpleNamespace(

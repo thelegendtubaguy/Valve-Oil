@@ -64,9 +64,10 @@ class PrimeHandoff:
         e = gcmd.get_float("E", None)
         if e is None:
             return False
-        if not self.gcode_move.absolute_extrude:
+        status = self.gcode_move.get_status()
+        if not status["absolute_extrude"]:
             return e > 0.
-        return e > self.gcode_move.get_status()["gcode_position"][3]
+        return e > status["gcode_position"][3]
 
     def cmd_VO_PRIME_RETRACT(self, gcmd):
         length = gcmd.get_float("LENGTH", DEFAULT_LENGTH, minval=0.,

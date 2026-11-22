@@ -77,12 +77,15 @@ class ColdCut:
         check_original = extruder.check_move
         command_error = self.printer.command_error
 
-        def check_move(move):
-            if move.axes_d[3] > 0. and heater.smoothed_temp < minimum:
+        def check_move(move, *args):
+            # Klipper 0.14 passes the extruder's axis index; older Klipper
+            # calls check_move(move) with the extruder at index 3.
+            axis = args[0] if args else 3
+            if move.axes_d[axis] > 0. and heater.smoothed_temp < minimum:
                 raise command_error(
                     "Extrude below minimum temp\n"
                     "See the 'min_extrude_temp' config option for details")
-            return check_original(move)
+            return check_original(move, *args)
 
         self._held = True
         with heater.lock:

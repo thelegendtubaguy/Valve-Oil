@@ -206,7 +206,11 @@ class StepLossMonitor:
     def _at_rest(self, start, end):
         if self.motion_report is None:
             return False
-        trapq = self.motion_report.trapqs.get("toolhead")
+        # Klipper 0.14 renamed motion_report's trapqs to dtrapqs.
+        trapqs = getattr(self.motion_report, "dtrapqs", None)
+        if trapqs is None:
+            trapqs = getattr(self.motion_report, "trapqs", {})
+        trapq = trapqs.get("toolhead")
         if trapq is None:
             return False
         for eventtime in (start, end):

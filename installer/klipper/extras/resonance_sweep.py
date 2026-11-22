@@ -423,7 +423,9 @@ def _differs(tester):
     normalize = shaper_calibrate.CalibrationData.__dict__.get(
         'normalize_to_frequencies')
     checks = [
-        ("VibrationPulseTest", resonance_tester.VibrationPulseTest),
+        # Klipper 0.14 has no VibrationPulseTest; it sweeps natively.
+        ("VibrationPulseTest",
+         getattr(resonance_tester, "VibrationPulseTest", None)),
         ("ResonanceTester._run_test", tester_cls.__dict__.get('_run_test')),
         ("ResonanceTester._get_max_calibration_freq",
          tester_cls.__dict__.get('_get_max_calibration_freq')),
@@ -434,8 +436,9 @@ def _differs(tester):
         checks.append(("CalibrationData.normalize_to_frequencies", normalize))
     differs = [label for label, obj in checks
                if obj is None or source_hash(obj) != ORIGINALS[label]]
-    if not isinstance(getattr(tester, 'test', None),
-                      resonance_tester.VibrationPulseTest):
+    pulse_test = getattr(resonance_tester, "VibrationPulseTest", None)
+    if pulse_test is None or not isinstance(getattr(tester, 'test', None),
+                                            pulse_test):
         differs.append("ResonanceTester.test")
     return differs
 

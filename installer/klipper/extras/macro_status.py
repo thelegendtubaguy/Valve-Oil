@@ -97,7 +97,8 @@ class MacroStatus:
             return "".join(SHAPER_AXES)
         try:
             return "".join(shaper.axis for shaper in input_shaper.get_shapers()
-                           if not shaper.params.shaper_freq > 0.)
+                           if shaper.axis in SHAPER_AXES
+                           and not shaper.params.shaper_freq > 0.)
         except Exception:
             if "input_shaper" not in self.status_failed:
                 logging.exception("tltg_macro_status: input_shaper check failed")
