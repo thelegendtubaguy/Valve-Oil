@@ -38,7 +38,14 @@ class BoxSlotJog:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
+        # Klipper 0.14 and later expire every motion queue through
+        # motion_queuing; older Klipper leaves that to the queue's owner.
+        motion_queuing = self.printer.lookup_object("motion_queuing", None)
+        if motion_queuing is not None:
+            self.trapq = motion_queuing.allocate_trapq()
+        else:
+            self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(),
+                                     ffi_lib.trapq_free)
         self.sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b"x"),
                               ffi_lib.free)
         self.trapq_append = ffi_lib.trapq_append

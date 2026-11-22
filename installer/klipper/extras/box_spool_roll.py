@@ -55,7 +55,15 @@ class BoxSpoolRoll:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
+        # Klipper 0.14 and later queue and expire every motion queue through
+        # motion_queuing; older Klipper leaves that to whoever owns the queue.
+        self.motion_queuing = self.printer.lookup_object("motion_queuing",
+                                                         None)
+        if self.motion_queuing is not None:
+            self.trapq = self.motion_queuing.allocate_trapq()
+        else:
+            self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(),
+                                     ffi_lib.trapq_free)
         self.sk = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b"x"),
                               ffi_lib.free)
         self.trapq_append = ffi_lib.trapq_append
@@ -204,6 +212,8 @@ class BoxSpoolRoll:
                     toolhead.last_flush_time + STEPCOMPRESS_FLUSH_TIME,
                     vendor_time) + QUEUE_MARGIN
         start = max(start, est + MIN_LEAD)
+        if self.motion_queuing is not None:
+            start = max(start, self.motion_queuing.calc_step_gen_restart(est))
         enable = self.printer.lookup_object("stepper_enable").lookup_enable(
             stepper.get_name())
         was_enabled = enable.is_motor_enabled()
@@ -220,7 +230,11 @@ class BoxSpoolRoll:
         end = start + accel_t + cruise_t + accel_t
         # Keeps Klipper generating steps through the end of the roll when
         # nothing else moves. It doesn't hold back any later toolhead move.
-        toolhead.note_mcu_movequeue_activity(end + toolhead.kin_flush_delay)
+        if self.motion_queuing is not None:
+            self.motion_queuing.note_mcu_movequeue_activity(end)
+        else:
+            toolhead.note_mcu_movequeue_activity(
+                end + toolhead.kin_flush_delay)
         self.held = {"slot": slot, "stepper": stepper, "old_tq": old_tq,
                      "old_sk": old_sk, "end": end, "enable": enable,
                      "was_enabled": was_enabled}
@@ -255,8 +269,11 @@ class BoxSpoolRoll:
             stepper.set_trapq(held["old_tq"])
             if not held["was_enabled"]:
                 held["enable"].motor_disable(est + RELEASE_MARGIN)
-        self.trapq_finalize_moves(self.trapq, held["end"] + 99999.9,
-                                  held["end"] + 99999.9)
+        if self.motion_queuing is not None:
+            self.motion_queuing.wipe_trapq(self.trapq)
+        else:
+            self.trapq_finalize_moves(self.trapq, held["end"] + 99999.9,
+                                      held["end"] + 99999.9)
         self.held = None
 
     def get_status(self, eventtime):
