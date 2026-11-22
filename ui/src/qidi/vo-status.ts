@@ -10,6 +10,9 @@
 //
 // Kept free of Vue and the store: Valve Oil UI ports this file and its spec.
 //
+// Valve Oil UI: the status's klipper block (which Klipper runs, and switching between QIDI's and Valve Oil's) was
+// added here first; the Fluidd fork doesn't have it yet.
+//
 // Valve Oil UI: the few texts this file writes itself, rather than passing on the printer's, are looked up with t()
 // when they're used. The service's own text (messages, step labels) is English and is shown as it arrives.
 import { t } from '../i18n'
@@ -175,6 +178,37 @@ export interface VoStatusUpdateNow {
   blocked_by: VoStatusBlocker[];
 }
 
+/** A Klipper tree: Valve Oil's (upstream Klipper with QIDI's changes, opt-in) or QIDI's. */
+export type VoKlipperTree = 'valve_oil' | 'qidi'
+
+export interface VoKlipperSwitch {
+  /** The Klipper a switch chooses: the one not chosen now. */
+  to: VoKlipperTree;
+  /** Whether POST api/klipper would switch to it now. */
+  allowed: boolean;
+  /** Every reason it wouldn't, read live (see VO_KLIPPER_SWITCH_BLOCKERS). */
+  blocked_by: VoStatusBlocker[];
+}
+
+/** Which Klipper runs, and switching between QIDI's and Valve Oil's. */
+export interface VoKlipper {
+  /** Valve Oil's Klipper is installed and can start. */
+  available: boolean;
+  /** Why it can't, as the printer says it ("not installed" when it isn't). */
+  unavailable_reason: string | null;
+  /** The operator's choice; QIDI's unless Valve Oil's was chosen. */
+  selected: VoKlipperTree;
+  /** null while Klipper starts, or when the printer can't tell. */
+  running: VoKlipperTree | null;
+  /** Why QIDI's runs although Valve Oil's is chosen. */
+  fallback_reason: string | null;
+  /** Valve Oil's Klipper's version. */
+  version: string | null;
+  /** The last switch's Klipper restart failed. */
+  restart_error: string | null;
+  switch: VoKlipperSwitch;
+}
+
 export interface VoStatus {
   updated_at: string | null;
   release: {
@@ -216,6 +250,8 @@ export interface VoStatus {
   update_now: VoStatusUpdateNow | null;
   /** The prefilled support issue, for the support bundle to be attached to; null from a service without the bundle. */
   support_issue_url: string | null;
+  /** Which Klipper runs; null from a service without Valve Oil's Klipper. */
+  klipper: VoKlipper | null;
 }
 
 /** Why the waiting work hasn't been installed. */
@@ -383,6 +419,40 @@ const printing = (): VoStatusBlocker => ({ code: 'printing', message: t('updates
 // (installer/runtime/firmware_update.py STEPS), and Update now's "resume", which continues one. Before stop_services
 // nothing has changed, and a failure there isn't kept.
 const FIRMWARE_STEPS: readonly string[] = ['stage', 'closed_loop', 'stop_services', 'soc', 'update_folder', 'finish', 'resume']
+
+/**
+ * The reasons the printer gives for refusing a Klipper switch that are shown in plain words; any other is shown as the
+ * printer says it, as recovery_required and valve_oil_unavailable are, whose messages say what to do.
+ */
+export const VO_KLIPPER_SWITCH_BLOCKERS: readonly string[] = [
+  'printing',
+  'printer_state_unknown',
+  'run_in_progress',
+  'installer_busy',
+  'firmware_update_pending'
+]
+
+/**
+ * What the Klipper switch shows first:
+ * - off: QIDI's Klipper is chosen and runs (the default);
+ * - on: Valve Oil's Klipper is chosen and runs;
+ * - fallback: Valve Oil's is chosen, but QIDI's runs, for fallback_reason;
+ * - starting: Klipper is starting, so which runs isn't known yet;
+ * - leaving: QIDI's is chosen, but Valve Oil's still runs, until Klipper restarts.
+ */
+export type VoKlipperState = 'off' | 'on' | 'fallback' | 'starting' | 'leaving'
+
+export const voKlipperState = (klipper: VoKlipper): VoKlipperState => {
+  if (klipper.running == null) {
+    return 'starting'
+  }
+
+  if (klipper.selected === 'valve_oil') {
+    return klipper.running === 'valve_oil' ? 'on' : 'fallback'
+  }
+
+  return klipper.running === 'qidi' ? 'off' : 'leaving'
+}
 
 /** The blocker a waiting item carries while automatic updates wait for the update window. */
 export const VO_OUTSIDE_WINDOW = 'outside_window'
@@ -555,6 +625,44 @@ const parsePending = (value: Record<string, unknown>): VoStatusPending | null =>
   }
 }
 
+const KLIPPER_TREES: readonly string[] = ['valve_oil', 'qidi']
+
+const klipperTree = (value: unknown): VoKlipperTree | null => KLIPPER_TREES.includes(value as string) ? value as VoKlipperTree : null
+
+const parseKlipper = (value: unknown): VoKlipper | null => {
+  const selected = isRecord(value) ? klipperTree(value.selected) : null
+
+  if (!isRecord(value) || selected == null) {
+    return null
+  }
+
+  const change = record(value.switch)
+  const blockedBy = parseBlockers(change.blocked_by)
+
+  return {
+    available: value.available === true,
+    unavailable_reason: optionalText(value.unavailable_reason),
+    selected,
+    running: klipperTree(value.running),
+    fallback_reason: optionalText(value.fallback_reason),
+    version: optionalText(value.version),
+    restart_error: optionalText(value.restart_error),
+    switch: {
+      to: klipperTree(change.to) ?? (selected === 'valve_oil' ? 'qidi' : 'valve_oil'),
+      // A refusal with reasons is never allowed, whatever else it says.
+      allowed: change.allowed === true && blockedBy.length === 0,
+      blocked_by: blockedBy
+    }
+  }
+}
+
+/** Reads the Klipper block a POST api/klipper answers with. */
+export const parseVoKlipperAnswer = (value: unknown): VoKlipper | null => (
+  isRecord(value)
+    ? parseKlipper(value.klipper)
+    : null
+)
+
 const parseUpdateNow = (value: unknown): VoStatusUpdateNow | null => (
   isRecord(value) && typeof value.allowed === 'boolean'
     ? { allowed: value.allowed, blocked_by: parseBlockers(value.blocked_by) }
@@ -697,7 +805,8 @@ export const parseVoStatus = (value: unknown): VoStatus | null => {
     busy: value.busy === true || run?.state === 'running' || job?.state === 'running' || progress?.state === 'running',
     printer_busy: value.printer_busy === true,
     update_now: parseUpdateNow(value.update_now),
-    support_issue_url: voIssueUrlValid(support.issue_url) ? support.issue_url : null
+    support_issue_url: voIssueUrlValid(support.issue_url) ? support.issue_url : null,
+    klipper: parseKlipper(value.klipper)
   }
 }
 
@@ -989,7 +1098,7 @@ export const voStatusPollInterval = (status: VoStatus | null, reconnecting = fal
 
 export class VoStatusRequestError extends Error {
   readonly status: number
-  /** Why Update now was refused (409), as the printer listed it. */
+  /** Why Update now or a Klipper switch was refused (409), as the printer listed it. */
   readonly blockedBy: VoStatusBlocker[]
 
   constructor (status: number, message: string, blockedBy: VoStatusBlocker[] = []) {

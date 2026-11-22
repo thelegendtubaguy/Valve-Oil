@@ -55,6 +55,10 @@
       "label": "Add-ons",
       "sub": "Remote access and networking"
     },
+    "klipper": {
+      "label": "Klipper",
+      "sub": "QIDI's or Valve Oil's Klipper"
+    },
     "about": {
       "label": "About",
       "sub": "Versions"
@@ -419,5 +423,63 @@
         "id_hint": "Enter the 16-character ID of the network to join, from my.zerotier.com."
       }
     }
+  },
+  "klipper": {
+    "title": "Klipper",
+    "loading": "Asking the printer which Klipper runs…",
+    "unavailable": "Valve Oil's status service isn't answering, so which Klipper runs isn't known.",
+    "not_reported": "This printer's Valve Oil doesn't report which Klipper runs. Update Valve Oil to choose Klipper here.",
+    "name": {
+      "qidi": "QIDI's Klipper",
+      "valve_oil": "Valve Oil's Klipper"
+    },
+    "sub": {
+      "qidi": "The Klipper QIDI ships with the printer. The default.",
+      "valve_oil": "Upstream Klipper with QIDI's changes, from Valve Oil. Off unless you choose it."
+    },
+    "state": {
+      "off": "Off: QIDI's Klipper is running.",
+      "on": "On: Valve Oil's Klipper is running.",
+      "fallback": "Valve Oil's Klipper is chosen, but QIDI's Klipper is running.",
+      "leaving": "QIDI's Klipper is chosen. Valve Oil's Klipper runs until Klipper restarts.",
+      "starting_qidi": "Klipper is restarting with QIDI's Klipper…",
+      "starting_valve_oil": "Klipper is restarting with Valve Oil's Klipper…"
+    },
+    "fallback_reason": "Reason: {{reason}}",
+    "fallback_no_reason": "The printer didn't say why.",
+    "try_again": "Try Valve Oil's Klipper again",
+    "chosen": "Chosen",
+    "running": "Running",
+    "version": "Version {{version}}",
+    "not_installed": "Not installed on this printer.",
+    "unavailable_reason": "Not available: {{reason}}.",
+    "blocked": {
+      "none": "Can't switch right now.",
+      "other": "Can't switch now: {{message}}.",
+      "code": {
+        "printing": "A print is running or paused. Switch once it finishes.",
+        "printer_state_unknown": "The printer didn't say whether a print is running. Try again in a moment.",
+        "run_in_progress": "A Valve Oil update is running. Switch once it finishes.",
+        "installer_busy": "Valve Oil is checking for updates or installing. Switch once it finishes.",
+        "firmware_update_pending": "A QIDI firmware update hasn't finished. Finish it from Valve Oil's updates first."
+      }
+    },
+    "switch_failed": "Klipper wasn't switched: {{error}}",
+    "confirm": {
+      "button": "Restart Klipper",
+      "qidi": {
+        "title": "Use QIDI's Klipper?",
+        "body": "Klipper restarts with QIDI's Klipper, so the printer can't be used for a minute or so."
+      },
+      "valve_oil": {
+        "title": "Use Valve Oil's Klipper?",
+        "body": "Klipper restarts with Valve Oil's Klipper, so the printer can't be used for a minute or so. If it doesn't start, QIDI's Klipper starts instead, and you can go back here or with VO_KLIPPER USE=QIDI."
+      },
+      "retry": {
+        "title": "Try Valve Oil's Klipper again?",
+        "body": "Klipper restarts and tries Valve Oil's Klipper again, so the printer can't be used for a minute or so."
+      }
+    },
+    "footer": "Switching restarts Klipper and isn't possible during a print. In the console, {{status}} says which Klipper runs, and {{valve_oil}} or {{qidi}} switches."
   }
 }

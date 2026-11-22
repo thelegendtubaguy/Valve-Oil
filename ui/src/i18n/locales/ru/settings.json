@@ -55,6 +55,10 @@
       "label": "Дополнения",
       "sub": "Удалённый доступ и сети"
     },
+    "klipper": {
+      "label": "Klipper",
+      "sub": "Klipper от QIDI или от Valve Oil"
+    },
     "about": {
       "label": "О программе",
       "sub": "Версии"
@@ -419,5 +423,63 @@
         "id_hint": "Введите 16-символьный ID сети для подключения с my.zerotier.com."
       }
     }
+  },
+  "klipper": {
+    "title": "Klipper",
+    "loading": "Узнаём у принтера, какой Klipper запущен…",
+    "unavailable": "Служба состояния Valve Oil не отвечает, поэтому неизвестно, какой Klipper запущен.",
+    "not_reported": "Valve Oil на этом принтере не сообщает, какой Klipper запущен. Обновите Valve Oil, чтобы выбирать Klipper здесь.",
+    "name": {
+      "qidi": "Klipper от QIDI",
+      "valve_oil": "Klipper от Valve Oil"
+    },
+    "sub": {
+      "qidi": "Klipper, который QIDI поставляет с принтером. По умолчанию.",
+      "valve_oil": "Оригинальный Klipper с изменениями QIDI, от Valve Oil. Выключен, пока вы его не выберете."
+    },
+    "state": {
+      "off": "Выключено: запущен Klipper от QIDI.",
+      "on": "Включено: запущен Klipper от Valve Oil.",
+      "fallback": "Выбран Klipper от Valve Oil, но запущен Klipper от QIDI.",
+      "leaving": "Выбран Klipper от QIDI. Klipper от Valve Oil работает до перезапуска Klipper.",
+      "starting_qidi": "Klipper перезапускается с Klipper от QIDI…",
+      "starting_valve_oil": "Klipper перезапускается с Klipper от Valve Oil…"
+    },
+    "fallback_reason": "Причина: {{reason}}",
+    "fallback_no_reason": "Принтер не сообщил причину.",
+    "try_again": "Снова попробовать Klipper от Valve Oil",
+    "chosen": "Выбран",
+    "running": "Запущен",
+    "version": "Версия {{version}}",
+    "not_installed": "Не установлен на этом принтере.",
+    "unavailable_reason": "Недоступен: {{reason}}.",
+    "blocked": {
+      "none": "Сейчас переключить нельзя.",
+      "other": "Сейчас переключить нельзя: {{message}}.",
+      "code": {
+        "printing": "Идёт печать или она на паузе. Переключите, когда она завершится.",
+        "printer_state_unknown": "Принтер не сообщил, идёт ли печать. Попробуйте ещё раз через минуту.",
+        "run_in_progress": "Выполняется обновление Valve Oil. Переключите, когда оно завершится.",
+        "installer_busy": "Valve Oil проверяет обновления или выполняет установку. Переключите, когда он закончит.",
+        "firmware_update_pending": "Обновление прошивки QIDI не завершено. Сначала завершите его в обновлениях Valve Oil."
+      }
+    },
+    "switch_failed": "Klipper не переключён: {{error}}",
+    "confirm": {
+      "button": "Перезапустить Klipper",
+      "qidi": {
+        "title": "Использовать Klipper от QIDI?",
+        "body": "Klipper перезапустится с Klipper от QIDI, поэтому принтером нельзя будет пользоваться около минуты."
+      },
+      "valve_oil": {
+        "title": "Использовать Klipper от Valve Oil?",
+        "body": "Klipper перезапустится с Klipper от Valve Oil, поэтому принтером нельзя будет пользоваться около минуты. Если он не запустится, вместо него запустится Klipper от QIDI, и вы сможете вернуться здесь или командой VO_KLIPPER USE=QIDI."
+      },
+      "retry": {
+        "title": "Снова попробовать Klipper от Valve Oil?",
+        "body": "Klipper перезапустится и снова попробует Klipper от Valve Oil, поэтому принтером нельзя будет пользоваться около минуты."
+      }
+    },
+    "footer": "Переключение перезапускает Klipper и невозможно во время печати. В консоли {{status}} показывает, какой Klipper запущен, а {{valve_oil}} или {{qidi}} переключает его."
   }
 }

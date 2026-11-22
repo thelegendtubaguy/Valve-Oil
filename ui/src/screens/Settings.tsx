@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { Camera, ChevronLeft, ChevronRight, Film, Folder, Info, Layers, Move, Puzzle, RefreshCw, SlidersHorizontal, Thermometer } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, Cpu, Film, Folder, Info, Layers, Move, Puzzle, RefreshCw, SlidersHorizontal, Thermometer } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import { href, useSubPath } from '../lib/router'
 import { usePrinter } from '../state/printer'
@@ -13,6 +13,7 @@ import { FilesSettings } from '../components/settings/FilesSettings'
 import { GcodePreviewSettings } from '../components/settings/GcodePreviewSettings'
 import { TimelapseSettingsSection } from '../components/settings/Timelapse'
 import { AddonsSettings } from '../components/settings/Addons'
+import { KlipperSettings } from '../components/settings/Klipper'
 import { AboutSettings } from '../components/settings/About'
 
 // Settings, one section per sub-route (#/settings/cameras). Wide screens show the list of sections beside the open one;
@@ -32,6 +33,7 @@ const SECTIONS: Section[] = [
   { id: 'gcode-preview', key: 'gcode_preview', icon: <Layers size={I} />, body: () => <GcodePreviewSettings /> },
   { id: 'timelapse', key: 'timelapse', icon: <Film size={I} />, body: () => <TimelapseSettingsSection />, when: (c) => c.includes('timelapse') },
   { id: 'addons', key: 'addons', icon: <Puzzle size={I} />, body: () => <AddonsSettings /> },
+  { id: 'klipper', key: 'klipper', icon: <Cpu size={I} />, body: () => <KlipperSettings /> },
   { id: 'about', key: 'about', icon: <Info size={I} />, body: () => <AboutSettings /> },
 ]
 const sectionLabel = (s: Section) => t(`settings.sections.${s.key}.label` as MessageKey)

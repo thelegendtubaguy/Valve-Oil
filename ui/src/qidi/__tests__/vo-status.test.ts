@@ -1,9 +1,11 @@
 // Ported from the Valve Oil Fluidd fork, src/util/__tests__/vo-status.spec.ts at qidi@6405679. Unchanged but for the vitest imports
-// (the fork's tests use globals).
+// (the fork's tests use globals), and the klipper block's tests at the end, which the fork doesn't have yet.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  parseVoKlipperAnswer,
   parseVoStatus,
   parseVoStatusJob,
+  voKlipperState,
   voIssueUrlValid,
   voSentence,
   voStatusApiBase,
@@ -159,7 +161,8 @@ describe('parseVoStatus', () => {
       busy: false,
       printer_busy: false,
       update_now: null,
-      support_issue_url: null
+      support_issue_url: null,
+      klipper: null
     })
   })
 
@@ -784,5 +787,48 @@ describe('voStatusRequest', () => {
     respond(502, '<html>Bad Gateway</html>')
 
     await expect(voStatusRequest('http://printer/tltg-status/api', '/status')).rejects.toMatchObject({ status: 502 })
+  })
+})
+
+describe('klipper', () => {
+  const klipper = {
+    available: true,
+    unavailable_reason: null,
+    selected: 'qidi',
+    running: 'qidi',
+    fallback_reason: null,
+    version: 'v0.14.0-vo1',
+    restart_error: null,
+    switch: { to: 'valve_oil', allowed: true, blocked_by: [] }
+  }
+
+  it('is missing from a service without it, or with a choice this page does not know', () => {
+    expect(parseVoStatus(base)?.klipper).toBeNull()
+    expect(parseVoStatus({ ...base, klipper: { ...klipper, selected: 'upstream' } })?.klipper).toBeNull()
+  })
+
+  it('says off, on, fallen back, starting, or leaving', () => {
+    const state = (changes: object) => voKlipperState(parseVoStatus({ ...base, klipper: { ...klipper, ...changes } })!.klipper!)
+
+    expect(state({})).toBe('off')
+    expect(state({ selected: 'valve_oil', running: 'valve_oil' })).toBe('on')
+    expect(state({ selected: 'valve_oil', running: 'qidi', fallback_reason: "Valve Oil's Klipper didn't become ready" })).toBe('fallback')
+    expect(state({ selected: 'valve_oil', running: null })).toBe('starting')
+    expect(state({ running: 'upstream' })).toBe('starting')
+    expect(state({ running: 'valve_oil' })).toBe('leaving')
+  })
+
+  it('never allows a switch the printer gave reasons against, and works out where it goes', () => {
+    const parsed = parseVoStatus({
+      ...base,
+      klipper: { ...klipper, selected: 'valve_oil', switch: { allowed: true, blocked_by: [printing, { message: 'no code' }] } }
+    })?.klipper
+
+    expect(parsed?.switch).toEqual({ to: 'qidi', allowed: false, blocked_by: [printing] })
+  })
+
+  it("reads a switch's answer", () => {
+    expect(parseVoKlipperAnswer({ klipper: { ...klipper, selected: 'valve_oil', running: null } })).toMatchObject({ selected: 'valve_oil', running: null })
+    expect(parseVoKlipperAnswer({ job: {} })).toBeNull()
   })
 })
