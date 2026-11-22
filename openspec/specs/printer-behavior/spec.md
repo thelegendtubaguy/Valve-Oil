@@ -747,6 +747,7 @@ Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendo
 #### Scenario: Filament caught at the toolhead outside a tool change
 - **WHEN** the sensor still detects filament 20 mm past the pull-back, in an unload that is not a print's tool change
 - **THEN** no further extruder pull or Box pull runs, a vendor Box flow is paused on its unload step, and the console reports the error and says that `FLOW_RETRY` retries the unload and `FLOW_STOP` ends it
+- **AND** before the error, the slot is untied from the extruder and its motor switched off in Klipper with the vendor's own methods, as the vendor's unload does after its pull-back and on its own failure
 - **AND** when the extruder moved for the pulls, the error says something at the toolhead or in the Box holds the filament and to free it
 - **AND** once the filament is free, `FLOW_RETRY` unloads it
 

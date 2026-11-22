@@ -117,6 +117,13 @@
 # last did when QIDI had it armed there, except after a pull-back out of the
 # hub, which leaves it off as QIDI's unload does.
 #
+# An unload that Valve Oil stops with filament caught at the toolhead raises
+# out of QIDI's unload, which skips QIDI's own cleanup and left the slot tied
+# to the extruder and on in Klipper's motor tracking for the whole pause,
+# while the Box switches the motor off on its own. Before the stop is
+# raised, the slot is now untied from the extruder and switched off in
+# Klipper, as QIDI's unload does after its pull-back and on its own failure.
+#
 # Cancelled parts: Klipper's exclude_object drops every move while the print
 # is inside a cancelled part, extruder-only moves included. OrcaSlicer closes
 # a part's EXCLUDE_OBJECT_START/END block only when the next part starts, so
@@ -375,6 +382,8 @@ class _UnloadWatch:
         self._slot_start = None
         self._slot_end = None
         self.cleared_at = None
+        # The unload was stopped here instead of pulling again.
+        self.stopped = False
 
     @property
     def pulled(self):
@@ -390,6 +399,7 @@ class _UnloadWatch:
             return
         if any(RETRACT_LINE.match(line) for line in self._lines(script)) \
                 and self._toolhead_filament() is True:
+            self.stopped = True
             raise self._stop(self)
 
     def _run(self, run, script):
@@ -712,6 +722,8 @@ class BoxFlowRecovery:
                 return result
             except Exception as e:
                 outcome = "raised %s: %s" % (type(e).__name__, e)
+                if watch.stopped:
+                    self._release_slot(slot, stepper)
                 raise
             finally:
                 if stepper.gcode is watch:
@@ -723,6 +735,22 @@ class BoxFlowRecovery:
                     logging.exception("vo_box_flow_recovery: logging the "
                                       "unload failed")
         return extruder_unload_single_func
+
+    def _release_slot(self, slot, box_stepper):
+        """After Valve Oil stopped QIDI's unload, which skips QIDI's own
+        cleanup: untie the slot from the extruder and switch its motor off
+        in Klipper, as QIDI's unload does after its pull-back and when it
+        fails itself."""
+        for name in ("sync_unbind_extruder", "disable_stepper"):
+            method = getattr(box_stepper, name, None)
+            if not callable(method):
+                continue
+            try:
+                method()
+            except Exception:
+                logging.exception("vo_box_flow_recovery: %s of %s after the "
+                                  "stopped unload failed", name,
+                                  slot_label(slot))
 
     def _reset_clock_before_sync(self, slot, box_stepper):
         """Reset the slot's step clock right before QIDI's unload ties the

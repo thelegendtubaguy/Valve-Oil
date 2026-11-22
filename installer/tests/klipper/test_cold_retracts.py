@@ -747,7 +747,7 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
                 self.assertIsNone(manager.current_task)
 
     def test_caught_filament_stops_the_idle_unload_before_the_box_pulls(self) -> None:
-        printer, gcode, manager, stepper = self.setup(None)
+        printer, gcode, manager, stepper = self.setup(None, box=True)
         with self.assertRaises(CommandError) as caught:
             self.unload(gcode)
         self.assertEqual(printer.moves, [-30., -55., -10., -10.])
@@ -759,11 +759,17 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
         self.assertIn("FLOW_RETRY", message)
         self.assertTrue(manager.current_task.is_paused)
         self.assertEqual(manager.current_task.current_step, "BOX_UNLOAD")
+        # Through the pause the slot is neither tied to the extruder nor held on in Klipper, as after QIDI's own
+        # cleanup, so Klipper switches it on again for its next move.
+        self.assertIsNone(stepper.extruder_stepper.synced)
+        self.assertFalse(stepper.sync_extruder_bind_stepper)
+        self.assertFalse(stepper.enabled)
         # Freed by hand, the retry unloads it.
         stepper.clears_after = 0.
         gcode.handlers["FLOW_RETRY"](FilamentCommand())
         self.assertEqual(stepper.box_pulls, 1)
         self.assertIsNone(manager.current_task)
+        self.assertEqual(len(stepper.extruder_stepper.at_sync), 2)
 
     def test_caught_filament_in_a_tool_change_pauses_the_print(self) -> None:
         printer, gcode, manager, stepper = self.setup(None, print_state="printing")
