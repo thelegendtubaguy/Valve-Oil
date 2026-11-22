@@ -364,6 +364,7 @@ class ToolHead:
             self._calc_print_time()
         # Queue moves into trapezoid motion queue (trapq)
         next_move_time = self.print_time
+        timing_callbacks = []
         with self.reactor.assert_no_pause():
             for move in moves:
                 if move.is_kinematic_move:
@@ -379,7 +380,12 @@ class ToolHead:
                 next_move_time = (next_move_time + move.accel_t
                                   + move.cruise_t + move.decel_t)
                 for cb in move.timing_callbacks:
-                    cb(next_move_time)
+                    timing_callbacks.append((cb, next_move_time))
+        # QIDI: run the moves' timing callbacks after queuing them, outside
+        # the pause guard; QIDI's compiled modules (heater_air_core.so)
+        # register them and were written for pre-0.14 Klipper.
+        for cb, move_end_time in timing_callbacks:
+            cb(move_end_time)
         # Generate steps for moves
         self._advance_move_time(next_move_time)
         self.motion_queuing.note_mcu_movequeue_activity(next_move_time)

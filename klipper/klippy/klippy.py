@@ -165,11 +165,13 @@ class Printer:
             return
         try:
             self._set_state(message_ready)
-            with self.reactor.assert_no_pause():
-                for cb in self.event_handlers.get("klippy:ready", []):
-                    if self.state_message is not message_ready:
-                        return
-                    cb()
+            # QIDI: v0.14 runs these with reactor pauses disallowed, but
+            # QIDI's compiled modules (cs1237.so's load cell setup) query
+            # their boards from klippy:ready, as pre-0.14 Klipper allowed.
+            for cb in self.event_handlers.get("klippy:ready", []):
+                if self.state_message is not message_ready:
+                    return
+                cb()
         except Exception as e:
             logging.exception("Unhandled exception during ready callback")
             self.invoke_shutdown("Internal error during ready callback: %s"
@@ -214,17 +216,18 @@ class Printer:
         logging.error("Transition to shutdown state: %s", msg)
         self.in_shutdown_state = True
         self._set_state(msg)
-        with self.reactor.assert_no_pause():
-            for cb in self.event_handlers.get("klippy:shutdown", []):
-                try:
-                    cb()
-                except:
-                    logging.exception("Exception during shutdown handler")
-            for cb in self.event_handlers.get("klippy:analyze_shutdown", []):
-                try:
-                    cb(msg, details)
-                except:
-                    logging.exception("Exception in analyze_shutdown handler")
+        # QIDI: no reactor pause guard here either; QIDI's compiled modules'
+        # shutdown handlers were written for pre-0.14 Klipper, which had none.
+        for cb in self.event_handlers.get("klippy:shutdown", []):
+            try:
+                cb()
+            except:
+                logging.exception("Exception during shutdown handler")
+        for cb in self.event_handlers.get("klippy:analyze_shutdown", []):
+            try:
+                cb(msg, details)
+            except:
+                logging.exception("Exception in analyze_shutdown handler")
     def invoke_async_shutdown(self, msg, details={}):
         self.reactor.register_async_callback(
             (lambda e: self.invoke_shutdown(msg, details)))

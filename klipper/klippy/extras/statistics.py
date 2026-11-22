@@ -62,8 +62,9 @@ class PrinterStats:
         if self.printer.get_start_args().get('debugoutput') is None:
             self.reactor.update_timer(self.stats_timer, self.reactor.NOW)
     def generate_stats(self, eventtime):
-        with self.reactor.assert_no_pause():
-            stats = [cb(eventtime) for cb in self.stats_cb]
+        # QIDI: no reactor pause guard; QIDI's compiled modules' stats()
+        # was written for pre-0.14 Klipper.
+        stats = [cb(eventtime) for cb in self.stats_cb]
         if max([s[0] for s in stats]):
             stats_str = ' '.join([s[1] for s in stats if s[1]])
             logging.info("Stats %.1f: %s", eventtime, stats_str)

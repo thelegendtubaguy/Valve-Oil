@@ -27,8 +27,9 @@ class GetStatusWrapper:
         reactor = self.printer.get_reactor()
         if self.eventtime is None:
             self.eventtime = reactor.monotonic()
-        with reactor.assert_no_pause():
-            sts = po.get_status(self.eventtime)
+        # QIDI: no reactor pause guard; QIDI's compiled modules' get_status
+        # was written for pre-0.14 Klipper.
+        sts = po.get_status(self.eventtime)
         self.cache[sval] = res = copy.deepcopy(sts)
         return res
     def __contains__(self, val):
