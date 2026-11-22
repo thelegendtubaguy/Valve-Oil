@@ -788,6 +788,17 @@ Optimized configuration SHALL let moves through Klipper's object exclusion durin
 - **WHEN** `TOOL_CHANGE_START` is not followed by `TOOL_CHANGE_END` before the next `EXCLUDE_OBJECT_START` or `EXCLUDE_OBJECT_END`, or before the print file is reset
 - **THEN** the filament change ends there, and the cancelled part's lines after it are dropped
 
+### Requirement: Power-loss resume keeps cancelled parts skipped
+When parts were cancelled before a power loss, optimized configuration SHALL, after the vendor power-loss resume puts the toolhead back, start the part the print file restarts inside, from the last part label before that point, on every printer. A cancelled part's lines SHALL be dropped from the first, and a restart inside a filament change SHALL move as a filament change inside a cancelled part does. A vendor resume that differs from the version this was written for SHALL run unchanged.
+
+#### Scenario: Power lost inside a cancelled part
+- **WHEN** power is lost while the print is inside a cancelled part and the vendor resume restarts the file inside it
+- **THEN** none of the cancelled part's lines move the toolhead or extruder, and the next part prints where the G-code puts it
+
+#### Scenario: Power lost during a filament change inside a cancelled part
+- **WHEN** the vendor resume restarts the file between `TOOL_CHANGE_START` and `TOOL_CHANGE_END` inside a cancelled part
+- **THEN** the rest of the filament change moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
+
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
 Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
 

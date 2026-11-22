@@ -113,6 +113,17 @@
 # EXCLUDE_OBJECT_END, or a new print, ends a filament change that never sent
 # TOOL_CHANGE_END.
 #
+# Power-loss resume: QIDI's resume (SDCARD_POWER_OFF_CONTINUES_PINT_FILE)
+# cancels the saved cancelled parts again and restarts the file 4 KiB before
+# where power was lost, without the EXCLUDE_OBJECT_START of the part it
+# restarts inside. Klipper then counted the print as outside every part, and
+# a cancelled part printed again, in the air, until its EXCLUDE_OBJECT_END.
+# When parts were cancelled, the resume now finds the last part label and
+# filament change marker before its restart point, once QIDI has put the
+# toolhead back, and starts that part again, so a cancelled one stays
+# skipped; a restart inside a filament change lets its moves through as
+# above.
+#
 # External spool loads: QIDI's external-spool load flow ends with EXT_WIPE,
 # whose ExternalAdapter.wipe runs its purge and chute wipe and then returns
 # False whatever happened, in every build listed below, while a G-code error
@@ -123,7 +134,9 @@
 
 import contextlib
 import hashlib
+import inspect
 import logging
+import os
 import re
 import sys
 
@@ -170,6 +183,21 @@ MOVED_SHARE = .5
 LIFT_STATE = "_vo_cancelled_part_lift"
 LIFT_SCRIPT = ("SAVE_GCODE_STATE NAME=%s\nG91\nG1 Z0.01 F1200\nG1 Z-0.01\n"
                "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE, LIFT_STATE))
+# SHA-256 of the source, line endings removed, of QIDI's power-loss resume
+# methods this was written for: Max 4 01.01.06.05 and 01.01.07.01, Plus 5
+# and Smart 5 01.01.02.01.
+POWER_LOSS_RESUME = {
+    "_set_printer_state_internal":
+        "29ac1b6742add751d9afe4ec25ac93487ae9b58d0bc3ebce0f91ef5c0c9bd6ff",
+    "cmd_SDCARD_POWER_OFF_CONTINUES_PINT_FILE":
+        "b3485fd88961ac598812c08f673d938594739751ff8dc155aab6a125d00fde7f",
+}
+# Part labels and filament change markers in a print file, and how much of
+# the file is read at a time looking back for them.
+MARK_LINE = re.compile(
+    rb"^[ \t]*(EXCLUDE_OBJECT_START|EXCLUDE_OBJECT_END|TOOL_CHANGE_START|"
+    rb"TOOL_CHANGE_END)\b[^\n]*", re.M | re.I)
+SCAN_CHUNK = 64 * 1024
 
 
 def _slot_number(slot):
@@ -177,6 +205,51 @@ def _slot_number(slot):
             and slot[4:].isdigit():
         return int(slot[4:])
     return None
+
+
+def source_hash(func):
+    try:
+        source = inspect.getsource(func)
+    except (OSError, TypeError):
+        return None
+    return hashlib.sha256(source.replace("\r", "").encode()).hexdigest()
+
+
+def marks_before(fd, pos, pause):
+    """Read back from byte POS of the print file FD for the last part label
+    before it. Returns that label's EXCLUDE_OBJECT_START line, or None when
+    it is an EXCLUDE_OBJECT_END or there is none, and whether a filament
+    change is open there. A line POS cuts counts as before it: the print
+    restarts at its rest, which can't run as a command."""
+    if pos <= 0:
+        return None, False
+    tail = os.pread(fd, SCAN_CHUNK, pos - 1)
+    newline = tail.find(b"\n")
+    hi = pos - 1 + (newline if newline >= 0 else len(tail))
+    carry = b""
+    filament_change = None
+    while hi > 0:
+        lo = max(0, hi - SCAN_CHUNK)
+        data = os.pread(fd, hi - lo, lo) + carry
+        if lo:
+            # The chunk's first line may start in the one before it.
+            cut = data.find(b"\n")
+            if cut < 0:
+                carry, hi = data, lo
+                continue
+            carry, data = data[:cut], data[cut + 1:]
+        for match in reversed(list(MARK_LINE.finditer(data))):
+            mark = match.group(1).upper()
+            if filament_change is None:
+                filament_change = mark == b"TOOL_CHANGE_START"
+            if mark == b"EXCLUDE_OBJECT_START":
+                return match.group(0).strip().decode("utf-8", "replace"), \
+                    filament_change
+            if mark == b"EXCLUDE_OBJECT_END":
+                return None, filament_change
+        hi = lo
+        pause()
+    return None, bool(filament_change)
 
 
 def slot_label(slot):
@@ -758,6 +831,70 @@ class BoxFlowRecovery:
             self._wrap_command(name, handler)
         logging.info("tltg_box_flow_recovery: moves go through cancelled "
                      "parts during filament changes and pauses")
+        self._watch_power_loss_resume()
+
+    def _watch_power_loss_resume(self):
+        sdcard = self.printer.lookup_object("virtual_sdcard", None)
+        set_state = getattr(sdcard, "_set_printer_state_internal", None)
+        if not callable(set_state):
+            return
+        for name, expected in POWER_LOSS_RESUME.items():
+            if source_hash(getattr(type(sdcard), name, None)) != expected:
+                logging.info("tltg_box_flow_recovery: power-loss resume left "
+                             "as QIDI's: its %s differs from the version "
+                             "this was written for", name)
+                return
+
+        def set_printer_state(*args, **kwargs):
+            set_state(*args, **kwargs)
+            restore = getattr(sdcard, "_printer_off_power_resume", None)
+            if callable(restore):
+                sdcard._printer_off_power_resume = \
+                    lambda: self._resume_after_power_loss(sdcard, restore)
+        set_printer_state.__wrapped__ = set_state
+        sdcard._set_printer_state_internal = set_printer_state
+        logging.info("tltg_box_flow_recovery: power-loss resume keeps "
+                     "cancelled parts skipped")
+
+    def _resume_after_power_loss(self, sdcard, restore):
+        """Run QIDI's restore, then put the print back inside the part and
+        filament change its file restarts in, when parts were cancelled."""
+        restore()
+        cancelled = self._exclude.get_status().get("excluded_objects")
+        if not cancelled:
+            return
+        pos = sdcard.file_position
+        try:
+            part, filament_change = marks_before(
+                sdcard.current_file.fileno(), pos,
+                lambda: self.reactor.pause(self.reactor.monotonic()))
+        except (AttributeError, OSError, ValueError):
+            logging.exception("tltg_box_flow_recovery: finding the part a "
+                              "power-loss resume restarts in failed")
+            return
+        logging.info("tltg_box_flow_recovery: power-loss resume restarts at "
+                     "byte %d %s%s; cancelled: %s", pos,
+                     "after %s" % (part,) if part else "outside every part",
+                     ", inside a filament change" if filament_change else "",
+                     ", ".join(cancelled))
+        if part is not None:
+            self._learn_extruder_position()
+            self.gcode.run_script_from_command(part)
+        if filament_change:
+            self._filament_change = True
+
+    def _learn_extruder_position(self):
+        """exclude_object lets the first 5 extrusions through once it starts
+        watching, to learn where the extruder is, and QIDI's resume starts it
+        again. The resume has put the extruder back, so take it as learned
+        before a cancelled part's moves would print."""
+        exclude = self._exclude
+        if getattr(exclude, "initial_extrusion_moves", 0) > 0 \
+                and getattr(exclude, "next_transform", None) is not None:
+            exclude.max_position_extruded = max(
+                exclude.max_position_extruded,
+                exclude.last_position_extruded[3])
+            exclude.initial_extrusion_moves = 0
 
     def _moves_through_cancelled_parts(self):
         return self._filament_change or self._tool_change \

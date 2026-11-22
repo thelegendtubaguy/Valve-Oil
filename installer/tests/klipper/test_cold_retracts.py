@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
+import os
 import sys
+import tempfile
 import threading
 import types
 import unittest
@@ -17,6 +20,7 @@ cold_cut = load_extra("cold_cut")
 sys.modules.setdefault("greenlet", types.SimpleNamespace(getcurrent=lambda: None))
 box_flow_recovery = load_extra("box_flow_recovery")
 exclude_object = load_source("klipper_exclude_object", REPO_ROOT / "installer/tests/fixtures/klipper_exclude_object.py")
+virtual_sdcard = load_source("klipper_virtual_sdcard", REPO_ROOT / "installer/tests/fixtures/klipper_virtual_sdcard.py")
 
 MIN_EXTRUDE_TEMP = 135.
 
@@ -804,7 +808,7 @@ class MotionDispatcher(Dispatcher):
 
 class CancelledPartTest(unittest.TestCase):
     """A filament change inside a cancelled part still cuts, unloads, and purges, the print paused inside one
-    still moves, and the part's own lines stay dropped."""
+    still moves, a power-loss resume inside one keeps it skipped, and the part's own lines stay dropped."""
 
     def setUp(self) -> None:
         logging.disable(logging.CRITICAL)
@@ -840,6 +844,11 @@ class CancelledPartTest(unittest.TestCase):
             manager._run()
         run = gcode.run_script_from_command
         gcode.handlers["T_MANAGER"] = tool_change
+        # QIDI's power-loss resume, as virtual_sdcard has it.
+        sdcard = self.sdcard = object.__new__(virtual_sdcard.VirtualSD)
+        sdcard.printer, sdcard.gcode, sdcard._printer_off_power_resume = printer, gcode, None
+        printer.objects.update({"virtual_sdcard": sdcard, "gcode_move": motion,
+                                "save_variables": types.SimpleNamespace(allVariables={"profile_name": "default"})})
         config = types.SimpleNamespace(get_printer=lambda: printer)
         exclude = printer.objects["exclude_object"] = exclude_object.ExcludeObject(config)
         exclude._handle_connect()
@@ -897,6 +906,54 @@ class CancelledPartTest(unittest.TestCase):
                               "EXCLUDE_OBJECT_START NAME=A")
                 self.send("G1 X150 Y100 E1")
                 self.assertFalse(self.went(x=150.), "printed the cancelled part")
+
+
+    def resume_after_power_loss(self, part_a):
+        """Lose power at the line `; power lost` of a print whose part A, cancelled, holds PART_A, and resume as
+        QIDI does: put the toolhead back, then restart the file 4 KiB before that line. Returns where the nozzle
+        went after the toolhead was put back."""
+        text = "\n".join([
+            "EXCLUDE_OBJECT_DEFINE NAME=A", "EXCLUDE_OBJECT_DEFINE NAME=B", "M83",
+            "EXCLUDE_OBJECT_START NAME=B", "G1 X10 Y10 Z0.2 F600", "G1 X16 E1", "EXCLUDE_OBJECT_END NAME=B",
+            "EXCLUDE_OBJECT_START NAME=A", "G1 X100 Y100", *part_a, "EXCLUDE_OBJECT_END NAME=A",
+            "EXCLUDE_OBJECT_START NAME=B", "G1 X30 Y10 Z0.4", "G1 X40 E1", "EXCLUDE_OBJECT_END NAME=B", ""])
+        lost = text.index("; power lost")
+        self.assertGreater(lost - text.index("EXCLUDE_OBJECT_START NAME=A"), 4096)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "plate_1.gcode")
+            with open(path, "w", newline="") as f:
+                f.write(text)
+            for handler in self.events["virtual_sdcard:reset_file"]:
+                handler()
+            state = {"file_position": lost, "exclude_objects": ["A"],
+                     "all_objects": [{"name": "A"}, {"name": "B"}], "gcode_position": [120., 100., 0.2, 0.]}
+            self.sdcard._set_printer_state_internal(state, state["gcode_position"], [0.] * 4, [0.] * 4)
+            with io.open(path, "r", newline="") as f:
+                self.sdcard.current_file = f
+                self.sdcard.file_position = max(lost - 4096, 0)
+                f.seek(self.sdcard.file_position)
+                self.sdcard._printer_off_power_resume()
+                self.assertEqual(self.motion.path[-1], (120., 100., 0.2))
+                restored = len(self.motion.path)
+                self.send(*f.read().split("\n"))
+        return self.motion.path[restored:]
+
+    def test_power_loss_resume_inside_a_cancelled_part_keeps_it_skipped(self) -> None:
+        part_a = ["G1 X%.1f Y100 E0.1" % (100 + i / 10) for i in range(1, 400)]
+        part_a.insert(300, "; power lost")
+        path = self.resume_after_power_loss(part_a)
+        self.assertFalse([p for p in path if 100 <= p[0] < 150], "printed the cancelled part")
+        self.assertEqual(path, [(30., 10., 0.4), (40., 10., 0.4)])
+
+    def test_power_loss_resume_inside_a_filament_change_in_a_cancelled_part_finishes_the_change(self) -> None:
+        path = self.resume_after_power_loss([
+            "G1 X101 Y100 E1", "G1 Z3.2 F1200", "TOOL_CHANGE_START F=0 T=1", "G1 E-2 F1800",
+            *("; " + "-" * 60 for _ in range(80)), "; power lost", "G1 Y403.5 F2000", "G1 E30 F300",
+            "TOOL_CHANGE_END", "G1 X130 Y100 Z0.2", "G1 X131 E1"])
+        self.assertIn((120., 403.5, 0.2), path, "never reached the waste chute")
+        self.assertIn(30., self.printer.moves)
+        self.assertFalse([p for p in path if p[0] in (130., 131.)], "printed the cancelled part")
+        self.assertEqual(path[-1], (40., 10., 0.4))
 
 
 class ExternalLoadTest(unittest.TestCase):

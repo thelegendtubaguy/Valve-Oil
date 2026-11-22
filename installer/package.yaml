@@ -6,7 +6,7 @@ package:
   # The id predates multi-printer support; installed state records it, so it stays.
   id: qidi-max4-optimized
   display_name: Valve Oil
-  version: "26.11.22.2"
+  version: "26.11.22.3"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 # target_firmware is the QIDI firmware this release brings the printer to: its newest listed firmware, downloaded only
 # from this project's mirror release and checked against the archive's size and SHA-256. Every other listed firmware

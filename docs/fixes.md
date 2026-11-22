@@ -206,3 +206,9 @@ Cancelling a print during its start no longer wipes your saved Z offset to `0`. 
 ## Box eject homing the toolhead
 
 An eject that only needs the Box to pull filament back no longer homes and parks the toolhead. See [QIDI Box](qidi-box.md#eject).
+
+## Cancelled parts printing again after a power loss
+
+When a print resumes after a power loss, parts you cancelled (skipped) before the power went off stay skipped. QIDI's resume cancels them again, but it restarts the file a little before where the power went off, partway through the part being printed, and Klipper didn't know which part that was. When it was a cancelled part, the resumed print went straight back to printing it, in the air, until it reached the next part. The resume now starts that part again once the toolhead is back in place, so a cancelled part is skipped from the first line, and a resume in the middle of a filament change inside one finishes the change as [usual](qidi-box.md#filament-changes-inside-a-cancelled-part).
+
+QIDI's resume keeps no cancelled parts for a print with more than 64 parts, so those print again.
