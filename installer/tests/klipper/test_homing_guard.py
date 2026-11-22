@@ -27,9 +27,13 @@ class ClInterface:
     def __init__(self):
         self.name2addr = dict(ADDRS)
         self.sent = []
+        self.upgrading = False
 
     def send_command(self, addr, msg, expects_response=True, timeout=0.5):
         self.sent.append(bytes(msg))
+
+    def is_any_upgrading(self):
+        return self.upgrading
 
 
 class TriggerCommand:
@@ -220,6 +224,39 @@ class HomingGuardTest(unittest.TestCase):
         message, retry = printer.guard.take_stop()
         self.assertFalse(retry)
         self.assertIn("stopped answering", message)
+
+    def test_no_questions_while_a_motor_firmware_upgrade_runs(self) -> None:
+        # QIDI's UPGRADE_MOTOR returns before the transfer ends, and a
+        # question sent into the transfer can corrupt it.
+        printer = GuardPrinter()
+        printer.cl.upgrading = True
+        endstop = printer.begin("x")
+        self.assertFalse(printer.read("y", 50 * CYCLE))
+        printer.end()
+        self.assertEqual(printer.cl.sent, [])
+        self.assertIsNone(printer.guard.take_stop())
+
+        # An upgrade that starts during a touch: no more questions, and the
+        # driver going quiet doesn't stop the move.
+        printer.cl.upgrading = False
+        endstop = printer.begin("x")
+        self.assertTrue(printer.read("y", 0))
+        printer.cl.upgrading = True
+        self.assertFalse(printer.read("y", 50 * CYCLE))
+        for _ in range(4):
+            printer.silence()
+        printer.end()
+        self.assertEqual(len(printer.cl.sent), 1)
+        self.assertEqual(endstop.trsync._trsync_trigger_cmd.sent, [])
+        self.assertIsNone(printer.guard.take_stop())
+
+        # Once the upgrade is over, touches are watched again.
+        printer.cl.upgrading = False
+        endstop = printer.begin("x")
+        self.assertTrue(printer.read("y", 0))
+        self.assertTrue(printer.read("y", 9 * CYCLE))
+        self.assertEqual(endstop.trsync._trsync_trigger_cmd.sent,
+                         [[7, Trsync.REASON_HOST_REQUEST]])
 
     def test_guard_off_z_probe_and_printers_without_closed_loop(self) -> None:
         cases = (

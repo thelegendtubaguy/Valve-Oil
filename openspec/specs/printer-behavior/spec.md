@@ -956,6 +956,11 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 - **WHEN** the saved variable `vo_homing_guard` is false, the move homes Z or probes, or the printer has no QIDI closed-loop X/Y drivers
 - **THEN** the guard sends the drivers nothing and homing behaves as without it
 
+#### Scenario: Motor firmware upgrade running
+- **WHEN** QIDI's `cl_interface` reports a closed-loop motor firmware upgrade in progress (`is_any_upgrading()`) as an X or Y homing move starts, or before any position-error query during the move
+- **THEN** the guard sends the drivers nothing more during that move and doesn't stop it for unanswered queries
+- **AND** `klippy.log` gets one line for the move saying the guard isn't watching it because a motor upgrade is running
+
 ### Requirement: QIDI RS-485 device evidence
 Valve Oil's configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.
 
