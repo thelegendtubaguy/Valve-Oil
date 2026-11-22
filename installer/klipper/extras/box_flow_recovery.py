@@ -840,7 +840,7 @@ class BoxFlowRecovery:
             return
         for name, expected in POWER_LOSS_RESUME.items():
             if source_hash(getattr(type(sdcard), name, None)) != expected:
-                logging.info("tltg_box_flow_recovery: power-loss resume left "
+                logging.info("vo_box_flow_recovery: power-loss resume left "
                              "as QIDI's: its %s differs from the version "
                              "this was written for", name)
                 return
@@ -853,7 +853,7 @@ class BoxFlowRecovery:
                     lambda: self._resume_after_power_loss(sdcard, restore)
         set_printer_state.__wrapped__ = set_state
         sdcard._set_printer_state_internal = set_printer_state
-        logging.info("tltg_box_flow_recovery: power-loss resume keeps "
+        logging.info("vo_box_flow_recovery: power-loss resume keeps "
                      "cancelled parts skipped")
 
     def _resume_after_power_loss(self, sdcard, restore):
@@ -869,10 +869,10 @@ class BoxFlowRecovery:
                 sdcard.current_file.fileno(), pos,
                 lambda: self.reactor.pause(self.reactor.monotonic()))
         except (AttributeError, OSError, ValueError):
-            logging.exception("tltg_box_flow_recovery: finding the part a "
+            logging.exception("vo_box_flow_recovery: finding the part a "
                               "power-loss resume restarts in failed")
             return
-        logging.info("tltg_box_flow_recovery: power-loss resume restarts at "
+        logging.info("vo_box_flow_recovery: power-loss resume restarts at "
                      "byte %d %s%s; cancelled: %s", pos,
                      "after %s" % (part,) if part else "outside every part",
                      ", inside a filament change" if filament_change else "",

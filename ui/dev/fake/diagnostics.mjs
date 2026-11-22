@@ -1,4 +1,4 @@
-// System → Diagnostics' fault check: Valve Oil's status service at /tltg-status/api/diagnostics
+// System → Diagnostics' fault check: Valve Oil's status service at /vo-status/api/diagnostics
 // (installer/system/vo_status.py Diagnostics, running installer/runtime/diagnostics.py). Pick what the check finds with
 // `--diagnostics <scenario>`, or switch at runtime with `VO_DIAGNOSTICS NAME=<scenario>`:
 //
@@ -132,7 +132,7 @@ export function install(fake) {
   const send = (res, code, body) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body))
 
   fake.http(async (req, res, path) => {
-    if (path !== '/tltg-status/api/diagnostics') return false
+    if (path !== '/vo-status/api/diagnostics') return false
     // The core answers for the status service while it's away.
     if (fake.statusServiceDown) return false
     if (scenario === 'absent') return send(res, 404, { error: 'Not found.' })

@@ -2,7 +2,7 @@
 
 Each signature is a fault QIDI's code causes and Valve Oil can recognize in `klippy.log`: first by the `vo_` line the
 Valve Oil Klipper module that watches for it writes when it happens, and, for logs from before that watcher shipped,
-by QIDI's own lines. The tltg-status service runs this file on the printer's logs for Valve Oil UI's Diagnostics
+by QIDI's own lines. The vo-status service runs this file on the printer's logs for Valve Oil UI's Diagnostics
 check, at low priority, and `scripts/check_klippy_log.py` runs it on a log someone sends in.
 
 The checker streams the newest part of each log within a byte budget, never holding a file in memory, and stops at a

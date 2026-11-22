@@ -73,7 +73,7 @@ class Stepper:
 
 
 class SlotJog:
-    """tltg_box_slot_jog: the test's `during` runs while the slot motor moves."""
+    """vo_box_slot_jog: the test's `during` runs while the slot motor moves."""
 
     def __init__(self) -> None:
         self.during = lambda: None
@@ -96,7 +96,7 @@ class Printer:
         self.objects = {
             "box_stepper slot0": types.SimpleNamespace(stepper=self.steppers[SLOT_1A]),
             "box_stepper slot1": types.SimpleNamespace(stepper=self.steppers[SLOT_1B]),
-            "tltg_box_slot_jog": self.jog,
+            "vo_box_slot_jog": self.jog,
             "print_stats": types.SimpleNamespace(get_status=lambda eventtime: {"state": self.print_state}),
         }
         self.events = {}

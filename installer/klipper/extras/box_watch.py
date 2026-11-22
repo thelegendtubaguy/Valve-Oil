@@ -26,7 +26,7 @@
 #   while a feed runs (from the `MCB_STATE` 2 that starts it to the
 #   `STEP-set_last_step` that ends it) is logged with the slot.
 # - The Box feeding a slot while Valve Oil moves it: a feed of that slot
-#   during Valve Oil's slot moves (tltg_box_slot_jog: jogs, spool rolls, RFID
+#   during Valve Oil's slot moves (vo_box_slot_jog: jogs, spool rolls, RFID
 #   reads, and stranded-filament retracts) or during a Box load or unload
 #   move run with Valve Oil's feed motion.
 # - Box replies no host module handles, counted by name and logged at each
@@ -50,7 +50,7 @@ BOX_CLOCK_FREQ = 84000000.
 STEP_CHECK = 5.
 PRINT_CHECK = 5.
 PRINTING = ("printing", "paused")
-# Box moves run with Valve Oil's feed motion (tltg_box_feed_motion).
+# Box moves run with Valve Oil's feed motion (vo_box_feed_motion).
 FEED_MOTION = (("do_home_three_steps", "Box load move"),
                ("do_home_double_steps", "Box unload move"))
 # Clock differences under this many ticks are rounding in the Box's
@@ -259,7 +259,7 @@ class BoxWatch:
                         self._during(slot, move, original))
 
     def _watch_slot_jog(self):
-        jog = self.printer.lookup_object("tltg_box_slot_jog", None)
+        jog = self.printer.lookup_object("vo_box_slot_jog", None)
         original = getattr(jog, "_move", None)
         if not callable(original):
             return
