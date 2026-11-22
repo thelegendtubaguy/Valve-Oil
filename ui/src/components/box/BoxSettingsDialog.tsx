@@ -1,5 +1,6 @@
 // Whether prints use the Box, and QIDI's Box settings, saved variables its Box modules read, set to 1 or 0 as QIDI's Fluidd did; Valve Oil's turn
-// spools while heating when its module is installed; and the printer's own load and unload motion.
+// spools while heating when its module is installed; and the printer's own load and unload motion. Detection on insertion
+// goes through QIDI's own command where the printer has it, so RS-485 Boxes get it too (boxCommands.setting).
 import { Dialog, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, type BoxSetting, type BoxState } from '../../state/box'
@@ -37,7 +38,7 @@ export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open:
               <div className="font-semibold">{r.title}</div>
               <div className="text-[12.5px] text-ink-3">{r.help}</div>
             </div>
-            <Toggle checked={r.value} label={r.title} disabled={!ready} onChange={(v) => attempt(() => runGcode(boxCommands.setting(r.key, v)))} />
+            <Toggle checked={r.value} label={r.title} disabled={!ready} onChange={(v) => attempt(() => runGcode(boxCommands.setting(r.key, v, box)))} />
           </label>
         ))}
         {box.autoReload && Object.keys(box.reloadGroups).length === 0 && <div className="-mt-1 pb-3 text-[12.5px] text-ink-3">{t('box.settings.no_reload_groups')}</div>}

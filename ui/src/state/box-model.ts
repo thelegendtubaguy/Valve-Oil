@@ -45,6 +45,8 @@ export type SpoolRoll = { enabled: boolean; rolling: string | null }
 export type BoxState = {
   boxCount: number
   hasController: boolean
+  /** Detection on insertion goes through QIDI's SET_ENABLE_RFID_READ, which also sends it to online RS-485 Boxes. */
+  rfidViaController: boolean
   enabled: boolean
   autoReload: boolean
   slots: QidiBoxSlot[]
@@ -160,6 +162,9 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   return {
     boxCount,
     hasController,
+    // QIDI's SET_ENABLE_RFID_READ saves auto_read_rfid and, without a USB Box, also sends it to the RS-485 Boxes online
+    // through box485. Without a [box485] section that path stops Klipper with an internal error, so it needs box485.
+    rfidViaController: hasController && commands.includes('SET_ENABLE_RFID_READ') && s.objects.includes('box485'),
     enabled,
     autoReload: Number(variables.auto_reload_detect ?? 0) === 1,
     slots,
@@ -309,7 +314,11 @@ export const boxCommands = {
   retry: () => 'FLOW_RETRY',
   stop: () => 'FLOW_STOP',
   mapTool: (tool: number, slot: number) => gcode`SAVE_VARIABLE VARIABLE=value_t${tool} VALUE="'slot${slot}'"`,
-  setting: (name: BoxSetting, on: boolean) => gcode`SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
+  // QIDI's SET_ENABLE_AUTO_RELOAD and SET_ENABLE_INIT_READ_RFID only save their variable, so those stay direct saves.
+  setting: (name: BoxSetting, on: boolean, box?: Pick<BoxState, 'rfidViaController'>) =>
+    name === 'auto_read_rfid' && box?.rfidViaController
+      ? gcode`SET_ENABLE_RFID_READ ENABLE=${on ? 1 : 0}`
+      : gcode`SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
   tool: (tool: number) => gcode`T${tool}`,
   heater: (heater: string, target: number) => gcode`SET_HEATER_TEMPERATURE HEATER=${heater.replace(/^heater_generic /, '')} TARGET=${target}`,
   // TIME is whole hours.

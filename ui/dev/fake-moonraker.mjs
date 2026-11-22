@@ -156,6 +156,8 @@ function baseStatus() {
     'filament_switch_sensor filament_switch_sensor': { filament_detected: true, enabled: true },
     save_variables: { variables },
     box_extras: { boxes: [0, 1].map((b) => ({ filament_info: [0, 1, 2, 3].map((i) => fi(i, ...BOX_SLOTS[b * 4 + i])) })) },
+    // QIDI's 01.01.07.01 config has [box485] on every printer, with or without RS-485 Boxes.
+    box485: { box_count: 0, boxes: [] },
     multi_color_controller: {
       box: { b_endstop_state: 0, last_load_slot: 'slot1' },
       task: { flow_id: 3, current_queue: [], current_step: '', is_paused: false },
@@ -356,6 +358,7 @@ async function gcode(script) {
     } else if (C === 'VO_SCENARIO') applyScenario(p.NAME ?? 'idle')
     else if (C === 'VO_UPDATES') applyUpdates(p.NAME ?? 'none')
     else if (C === 'VO_INSTALL') startInstall(p.ORIGIN ?? 'ssh', { fail: Number(p.FAIL ?? 0), interrupt: Number(p.INTERRUPT ?? 0) })
+    else if (C === 'SET_ENABLE_RFID_READ') set('save_variables', { variables: { ...vars(), auto_read_rfid: Number(p.ENABLE) } })
     else if (C === 'SAVE_VARIABLE') {
       // Roughly Klipper: outer double quotes are stripped, then the value is a Python literal.
       let v = p.VALUE
@@ -602,7 +605,7 @@ const handlers = {
   'printer.objects.query': (p) => {
     const out = {}
     for (const k of Object.keys(p.objects)) {
-      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_KINEMATIC_POSITION', 'SET_HEATER_TEMPERATURE', 'BOX_START_DRYING', 'BOX_STOP_DRYING', 'SAVE_VARIABLE', 'VO_CUT_FILAMENT', 'VO_BOX_SLOT_JOG', 'VO_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'VO_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
+      if (k === 'gcode') out.gcode = { commands: { ...Object.fromEntries(Object.keys(extraCommands).map((c) => [c, { help: extraCommands[c] }])), ...Object.fromEntries(['G28', 'M84', 'SET_KINEMATIC_POSITION', 'SET_HEATER_TEMPERATURE', 'BOX_START_DRYING', 'BOX_STOP_DRYING', 'SAVE_VARIABLE', 'VO_CUT_FILAMENT', 'VO_BOX_SLOT_JOG', 'VO_BOX_MOTION', 'VO_BOX_RFID_TEST', 'VO_BOX_RFID_WRITE', 'VO_RESET_TOOL_MAPPINGS', 'LOAD_FILAMENT_CONTROL', 'SET_ENABLE_RFID_READ', 'FLOW_RETRY', 'FLOW_STOP', 'PRINT_START', 'M600', 'CLEAR_NOZZLE', 'BED_MESH_CALIBRATE', 'SHAPER_CALIBRATE'].map((c) => [c, { help: '' }])) } }
       else if (k === 'configfile')
         out.configfile = {
           settings: {
