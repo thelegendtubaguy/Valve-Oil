@@ -761,7 +761,7 @@ Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendo
 - **THEN** the unload stops once those pulls reach 20 mm with the sensor still detecting filament, the same as with 10 mm pulls
 
 ### Requirement: QIDI Box slot step clock before an unload's pull-back
-Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with auto-feed aborted again, all moves finished, and the slot idle, wherever the vendor Box code has auto-feed and that unload path.
+Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with all moves finished and auto-feed stopped on the Box that drives that slot, wherever the vendor Box code has auto-feed and that unload path.
 
 #### Scenario: Auto-feed left the slot's step clock off
 - **WHEN** print start re-armed auto-feed while a feed was running, so the Box kept a step clock for the slot that is off from Klipper's
@@ -770,6 +770,11 @@ Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing
 #### Scenario: Every unload from the toolhead
 - **WHEN** a vendor unload from the toolhead ties a slot to the extruder
 - **THEN** the reset happens once, before the first pull-back, and `klippy.log` says so, and the vendor's tie to the extruder and pull-backs then run unchanged
+
+#### Scenario: A feed running or just ended when the unload starts
+- **WHEN** the slot's Box is feeding it, is in the moments after a feed with the buffer still asking for one, or has auto-feed set up on the other Box's slot by the vendor code last
+- **THEN** that Box is told the buffer wants no feed and its auto-feed is aborted twice, waiting after each abort for a stopped feed's step clock to be put back, so no feed steps the slot when it is tied to the extruder and its step clock is Klipper's
+- **AND** the vendor's record of the buffer switch is left as the switch set it, so the vendor's next arm of auto-feed sends that state
 
 ### Requirement: Filament changes and pauses move inside cancelled parts
 Valve Oil's configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
