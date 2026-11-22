@@ -111,6 +111,12 @@
 # TIGHTEN_FILAMENT), the auto-feed of that slot's Box is now stopped this way
 # first, so an arm can no longer land inside a feed.
 #
+# Valve Oil's own slot moves: vo_box_slot_jog's moves of a slot auto-feed is
+# set up on (jogs, RFID spool turns, stranded filament pull-backs) stop it the
+# same way and reset the slot's step clock first, then arm it again as QIDI
+# last did when QIDI had it armed there, except after a pull-back out of the
+# hub, which leaves it off as QIDI's unload does.
+#
 # Cancelled parts: Klipper's exclude_object drops every move while the print
 # is inside a cancelled part, extruder-only moves included. OrcaSlicer closes
 # a part's EXCLUDE_OBJECT_START/END block only when the next part starts, so
@@ -874,6 +880,37 @@ class BoxFlowRecovery:
                          "stopped first and the Box put the slot's step clock "
                          "back", feeding[0], feeding[1], slot_label(slot))
 
+    def hold_auto_feed(self, slot, mcu_stepper):
+        """Before Valve Oil moves SLOT's motor (vo_box_slot_jog): when QIDI's
+        auto-feed is set up on that slot, stop it and reset the slot's step
+        clock. Returns whether QIDI had it armed there, for
+        rearm_auto_feed()."""
+        autofeed = self._autofeed
+        if autofeed is None or slot not in (
+                getattr(autofeed, "bind_stepper", None),
+                getattr(autofeed, "active_slot", None)):
+            return False
+        armed = getattr(autofeed, "bind_stepper", None) == slot
+        return self._reset_slot_clock(
+            slot, mcu_stepper, "before Valve Oil moves it") and armed
+
+    def rearm_auto_feed(self, slot):
+        """After Valve Oil moved SLOT's motor: arm auto-feed on it again as
+        QIDI last did, when QIDI still has it armed there."""
+        autofeed = self._autofeed
+        arm = self._arms.get(slot)
+        if autofeed is None or getattr(autofeed, "bind_stepper", None) != slot:
+            return
+        if arm is None:
+            logging.info("vo_box_flow_recovery: auto-feed on %s left off "
+                         "after Valve Oil moved it: QIDI's arm wasn't seen; "
+                         "QIDI arms it again at its next load, print start, "
+                         "or tool change", slot_label(slot))
+            return
+        autofeed.auto_start(*arm[0], **arm[1])
+        logging.info("vo_box_flow_recovery: auto-feed on %s armed again after "
+                     "Valve Oil moved it", slot_label(slot))
+
     def _log_unload(self, slot, before, watch, outcome):
         def state(value):
             return {True: "filament", False: "clear"}.get(value, "unknown")
@@ -1448,9 +1485,10 @@ class BoxFlowRecovery:
             return tracker.hub_occupied() is False \
                 or tracker.inlets().get(slot) is False
 
+        # Like QIDI's unload, these pull-backs leave auto-feed off.
         moved, _ = jog.move(number, -MAX_HUB_RETRACT, RETRACT_SPEED,
                             until=hub_clear_or_inlet_empty,
-                            piece=RETRACT_PIECE)
+                            piece=RETRACT_PIECE, rearm=False)
         hub = tracker.hub_occupied()
         inlet = tracker.inlets().get(slot)
         logging.info("vo_box_flow_recovery: %s retracted %.0f mm, hub "
@@ -1478,7 +1516,7 @@ class BoxFlowRecovery:
         parked, _ = jog.move(number, -PARK_DISTANCE, RETRACT_SPEED,
                              until=lambda: tracker.inlets().get(slot)
                              is False,
-                             piece=RETRACT_PIECE)
+                             piece=RETRACT_PIECE, rearm=False)
         if tracker.inlets().get(slot) is False:
             raise gcmd.error(
                 "%s's filament left its inlet sensor %.0f mm after the Box "

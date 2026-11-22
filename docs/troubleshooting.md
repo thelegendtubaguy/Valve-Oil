@@ -203,7 +203,7 @@ Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each 
 
 ### The Box fed a slot during a Valve Oil move
 
-The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed.
+The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed. Valve Oil now stops the Box's feeding on a slot before it jogs, turns, or reads that slot, so this shouldn't happen on those moves any more.
 
 ### Box unload stopped with filament at the toolhead
 

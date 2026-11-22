@@ -160,6 +160,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
 - The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
 - A jog is refused while a print is printing or the Box is moving filament. It works while a print is paused and while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`, for example to work filament free after [an unload stops](#filament-caught-at-the-toolhead).
+- The Box keeps feeding the loaded slot on its own while a print is paused. A jog, spool turn, or spool tag read of the slot the Box feeds stops that feeding first, so the Box doesn't move the filament during it, and turns it back on afterwards. Pulling [stuck filament](#stuck-box-loads) back out of the hub leaves it off, as QIDI's unload does.
 - Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
 - A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
 

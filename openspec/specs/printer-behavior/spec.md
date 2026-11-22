@@ -594,6 +594,12 @@ Valve Oil's configuration SHALL provide a console command that moves one USB QID
 - **WHEN** a print is paused, or a vendor Box task is paused at a failed step, such as an unload that stopped with filament caught
 - **THEN** the slot moves as for an idle jog and the motor is handed back afterwards, so `RESUME` or `FLOW_RETRY` carries on from the sensors
 
+#### Scenario: A jog of the slot auto-feed is set up on
+- **WHEN** a slot move of this command, an RFID spool turn, or a stranded-filament pull-back moves the slot the vendor's auto-feed is set up on
+- **THEN** auto-feed on that slot's Box is stopped and the slot's step clock reset before the move, so no feed steps the slot during it
+- **AND** when the vendor had auto-feed armed on that slot, it is armed again afterwards with the vendor's last arguments for it, except after a stranded-filament pull-back, and saved vendor Box state is unchanged
+- **AND** a move of another slot leaves auto-feed as it is
+
 #### Scenario: A jog changes the hub sensor
 - **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
 - **THEN** the hub record updates as it does for the slot's own vendor motion
