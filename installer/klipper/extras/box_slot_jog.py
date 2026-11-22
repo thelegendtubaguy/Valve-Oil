@@ -18,6 +18,12 @@ import logging
 import chelper
 from . import force_move
 
+try:
+    # Klipper 0.14 and later
+    from . import motion_queuing as _motion_queuing_module
+except ImportError:
+    _motion_queuing_module = None
+
 SENSOR_NAME = "filament_switch_sensor filament_switch_sensor"
 ACCEL = 100.
 DEFAULT_SPEED = 20.
@@ -40,8 +46,9 @@ class BoxSlotJog:
         ffi_main, ffi_lib = chelper.get_ffi()
         # Klipper 0.14 and later expire every motion queue through
         # motion_queuing; older Klipper leaves that to the queue's owner.
-        motion_queuing = self.printer.lookup_object("motion_queuing", None)
-        if motion_queuing is not None:
+        if _motion_queuing_module is not None:
+            motion_queuing = self.printer.load_object(config,
+                                                      "motion_queuing")
             self.trapq = motion_queuing.allocate_trapq()
         else:
             self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(),

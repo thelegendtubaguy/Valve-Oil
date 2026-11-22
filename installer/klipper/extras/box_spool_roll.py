@@ -27,6 +27,12 @@ import logging
 import chelper
 from . import force_move
 
+try:
+    # Klipper 0.14 and later
+    from . import motion_queuing as _motion_queuing_module
+except ImportError:
+    _motion_queuing_module = None
+
 ENABLE_VARIABLE = "vo_box_spool_roll"
 ROLL_INTERVAL = 300.
 # Half QIDI's 50 mm drying roll, in the same direction, at a gentler speed.
@@ -57,9 +63,10 @@ class BoxSpoolRoll:
         ffi_main, ffi_lib = chelper.get_ffi()
         # Klipper 0.14 and later queue and expire every motion queue through
         # motion_queuing; older Klipper leaves that to whoever owns the queue.
-        self.motion_queuing = self.printer.lookup_object("motion_queuing",
-                                                         None)
-        if self.motion_queuing is not None:
+        self.motion_queuing = None
+        if _motion_queuing_module is not None:
+            self.motion_queuing = self.printer.load_object(config,
+                                                           "motion_queuing")
             self.trapq = self.motion_queuing.allocate_trapq()
         else:
             self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(),
