@@ -11,7 +11,7 @@ class SerialError(Exception):
 
 
 def _load():
-    """Import tltg_klipper_fixes with stand-ins for the Klipper modules it
+    """Import vo_klipper_fixes with stand-ins for the Klipper modules it
     patches; the tests attach the classes they need."""
     modules = {name: types.ModuleType(name) for name in ("mcu", "reactor", "serialhdl", "toolhead", "webhooks")}
     modules["serialhdl"].error = SerialError
@@ -26,7 +26,7 @@ def _load():
     modules["extras.stepper_enable"].ENABLE_DELAY_TIME = .3
     modules["extras.probe"].calc_probe_z_average = (
         lambda positions, method: [sum(p[i] for p in positions) / len(positions) for i in range(3)])
-    return load_extra("klipper_fixes", "extras.tltg_klipper_fixes", stand_ins=modules)
+    return load_extra("klipper_fixes", "extras.vo_klipper_fixes", stand_ins=modules)
 
 
 klipper_fixes = _load()
@@ -87,7 +87,7 @@ class GuardTest(unittest.TestCase):
         self.addCleanup(klipper_fixes.ORIGINALS.__setitem__, label, saved)
         klipper_fixes.ORIGINALS[label] = klipper_fixes.source_hash(trsync_class().start)
 
-        # Klipper start: the fixes load before tltg_klipper_health wraps the sync.
+        # Klipper start: the fixes load before vo_klipper_health wraps the sync.
         Trsync = trsync_class()
         self.assertTrue(klipper_fixes._replace(Trsync, "start", label, fixed))
         self.assertTrue(klipper_health._wrap_trsync(Trsync))

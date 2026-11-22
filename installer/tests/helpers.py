@@ -147,10 +147,10 @@ def stock_printer_data(manifest, firmware: str, *, homing: bytes | None = None) 
 
 def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
     return {
-        "TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(printer_data_root),
-        "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(printer_data_root / "firmware_manifest.json"),
-        "TLTG_OPTIMIZED_MOONRAKER_URL": moonraker_url,
-        "TLTG_OPTIMIZED_KLIPPER_ROOT": str(printer_data_root / "klipper"),
+        "VO_PRINTER_DATA_ROOT": str(printer_data_root),
+        "VO_FIRMWARE_MANIFEST": str(printer_data_root / "firmware_manifest.json"),
+        "VO_MOONRAKER_URL": moonraker_url,
+        "VO_KLIPPER_ROOT": str(printer_data_root / "klipper"),
     }
 
 
@@ -455,7 +455,7 @@ def fake_host_run(root: Path):
             # systemd can't restart a unit whose file is gone ("Unit ... not found."); the fixture holds only the
             # package's own unit files.
             service = command[-1]
-            if service.startswith("tltg-") and not (root / "etc/systemd/system" / service).exists():
+            if service.startswith("vo-") and not (root / "etc/systemd/system" / service).exists():
                 return result(command, returncode=5)
             return result(command)
         if command[:2] == ["systemctl", "daemon-reload"] or command[:2] == ["systemctl", "reset-failed"]:

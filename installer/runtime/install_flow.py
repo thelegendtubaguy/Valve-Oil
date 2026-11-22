@@ -27,7 +27,7 @@ from .models import SystemOptimizationCliOptions
 
 AUTO_UPDATES = "auto_updates"
 AI_DETECTION = "ai_detection"
-PENDING_ANSWERS = ".tltg_install_answers.json"  # in printer_data, for the install a firmware update runs
+PENDING_ANSWERS = ".vo_install_answers.json"  # in printer_data, for the install a firmware update runs
 
 # The two kinds of run a front end offers on a printer: install or update with the settings it has, or change them.
 INSTALL = "install"

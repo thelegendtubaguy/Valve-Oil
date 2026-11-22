@@ -24,7 +24,7 @@
 #
 # VO_CUT_FILAMENT cuts while no print is running or paused and no QIDI Box
 # flow is running or paused, at any nozzle temperature and without changing
-# the heater: it homes X and Y if either isn't homed, runs the optimized cut,
+# the heater: it homes X and Y if either isn't homed, runs Valve Oil's cut,
 # and restores the acceleration and G-code state whether or not the cut
 # finishes.
 
@@ -58,7 +58,7 @@ class ColdCut:
         try:
             status = obj.get_status(self.reactor.monotonic())
         except Exception:
-            logging.exception("tltg_cold_cut: %s get_status failed", name)
+            logging.exception("vo_cold_cut: %s get_status failed", name)
             return {}
         return status if hasattr(status, "get") else {}
 
@@ -89,7 +89,7 @@ class ColdCut:
             heater.min_extrude_temp = float("-inf")
             heater.can_extrude = True
         extruder.check_move = check_move
-        logging.info("tltg_cold_cut: cold retracts allowed")
+        logging.info("vo_cold_cut: cold retracts allowed")
         try:
             yield
         finally:
@@ -102,7 +102,7 @@ class ColdCut:
                 heater.can_extrude = minimum <= 0. \
                     or heater.smoothed_temp >= minimum
             self._held = False
-            logging.info("tltg_cold_cut: cold retracts refused again")
+            logging.info("vo_cold_cut: cold retracts refused again")
 
     # ----------------------------------------------------------------- cut
     def blocker(self):
@@ -132,7 +132,7 @@ class ColdCut:
                 try:
                     self.gcode.run_script_from_command(leave)
                 except Exception:
-                    logging.exception("tltg_cold_cut: leaving the cutter "
+                    logging.exception("vo_cold_cut: leaving the cutter "
                                       "after a failed strike failed")
             raise
         self.gcode.run_script_from_command(leave)

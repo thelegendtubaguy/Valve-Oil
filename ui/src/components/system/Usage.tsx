@@ -48,7 +48,7 @@ const mcuMax = (m: number) => (m <= 80 ? Math.ceil((m + 5) / 10) * 10 + 5 : Math
 export function UsageCard({ cores }: { cores: number }) {
   const b = useSystemBuffers()
   const mcus = usePrinter((s) => s.objects.filter((o) => o === 'mcu' || o.startsWith('mcu ')))
-  const hasHealth = usePrinter((s) => s.status.tltg_klipper_health != null)
+  const hasHealth = usePrinter((s) => s.status.vo_klipper_health != null)
   const has = (buf: SeriesBuffer, col: string) => buf.cols[col]?.some(Number.isFinite)
   return (
     <Card title={t('system.usage.title')} icon={<Activity size={15} />} aside={t('system.usage.last_10')}>

@@ -32,7 +32,7 @@ def main() -> int:
     )
     match = re.search(r'^variable_package_version:\s*["\']?([^"\'\n]+)["\']?\s*$', globals_text, re.MULTILINE)
     if match is None:
-        raise SystemExit("Missing variable_package_version in optimized globals.cfg")
+        raise SystemExit("Missing variable_package_version in Valve Oil's globals.cfg")
     if match.group(1) != manifest.package.version:
         raise SystemExit(
             "Optimized globals package version does not match installer/package.yaml: "

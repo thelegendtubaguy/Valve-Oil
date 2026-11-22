@@ -110,7 +110,7 @@ class BootLogoTests(unittest.TestCase):
 class BootAnimationTests(unittest.TestCase):
     def setUp(self):
         self.globals = {}
-        exec(compile(boot_screen.player_source(), "tltg_boot_animation.py", "exec"), self.globals)
+        exec(compile(boot_screen.player_source(), "vo_boot_animation.py", "exec"), self.globals)
         self.player = SimpleNamespace(**self.globals)
         self.animation = self.player.decode(__import__("base64").b64decode(self.player.ANIMATION))
 

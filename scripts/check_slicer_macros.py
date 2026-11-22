@@ -234,13 +234,13 @@ def main() -> int:
     failures, checked_files, macros = validate_repo(REPO_ROOT)
 
     if failures:
-        print("Optimized slicer G-code check failed:", file=sys.stderr)
+        print("Slicer G-code check failed:", file=sys.stderr)
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
         return 1
 
     print(
-        f"Validated {len(checked_files)} optimized slicer G-code files against {len(macros)} optimized macros and commands."
+        f"Validated {len(checked_files)} slicer G-code files against {len(macros)} Valve Oil macros and commands."
     )
     return 0
 

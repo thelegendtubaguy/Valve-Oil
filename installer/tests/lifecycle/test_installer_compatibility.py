@@ -429,7 +429,7 @@ def _state(
         runtime_firmware="01.01.06.03",
         backup_label="test",
         installed_at="2026-01-01T00:00:00Z",
-        managed_tree=ManagedTreeState("config/tltg-optimized-macros", ()),
+        managed_tree=ManagedTreeState("config/vo-macros", ()),
         patch_ledger=patch_ledger,
         source_patches=source_patches,
     )

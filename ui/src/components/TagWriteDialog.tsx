@@ -50,7 +50,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
   const lists = useStore(filamentLists, (l) => l)
   const database = useMemo(() => lists.database ?? [], [lists.database])
   const variables = usePrinter((s) => s.status.save_variables?.variables ?? {})
-  const job = usePrinter((s) => s.status.tltg_box_rfid?.job as TagJob | undefined)
+  const job = usePrinter((s) => s.status.vo_box_rfid?.job as TagJob | undefined)
 
   // Start from the slot's own filament and colors.
   const savedId = slot.filamentId ?? String(variables[`filament_slot${slot.index}`] ?? '')

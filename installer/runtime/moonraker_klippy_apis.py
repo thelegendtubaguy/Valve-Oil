@@ -28,8 +28,8 @@ START_STOCK = (
     "    ) -> str:",
 )
 START_PATCHED = (
-    "    def _tltg_3mf_plate_index(self, filename: str) -> str:",
-    "        # tltg-optimized: a 3MF started without a plate prints the plate it was sliced on",
+    "    def _vo_3mf_plate_index(self, filename: str) -> str:",
+    "        # vo: a 3MF started without a plate prints the plate it was sliced on",
     '        if not filename.lower().endswith(".3mf"):',
     '            return "1"',
     "        import xml.etree.ElementTree as ET",
@@ -55,7 +55,7 @@ START_PATCHED = (
     "        need_extract: bool = True,",
     "    ) -> str:",
     "        if plateindex is None:",
-    "            plateindex = self._tltg_3mf_plate_index(filename)",
+    "            plateindex = self._vo_3mf_plate_index(filename)",
 )
 BLOCKS = ((REQUEST_STOCK, REQUEST_PATCHED), (CLOUD_STOCK, CLOUD_PATCHED), (START_STOCK, START_PATCHED))
 

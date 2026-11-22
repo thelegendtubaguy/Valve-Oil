@@ -71,6 +71,7 @@ from .postflight import verify_uninstall_postflight
 from .preflight import run_uninstall_preflight
 from .rollback import RollbackJournal
 from .state_file import StateValidationError, delete_state_file, load_installed_state
+from . import earlier_names
 from .system_optimizations import (
     ROCKCHIP_ROOT_SYNC_OPERATION,
     finalize_legacy_system_ledger_migration,
@@ -78,6 +79,7 @@ from .system_optimizations import (
     migrate_legacy_system_ledger,
     recover_pending_legacy_system_ledger_migration,
     restore_system_optimizations,
+    retire_earlier_host_names,
     system_ledger_needs_migration,
     validate_legacy_system_ledger,
     validate_system_ledger,
@@ -466,6 +468,10 @@ def _execute_uninstall(
         for module in manifest.install.extra_modules:
             if remove_extra_module(paths=paths, module=module):
                 journal.note_write()
+        for removed in earlier_names.remove_earlier_klipper_modules(
+            paths, [module.destination for module in manifest.install.extra_modules], journal=journal
+        ):
+            reporter.debug(event="uninstall.earlier_module.removed", path=removed)
 
         remove_tree(managed_tree_root, journal)
         uninstall_counters["managed_tree_removal"][0] = 1
@@ -497,6 +503,7 @@ def _execute_uninstall(
             run=run,
             urlopen=urlopen,
         )
+        retire_earlier_host_names(paths=paths, reporter=reporter, input_stream=input_stream, environ=environ, run=run)
         boot_logo.uninstall(paths, reporter=reporter, environ=environ, input_stream=input_stream, run=run)
         # QIDI's touchscreen app is back and writes box.cfg again; the Box monitor and its rule are gone with the host
         # changes, and its records go with them.

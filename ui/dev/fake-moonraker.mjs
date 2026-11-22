@@ -9,7 +9,7 @@
 // printer's nginx). Run `npm run build` first to use /valve-oil/, or point `npm run dev` at it with
 // http://localhost:5173/?moonraker=localhost:7125. The data is shaped like a QIDI Max 4 on firmware 01.01.07.01 with
 // two Boxes; switch scenarios at runtime from the console with `VO_SCENARIO NAME=<scenario>`, and Valve Oil's update
-// status (/tltg-status/api) with `VO_UPDATES NAME=<scenario>`.
+// status (/vo-status/api) with `VO_UPDATES NAME=<scenario>`.
 import { createServer } from 'node:http'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -163,7 +163,7 @@ function baseStatus() {
       extra: { filament_info: { ...fi(0, 'QIDI PLA Basic', 'F5D90A'), index: 16 } },
       box_warning_info: [],
     },
-    tltg_box_feed_motion: {
+    vo_box_feed_motion: {
       active: true,
       status: '',
       firmware: '01.01.07.01',
@@ -188,9 +188,9 @@ function baseStatus() {
       problems: [],
       slots: {},
     },
-    tltg_printer_warnings: { warnings: [] },
-    tltg_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
-    tltg_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, last_report: null, job: { run: 0, running: false } },
+    vo_printer_warnings: { warnings: [] },
+    vo_klipper_health: { timers: 61, removed_timers: 0, main_thread_load: 0.22, timer_delay: 0.001 },
+    vo_box_rfid: { readers: {}, last_tag: {}, catalog_added: {}, last_report: null, job: { run: 0, running: false } },
     mcu: { last_stats: { mcu_awake: 0.031, mcu_task_avg: 0.00002 } },
     'mcu THR': { last_stats: { mcu_awake: 0.012 } },
     'mcu mcu_box1': { last_stats: { mcu_awake: 0.004 } },
@@ -210,7 +210,6 @@ function baseStatus() {
     'gcode_macro VO_BOX_MOTION': {},
     'gcode_macro VO_RESET_TOOL_MAPPINGS': {},
     'gcode_macro _VO_INTERNAL': {},
-    tltg_printer: { name: 'Max 4' },
     heaters: {
       available_heaters: ['heater_bed', 'extruder', 'heater_generic chamber', 'heater_generic heater_box1', 'heater_generic heater_box2'],
       available_sensors: ['heater_bed', 'extruder', 'heater_generic chamber', 'heater_generic heater_box1', 'heater_generic heater_box2', 'temperature_sensor mcu_temp', 'temperature_sensor chamber_temp'],
@@ -259,7 +258,7 @@ function applyScenario(name) {
     vars().box_count = 0
   }
   if (name !== 'printing') {
-    st.tltg_printer_warnings.warnings = [{ id: 'input_shaper_uncalibrated', level: 'warning', title: 'No input shaper calibration is saved.', message: 'Run SHAPER_CALIBRATE with the bed empty, then SAVE_CONFIG.' }]
+    st.vo_printer_warnings.warnings = [{ id: 'input_shaper_uncalibrated', level: 'warning', title: 'No input shaper calibration is saved.', message: 'Run SHAPER_CALIBRATE with the bed empty, then SAVE_CONFIG.' }]
   }
   for (const h of statusHooks) h(st, name)
   seedTemps()
@@ -414,12 +413,12 @@ async function gcode(script) {
     } else if (C === 'VO_BOX_RFID_TEST') await rfidJob(p, false)
     else if (C === 'VO_BOX_RFID_WRITE') await rfidJob(p, true)
     else if (C === 'VO_BOX_MOTION') {
-      const m = state.status.tltg_box_feed_motion
-      if (p.RESET) set('tltg_box_feed_motion', { settings: Object.fromEntries(Object.keys(m.settings).map((k) => [k, null])) })
+      const m = state.status.vo_box_feed_motion
+      if (p.RESET) set('vo_box_feed_motion', { settings: Object.fromEntries(Object.keys(m.settings).map((k) => [k, null])) })
       else {
         const s = { ...m.settings }
         for (const [k, v] of Object.entries(p)) s[k.toLowerCase()] = v === 'vendor' || v === 'default' ? null : Number(v)
-        set('tltg_box_feed_motion', { settings: s })
+        set('vo_box_feed_motion', { settings: s })
       }
       pushConsole('// Box motion settings saved.')
     } else if (C === 'VO_CUT_FILAMENT') {
@@ -525,7 +524,7 @@ async function rfidJob(p, operator) {
   const turn = operator ? (empty ? -800 : 0) : Number(p.TURN ?? 0)
   const seconds = Number(p.SECONDS ?? (operator ? 60 : action === 'SCAN' ? 15 : 30))
   const only = p.TAG ? p.TAG.toLowerCase() : null
-  const prev = state.status.tltg_box_rfid.job
+  const prev = state.status.vo_box_rfid.job
   let job = { run: prev.run + 1, action: action.toLowerCase(), test: !operator, slot: label(slot), reader: `card_reader_${reader}`, reader_slots: [label((reader - 1) * 2), label((reader - 1) * 2 + 1)], running: true, seconds, elapsed: 0, polls: 0, empty: 0, tags: [], only, result: null, error: null, lost: 0, turn, turned: 0, filament: name ?? null }
   pushConsole(`// ${operator ? `Writing ${name} to slot ${label(slot)}'s spool tag. ${turn ? 'The Box turns the spool until its tag comes past the reader.' : `Turn the spool slowly by hand for up to ${seconds} s.`}` : `${action === 'SCAN' ? 'Scanning' : 'Writing'} reader card_reader_${reader}.`}`)
   const seen = new Map()
@@ -548,11 +547,11 @@ async function rfidJob(p, operator) {
       seen.set(tag.tag, { ...s, hits: s.hits + 1, last: elapsed })
     }
     job = { ...job, elapsed, polls: poll + 1, empty: job.empty + (tag ? 0 : 1), tags: [...seen.values()], ...(turned != null ? { turned } : {}) }
-    set('tltg_box_rfid', { job })
+    set('vo_box_rfid', { job })
     if (job.result || (turn ? turned >= Math.abs(turn) : elapsed >= seconds)) break
     await new Promise((r) => setTimeout(r, turn ? 550 : 200))
   }
-  set('tltg_box_rfid', { job: { ...job, running: false } })
+  set('vo_box_rfid', { job: { ...job, running: false } })
   if (action === 'WRITE') {
     const r = job.result
     if (!r) throw rpcError(`No tag came past slot ${label(slot)}'s reader ${turn ? `while the spool turned ${Math.abs(turn)} mm` : `in ${seconds} s`}. The tag is read on the side of the spool facing the reader; if it's on the other side, turn the spool over.`)
@@ -709,7 +708,7 @@ setInterval(() => {
   for (const b of [1, 2]) set(`aht20_f heater_box${b}`, { temperature: st[`heater_generic heater_box${b}`].temperature })
   uptime++
   broadcast('notify_proc_stat_update', [procStats(false)])
-  set('tltg_klipper_health', { main_thread_load: 0.18 + Math.random() * 0.12 })
+  set('vo_klipper_health', { main_thread_load: 0.18 + Math.random() * 0.12 })
   const printing = st.print_stats.state === 'printing'
   set('motion_report', { live_velocity: printing ? 180 + Math.random() * 120 : 0, live_extruder_velocity: printing ? 2 + Math.random() * 3 : 0 })
   // printing
@@ -743,14 +742,14 @@ setInterval(() => {
   }
 }, 1000)
 
-// ---------- Valve Oil status service (/tltg-status/api, installer/system/vo_status.py) ----------
+// ---------- Valve Oil status service (/vo-status/api, installer/system/vo_status.py) ----------
 // Pick a starting state with --updates, or switch at runtime with `VO_UPDATES NAME=<scenario>`. Update now runs a
 // simulated update; with QIDI or board firmware waiting it takes Moonraker and this API away for a while, as the real
 // one restarts them.
 const UPDATE_SCENARIOS = ['none', 'release-off', 'firmware-printing', 'boards', 'running', 'failed', 'interrupted', 'refused', 'firmware-failed', 'firmware-rescue', 'closed-loop', 'thr-waiting', 'reinstall', 'dev', 'absent']
 const ISSUE_URL =
   'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&title=Box+1+bootloader+not+supported&printer=QIDI+Max+4&firmware=01.01.07.01&board=box1'
-// tltg_status.py support_issue_url: the bug report form with what the printer knows filled in.
+// vo_status.py support_issue_url: the bug report form with what the printer knows filled in.
 const SUPPORT_ISSUE_URL =
   'https://github.com/thelegendtubaguy/valve-oil/issues/new?template=bug-report.yml&printer=QIDI%20Max%204&install_source=Release%20install%20command%20from%20the%20README&printer_details=Valve%20Oil%3A%2026.11.11.3'
 // An empty zip archive stands in for the support bundle.
@@ -798,7 +797,7 @@ const FIRMWARE_RESCUE = {
   step: 'boards',
   step_label: 'Updating the board firmware',
   resumed: true,
-  message: "A board firmware write could not be verified (mainboard: no answer from the bootloader after writing 01.01.07.01-tltg.2). Don't turn the printer off; run ./mainboard-firmware.sh rescue, then run ./install.sh to finish the update.",
+  message: "A board firmware write could not be verified (mainboard: no answer from the bootloader after writing 02.01.01.12-valve-oil.2). Don't turn the printer off; run ./mainboard-firmware.sh rescue, then run ./install.sh to finish the update.",
 }
 let vo = null
 let voGeneration = 0
@@ -813,7 +812,7 @@ function applyUpdates(name) {
     scenario: name,
     absent: name === 'absent',
     auto: true,
-    // tltg_status.py: the update window and its timezone, as the install looked it up.
+    // vo_status.py: the update window and its timezone, as the install looked it up.
     window: null,
     timezone: 'America/Chicago',
     timezoneSource: 'lookup',
@@ -898,10 +897,10 @@ function applyUpdates(name) {
   voWarnings()
 }
 
-// The printer warnings Klipper's tltg_printer_warnings reports for the update state (installer/klipper/extras/
+// The printer warnings Klipper's vo_printer_warnings reports for the update state (installer/klipper/extras/
 // printer_warnings.py), beside the printer scenario's own.
 function voWarnings() {
-  const kept = (state.status.tltg_printer_warnings?.warnings ?? []).filter((w) => !w.id.startsWith('valve_oil_') && !w.id.startsWith('box_firmware_'))
+  const kept = (state.status.vo_printer_warnings?.warnings ?? []).filter((w) => !w.id.startsWith('valve_oil_') && !w.id.startsWith('box_firmware_'))
   const warnings = []
   const run = vo.run
   const step = run?.step_label ? `It stopped at: ${run.step_label}. ` : ''
@@ -931,10 +930,10 @@ function voWarnings() {
       level: 'warning',
       title: "Box 1 can't get the Valve Oil Box firmware yet.",
       message:
-        "Its bootloader or firmware isn't supported yet, so it keeps the firmware it has. To get it supported, open an issue at https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml and attach tltg_box_firmware_box1.json from Fluidd's Logs. QIDI firmware 01.01.07.01 carries Box firmware 1.0.3; update this Box from the touchscreen's firmware page.",
+        "Its bootloader or firmware isn't supported yet, so it keeps the firmware it has. To get it supported, open an issue at https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml and attach vo_box_firmware_box1.json from Fluidd's Logs. QIDI firmware 01.01.07.01 carries Box firmware 1.0.3; update this Box from the touchscreen's firmware page.",
       url: ISSUE_URL,
     })
-  set('tltg_printer_warnings', { warnings: [...kept, ...warnings] })
+  set('vo_printer_warnings', { warnings: [...kept, ...warnings] })
 }
 
 function voPrinterBusy() {
@@ -965,7 +964,7 @@ function voStatus() {
   if (vo.recovery) blockers.push('recovery_required')
   if (vo.run?.state === 'failed') blockers.push('last_run_failed')
   const running = vo.run?.state === 'running' || vo.job?.state === 'running'
-  // tltg_status.py _update_now: every reason POST api/update-now would refuse, read live.
+  // vo_status.py _update_now: every reason POST api/update-now would refuse, read live.
   const refusal = [running ? 'run_in_progress' : Date.now() < vo.installerBusyUntil ? 'installer_busy' : null, ...live, vo.recovery ? 'recovery_required' : null].filter(Boolean)
   return {
     schema: 1,
@@ -1126,7 +1125,7 @@ async function statusApi(req, res, path) {
   // nginx answers for the service while Moonraker (its authorizer) or the service is down.
   if (outage) return res.writeHead(502, { 'Content-Type': 'text/html' }).end('<html><body>502 Bad Gateway</body></html>')
   if (vo.absent) return res.writeHead(404, { 'Content-Type': 'text/html' }).end('<html><body>404 Not Found</body></html>')
-  const route = path.slice('/tltg-status/api/'.length)
+  const route = path.slice('/vo-status/api/'.length)
   if (req.method === 'GET' && route === 'support-bundle') {
     await new Promise((r) => setTimeout(r, 1500))
     const name = `valve-oil-support-max4-${iso().replace(/[-:]/g, '')}.zip`
@@ -1145,7 +1144,7 @@ async function statusApi(req, res, path) {
   }
   await new Promise((r) => setTimeout(r, 400))
   if (route === 'auto-update') {
-    // tltg_status.py Handler._auto_update: any of enabled, window, and timezone.
+    // vo_status.py Handler._auto_update: any of enabled, window, and timezone.
     const keys = Object.keys(body)
     if (!keys.length || keys.some((key) => !['enabled', 'window', 'timezone'].includes(key)))
       return send(400, { error: 'Expected any of "enabled", "window", and "timezone", such as {"enabled": true}.' })
@@ -1199,7 +1198,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
       return res.end(await readFile(file))
     }
-    if (path.startsWith('/tltg-status/')) return await statusApi(req, res, path)
+    if (path.startsWith('/vo-status/')) return await statusApi(req, res, path)
     if (path.startsWith('/webcam/') || path.startsWith('/webcam2/')) {
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' })
       return res.end(camSvg())

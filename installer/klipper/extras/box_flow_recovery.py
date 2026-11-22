@@ -21,12 +21,12 @@
 # sensor empty. QIDI's unload then runs no steps and reports success, and its
 # eject heats the nozzle and pulls back whichever slot last_load_slot names.
 # For an idle printer, UNLOAD_FILAMENT_CONTROL and EJECT_FILAMENT_CONTROL of
-# the hub's slot pull that slot back with tltg_box_slot_jog's motion until
+# the hub's slot pull that slot back with vo_box_slot_jog's motion until
 # the hub sensor clears, stopping if the slot's inlet sensor empties first.
 # An unload then parks the filament in the Box and saves the slot state
 # QIDI's own slot unload saves; an eject hands over to QIDI's eject, which now
 # runs as its eject step alone. The hub's slot comes from
-# tltg_box_loaded_slot's record and last_load_slot, or is the only slot with
+# vo_box_loaded_slot's record and last_load_slot, or is the only slot with
 # filament at its inlet; anything else is refused with the reason. Whenever
 # neither QIDI nor this module would move anything, the console says why.
 #
@@ -52,7 +52,7 @@
 # M109 to the filament's highest printing temperature in their heat step, in
 # the unload step, and on retry, and their cut and unload pull back with
 # G1 E moves that Klipper's cold-extrusion check refuses. A cold flow runs
-# inside tltg_cold_cut's cold_retracts(), which lets those pull-backs through
+# inside vo_cold_cut's cold_retracts(), which lets those pull-backs through
 # and still refuses extrusion, with every M109 skipped and the flow's
 # temperature cleared, so its completion turns the nozzle off without QIDI's
 # 5 s dwell and wipe. FLOW_RETRY of a paused cold flow retries it cold. Only
@@ -469,19 +469,19 @@ class BoxFlowRecovery:
         try:
             self._watch_toolhead_unloads()
         except Exception:
-            logging.exception("tltg_box_flow_recovery: watching unloads from "
+            logging.exception("vo_box_flow_recovery: watching unloads from "
                               "the toolhead failed")
         try:
             self._watch_cancelled_parts()
         except Exception:
-            logging.exception("tltg_box_flow_recovery: watching cancelled "
+            logging.exception("vo_box_flow_recovery: watching cancelled "
                               "parts failed")
         controller = self.printer.lookup_object("multi_color_controller", None)
         manager = getattr(controller, "task_queue_manager", None)
         if not callable(getattr(manager, "stop", None)) \
                 or not hasattr(manager, "gcode") \
                 or not hasattr(manager, "current_task"):
-            logging.info("tltg_box_flow_recovery: inactive: QIDI Box flow "
+            logging.info("vo_box_flow_recovery: inactive: QIDI Box flow "
                          "controller not found")
             return
         self.controller = controller
@@ -498,12 +498,12 @@ class BoxFlowRecovery:
                 ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL),
                 ("T_MANAGER", self.cmd_T_MANAGER)):
             self._wrap_command(name, handler)
-        logging.info("tltg_box_flow_recovery: active")
+        logging.info("vo_box_flow_recovery: active")
 
     def _wrap_command(self, name, handler):
         original = self.gcode.register_command(name, None)
         if original is None:
-            logging.info("tltg_box_flow_recovery: %s not found", name)
+            logging.info("vo_box_flow_recovery: %s not found", name)
             return False
         self.originals[name] = original
         self.gcode.register_command(name, handler,
@@ -525,7 +525,7 @@ class BoxFlowRecovery:
         return task is not None and bool(getattr(task, "is_paused", False))
 
     def _tracker(self):
-        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
+        tracker = self.printer.lookup_object("vo_box_loaded_slot", None)
         return tracker if getattr(tracker, "slots", None) else None
 
     # ------------------------------------------------------- failed steps
@@ -549,11 +549,11 @@ class BoxFlowRecovery:
         try:
             build = self._controller_build()
         except OSError:
-            logging.exception("tltg_box_flow_recovery: reading QIDI's flow "
+            logging.exception("vo_box_flow_recovery: reading QIDI's flow "
                               "controller failed")
             return
         if build not in EXTERNAL_WIPE_FALSE_BUILDS:
-            logging.info("tltg_box_flow_recovery: external wipe left as "
+            logging.info("vo_box_flow_recovery: external wipe left as "
                          "QIDI's (build %s)", build)
             return
 
@@ -561,7 +561,7 @@ class BoxFlowRecovery:
             result = wipe(*args, **kwargs)
             return True if result is False else result
         method_map["EXT_WIPE"] = external_wipe
-        logging.info("tltg_box_flow_recovery: external wipe reports success "
+        logging.info("vo_box_flow_recovery: external wipe reports success "
                      "after its script runs")
 
     def _wrap_flow_runner(self, original, name):
@@ -569,12 +569,12 @@ class BoxFlowRecovery:
             try:
                 self._fix_external_wipe()
             except Exception:
-                logging.exception("tltg_box_flow_recovery: fixing the "
+                logging.exception("vo_box_flow_recovery: fixing the "
                                   "external wipe failed")
             try:
                 self._absolute_positioning()
             except Exception:
-                logging.exception("tltg_box_flow_recovery: switching to "
+                logging.exception("vo_box_flow_recovery: switching to "
                                   "absolute positioning failed")
             if name == "start_flow":
                 cold = self._cold_requested and self._cold_flow(
@@ -593,7 +593,7 @@ class BoxFlowRecovery:
                 try:
                     self._pause_after_error(e)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: pausing the "
+                    logging.exception("vo_box_flow_recovery: pausing the "
                                       "flow after a step error failed")
                 raise
             finally:
@@ -622,7 +622,7 @@ class BoxFlowRecovery:
                 slot, stepper, original)
             watched.append(slot)
         if watched:
-            logging.info("tltg_box_flow_recovery: watching unloads from the "
+            logging.info("vo_box_flow_recovery: watching unloads from the "
                          "toolhead on %s", ", ".join(watched))
 
     def _extruder_position(self):
@@ -690,7 +690,7 @@ class BoxFlowRecovery:
                 try:
                     self._log_unload(slot, before, watch, outcome)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: logging the "
+                    logging.exception("vo_box_flow_recovery: logging the "
                                       "unload failed")
         return extruder_unload_single_func
 
@@ -714,7 +714,7 @@ class BoxFlowRecovery:
                 try:
                     self._reset_slot_clock(slot, abort, mcu_stepper)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: resetting %s's "
+                    logging.exception("vo_box_flow_recovery: resetting %s's "
                                       "step clock failed", slot_label(slot))
             return sync(extruder_name, *args, **kwargs)
         extruder_stepper.sync_to_extruder = sync_to_extruder
@@ -744,7 +744,7 @@ class BoxFlowRecovery:
             self.reactor.pause(self.reactor.monotonic() + FEED_ABORT_SETTLE)
         toolhead.flush_step_generation()
         mcu_stepper.note_homing_end()
-        logging.info("tltg_box_flow_recovery: %s step clock reset before the "
+        logging.info("vo_box_flow_recovery: %s step clock reset before the "
                      "unload's pull-back", slot_label(slot))
 
     def _log_unload(self, slot, before, watch, outcome):
@@ -767,7 +767,7 @@ class BoxFlowRecovery:
                              self._buffer.pressed, "not seen yet")))
             self._feeds_at_unload = feeds
         logging.info(
-            "tltg_box_flow_recovery: %s unload from the toolhead: toolhead "
+            "vo_box_flow_recovery: %s unload from the toolhead: toolhead "
             "sensor %s -> %s%s; hub sensor %s -> %s; extruder pulled back %s "
             "mm, %s of them after its pull-back, and moved %s; slot motor "
             "moved %s during the pulls; Box buffer %s; %s",
@@ -805,7 +805,7 @@ class BoxFlowRecovery:
                             "FLOW_STOP ends it.")
             else:
                 message += ", then unload again."
-        logging.warning("tltg_box_flow_recovery: %s", message)
+        logging.warning("vo_box_flow_recovery: %s", message)
         return self.printer.command_error(message)
 
     # ------------------------------------------------------ cancelled parts
@@ -813,7 +813,7 @@ class BoxFlowRecovery:
         exclude = self.printer.lookup_object("exclude_object", None)
         in_cancelled_part = getattr(exclude, "_test_in_excluded_region", None)
         if not callable(in_cancelled_part):
-            logging.info("tltg_box_flow_recovery: cancelled parts not "
+            logging.info("vo_box_flow_recovery: cancelled parts not "
                          "watched: Klipper's exclude_object not found")
             return
         self._exclude = exclude
@@ -829,7 +829,7 @@ class BoxFlowRecovery:
                 ("TOOL_CHANGE_START", self.cmd_TOOL_CHANGE_START),
                 ("TOOL_CHANGE_END", self.cmd_TOOL_CHANGE_END)):
             self._wrap_command(name, handler)
-        logging.info("tltg_box_flow_recovery: moves go through cancelled "
+        logging.info("vo_box_flow_recovery: moves go through cancelled "
                      "parts during filament changes and pauses")
         self._watch_power_loss_resume()
 
@@ -921,13 +921,13 @@ class BoxFlowRecovery:
         try:
             self.gcode.run_script_from_command(LIFT_SCRIPT)
         except Exception:
-            logging.exception("tltg_box_flow_recovery: raising the nozzle "
+            logging.exception("vo_box_flow_recovery: raising the nozzle "
                               "out of a cancelled part failed")
             try:
                 self.gcode.run_script_from_command(
                     "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE,))
             except Exception:
-                logging.exception("tltg_box_flow_recovery: restoring the "
+                logging.exception("vo_box_flow_recovery: restoring the "
                                   "G-code state failed")
 
     def _start_moving(self, flag):
@@ -936,7 +936,7 @@ class BoxFlowRecovery:
         part = self._cancelled_part() if self._drops_moves() else None
         setattr(self, flag, True)
         if part is not None:
-            logging.info("tltg_box_flow_recovery: filament change inside "
+            logging.info("vo_box_flow_recovery: filament change inside "
                          "cancelled part %s; its moves go through until it "
                          "ends", part)
             self._leave_cancelled_part()
@@ -976,22 +976,22 @@ class BoxFlowRecovery:
             message = ("Box flow %s heats the nozzle: COLD=1 covers only Box "
                        "unload and eject steps, not %s."
                        % (flow_id, ", ".join(others)))
-            logging.info("tltg_box_flow_recovery: %s", message)
+            logging.info("vo_box_flow_recovery: %s", message)
             self.gcode.respond_info(message)
             return False
-        logging.info("tltg_box_flow_recovery: flow %s runs cold: %s",
+        logging.info("vo_box_flow_recovery: flow %s runs cold: %s",
                      flow_id, ", ".join(steps) or "no steps")
         return True
 
     @contextlib.contextmanager
     def _cold(self):
         """Cold retracts allowed and M109 skipped."""
-        cold_cut = self.printer.lookup_object("tltg_cold_cut", None)
+        cold_cut = self.printer.lookup_object("vo_cold_cut", None)
         with cold_cut.cold_retracts():
             heat = self.gcode.register_command("M109", None)
 
             def skip_heat(gcmd):
-                logging.info("tltg_box_flow_recovery: cold Box flow skipped "
+                logging.info("vo_box_flow_recovery: cold Box flow skipped "
                              "%s", gcmd.get_commandline())
 
             if heat is not None:
@@ -1011,7 +1011,7 @@ class BoxFlowRecovery:
         if gcode_move is None or getattr(gcode_move, "absolute_coord", True):
             return
         gcode_move.absolute_coord = True
-        logging.info("tltg_box_flow_recovery: relative positioning was on; "
+        logging.info("vo_box_flow_recovery: relative positioning was on; "
                      "switched to absolute for the Box flow")
 
     def _pause_after_error(self, error):
@@ -1022,7 +1022,7 @@ class BoxFlowRecovery:
                 or getattr(task, "is_cancelled", False):
             return
         task.is_paused = True
-        logging.info("tltg_box_flow_recovery: step %s raised %s: %s; flow "
+        logging.info("vo_box_flow_recovery: step %s raised %s: %s; flow "
                      "paused", step, type(error).__name__, error)
         # QIDI's own words for a failed step, which Fluidd's Box card reads.
         self.gcode.respond_info("Step %s failed. Pausing flow." % (step,))
@@ -1045,7 +1045,7 @@ class BoxFlowRecovery:
                 try:
                     self._after_stop(scripts, state)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: heater "
+                    logging.exception("vo_box_flow_recovery: heater "
                                       "handling after a flow stop failed")
             return result
         return stop
@@ -1060,7 +1060,7 @@ class BoxFlowRecovery:
             else:
                 self.gcode.run_script(HEATER_OFF)
             message = "Box flow stopped. Nozzle heater off."
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         self.gcode.respond_info(message)
 
     def _stop_from_command(self):
@@ -1099,7 +1099,7 @@ class BoxFlowRecovery:
                    "To load a slot, use Load on the QIDI Box card or "
                    "LOAD_FILAMENT_CONTROL SLOT=<n>."
                    % (gcmd.get("T", ""),))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
 
@@ -1141,7 +1141,7 @@ class BoxFlowRecovery:
                 else:
                     task.is_paused = True
             except Exception:
-                logging.exception("tltg_box_flow_recovery: pausing the tool "
+                logging.exception("vo_box_flow_recovery: pausing the tool "
                                   "change flow failed")
         ran_out = self._ran_out_slot(error)
         if ran_out is not None:
@@ -1160,7 +1160,7 @@ class BoxFlowRecovery:
                        % (gcmd.get("T", ""),
                           " at %s" % (step,) if step else "",
                           str(error).rstrip(".")))
-        logging.warning("tltg_box_flow_recovery: %s (%s: %s)", message,
+        logging.warning("vo_box_flow_recovery: %s (%s: %s)", message,
                         type(error).__name__, error)
         self.gcode.respond_raw("!! " + message)
         if self._print_state() == "printing":
@@ -1183,13 +1183,13 @@ class BoxFlowRecovery:
                 raise gcmd.error("Box %s not run: COLD=1 runs only while no "
                                  "print is running or paused, and a print is "
                                  "%s." % (action.lower(), state))
-            if self.printer.lookup_object("tltg_cold_cut", None) is None:
+            if self.printer.lookup_object("vo_cold_cut", None) is None:
                 raise gcmd.error("Box %s not run: COLD=1 needs "
-                                 "tltg_cold_cut." % (action.lower(),))
+                                 "vo_cold_cut." % (action.lower(),))
         try:
             plan = self._plan(action, gcmd)
         except Exception:
-            logging.exception("tltg_box_flow_recovery: %s check failed",
+            logging.exception("vo_box_flow_recovery: %s check failed",
                               action.lower())
             plan = None
         if plan is None:
@@ -1294,16 +1294,16 @@ class BoxFlowRecovery:
                                                 reason)
         if not message.endswith("."):
             message += "."
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         self.gcode.respond_info(message)
 
     def _retract(self, action, slot, reason, gcmd, original):
         tracker = self._tracker()
-        jog = self.printer.lookup_object("tltg_box_slot_jog", None)
+        jog = self.printer.lookup_object("vo_box_slot_jog", None)
         number = _slot_number(slot)
         label = slot_label(slot)
         if jog is None:
-            raise gcmd.error("Box %s of %s not run: tltg_box_slot_jog is "
+            raise gcmd.error("Box %s of %s not run: vo_box_slot_jog is "
                              "missing." % (action.lower(), label))
         if self._flow_paused():
             self._stop_from_command()
@@ -1314,7 +1314,7 @@ class BoxFlowRecovery:
         message = ("Box: %s's filament is stopped between the Box hub and "
                    "the toolhead (%s). Pulling it back out of the hub."
                    % (label, reason))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
 
         def hub_clear_or_inlet_empty():
@@ -1326,7 +1326,7 @@ class BoxFlowRecovery:
                             piece=RETRACT_PIECE)
         hub = tracker.hub_occupied()
         inlet = tracker.inlets().get(slot)
-        logging.info("tltg_box_flow_recovery: %s retracted %.0f mm, hub "
+        logging.info("vo_box_flow_recovery: %s retracted %.0f mm, hub "
                      "filament=%r inlet filament=%r", slot, moved, hub, inlet)
         if hub is not False:
             if inlet is False:
@@ -1360,7 +1360,7 @@ class BoxFlowRecovery:
         tracker.save(slot, SLOT_STATE_LOADED)
         message = ("Box: unloaded %s. Its filament is parked in the Box."
                    % (label,))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
 

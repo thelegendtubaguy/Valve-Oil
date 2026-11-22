@@ -5,8 +5,8 @@
 # mesh with the bed and chamber heaters off, then heats them and measures
 # meshes until the bed stops moving or a time limit. Each mesh's height and
 # shape change against the cold mesh and its speed of change are reported
-# live in printer.tltg_bed_soak, and the run is saved as a JSON Lines file
-# under the config folder's tltg_bed_soak folder.
+# live in printer.vo_bed_soak, and the run is saved as a JSON Lines file
+# under the config folder's vo_bed_soak folder.
 #
 #   VO_BED_SOAK BED=100 [CHAMBER=60] [PROBE_COUNT=5] [TIME_LIMIT=90]
 #                 [STOP_WHEN_SETTLED=1] [KEEP_HEATING=0]
@@ -15,10 +15,10 @@
 # The test runs one G-code step at a time from its own reactor callback, so
 # other commands run between meshes. Its meshes skip bed_mesh's profile save
 # so they leave no config save pending, and the mesh loaded before the test
-# is loaded again at the end. The tltg_bed_soak/stop endpoint stops the test
+# is loaded again at the end. The vo_bed_soak/stop endpoint stops the test
 # and turns its heaters off without waiting for the mesh in progress.
 #
-# Problem points: points the probe retried (from tltg_probe_report), points
+# Problem points: points the probe retried (from vo_probe_report), points
 # whose change since the previous mesh is out of line with the points around
 # them, and probe jumps, found by probing the bed centre between meshes. A
 # jump is a check-point change that differs from both neighbouring
@@ -33,8 +33,8 @@ import os
 import statistics
 import time
 
-PROFILE = "tltg_bed_soak"
-RUN_FOLDER = "tltg_bed_soak"
+PROFILE = "vo_bed_soak"
+RUN_FOLDER = "vo_bed_soak"
 CHAMBER_HEATER = "heater_generic chamber"
 DEFAULT_NOZZLE = 140.
 # Stopped-moving limit (mm/min) and the meshes it must hold for.
@@ -190,7 +190,7 @@ class BedSoak:
             "VO_BED_SOAK_STOP", self.cmd_VO_BED_SOAK_STOP,
             desc="Stop the bed soak test")
         self.printer.lookup_object("webhooks").register_endpoint(
-            "tltg_bed_soak/stop", self._handle_stop)
+            "vo_bed_soak/stop", self._handle_stop)
         self.printer.register_event_handler("klippy:connect", self._connect)
         self.printer.register_event_handler("klippy:shutdown",
                                             self._shutdown)
@@ -240,7 +240,7 @@ class BedSoak:
             pass
         self.bed_mesh = self.printer.lookup_object("bed_mesh", None)
         self.probe = self.printer.lookup_object("probe", None)
-        self.report = self.printer.lookup_object("tltg_probe_report", None)
+        self.report = self.printer.lookup_object("vo_probe_report", None)
         if self.report is not None:
             self.report.add_listener(self._mesh_report)
         handlers = getattr(self.gcode, "ready_gcode_handlers", None) or \
@@ -413,7 +413,7 @@ class BedSoak:
             try:
                 heater.set_temp(0.)
             except Exception:
-                logging.exception("tltg_bed_soak: turning off %s", name)
+                logging.exception("vo_bed_soak: turning off %s", name)
 
     def _note_target(self, name):
         heater = self.heaters.get(name)
@@ -526,7 +526,7 @@ class BedSoak:
         except self.printer.command_error as e:
             end = _End("failed", str(e))
         except Exception as e:
-            logging.exception("tltg_bed_soak: test failed")
+            logging.exception("vo_bed_soak: test failed")
             end = _End("failed", "Internal error: %s" % (e,))
         self._finish(end)
 
@@ -781,7 +781,7 @@ class BedSoak:
                         if not self._printing(self.reactor.monotonic()):
                             self.bed_mesh.set_mesh(self.prev_mesh)
                 except Exception:
-                    logging.exception("tltg_bed_soak: restoring the mesh")
+                    logging.exception("vo_bed_soak: restoring the mesh")
         if self.sample_timer is not None:
             self.reactor.unregister_timer(self.sample_timer)
             self.sample_timer = None
@@ -836,7 +836,7 @@ class BedSoak:
             self.path = os.path.join(self.run_dir, name)
             self.file = RUN_FOLDER + "/" + name
         except OSError:
-            logging.exception("tltg_bed_soak: can't create %s", self.run_dir)
+            logging.exception("vo_bed_soak: can't create %s", self.run_dir)
             self.path = None
             self.file = ""
             return
@@ -858,7 +858,7 @@ class BedSoak:
             with open(self.path, "a") as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
         except (OSError, TypeError, ValueError):
-            logging.exception("tltg_bed_soak: writing %s", self.path)
+            logging.exception("vo_bed_soak: writing %s", self.path)
 
 
 def load_config(config):

@@ -44,7 +44,7 @@ Branch from latest `origin/dev` unless told otherwise. Target PRs to `dev` excep
 
 ## OpenSpec
 
-Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behavior,firmware-artifacts,thr-firmware-transfer}/spec.md`, the `openspec/contracts/gcode-paths/*.path.json` contract for the path you're changing with its `generated/*.md`, `openspec/observations/qidi-platform.md`, and `openspec/observations/qidi-box/*.md`.
+Read as applicable: `openspec/specs/{installer-lifecycle,printer-behavior,firmware-artifacts,thr-firmware-transfer}/spec.md`, the `openspec/contracts/gcode-paths/*.path.json` contract for the path you're changing with its `generated/*.md`, `openspec/observations/qidi-platform.md`, and `openspec/observations/qidi-box/*.md`.
 
 - `specs/` hold desired repository behavior: behavioral requirements, testable scenarios. Manifests, tests, and code own exhaustive non-operator-visible data.
 - `contracts/` hold machine-checked invariants; generated views are outputs, not authority.
@@ -55,12 +55,12 @@ Read as applicable: `openspec/specs/{installer-lifecycle,optimized-printer-behav
 
 Read the printer spec, contract, and generated view first. Update `start-print.path.json` for branch-level invariants, run `python3 scripts/check_gcode_paths.py --write` then `python3 scripts/check_gcode_paths.py`, and include changed generated `.md`/`.mmd` files. If a command change leaves generated views unchanged, say why it isn't a branch-level invariant. Contracted sources: both slicers' `start.gcode`, `config/box.cfg`, `config/klipper-macros-qd/*.cfg`, `installer/klipper/macros/*.cfg`.
 
-The other contracted paths work the same way: end print and cancel on error, filament change (cut, chute, unload), filament runout and resume, homing (Max 4 and Plus 5), Z offset across a print, and fan commands. The order of commands inside a macro, and commands a macro must never issue, go in a contract; `installer/tests/klipper/test_optimized_macro_contract.py` holds only what takes computing (moves against a printer's travel, cuts compared with QIDI's, rules across every installed file). A branch names a `source_macro`, or a `source_section` for G-code outside a `gcode_macro` such as `homing_override`. `scripts/check_gcode_paths.py` also fails on duplicate macros and on macros that call themselves through other macros, for every printer.
+The other contracted paths work the same way: end print and cancel on error, filament change (cut, chute, unload), filament runout and resume, homing (Max 4 and Plus 5), Z offset across a print, and fan commands. The order of commands inside a macro, and commands a macro must never issue, go in a contract; `installer/tests/klipper/test_macro_contract.py` holds only what takes computing (moves against a printer's travel, cuts compared with QIDI's, rules across every installed file). A branch names a `source_macro`, or a `source_section` for G-code outside a `gcode_macro` such as `homing_override`. `scripts/check_gcode_paths.py` also fails on duplicate macros and on macros that call themselves through other macros, for every printer.
 
 ## Runtime paths
 
-- Include graph: `config/printer.cfg` → `MCU_ID.cfg`, `timelapse.cfg`, `klipper-macros-qd/*.cfg`, `tltg-optimized-macros/*.cfg`, `box.cfg` (active).
-- Stock/optimized pairs: `start_end.cfg`, `kinematics.cfg` (homing; optimized homing sequence in `printers/<printer>/homing.cfg`), `filament.cfg`, `bed_mesh.cfg` plus optimized wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
+- Include graph: `config/printer.cfg` → `MCU_ID.cfg`, `timelapse.cfg`, `klipper-macros-qd/*.cfg`, `vo-macros/*.cfg`, `box.cfg` (active).
+- Stock/Valve Oil pairs: `start_end.cfg`, `kinematics.cfg` (homing; Valve Oil's homing sequence in `printers/<printer>/homing.cfg`), `filament.cfg`, `bed_mesh.cfg` plus Valve Oil wrappers (adaptive mesh). `config/KAMP/*.cfg` is not the active mesh path.
 - Cooling: `installer/klipper/macros/cooling.cfg`; pause/resume/cancel: `config/klipper-macros-qd/pause_resume_cancel.cfg`.
 - To see what QIDI's Box code does on a live printer (calls, settings lookups, G-code, motor positions), use `scripts/box_trace/` instead of writing a new tracer.
 
@@ -72,9 +72,9 @@ The other contracted paths work the same way: end print and cancel on error, fil
 
 ## Validation
 
-- Optimized macro `.cfg`: `python3 scripts/format_klipper_configs.py`
+- Valve Oil macro `.cfg`: `python3 scripts/format_klipper_configs.py`
 - `installer/package.yaml` or `supported_upgrade_sources.yaml`: `python3 scripts/check_installer_known_versions.py`
-- Slicer G-code: `python3 scripts/check_optimized_slicer_macros.py`
+- Slicer G-code: `python3 scripts/check_slicer_macros.py`
 - Installer behavior: `python3 scripts/run_installer_core_tests.py`
 - THR firmware generator or patch manifest: `scripts/check_thr_firmware.py` against a fresh `scripts/build_thr_firmware.py` build (setup in `firmware/README.md`)
 - THR flashing tool or protocol: `scripts/check_thr_flashing.py` (with `--bootloader-backup` when available) and `scripts/check_thr_recovery.py` with a recoverable build's `--bootloader-backup` (see `firmware/FLASHING.md`)
@@ -94,5 +94,5 @@ The other contracted paths work the same way: end print and cancel on error, fil
 ## Timing and terminology
 
 - `G4 P...` is fixed dead time; `M400` waits only for queued motion. For conservative speedups, trim `G4` before changing speeds or acceleration.
-- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; optimized-only globals go in `installer/klipper/macros/globals.cfg`, and printer-specific positions and calibration defaults in `installer/klipper/printers/<printer>/printer_profile.cfg` (`_vo_printer`). Treat seemingly unused stock globals as externally consumed unless proven otherwise.
+- Stock timing/behavior globals stay in `config/klipper-macros-qd/globals.cfg`; Valve Oil-only globals go in `installer/klipper/macros/globals.cfg`, and printer-specific positions and calibration defaults in `installer/klipper/printers/<printer>/printer_profile.cfg` (`_vo_printer`). Treat seemingly unused stock globals as externally consumed unless proven otherwise.
 - "Purge" means rear waste-chute/wiper extrusion only; "prime line" means front-of-bed slicer-start extrusion.

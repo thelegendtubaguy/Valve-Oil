@@ -2,7 +2,7 @@
 
 [← Back to the README](../README.md)
 
-Prints sliced with this project's [start G-code](install.md#slicer-start-g-code) use the optimized start. Files sliced with QIDI's stock G-code still print the stock way.
+Prints sliced with this project's [start G-code](install.md#slicer-start-g-code) use Valve Oil's start. Files sliced with QIDI's stock G-code still print the stock way.
 
 ## What's faster
 
@@ -20,7 +20,7 @@ The prime line ends with a 0.8 mm retract, so the nozzle doesn't ooze on the way
 
 If an axis has no input shaper, for example because no calibration is saved, Klipper gives it QIDI's stock calibration for your printer; on the Max 4, that's EI at 54.4 Hz on X and MZV at 36.2 Hz on Y. It's applied at startup and after every X/Y home, before the toolhead moves to home Z. Nothing is written to `printer.cfg`, so your own calibration replaces QIDI's as soon as it runs.
 
-Until a calibration is saved for both axes, homing keeps acceleration at QIDI's 10000 mm/s² instead of raising it to 30000, so leveling and bed mesh moves run at QIDI's acceleration. Fluidd shows a red banner on every page, and the console warns at startup and after every home: `WARNING: No input shaper calibration is saved. TLTG Optimizations is utilizing Qidi's default shaper and limiting acceleration during homing and meshing to 10000 mm/s².` A calibration you've just run counts as saved before `SAVE_CONFIG`, so the next home goes back to full acceleration without a restart. While an axis has no input shaper at all, before the next home applies QIDI's, or for good if `printer.cfg` has no `[input_shaper]` section, the warning says `Input shaping is off.` instead, with the same acceleration limit.
+Until a calibration is saved for both axes, homing keeps acceleration at QIDI's 10000 mm/s² instead of raising it to 30000, so leveling and bed mesh moves run at QIDI's acceleration. Fluidd shows a red banner on every page, and the console warns at startup and after every home: `WARNING: No input shaper calibration is saved. Valve Oil is utilizing Qidi's default shaper and limiting acceleration during homing and meshing to 10000 mm/s².` A calibration you've just run counts as saved before `SAVE_CONFIG`, so the next home goes back to full acceleration without a restart. While an axis has no input shaper at all, before the next home applies QIDI's, or for good if `printer.cfg` has no `[input_shaper]` section, the warning says `Input shaping is off.` instead, with the same acceleration limit.
 
 Without any input shaping, moves at full speed and acceleration shake the toolhead hard enough that some printers may skip belts or lose position. QIDI's calibration is close on most printers but not tuned to yours, so run input shaper calibration when possible. Run it on its own: the touchscreen's calibration page runs bed leveling first when both are checked. Accelerations your slicer sets during a print are not limited, and no slicer G-code changes are needed.
 

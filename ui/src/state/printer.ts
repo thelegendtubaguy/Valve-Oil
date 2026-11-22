@@ -105,7 +105,7 @@ const SUBSCRIBE = [
   'box_stepper ',
   'box_heater_fan ',
   'aht20_f ',
-  'tltg_',
+  'vo_',
   'mcu',
   'mcu ',
   'configfile',

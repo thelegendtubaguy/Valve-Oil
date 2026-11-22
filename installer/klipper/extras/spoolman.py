@@ -100,7 +100,7 @@ class Spoolman:
         try:
             self.sync()
         except Exception:
-            logging.exception("tltg_spoolman: spool sync failed")
+            logging.exception("vo_spoolman: spool sync failed")
         return eventtime + CHECK_INTERVAL
 
     def sync(self):
@@ -122,7 +122,7 @@ class Spoolman:
             # again on the next check.
             return
         self.synced = (slot, spool)
-        logging.info("tltg_spoolman: %s loaded, active spool %s",
+        logging.info("vo_spoolman: %s loaded, active spool %s",
                      slot_label(slot), spool)
 
     def get_status(self, eventtime):

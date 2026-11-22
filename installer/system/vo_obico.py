@@ -1,4 +1,4 @@
-# tltg-optimized:obico-launcher
+# vo:obico-launcher
 """Starts moonraker-obico for Valve Oil's Obico add-on.
 
 Valve Oil installs this beside the plugin's source and runs it in place of `python3 -m moonraker_obico.app`. Before the
@@ -9,7 +9,7 @@ plugin starts, it changes three things:
   macros the plugin only logs that they're missing; they serve nozzle-camera first-layer scans and KlipperScreen.
 - The plugin picks its bundled Janus WebRTC server by board name and knows only Raspberry Pi and MKS boards, so on a
   QIDI printer it finds none and streams no video. QIDI's Debian 11 runs the Raspberry Pi Debian 11 build.
-- The plugin shows its link code only through a Klipper macro. Here it is written to TLTG_OBICO_STATUS instead,
+- The plugin shows its link code only through a Klipper macro. Here it is written to VO_OBICO_STATUS instead,
   where Valve Oil's add-ons service reads it for Fluidd.
 - Without an H.264 encoder, which QIDI's boards lack, the plugin streams the camera by fetching full-size snapshots
   and sending them to Janus about 1.5 times a second, whether or not anyone is watching: a quarter of a CPU core on a
@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 
-STATUS_PATH = os.environ.get("TLTG_OBICO_STATUS", "")
+STATUS_PATH = os.environ.get("VO_OBICO_STATUS", "")
 JANUS_BOARD = "rpi"
 # How often the paused camera stream checks whether someone started viewing.
 VIEWING_POLL_SECONDS = 0.5
@@ -36,7 +36,7 @@ VIEWING_POLL_SECONDS = 0.5
 # that has lasted this long.
 VIEWING_GRACE_SECONDS = 60.0
 
-_logger = logging.getLogger("obico.tltg_launcher")
+_logger = logging.getLogger("obico.vo_launcher")
 _app_model = None
 _viewing = None
 _last_viewed = float("-inf")

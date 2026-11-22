@@ -275,7 +275,7 @@ class Printer:
         self.home = root / "home"
         data = self.home / "printer_data"
         (data / "config").mkdir(parents=True)
-        (data / "config/tltg_optimized_state.yaml").write_text("installed\n")
+        (data / "config/vo_state.yaml").write_text("installed\n")
         (data / "config/printer.cfg").write_text(OPERATOR_CFG)
         # No saved_variables.cfg.bak: QIDI's postinst then resets saved_variables.cfg to the package's defaults.
         (data / "config/saved_variables.cfg").write_text("[Variables]\nz_offset = 0.25\n")
@@ -284,7 +284,7 @@ class Printer:
         old_soc = f"QD_MAX4_SOC_{firmware}_X_NA"
         (self.update / "firmware_manifest.json").write_text(json.dumps({"SOC": {"file": old_soc, "version": firmware}}))
         (self.update / old_soc).write_bytes(b"QIDI's SOC package of the installed firmware")
-        self.bundle = self.home / "tltg-optimized-macros"
+        self.bundle = self.home / "vo-macros"
         self.bundle.mkdir()
         for name in ("installer", "firmware", "scripts"):
             (self.bundle / name).symlink_to(REPO_ROOT / name)
@@ -308,9 +308,9 @@ class Printer:
         (data / "config/box.cfg").write_text(box_config.monitor().generate(self.boxes) + "[gcode_macro T0]\ngcode:\n")
         self.box_cfg_at_boards = None
         self.paths = resolve_runtime_paths(bundle_root=self.bundle, environ={
-            "TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(data),
-            "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(self.update / "firmware_manifest.json"),
-            "TLTG_OPTIMIZED_MOONRAKER_URL": "http://moonraker.invalid/printer/objects/query?print_stats"})
+            "VO_PRINTER_DATA_ROOT": str(data),
+            "VO_FIRMWARE_MANIFEST": str(self.update / "firmware_manifest.json"),
+            "VO_MOONRAKER_URL": "http://moonraker.invalid/printer/objects/query?print_stats"})
         self.archive = package() if archive is None else archive
         max4 = next(printer for printer in MANIFEST.printers if printer.id == "max4")
         self.printer = replace(max4, target_firmware=replace(
@@ -450,7 +450,7 @@ class Printer:
             self.event("install", self.services["klipper.service"], self.services["qidi-client.service"],
                        self.update_firmware())
             if self.install_rc == 0:
-                (self.home / "printer_data/config/tltg_optimized_state.yaml").write_text("reinstalled\n")
+                (self.home / "printer_data/config/vo_state.yaml").write_text("reinstalled\n")
             return self.done(command, rc=self.install_rc)
         raise AssertionError(f"unexpected command {command}")
 
@@ -603,7 +603,7 @@ class Printer:
 
     def snapshot(self):
         skip = (valve_oil_status.STATUS_FILE, valve_oil_status.LOCK_FILE, firmware_update.RESULT_FILE,
-                firmware_update.RECORD_LOCK_FILE, ".tltg_optimized_installer.lock")
+                firmware_update.RECORD_LOCK_FILE, ".vo_installer.lock")
         return {str(path.relative_to(self.home)): path.read_bytes() for path in sorted(self.home.rglob("*"))
                 if path.is_file() and not path.is_symlink() and ".cache" not in path.parts and path.name not in skip}
 
@@ -648,7 +648,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertFalse((printer.home / "printer_data" / CARRIED_LEDGER_FILE).exists())
         self.assertFalse(any((printer.home / name).exists() for name in (qidi_package.STAGING_DIRECTORY, qidi_package.PREVIOUS_DIRECTORY)))
         self.assertFalse(qidi_package.archive_path(printer.paths, printer.printer.target_firmware).exists())
-        self.assertEqual((printer.home / "printer_data/config/tltg_optimized_state.yaml").read_text(), "reinstalled\n")
+        self.assertEqual((printer.home / "printer_data/config/vo_state.yaml").read_text(), "reinstalled\n")
         # Klipper finds the mainboard under the name its new firmware gives it, as the touchscreen app would set it.
         self.assertIn(printer.usb_name(PATCHED_MCU), (printer.home / "printer_data/config/MCU_ID.cfg").read_text())
         status = valve_oil_status.load_status(printer.paths)
@@ -694,7 +694,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertIn("bootstrap.py firmware-update", unit)
         # What QIDI's package deletes from the config folder is kept in a restorable installer backup first.
         backup = next(printer.paths.printer_data_root.glob(MANIFEST.backup.label_prefix + "-01.01.06.03-*.zip"))
-        self.assertIn("config/tltg_optimized_state.yaml", zipfile.ZipFile(backup).namelist())
+        self.assertIn("config/vo_state.yaml", zipfile.ZipFile(backup).namelist())
         # The closed-loop drivers are updated first, X then Y, with QIDI's command, while the old Klipper runs alone:
         # the touchscreen and Moonraker are stopped and the motors off before the first transfer.
         self.assertEqual(self.driver_commands(printer), [("M84", "inactive", "inactive"),
@@ -1179,9 +1179,9 @@ class FirmwareUpdateTests(unittest.TestCase):
 
     def test_installer_hands_off_reports_dry_runs_and_falls_back_to_the_current_firmware(self):
         printer = Printer()
-        env = {"TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(printer.paths.printer_data_root),
-               "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(printer.paths.firmware_manifest_path),
-               "TLTG_OPTIMIZED_MOONRAKER_URL": printer.paths.moonraker_url}
+        env = {"VO_PRINTER_DATA_ROOT": str(printer.paths.printer_data_root),
+               "VO_FIRMWARE_MANIFEST": str(printer.paths.firmware_manifest_path),
+               "VO_MOONRAKER_URL": printer.paths.moonraker_url}
         real_start = firmware_update.start_firmware_update
 
         def install(*arguments, mirror="ok"):
@@ -1219,7 +1219,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         boot_id = printer.home / "boot_id"
         boot_id.write_text("boot-one\n")
         printer.paths = replace(printer.paths, boot_id_path_override=boot_id)
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         printer.hooks["install"] = lambda: recommend_reboot(printer.paths)
         code, installed, _, output = install()
         self.assertEqual((code, installed), (0, False), output)

@@ -1,4 +1,4 @@
-# tltg-optimized:status-server
+# vo:status-server
 """Valve Oil status and settings service for Fluidd and Valve Oil UI.
 
 Reports the installed Valve Oil release, the printer's QIDI firmware, each board's firmware, and the work waiting for
@@ -7,7 +7,7 @@ on or off by writing or removing only the enrollment marker, and saves the updat
 own session; it records its result in files, so it finishes and is reported even if this service restarts. nginx
 authorizes every request through Moonraker before it reaches this loopback-only server.
 
-API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
+API, under nginx's /vo-status/ prefix (schema 1; see STATUS_SCHEMA):
   GET  api/status       the status
   POST api/auto-update  any of {"enabled": true|false, "window": {"start": <hour>, "end": <hour>} | null,
                         "timezone": "<IANA name>"}; answers with the status. A timezone posted here is the browser's.
@@ -83,43 +83,43 @@ LISTEN_PORT = 7133
 HOME = Path("/home/qidi")
 PRINTER_DATA = HOME / "printer_data"
 # Written by installer/runtime/valve_oil_status.py.
-STATUS_FILE = PRINTER_DATA / ".tltg_valve_oil_status.json"
+STATUS_FILE = PRINTER_DATA / ".vo_status.json"
 # Written by installer/runtime/valve_oil_status.py (ProgressPublisher): the steps of the install running now or last.
-PROGRESS_FILE = PRINTER_DATA / ".tltg_valve_oil_progress.json"
+PROGRESS_FILE = PRINTER_DATA / ".vo_progress.json"
 # installer/runtime/board_firmware.py: the last install's read of every board.
-ADMISSION_FILE = PRINTER_DATA / ".tltg_board_admission.json"
+ADMISSION_FILE = PRINTER_DATA / ".vo_board_admission.json"
 # installer/runtime/auto_update.py: present means automatic updates are on.
-ENROLLMENT_FILE = PRINTER_DATA / ".tltg_optimized_auto_update_enrolled"
-AUTO_UPDATE_TIMER = Path("/etc/systemd/system/tltg-optimized-auto-update.timer")
+ENROLLMENT_FILE = PRINTER_DATA / ".vo_auto_update_enrolled"
+AUTO_UPDATE_TIMER = Path("/etc/systemd/system/vo-auto-update.timer")
 # installer/runtime/update_window.py: the update window and the timezone it is read in.
-UPDATE_SETTINGS_FILE = PRINTER_DATA / ".tltg_optimized_auto_update_settings.json"
+UPDATE_SETTINGS_FILE = PRINTER_DATA / ".vo_auto_update_settings.json"
 TIMEZONE_SOURCES = ("lookup", "browser", "operator")
 ZONE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$")
-MACRO_GLOBALS = PRINTER_DATA / "config/tltg-optimized-macros/globals.cfg"
+MACRO_GLOBALS = PRINTER_DATA / "config/vo-macros/globals.cfg"
 FIRMWARE_MANIFEST = HOME / "update/firmware_manifest.json"
 BUNDLE = HOME / "valve-oil"
 # scripts/build_installer_bundle.py: the bundle's version, channel ("release" or "dev"), and commit.
 RELEASE_METADATA = BUNDLE / "RELEASE_METADATA.yaml"
 UPDATE_NOW = (sys.executable or "/usr/bin/python3", "-I", "-S", str(BUNDLE / "installer/runtime/bootstrap.py"), "update-now", "--plain")
 # installer/runtime/update_now.py: the run records this job id in the status file's run.
-JOB_ENV = "TLTG_STATUS_JOB"
+JOB_ENV = "VO_STATUS_JOB"
 # installer/runtime/locking.py and safety.py: an installer run holds the lock; these records mean recovery comes first,
 # and say what to run, as installer/runtime/firmware_update.py RECOVERY_STEPS and SENTINEL_STEP do.
-INSTALLER_LOCK = PRINTER_DATA / ".tltg_optimized_installer.lock"
+INSTALLER_LOCK = PRINTER_DATA / ".vo_installer.lock"
 RECOVERY_FILES = {
-    PRINTER_DATA / ".tltg_mainboard_firmware_pending.json":
+    PRINTER_DATA / ".vo_mainboard_firmware_pending.json":
         "a mainboard firmware write wasn't verified; run ./mainboard-firmware.sh rescue first",
-    PRINTER_DATA / ".tltg_box_firmware_pending.json":
+    PRINTER_DATA / ".vo_box_firmware_pending.json":
         "a Box firmware write wasn't verified; run ./box-firmware.sh rescue first",
-    PRINTER_DATA / ".tltg_thr_firmware_pending.json":
+    PRINTER_DATA / ".vo_thr_firmware_pending.json":
         "a THR firmware flash didn't finish; turn the printer off and on, or run ./install.sh, and Valve Oil finishes it",
-    PRINTER_DATA / ".tltg_optimized_recovery_required":
+    PRINTER_DATA / ".vo_recovery_required":
         "an earlier install's recovery didn't complete; restore a backup with ./restore.sh first",
 }
 # installer/runtime/firmware_update.py: the QIDI firmware update's pending record.
-FIRMWARE_UPDATE_RECORD = PRINTER_DATA / ".tltg_firmware_update_pending.json"
+FIRMWARE_UPDATE_RECORD = PRINTER_DATA / ".vo_firmware_update_pending.json"
 PROC_LOCKS = Path("/proc/locks")
-TIMER_OBJECT = "/org/freedesktop/systemd1/unit/tltg_2doptimized_2dauto_2dupdate_2etimer"
+TIMER_OBJECT = "/org/freedesktop/systemd1/unit/vo_2dauto_2dupdate_2etimer"
 NEXT_CHECK_CACHE_SECONDS = 30.0
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 STATE_DIR = HOME / ".cache/valve-oil/status"
@@ -145,7 +145,7 @@ SUPPORT_LOG_BYTES = 16 * 1024 * 1024
 LOGS = PRINTER_DATA / "logs"
 BOX_CFG = PRINTER_DATA / "config/box.cfg"
 CACHE = HOME / ".cache/valve-oil"
-FIRMWARE_UPDATE_RESULT = PRINTER_DATA / ".tltg_firmware_update_result.json"
+FIRMWARE_UPDATE_RESULT = PRINTER_DATA / ".vo_firmware_update_result.json"
 # The Diagnostics check: installer/runtime/diagnostics.py from the bundle, at the lowest priority, with its own time
 # limit; this service stops one that outlives it by DIAGNOSTICS_GRACE seconds.
 DIAGNOSTICS = (sys.executable or "/usr/bin/python3", "-I", str(BUNDLE / "installer/runtime/diagnostics.py"))
@@ -379,13 +379,13 @@ def start_update_now(output, job_id: str) -> subprocess.Popen:
     # The fixed command line runs in its own session, so it outlives this request and a restart of this service; the
     # shell only records its exit status.
     return subprocess.Popen(
-        ["/bin/sh", "-c", '"$@"; echo $? > "$TLTG_STATUS_RC"', "sh", *UPDATE_NOW],
+        ["/bin/sh", "-c", '"$@"; echo $? > "$VO_STATUS_RC"', "sh", *UPDATE_NOW],
         cwd=str(BUNDLE),
         stdin=subprocess.DEVNULL,
         stdout=output,
         stderr=subprocess.STDOUT,
         start_new_session=True,
-        env={**os.environ, "TLTG_STATUS_RC": str(JOB_RC), JOB_ENV: job_id, "PYTHONUNBUFFERED": "1"},
+        env={**os.environ, "VO_STATUS_RC": str(JOB_RC), JOB_ENV: job_id, "PYTHONUNBUFFERED": "1"},
     )
 
 
@@ -744,7 +744,7 @@ def _update_now(busy: bool, live: tuple[str, ...] | None) -> dict:
     # (installer/runtime/firmware_update.py resume_blocker); its installer step deals with an installer recovery.
     recorded = FIRMWARE_UPDATE_RECORD.exists()
     recovery = [message for path, message in RECOVERY_FILES.items()
-                if path.exists() and not (recorded and path.name == ".tltg_optimized_recovery_required")]
+                if path.exists() and not (recorded and path.name == ".vo_recovery_required")]
     if recovery:
         blocked.append({"code": "recovery_required", "message": "; ".join(recovery)})
     if not (BUNDLE / "installer/runtime/bootstrap.py").is_file():
@@ -982,7 +982,7 @@ def _qidi_firmware() -> str | None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "tltg-status"
+    server_version = "vo-status"
     jobs: Jobs
     diagnostics: Diagnostics
     # One support bundle at a time: each reads tens of megabytes of logs.
@@ -1094,7 +1094,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _route(self) -> str | None:
-        # nginx strips its /tltg-status/ prefix; the API is exactly api/<name>.
+        # nginx strips its /vo-status/ prefix; the API is exactly api/<name>.
         parts = self.path.split("?", 1)[0].split("/")
         if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle",
                                                                                      "diagnostics"):

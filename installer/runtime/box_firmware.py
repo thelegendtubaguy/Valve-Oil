@@ -29,8 +29,8 @@ from .sudo import authenticate_sudo, run_sudo
 from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 
 SUBJECT = "Box firmware"
-SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
-BACKUP_DIRECTORY = ".tltg_box_firmware_backups"
+SERVICES = ("klipper.service", "qidi-client.service", "vo-auto-update.timer")
+BACKUP_DIRECTORY = ".vo_box_firmware_backups"
 # Every printer carries the same Box image, so one manifest pins it for all of them (board_images).
 MANIFEST = BOARD_MANIFESTS["box"][0]
 CONFIRMATION = "FLASH"
@@ -39,7 +39,7 @@ BOX_SECTION = re.compile(r"^\[mcu (mcu_box(\d+))\]\s*$")
 SERIAL_LINE = re.compile(r"^serial\s*[:=]\s*(\S+)")
 WARNING = "Box firmware: keep the printer and every Box powered on until this finishes."
 # Klipper's printer warnings show a Fluidd banner for each, and Fluidd's Logs offers it for download.
-LOG_REPORT = re.compile(r"^tltg_box_firmware_box(\d+)\.json$")
+LOG_REPORT = re.compile(r"^vo_box_firmware_box(\d+)\.json$")
 # A Box on QIDI's image of an earlier version: the flash changes its version, which the installed Klipper may not
 # support, so it waits for the target firmware.
 _WAITING = "this Box will be updated after the QIDI firmware update"
@@ -145,7 +145,7 @@ def unknown_version_hint(box: Box) -> str:
 
 
 def _log_report(paths, number: int) -> Path:
-    return paths.printer_data_root / "logs" / f"tltg_box_firmware_box{number}.json"
+    return paths.printer_data_root / "logs" / f"vo_box_firmware_box{number}.json"
 
 
 def _clear_unsupported(paths, numbers) -> None:
@@ -169,7 +169,7 @@ def prune_unsupported(paths, configured) -> None:
 
 # A Box the operator put back on QIDI's firmware with `restore` stays there through installs and update checks of the
 # same release; installing the next release, or `box-firmware.sh install` on that Box, ends the hold.
-HOLD_FILE = ".tltg_box_firmware_holds.json"
+HOLD_FILE = ".vo_box_firmware_holds.json"
 HELD = "held: restored to QIDI's firmware with ./box-firmware.sh restore; kept until the next release"
 
 

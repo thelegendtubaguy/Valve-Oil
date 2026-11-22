@@ -24,7 +24,7 @@ from installer.tests.helpers import FIXTURES_ROOT, REPO_ROOT, load_source, temp_
 
 def _load_server():
     path = Path(__file__).resolve().parents[2] / "system/vo_status.py"
-    return load_source("tltg_status_under_test", path)
+    return load_source("vo_status_under_test", path)
 
 
 class _Process:
@@ -46,30 +46,30 @@ class StatusServiceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         server = _load_server()
-        root = temp_path("tltg-status-")
+        root = temp_path("vo-status-")
         cls.paths = type("Paths", (), {"printer_data_root": root / "printer_data"})()
         cls.paths.printer_data_root.mkdir()
         server.STATUS_FILE = status_file.status_path(cls.paths)
         server.PROGRESS_FILE = status_file.progress_path(cls.paths)
-        server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".tltg_optimized_auto_update_enrolled"
+        server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".vo_auto_update_enrolled"
         server.UPDATE_SETTINGS_FILE = update_window.settings_path(cls.paths)
         server.MACRO_GLOBALS = root / "globals.cfg"
         server.FIRMWARE_MANIFEST = root / "firmware_manifest.json"
         server.AUTO_UPDATE_TIMER = root / "missing.timer"
-        server.ADMISSION_FILE = cls.paths.printer_data_root / ".tltg_board_admission.json"
+        server.ADMISSION_FILE = cls.paths.printer_data_root / ".vo_board_admission.json"
         server.STATE_DIR = root / "cache"
         server.JOB_FILE, server.JOB_LOG, server.JOB_RC = (server.STATE_DIR / name for name in ("job.json", "job.log", "job.rc"))
-        server.BUNDLE = root / "tltg-optimized-macros"
+        server.BUNDLE = root / "vo-macros"
         server.RELEASE_METADATA = server.BUNDLE / "RELEASE_METADATA.yaml"
         server.LOGS = cls.paths.printer_data_root / "logs"
         server.CACHE = root / "valve-oil-cache"
         server.BOX_CFG = root / "box.cfg"
-        server.FIRMWARE_UPDATE_RESULT = cls.paths.printer_data_root / ".tltg_firmware_update_result.json"
+        server.FIRMWARE_UPDATE_RESULT = cls.paths.printer_data_root / ".vo_firmware_update_result.json"
         (server.BUNDLE / "installer/runtime").mkdir(parents=True)
         (server.BUNDLE / "installer/runtime/bootstrap.py").write_text("")
-        server.INSTALLER_LOCK = cls.paths.printer_data_root / ".tltg_optimized_installer.lock"
+        server.INSTALLER_LOCK = cls.paths.printer_data_root / ".vo_installer.lock"
         server.RECOVERY_FILES = {cls.paths.printer_data_root / path.name: step for path, step in server.RECOVERY_FILES.items()}
-        server.FIRMWARE_UPDATE_RECORD = cls.paths.printer_data_root / ".tltg_firmware_update_pending.json"
+        server.FIRMWARE_UPDATE_RECORD = cls.paths.printer_data_root / ".vo_firmware_update_pending.json"
         server.read_timer_property = lambda name: None
         cls.live: tuple[str, ...] | None = ()
         server.live_printer = lambda: cls.live
@@ -342,7 +342,7 @@ class StatusServiceTests(unittest.TestCase):
             self.assertEqual([item["code"] for item in body["update_now"]["blocked_by"]], ["printer_state_unknown"])
             # Idle, but a board's rescue has to run first, which update now names.
             type(self).live = ()
-            rescue = self.paths.printer_data_root / ".tltg_mainboard_firmware_pending.json"
+            rescue = self.paths.printer_data_root / ".vo_mainboard_firmware_pending.json"
             rescue.write_text("")
             body = self.request("/api/status", method="GET")[1]
             self.assertEqual([item["code"] for item in body["pending"][0]["blocked_by"]], ["free_space"])
@@ -353,7 +353,7 @@ class StatusServiceTests(unittest.TestCase):
             self.assertEqual(self.request("/api/status", method="GET")[1]["update_now"], {"allowed": True, "blocked_by": []})
             # An installer recovery comes first too, except while update now would continue a recorded firmware
             # update: only a board's rescue stops that (firmware_update.resume_blocker).
-            sentinel = self.paths.printer_data_root / ".tltg_optimized_recovery_required"
+            sentinel = self.paths.printer_data_root / ".vo_recovery_required"
             sentinel.write_text("")
             self.assertIn("./restore.sh", self.request("/api/status", method="GET")[1]["update_now"]["blocked_by"][0]["message"])
             self.server.FIRMWARE_UPDATE_RECORD.write_text('{"schema": 1, "id": "kept", "state": "failed"}')
@@ -472,8 +472,8 @@ class UpdateNowRunTests(unittest.TestCase):
         from installer.runtime.locking import acquire
         from installer.runtime.reporter import create_reporter
 
-        root = temp_path("tltg-update-now-")
-        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(root)})
+        root = temp_path("vo-update-now-")
+        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
         with acquire(paths.lock_path):
             finished = update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={})
         run = status_file.load_status(paths).run

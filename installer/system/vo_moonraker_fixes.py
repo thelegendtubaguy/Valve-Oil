@@ -1,6 +1,6 @@
-# tltg-optimized:moonraker-fixes
+# vo:moonraker-fixes
 # Moonraker fixes for Valve Oil, installed in QIDI's Moonraker virtualenv and
-# imported by tltg-moonraker-fixes.pth.
+# imported by vo-moonraker-fixes.pth.
 #
 # QIDI's Moonraker connects to QIDI's cloud MQTT broker from its event loop.
 # The TCP connect is awaited, but the TLS handshake that follows runs inside
@@ -153,7 +153,7 @@ async def _after_touchscreen_app(loop, component, reconnect):
     try:
         agents = _agents(component)
         if agents is not None and not _touchscreen_app_first(agents):
-            logging.info("tltg_moonraker_fixes: MQTT waiting for the "
+            logging.info("vo_moonraker_fixes: MQTT waiting for the "
                          "touchscreen app before connecting")
             deadline = time.monotonic() + APP_WAIT_TIMEOUT
             while True:
@@ -162,11 +162,11 @@ async def _after_touchscreen_app(loop, component, reconnect):
                 if agents is None:
                     break
                 if _touchscreen_app_first(agents):
-                    logging.info("tltg_moonraker_fixes: touchscreen app "
+                    logging.info("vo_moonraker_fixes: touchscreen app "
                                  "connected; MQTT connecting")
                     break
                 if time.monotonic() >= deadline:
-                    logging.info("tltg_moonraker_fixes: touchscreen app not "
+                    logging.info("vo_moonraker_fixes: touchscreen app not "
                                  "connected after %.0f s; MQTT connecting "
                                  "without it", APP_WAIT_TIMEOUT)
                     break
@@ -237,11 +237,11 @@ class _EventLoopAttribute:
                     getattr(loop, "create_socket_connection", None)) \
                     and callable(getattr(loop, "run_in_thread", None)):
                 loop = _EventLoop(loop, component)
-                logging.info("tltg_moonraker_fixes: MQTT TLS handshake "
+                logging.info("vo_moonraker_fixes: MQTT TLS handshake "
                              "moved off the event loop; first connect waits "
                              "for the touchscreen app")
             else:
-                logging.info("tltg_moonraker_fixes: MQTT TLS handshake left "
+                logging.info("vo_moonraker_fixes: MQTT TLS handshake left "
                              "on the event loop; Moonraker's event loop "
                              "differs from the version this fix is for")
         component.__dict__["eventloop"] = loop
@@ -310,12 +310,12 @@ async def _stop_mqtt_retries(database, server, mqtt):
         # As database.py builds its MQTT connect request.
         await mqtt._handle_disconnect_request(WebRequest("", {}))
     except Exception:
-        logging.exception("tltg_moonraker_fixes: stopping QIDI's MQTT "
+        logging.exception("vo_moonraker_fixes: stopping QIDI's MQTT "
                           "retries for LAN-only mode failed")
         return
     _clear_mqtt_failure(server)
     asyncio.ensure_future(_clear_after_last_attempt(database, server, mqtt))
-    logging.info("tltg_moonraker_fixes: LAN-only mode on; QIDI's MQTT "
+    logging.info("vo_moonraker_fixes: LAN-only mode on; QIDI's MQTT "
                  "retries stopped")
 
 
@@ -353,7 +353,7 @@ def apply_database(module):
             component_class._handle_config_update_request = \
                 _lan_mode_stops_mqtt(handler)
             return True
-    logging.info("tltg_moonraker_fixes: LAN-only mode MQTT fix not applied; "
+    logging.info("vo_moonraker_fixes: LAN-only mode MQTT fix not applied; "
                  "Moonraker's database code differs from the version this "
                  "fix is for")
     return False
@@ -366,7 +366,7 @@ def apply(module):
     if not isinstance(component_class, type) \
             or "eventloop" in vars(component_class) \
             or not callable(getattr(component_class, "_do_reconnect", None)):
-        logging.info("tltg_moonraker_fixes: MQTT TLS handshake left on the "
+        logging.info("vo_moonraker_fixes: MQTT TLS handshake left on the "
                      "event loop; Moonraker's MQTT code differs from the "
                      "version this fix is for")
         return False
@@ -403,7 +403,7 @@ class _Finder:
                 self.patch(module)
             except Exception:
                 import logging
-                logging.exception("tltg_moonraker_fixes: fix for %s failed",
+                logging.exception("vo_moonraker_fixes: fix for %s failed",
                                   name)
         try:
             loader.exec_module = patched_exec_module

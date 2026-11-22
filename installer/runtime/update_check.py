@@ -39,7 +39,7 @@ from .manifest import load_manifest
 from .valve_oil_status import Blocker, PendingItem
 
 # The boards the check last tried to bring to their pinned image, by version and release; see the module docstring.
-CHECK_FILE = ".tltg_update_check.json"
+CHECK_FILE = ".vo_update_check.json"
 # What a board needs: nothing; its pinned image, known to be admitted; a read first (it reports a version it wasn't
 # read at); or QIDI's firmware update first (the firmware update flashes it).
 NONE, FLASH, READ, WAIT = "none", "flash", "read", "wait"
@@ -89,7 +89,7 @@ def installed(paths, *, enrolled: bool) -> bool:
     try:
         state_file = load_manifest(paths.installer_root / "package.yaml").state_file
     except (InstallerError, ValueError):
-        state_file = "config/tltg_optimized_state.yaml"
+        state_file = "config/vo_state.yaml"
     return enrolled or (paths.printer_data_root / state_file).exists() or board_firmware.admission_path(paths).exists()
 
 

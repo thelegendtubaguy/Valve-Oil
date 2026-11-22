@@ -1,5 +1,5 @@
 // Spoolman logic ported from the Fluidd fork's Spoolman store and card (src/store/spoolman/, src/components/widgets/
-// spoolman/), plus the per-slot spools Valve Oil's tltg_spoolman Klipper module reports. Setting keys and sort keys
+// spoolman/), plus the per-slot spools Valve Oil's vo_spoolman Klipper module reports. Setting keys and sort keys
 // follow Fluidd's uiSettings.spoolman, so both UIs share them in the `fluidd` database namespace.
 import type { MessageKey } from '../../i18n'
 
@@ -298,7 +298,7 @@ export const CHECK_TEXT: Record<SpoolCheck | 'no_spool', MessageKey> = {
   mismatched_filament: 'spoolman.check.mismatched_filament',
 }
 
-// ---- per-slot spools from tltg_spoolman ----
+// ---- per-slot spools from vo_spoolman ----
 
 export const EXTERNAL_SLOT = 16
 
@@ -312,7 +312,7 @@ const slotNumber = (v: unknown) => {
   return n >= 0 && n <= EXTERNAL_SLOT ? n : null
 }
 
-/** tltg_spoolman's status: `spools` maps 'slotN' to a spool ID, `loaded_slot` is 'slotN' or null. */
+/** vo_spoolman's status: `spools` maps 'slotN' to a spool ID, `loaded_slot` is 'slotN' or null. */
 export function slotSpools(status: Record<string, unknown> | undefined): SlotSpools | null {
   if (!status) return null
   const spools = new Map<number, number>()

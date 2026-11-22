@@ -23,8 +23,8 @@ from .process_restart import ProcessRestartError, read_printer_info
 VALUE_T_RE = re.compile(r"^value_t(?P<tool>\d+)$")
 SAVED_VARIABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 MAX_SAVED_VARIABLE_VALUE_LENGTH = 96
-RUNTIME_STATE_FILE = "config/tltg_optimized_runtime_state.json"
-SAVED_VARIABLE_VERIFY_MARKER = ".tltg_optimized_saved_variables_verify_pending"
+RUNTIME_STATE_FILE = "config/vo_runtime_state.json"
+SAVED_VARIABLE_VERIFY_MARKER = ".vo_saved_variables_verify_pending"
 UrlOpenFn = Callable[..., object]
 # QIDI's start-up macro (INIT_GLOBALS) runs its Box check and RFID read 5 s after Klipper is ready and holds Klipper's
 # G-code queue until they finish, over a minute with one Box and spools loaded (issue 331). A SAVE_VARIABLE sent
@@ -163,7 +163,7 @@ def maybe_initialize_filament_retention(
     return True
 
 
-# Release defaults for tltg_box_feed_motion, saved as a set only when no motion
+# Release defaults for vo_box_feed_motion, saved as a set only when no motion
 # setting exists. A setting saved as None (QIDI's value) counts as present.
 # The Max 4 approaches the toolhead sensor at the Plus 5's 25 mm/s.
 BOX_MOTION_DEFAULTS = {

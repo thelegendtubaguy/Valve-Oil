@@ -1,7 +1,7 @@
 # Cheap printer facts for Valve Oil macros.
 #
 # Klipper deep-copies an object's whole status the first time a macro reads
-# it, on its main thread. The optimized Box macros checked for a Box with
+# it, on its main thread. Valve Oil's Box macros checked for a Box with
 # printer["box_extras"], printer.gcode.commands, and
 # printer.multi_color_controller, which together copy about 40 ms of status
 # on every filament change, temperature wait, and cut, and the homing
@@ -48,7 +48,7 @@ class MacroStatus:
             status = obj.get_status(eventtime)
         except Exception:
             if name not in self.status_failed:
-                logging.exception("tltg_macro_status: %s get_status failed",
+                logging.exception("vo_macro_status: %s get_status failed",
                                   name)
             self.status_failed.add(name)
             return {}
@@ -100,7 +100,7 @@ class MacroStatus:
                            if not shaper.params.shaper_freq > 0.)
         except Exception:
             if "input_shaper" not in self.status_failed:
-                logging.exception("tltg_macro_status: input_shaper check failed")
+                logging.exception("vo_macro_status: input_shaper check failed")
             self.status_failed.add("input_shaper")
             return ""
 

@@ -448,7 +448,7 @@ class ResonanceSweep:
     def _connect(self):
         tester = self.printer.lookup_object('resonance_tester', None)
         if tester is None:
-            logging.info("tltg_resonance_sweep: no [resonance_tester]")
+            logging.info("vo_resonance_sweep: no [resonance_tester]")
             return
         try:
             differs = _differs(tester)
@@ -461,15 +461,15 @@ class ResonanceSweep:
                         normalize)
                 tester.test = sweeping_test
         except Exception:
-            logging.exception("tltg_resonance_sweep: install failed; QIDI's"
+            logging.exception("vo_resonance_sweep: install failed; QIDI's"
                               " resonance test runs")
             return
         if differs:
-            logging.info("tltg_resonance_sweep: skipped; Klipper's %s differs"
+            logging.info("vo_resonance_sweep: skipped; Klipper's %s differs"
                          " from the version this is for; QIDI's resonance"
                          " test runs", ", ".join(differs))
             return
-        logging.info("tltg_resonance_sweep: sweeping resonance test installed")
+        logging.info("vo_resonance_sweep: sweeping resonance test installed")
 
 
 def load_config(config):

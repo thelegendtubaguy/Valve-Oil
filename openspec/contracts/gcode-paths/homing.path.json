@@ -166,7 +166,7 @@
       "source_macro": "_VO_RESTORE_DEFAULT_ACCEL",
       "condition": "whenever a macro puts the print acceleration back",
       "slice": {
-        "start": "{% set status = printer.tltg_macro_status %}"
+        "start": "{% set status = printer.vo_macro_status %}"
       },
       "must_include_order": [
         "{% if status.input_shaper.saved and not status.input_shaper.unshaped_axes %}",

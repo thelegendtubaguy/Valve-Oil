@@ -311,7 +311,7 @@ const LOAD_CELL_RESULTS: Record<string, { key: MessageKey; tone: string }> = {
 
 /** VO_TEST_PROBE: a guided, motion-free check that the nozzle load cell responds to light pressure. */
 function LoadCellCard() {
-  const test = useObject('tltg_probe_test')
+  const test = useObject('vo_probe_test')
   const { busy } = usePrinterFlags()
   const last = usePrinter((s) => {
     for (let i = s.console.length - 1; i >= 0; i--) if (s.console[i].kind === 'response') return s.console[i].text.replace(/^\/\/\s?/, '')
@@ -381,7 +381,7 @@ function LoadCellCard() {
 function InputShaperCard() {
   const settings = usePrinter((s) => s.settings)
   const cf = useObject('configfile')
-  const ms = useObject('tltg_macro_status')
+  const ms = useObject('vo_macro_status')
   const { busy, homed } = usePrinterFlags()
   const log = useStore(calibrationLog, (l) => l)
   const results = useMemo(() => shaperResults(log), [log])

@@ -13,7 +13,7 @@ const decimalRound = (value: number, places: number): number => {
 }
 
 /**
- * Chart values from Valve Oil's tltg_klipper_health: Klipper's timer count and its main thread's share of a core, in
+ * Chart values from Valve Oil's vo_klipper_health: Klipper's timer count and its main thread's share of a core, in
  * percent. Status updates carry only changed fields, so the update is laid over the stored state.
  */
 export function klipperHealthChartValues(stored?: Partial<VoKlipperHealthState>, update?: Partial<VoKlipperHealthState>): Record<string, number> {

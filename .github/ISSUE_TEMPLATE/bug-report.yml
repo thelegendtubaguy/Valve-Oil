@@ -170,7 +170,7 @@ body:
         - label: Polar cooler installed
         - label: Spoolman set up
         - label: I changed printer.cfg or QIDI's macros myself
-        - label: I changed files in config/tltg-optimized-macros myself
+        - label: I changed files in config/vo-macros myself
         - label: Other mods (say which below)
 
   - type: textarea
@@ -180,7 +180,7 @@ body:
       description: |
         Drag files in here. See [Logs](https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#logs) for where to find them.
         - **Printing or Klipper problems:** `klippy.log`, taken right after the problem, before restarting Klipper.
-        - **Install, update, or uninstall problems:** the full installer output, or `journalctl -u tltg-optimized-auto-update.service` for automatic updates.
+        - **Install, update, or uninstall problems:** the full installer output, or `journalctl -u vo-auto-update.service` for automatic updates (`tltg-optimized-auto-update.service` for an update from a release before 26.11.22.1).
         - **Print problems:** the sliced `.gcode` or `.gcode.3mf`, zipped.
         - **Fluidd problems:** a screenshot and `moonraker.log`.
     validations:

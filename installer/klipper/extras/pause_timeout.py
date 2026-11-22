@@ -37,7 +37,7 @@ class PauseTimeout:
         if self.pause_resume is None or pause is None:
             if pause is not None:
                 self.gcode.register_command("PAUSE", pause)
-            logging.info("tltg_pause_timeout: no PAUSE; timeout unchanged")
+            logging.info("vo_pause_timeout: no PAUSE; timeout unchanged")
             return
         self.vendor_pause = pause
         self.gcode.register_command(
@@ -51,7 +51,7 @@ class PauseTimeout:
         except (TypeError, ValueError):
             hours = 0.
         if not 0. < hours < float("inf"):
-            logging.info("tltg_pause_timeout: %s=%r is not a positive number"
+            logging.info("vo_pause_timeout: %s=%r is not a positive number"
                          " of hours; using %g", HOURS_VARIABLE, value,
                          DEFAULT_HOURS)
             return DEFAULT_HOURS
@@ -89,14 +89,14 @@ class PauseTimeout:
             self.gcode.run_script("CANCEL_PRINT")
             return
         except Exception:
-            logging.exception("tltg_pause_timeout: CANCEL_PRINT failed")
+            logging.exception("vo_pause_timeout: CANCEL_PRINT failed")
         # QIDI's CANCEL_PRINT moves the toolhead; if it couldn't, cancel
         # without moving so the printer doesn't stay paused.
         try:
             self.gcode.run_script("VO_CANCEL_PRINT_ON_ERROR")
         except Exception:
             logging.exception(
-                "tltg_pause_timeout: VO_CANCEL_PRINT_ON_ERROR failed")
+                "vo_pause_timeout: VO_CANCEL_PRINT_ON_ERROR failed")
 
 
 def load_config(config):

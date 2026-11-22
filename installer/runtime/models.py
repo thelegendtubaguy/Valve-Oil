@@ -27,15 +27,15 @@ class RuntimePaths:
 
     @property
     def restart_marker_path(self) -> Path:
-        return self.process_restart_marker_path or self.printer_data_root / ".tltg_optimized_klipper_restart_required"
+        return self.process_restart_marker_path or self.printer_data_root / ".vo_klipper_restart_required"
 
     @property
     def host_reboot_marker_path(self) -> Path:
-        return self.host_reboot_marker_override or self.printer_data_root / ".tltg_optimized_host_reboot_required"
+        return self.host_reboot_marker_override or self.printer_data_root / ".vo_host_reboot_required"
 
     @property
     def reboot_recommended_path(self) -> Path:
-        return self.printer_data_root / ".tltg_optimized_reboot_recommended"
+        return self.printer_data_root / ".vo_reboot_recommended"
 
     @property
     def boot_id_path(self) -> Path:

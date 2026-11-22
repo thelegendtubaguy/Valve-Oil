@@ -28,7 +28,7 @@ The fake Moonraker (`dev/fake-moonraker.mjs`) models a Max 4 on firmware 01.01.0
 
 `VO_BOX_RFID_WRITE` and `VO_BOX_RFID_TEST` write and scan made-up spool tags: 1A holds a QIDI tag, 1D (an empty slot, so the Box turns its spool) and 2C blank tags, 2A Elegoo data, and 2D a locked tag; 1B and 1C have none.
 
-It also stands in for Valve Oil's status service at `/tltg-status/api`, which feeds the Updates screen. Pick its state with `--updates` (with only `--updates` given, the printer starts `idle`):
+It also stands in for Valve Oil's status service at `/vo-status/api`, which feeds the Updates screen. Pick its state with `--updates` (with only `--updates` given, the printer starts `idle`):
 
 | Updates scenario | State |
 |---|---|
@@ -48,9 +48,9 @@ It also stands in for Valve Oil's status service at `/tltg-status/api`, which fe
 | `dev` | A dev prerelease whose update check failed, which the screen leaves out |
 | `absent` | No status service (404), as on a printer without it |
 
-Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update`, `release.channel` and `release.commit`, and `support.issue_url` as the service does, answers `GET /tltg-status/api/support-bundle` with an empty zip, and the printer warnings Klipper would report for it (with **Details** and **Open a support issue** links).
+Every scenario sends `update_now`, `check.next_at`, `job.run_id`, `run.firmware_update` and `run.can_continue`, `pending[].reinstall`, and `boards[].waiting_for_firmware_update`, `release.channel` and `release.commit`, and `support.issue_url` as the service does, answers `GET /vo-status/api/support-bundle` with an empty zip, and the printer warnings Klipper would report for it (with **Details** and **Open a support issue** links).
 
-Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/tltg-status`, `/tltg-addons`, and `/tltg-screen` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
+Switch at runtime from the console with `VO_UPDATES NAME=<scenario>`. **Update now** runs the same simulated update from any of them. `npm run dev` proxies `/vo-status`, `/vo-addons`, and `/vo-screen` to `VO_PRINTER` (default `http://localhost:7125`), so point both at the same place, for example `VO_PRINTER=http://192.168.1.166 npm run dev` with `?moonraker=192.168.1.166`.
 
 The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer state, the Box, Valve Oil's status service, scenarios) and each `dev/fake/*.mjs` adds one screen's methods, G-code, routes, and objects (see `dev/fake/README.md`). Their options:
 
@@ -66,11 +66,11 @@ The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer stat
 | `--install ssh\|usb\|automatic`, `VO_INSTALL ORIGIN=<origin>` | Runs an install's steps, as the installer publishes them, for the Updates screen's steps, the banner, and the installer logs |
 | `--install-fail <step>`, `--install-interrupt <step>`, `VO_INSTALL FAIL=<step>` or `INTERRUPT=<step>` | Stops that install at that step (1-based), failed or interrupted |
 
-The G-code files it serves are generated: OrcaSlicer-style `.gcode` and QIDI Studio-style `.gcode.3mf`, with objects, feature types, retractions, fan changes, and a tool change, and the printing scenario moves through the file. It also has a `config` folder, logs, history, a job queue, timelapse videos, cameras, services, the touchscreen stream at `/tltg-screen/ws`, bed meshes, and the add-ons service.
+The G-code files it serves are generated: OrcaSlicer-style `.gcode` and QIDI Studio-style `.gcode.3mf`, with objects, feature types, retractions, fan changes, and a tool change, and the printing scenario moves through the file. It also has a `config` folder, logs, history, a job queue, timelapse videos, cameras, services, the touchscreen stream at `/vo-screen/ws`, bed meshes, and the add-ons service.
 
 `npm run build` writes `dist/`, which the fake serves at `http://localhost:7125/valve-oil/`, the same layout as the printer.
 
-To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload.sh qidi@<printer-ip>`. It builds the UI and swaps it into `~/tltg-valve-oil-ui` without restarting anything or changing nginx. Open tabs pick it up on refresh. The next real install replaces it.
+To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload.sh qidi@<printer-ip>`. It builds the UI and swaps it into `~/vo-valve-oil-ui` without restarting anything or changing nginx. Open tabs pick it up on refresh. The next real install replaces it.
 
 ## Translations
 

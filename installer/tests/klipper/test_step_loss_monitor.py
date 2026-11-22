@@ -174,7 +174,7 @@ class Printer:
         for obj in self.objects["motion_report"], self.objects["mcu"]:
             obj.__dict__.update(obj.status)
         self.monitor = step_loss_monitor.load_config(self)
-        self.objects["tltg_step_loss_monitor"] = self.monitor
+        self.objects["vo_step_loss_monitor"] = self.monitor
         self.warnings = printer_warnings.PrinterWarnings(self)
         self.send_event("klippy:ready")
 

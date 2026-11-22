@@ -11,7 +11,7 @@
 # The slot motor is borrowed from QIDI's Box code for the move and handed
 # back afterwards, the way the cold feed measurements in
 # openspec/observations/qidi-box/hardware-and-protocols.md drove it. QIDI's
-# saved slot state is left alone; tltg_box_loaded_slot's hub record is
+# saved slot state is left alone; vo_box_loaded_slot's hub record is
 # updated as it is for QIDI's own slot motion.
 
 import logging
@@ -56,7 +56,7 @@ class BoxSlotJog:
         try:
             status = obj.get_status(self.reactor.monotonic())
         except Exception:
-            logging.exception("tltg_box_slot_jog: %s get_status failed", name)
+            logging.exception("vo_box_slot_jog: %s get_status failed", name)
             return {}
         return status if hasattr(status, "get") else {}
 
@@ -165,17 +165,17 @@ class BoxSlotJog:
         if stepper is None or not hasattr(stepper, "set_stepper_kinematics"):
             raise self.printer.command_error("No QIDI Box slot %s"
                                              % slot_label(slot))
-        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
+        tracker = self.printer.lookup_object("vo_box_loaded_slot", None)
         before = None
         if tracker is not None:
             try:
                 before = tracker.hub_occupied()
             except Exception:
-                logging.exception("tltg_box_slot_jog: hub check failed")
+                logging.exception("vo_box_slot_jog: hub check failed")
         moved, stopped, owned = self._move(stepper, distance, speed, until,
                                            piece)
         if not owned:
-            logging.warning("tltg_box_slot_jog: %s motor was taken during "
+            logging.warning("vo_box_slot_jog: %s motor was taken during "
                             "the move", name)
             raise self.printer.command_error(
                 "QIDI's Box code took slot %s's motor during the move. Run "
@@ -186,7 +186,7 @@ class BoxSlotJog:
             try:
                 tracker.record_motion(name, before)
             except Exception:
-                logging.exception("tltg_box_slot_jog: hub record failed")
+                logging.exception("vo_box_slot_jog: hub record failed")
         return moved, stopped
 
     def cmd_VO_BOX_SLOT_JOG(self, gcmd):

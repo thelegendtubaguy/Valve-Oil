@@ -4,7 +4,7 @@
 // De VCard, lr VCardTitle, xe VCardText, F VDivider, I socket actions, hr filament-list mixin, wn filament-list parser,
 // Wle stock Box Config view. Do not declare local names that shadow them. The card reads the same printer state and
 // sends the same Box commands as the stock Box card, which it does not replace.
-const TltgQidiBoxCard = (() => {
+const VoQidiBoxCard = (() => {
   const EXTERNAL = 16;
   const NONE = "#00000000";
   const COMMANDS = ["EJECT_FILAMENT_CONTROL", "LOAD_FILAMENT_CONTROL", "UNLOAD_FILAMENT_CONTROL"];
@@ -73,7 +73,7 @@ const TltgQidiBoxCard = (() => {
   };
 
   return {
-    name: "TltgQidiBoxCard",
+    name: "VoQidiBoxCard",
     mixins: [hr],
     data: () => ({ selected: 0, view: null, failed: false, editing: false, draft: null, mapping: null }),
     computed: {
@@ -162,7 +162,7 @@ const TltgQidiBoxCard = (() => {
         const extras = this.printer.box_extras;
         return !this.klippyReady || this.printing || !!(extras && extras.box_button_state) || !!this.task;
       },
-      // Like TLTG_RESET_TOOL_MAPPINGS, mappings change only while idle, so a paused print keeps its recovery state.
+      // Like VO_RESET_TOOL_MAPPINGS, mappings change only while idle, so a paused print keeps its recovery state.
       mappingLocked() {
         const stats = this.printer.print_stats;
         return this.busy || String((stats && stats.state) || "").toLowerCase() === "paused";
@@ -174,7 +174,7 @@ const TltgQidiBoxCard = (() => {
       },
       // On 01.01.07.01 the patched filament list carries the firmware filament database.
       catalog() {
-        return (this.printer.box485 && this.filas && this.filas.tltgFilaments) || null;
+        return (this.printer.box485 && this.filas && this.filas.voFilaments) || null;
       },
       palette() {
         const colors = (this.filas && this.filas.colordict) || {};
@@ -204,10 +204,10 @@ const TltgQidiBoxCard = (() => {
       // The stock Box card loads the filament list; this card may be the only one on the dashboard.
       this.getOfficiallFilasList()
         .then(text => this.filas || this.$store.commit("printer/setOfficiallFilasList", wn.configToDict(text)))
-        .catch(error => console.error("[tltg] QidiBox filament list failed", error));
+        .catch(error => console.error("[Valve Oil] QidiBox filament list failed", error));
     },
     errorCaptured(error) {
-      console.error("[tltg] QidiBox card failed", error);
+      console.error("[Valve Oil] QidiBox card failed", error);
       this.failed = true;
       return false;
     },
@@ -669,7 +669,7 @@ const TltgQidiBoxCard = (() => {
       return h(
         Xe,
         {
-          attrs: { title: "QidiBox", icon: "$box", draggable: true, "layout-path": "dashboard.tltg-qidi-box-card" },
+          attrs: { title: "QidiBox", icon: "$box", draggable: true, "layout-path": "dashboard.vo-qidi-box-card" },
           scopedSlots: {
             menu: () => [
               h(R, {

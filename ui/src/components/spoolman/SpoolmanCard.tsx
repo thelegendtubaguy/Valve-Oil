@@ -1,5 +1,5 @@
 // Fluidd's Spoolman card: the active spool and how much is left on it, Change spool, and why live updates from Spoolman
-// aren't working. With Valve Oil's tltg_spoolman module it also lists each QIDI Box slot's spool.
+// aren't working. With Valve Oil's vo_spoolman module it also lists each QIDI Box slot's spool.
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CircleAlert, Disc3, ExternalLink, Info } from 'lucide-react'
 import { Card, SectionLabel } from '../ui'
@@ -28,7 +28,7 @@ const slotTarget = (slot: number) => (slot === QIDI_BOX_EXTERNAL_SLOT ? t('spool
 
 /**
  * Shown only while Moonraker has its Spoolman component loaded. `slots` lists each Box slot's spool when Valve Oil's
- * tltg_spoolman module reports them (on by default).
+ * vo_spoolman module reports them (on by default).
  */
 export function SpoolmanCard({ className = '', slots = true }: { className?: string; slots?: boolean }) {
   const enabled = usePrinter((s) => !!s.server?.components.includes('spoolman'))
@@ -46,7 +46,7 @@ function SpoolmanCardBody({ className, showSlots }: { className: string; showSlo
   const activeId = useSpoolman((s) => s.activeSpool)
   const url = useSpoolman((s) => s.url)
   const diagnostic = useSpoolman((s) => s.socketDiagnostic)
-  const spoolmanModule = usePrinter((s) => s.status.tltg_spoolman)
+  const spoolmanModule = usePrinter((s) => s.status.vo_spoolman)
   const klippyReady = usePrinter((s) => s.klippy === 'ready')
   const perSlot = useMemo(() => slotSpools(spoolmanModule), [spoolmanModule])
   const spools = useMemo(() => new Map(raw.map((s) => [s.id, toSpool(s)])), [raw])
@@ -59,7 +59,7 @@ function SpoolmanCardBody({ className, showSlots }: { className: string; showSlo
     for (const id of [activeId, ...(perSlot?.spools.values() ?? [])]) if (id != null) ensureSpool(id)
   }, [connected, activeId, perSlot])
 
-  // With tltg_spoolman, Change spool sets the loaded slot's spool (Valve Oil's Moonraker patch passes it on).
+  // With vo_spoolman, Change spool sets the loaded slot's spool (Valve Oil's Moonraker patch passes it on).
   const target = klippyReady && perSlot?.loadedSlot != null ? slotTarget(perSlot.loadedSlot) : null
   // With no slot spools set the active spool doesn't follow the loaded slot, so there's nothing per slot to show.
   const slotRows = showSlots && perSlot?.spools.size ? [...new Set([...perSlot.spools.keys(), ...(perSlot.loadedSlot != null ? [perSlot.loadedSlot] : [])])].sort((a, b) => a - b) : []

@@ -28,7 +28,7 @@ class _ParkFilter:
     def run_script_from_command(self, script, *args, **kwargs):
         if isinstance(script, str) and script.startswith(PARK) \
                 and self._eject_only():
-            logging.info("tltg_box_eject: eject without a toolhead park")
+            logging.info("vo_box_eject: eject without a toolhead park")
             script = script[len(PARK):]
             if not script.strip():
                 return None
@@ -50,13 +50,13 @@ class BoxEject:
         manager = getattr(controller, "task_queue_manager", None)
         start_flow = getattr(manager, "start_flow", None)
         if not callable(start_flow) or not hasattr(manager, "current_task"):
-            logging.info("tltg_box_eject: inactive: QIDI Box flow controller "
+            logging.info("vo_box_eject: inactive: QIDI Box flow controller "
                          "not found")
             return
         self.controller = controller
         self.manager = manager
         manager.start_flow = self._wrap_start_flow(start_flow)
-        logging.info("tltg_box_eject: active")
+        logging.info("vo_box_eject: active")
 
     def _wrap_start_flow(self, original):
         # QIDI creates its Box adapter after Klipper is ready, so the filter
@@ -65,7 +65,7 @@ class BoxEject:
             try:
                 self._filter_scripts()
             except Exception:
-                logging.exception("tltg_box_eject: filter install failed")
+                logging.exception("vo_box_eject: filter install failed")
             return original(*args, **kwargs)
         return start_flow
 
@@ -79,7 +79,7 @@ class BoxEject:
                                             None)):
                 continue
             owner.gcode = _ParkFilter(gcode, self._eject_only)
-            logging.info("tltg_box_eject: filtering %s scripts",
+            logging.info("vo_box_eject: filtering %s scripts",
                          type(owner).__name__)
 
     def _eject_only(self):
@@ -87,7 +87,7 @@ class BoxEject:
             task = self.manager.current_task
             return task is not None and list(task.queue) == EJECT_ONLY
         except Exception:
-            logging.exception("tltg_box_eject: flow check failed")
+            logging.exception("vo_box_eject: flow check failed")
             return False
 
 

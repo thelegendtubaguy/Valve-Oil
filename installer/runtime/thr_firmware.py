@@ -94,7 +94,7 @@ def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None, s
 
 # Outcomes of a THR run, as board_firmware reports them.
 CURRENT, FLASHED, FELL_BACK, NOT_ADMITTED = "current", "flashed", "fell_back", "not_admitted"
-BACKUP_DIRECTORY = ".tltg_thr_firmware_backups"
+BACKUP_DIRECTORY = ".vo_thr_firmware_backups"
 
 # Finishes, at boot, a flash that the installer started and didn't finish: the record (THR_RECOVERY_MARKER) is in place
 # from the first erase until the THR is verified. Installed and enabled before the first erase; it runs nothing while
@@ -178,7 +178,7 @@ def flash_thr_firmware(
     for service in () if services_stopped else protocol.SERVICES:
         result = run(["systemctl", "show", service, "--property=LoadState,ActiveState"], capture_output=True, text=True, timeout=5)
         values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-        if service == "tltg-optimized-auto-update.timer" and values.get("LoadState") == "not-found":
+        if service.endswith(".timer") and values.get("LoadState") == "not-found":
             continue
         if result.returncode or values.get("LoadState") != "loaded" or values.get("ActiveState") not in {"active", "inactive"}:
             raise ThrFirmwareError("Cannot establish serial service ownership: " + service)
@@ -490,13 +490,13 @@ def rescue_unit_text(paths, bundle: Path) -> str:
             "Description=Valve Oil THR firmware rescue\n"
             "DefaultDependencies=no\n"
             "After=local-fs.target\n"
-            "Before=klipper.service qidi-client.service tltg-optimized-auto-update.service\n"
+            "Before=klipper.service qidi-client.service vo-auto-update.service\n"
             f"ConditionPathExists={record}\n\n"
             "[Service]\n"
             "Type=oneshot\n"
             f"User={current_user()}\n"
             f"WorkingDirectory={bundle}\n"
-            f"Environment=TLTG_OPTIMIZED_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
+            f"Environment=VO_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
             # Reach the THR inside its startup window, and give its port, still root's alone, the group udev gives it
             # later in boot.
             f"ExecStartPre=-+/usr/bin/python3 -I -S {CATCH_SCRIPT}\n"

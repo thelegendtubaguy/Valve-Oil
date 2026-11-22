@@ -22,7 +22,7 @@ const row = (key: BoxSetting, value: boolean) => ({ key, title: t(`box.settings.
 export function BoxSettingsDialog({ box, open, onClose }: { box: BoxState; open: boolean; onClose: () => void }) {
   const variables = usePrinter((s) => s.status.save_variables?.variables ?? {})
   const ready = usePrinter((s) => s.klippy === 'ready')
-  const hasMotion = usePrinter((s) => s.status.tltg_box_feed_motion != null)
+  const hasMotion = usePrinter((s) => s.status.vo_box_feed_motion != null)
   const rows = [
     ...SETTINGS.map((key) => row(key, Number(variables[key] ?? 0) === 1)),
     // Valve Oil's module reports whether it's on.

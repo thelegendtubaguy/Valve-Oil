@@ -2,7 +2,7 @@
 
 The bootloader shows the boot logo from the moment the printer is switched on, and the kernel keeps it until Linux
 starts; boot_logo.py replaces QIDI's logo with installer/system/touchscreen/boot-logo.png. From a few seconds after
-Linux starts until QIDI's touchscreen app first draws, tltg-boot-animation.service plays boot-animation.bin, whose first
+Linux starts until QIDI's touchscreen app first draws, vo-boot-animation.service plays boot-animation.bin, whose first
 frame is the boot logo, so the animation starts where the logo leaves off.
 
 The animation file holds its first frame whole and, for each later frame, only the rectangles that changed:
@@ -22,6 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .errors import InstallerError
+from .naming import has_marker
 
 MAGIC = b"VOBA"
 VERSION = 1
@@ -34,12 +35,12 @@ ANIMATION_FILE = IMAGES_DIR / "boot-animation.bin"
 
 UNIT_OPERATION = "boot_animation_unit"
 PLAYER_OPERATION = "boot_animation_player"
-UNIT = "tltg-boot-animation.service"
+UNIT = "vo-boot-animation.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
-PLAYER_FILE = "/usr/local/lib/tltg_boot_animation.py"
+PLAYER_FILE = "/usr/local/lib/vo_boot_animation.py"
 PLAYER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_boot_animation.py"
-PLAYER_MARKER = "# tltg-optimized:boot-animation\n"
-UNIT_MARKER = "# tltg-optimized:boot-animation-unit\n"
+PLAYER_MARKER = "# vo:boot-animation\n"
+UNIT_MARKER = "# vo:boot-animation-unit\n"
 # The player's data line, which the installed copy carries the animation in.
 DATA_LINE = "ANIMATION = None\n"
 
@@ -136,12 +137,12 @@ def player_source() -> str:
         raise InstallerError("The boot animation player lacks its package marker or data line.")
     decode(animation)
     source = source.replace(DATA_LINE, f"ANIMATION = {base64.b64encode(animation).decode('ascii')!r}\n")
-    compile(source, "tltg_boot_animation.py", "exec")
+    compile(source, "vo_boot_animation.py", "exec")
     return source
 
 
 def _patch_created(current: str, desired: str, marker: str, name: str) -> str:
-    if current == "" or current.startswith(marker):
+    if current == "" or has_marker(current, marker):
         return desired
     raise InstallerError(f"Existing {name} is unrecognized and was preserved.")
 

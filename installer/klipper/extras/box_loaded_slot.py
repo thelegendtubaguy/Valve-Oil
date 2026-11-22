@@ -71,13 +71,13 @@ class BoxLoadedSlot:
         start_flow = getattr(manager, "start_flow", None)
         if not slots or not callable(start_flow) \
                 or not isinstance(getattr(manager, "method_map", None), dict):
-            logging.info("tltg_box_loaded_slot: inactive: QIDI Box slots or "
+            logging.info("vo_box_loaded_slot: inactive: QIDI Box slots or "
                          "flow controller not found")
             return
         self.slots = slots
         self.manager = manager
         manager.start_flow = self._wrap_start_flow(start_flow)
-        logging.info("tltg_box_loaded_slot: active, %d slots", len(slots))
+        logging.info("vo_box_loaded_slot: active, %d slots", len(slots))
 
     def _wrap_start_flow(self, original):
         # QIDI's Box adapter registers its steps after Klipper is ready, and
@@ -87,7 +87,7 @@ class BoxLoadedSlot:
             try:
                 self._install_unload_check()
             except Exception:
-                logging.exception("tltg_box_loaded_slot: unload check install "
+                logging.exception("vo_box_loaded_slot: unload check install "
                                   "failed")
             return original(*args, **kwargs)
         return start_flow
@@ -95,7 +95,7 @@ class BoxLoadedSlot:
     def _install_unload_check(self):
         method_map = self.manager.method_map
         unload = method_map.get(UNLOAD_STEP)
-        if not callable(unload) or getattr(unload, "tltg_box_loaded_slot",
+        if not callable(unload) or getattr(unload, "vo_box_loaded_slot",
                                            False):
             return
         # Only the USB Box adapter refuses on last_load_slot.
@@ -103,7 +103,7 @@ class BoxLoadedSlot:
         if type(adapter).__name__ != "BoxAdapterV1":
             return
         method_map[UNLOAD_STEP] = self._wrap_unload(unload)
-        logging.info("tltg_box_loaded_slot: checking Box unloads")
+        logging.info("vo_box_loaded_slot: checking Box unloads")
 
     # ----------------------------------------------------------------- state
     def variables(self):
@@ -158,19 +158,19 @@ class BoxLoadedSlot:
             try:
                 before = self.hub_occupied()
             except Exception:
-                logging.exception("tltg_box_loaded_slot: hub check failed")
+                logging.exception("vo_box_loaded_slot: hub check failed")
             try:
                 return original(*args, **kwargs)
             finally:
                 try:
                     self.record_motion(slot, before)
                 except Exception:
-                    logging.exception("tltg_box_loaded_slot: hub record "
+                    logging.exception("vo_box_loaded_slot: hub record "
                                       "failed")
         return motion
 
     def record_motion(self, slot, before):
-        # Also called by tltg_box_slot_jog, whose moves bypass QIDI's methods.
+        # Also called by vo_box_slot_jog, whose moves bypass QIDI's methods.
         if self.printer.is_shutdown():
             return
         after = self.hub_occupied()
@@ -186,10 +186,10 @@ class BoxLoadedSlot:
             return
         self.save(HUB_SLOT_VARIABLE, value)
         if value:
-            logging.info("tltg_box_loaded_slot: %s (%s) fed filament to the "
+            logging.info("vo_box_loaded_slot: %s (%s) fed filament to the "
                          "Box hub", slot, slot_label(slot))
         else:
-            logging.info("tltg_box_loaded_slot: Box hub is clear")
+            logging.info("vo_box_loaded_slot: Box hub is clear")
 
     # ---------------------------------------------------------- unload check
     def _wrap_unload(self, original):
@@ -198,16 +198,16 @@ class BoxLoadedSlot:
             try:
                 refused = self._before_unload()
             except Exception:
-                logging.exception("tltg_box_loaded_slot: unload check failed")
+                logging.exception("vo_box_loaded_slot: unload check failed")
             result = original(*args, **kwargs)
             if refused and not result:
                 try:
                     self._after_refusal()
                 except Exception:
-                    logging.exception("tltg_box_loaded_slot: unload refusal "
+                    logging.exception("vo_box_loaded_slot: unload refusal "
                                       "handling failed")
             return result
-        unload_filament.tltg_box_loaded_slot = True
+        unload_filament.vo_box_loaded_slot = True
         return unload_filament
 
     def _before_unload(self):
@@ -221,7 +221,7 @@ class BoxLoadedSlot:
         inlets = self.inlets()
         task = getattr(self.manager, "current_task", None)
         logging.info(
-            "tltg_box_loaded_slot: Box unload has no loaded slot: hub "
+            "vo_box_loaded_slot: Box unload has no loaded slot: hub "
             "filament, last_load_slot=%r slot_sync=%r %s=%r toolhead "
             "filament=%r inlet filament=%s flow=%r target_load_slot=%r "
             "target_unload_slot=%r",
@@ -243,7 +243,7 @@ class BoxLoadedSlot:
         message = ("Box: no slot was recorded as loaded, but filament is at "
                    "the Box hub. Unloading %s, %s." % (slot_label(slot),
                                                        reason))
-        logging.info("tltg_box_loaded_slot: %s", message)
+        logging.info("vo_box_loaded_slot: %s", message)
         self.gcode.respond_info(message)
         return False
 
@@ -269,7 +269,7 @@ class BoxLoadedSlot:
             lines.append("The nozzle is off until then; FLOW_RETRY heats it "
                          "again.")
         message = "\n".join(lines)
-        logging.info("tltg_box_loaded_slot: %s", message)
+        logging.info("vo_box_loaded_slot: %s", message)
         self.gcode.respond_info(message)
 
 

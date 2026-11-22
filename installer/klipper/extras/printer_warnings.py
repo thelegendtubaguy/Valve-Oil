@@ -1,16 +1,16 @@
 # Printer warnings for Valve Oil.
 #
 # Publishes the problems an operator should fix before printing as Klipper
-# status, so Fluidd shows them on every page until they are gone, and the
-# optimized macros print the same text in the console at startup and after
+# status, so Fluidd shows them on every page until they are gone, and
+# Valve Oil's macros print the same text in the console at startup and after
 # every home. Problems: a missing input shaper calibration, or one saved
 # before the installer last flashed the THR, an X/Y motor slip reported by
-# tltg_step_loss_monitor (until X and Y are homed again), and a board the
+# vo_step_loss_monitor (until X and Y are homed again), and a board the
 # installer can't flash because its bootloader or firmware isn't supported
 # yet. The installer leaves that board's shareable report, with a prefilled
-# support-issue link, in Klipper's log folder as tltg_thr_firmware.json,
-# tltg_mainboard_firmware.json, or tltg_box_firmware_box<N>.json, and the
-# calibration a THR flash found as tltg_input_shaper_thr_flash.json; the
+# support-issue link, in Klipper's log folder as vo_thr_firmware.json,
+# vo_mainboard_firmware.json, or vo_box_firmware_box<N>.json, and the
+# calibration a THR flash found as vo_input_shaper_thr_flash.json; the
 # folder is read when Klipper starts.
 #
 # Also lists the Valve Oil work waiting for the printer (a newer release, or
@@ -38,8 +38,8 @@ import os
 import re
 
 BOARD_REPORT = re.compile(
-    r"^tltg_(?:(thr|mainboard)_firmware|box_firmware_box(\d+))\.json$")
-THR_FLASH = "tltg_input_shaper_thr_flash.json"
+    r"^vo_(?:(thr|mainboard)_firmware|box_firmware_box(\d+))\.json$")
+THR_FLASH = "vo_input_shaper_thr_flash.json"
 SUPPORT_ISSUE_URL = ("https://github.com/thelegendtubaguy/valve-oil/issues/new"
                      "?template=printer-support.yml")
 # What a board report in the log folder may add to a warning: a prefilled issue
@@ -48,8 +48,8 @@ ISSUE_URL_PREFIX = "https://github.com/thelegendtubaguy/valve-oil/issues/new?"
 ISSUE_URL_MAX = 7000
 NOTE_MAX = 300
 REPORT_MAX_BYTES = 65536
-PENDING_FILE = ".tltg_valve_oil_status.json"
-ENROLLMENT_FILE = ".tltg_optimized_auto_update_enrolled"
+PENDING_FILE = ".vo_status.json"
+ENROLLMENT_FILE = ".vo_auto_update_enrolled"
 PENDING_SCHEMA = 1
 PENDING_POLL = 5.
 PENDING_REREAD = 60.
@@ -57,14 +57,14 @@ PENDING_MAX_BYTES = 262144
 PENDING_MAX_TEXT = 200
 FAILED_MAX_TEXT = 600
 # The firmware update's pending record (installer/runtime/firmware_update.py).
-FIRMWARE_UPDATE_RECORD = ".tltg_firmware_update_pending.json"
-BOX_CHANGE_FILE = ".tltg_box_monitor.json"
+FIRMWARE_UPDATE_RECORD = ".vo_firmware_update_pending.json"
+BOX_CHANGE_FILE = ".vo_box_monitor.json"
 # Records of a board operation or install that has to be recovered before an
 # update can continue (installer/runtime/safety.py).
-RECOVERY_FILES = (".tltg_optimized_recovery_required",
-                  ".tltg_thr_firmware_pending.json",
-                  ".tltg_box_firmware_pending.json",
-                  ".tltg_mainboard_firmware_pending.json")
+RECOVERY_FILES = (".vo_recovery_required",
+                  ".vo_thr_firmware_pending.json",
+                  ".vo_box_firmware_pending.json",
+                  ".vo_mainboard_firmware_pending.json")
 FINISH_IT = "Finish it with Update now or by running the Valve Oil installer."
 CONTINUE_IT = ("Continue it with Update now or by running the Valve Oil"
                " installer.")
@@ -156,7 +156,7 @@ class PrinterWarnings:
             return macro_status.max_accel
 
     def _input_shaper(self):
-        macro_status = self.printer.lookup_object("tltg_macro_status", None)
+        macro_status = self.printer.lookup_object("vo_macro_status", None)
         if macro_status is None:
             return []
         shaper = macro_status.input_shaper()
@@ -194,7 +194,7 @@ class PrinterWarnings:
         }]
 
     def _step_loss(self):
-        monitor = self.printer.lookup_object("tltg_step_loss_monitor", None)
+        monitor = self.printer.lookup_object("vo_step_loss_monitor", None)
         message = getattr(monitor, "message", None)
         if not message:
             return []
@@ -473,7 +473,7 @@ class PrinterWarnings:
                         + self._box_firmware() + self._pending_work(eventtime))
         except Exception:
             if not self.failed:
-                logging.exception("tltg_printer_warnings: check failed")
+                logging.exception("vo_printer_warnings: check failed")
             self.failed = True
             return {"warnings": []}
         self.failed = False

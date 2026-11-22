@@ -242,7 +242,7 @@ def check_installs(bundle_root: Path, workspace: Path, manifest) -> None:
     """Run the bundle against stand-in printers: a new install's plan, a first install, an update through each front
     end, uninstall, and the restore helper. None of it may ask this host for root."""
     install_sh = str(bundle_root / "install.sh")
-    state_file = "config/tltg_optimized_state.yaml"
+    state_file = "config/vo_state.yaml"
 
     with stand_in_printer(manifest, workspace) as (printer_root, env):
         dry_run = run_command([install_sh, "--dry-run", "--plain"], cwd=bundle_root, env=env)
@@ -313,7 +313,7 @@ def check_installs(bundle_root: Path, workspace: Path, manifest) -> None:
 
     with stand_in_printer(manifest, workspace) as (printer_root, env):
         env["TERM"] = "xterm-256color"
-        env["TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS"] = "0.05"
+        env["VO_DEMO_TUI_DELAY_SECONDS"] = "0.05"
         rich_demo = run_command_with_pty([install_sh, "--demo-tui"], cwd=bundle_root, env=env)
         if rich_demo.returncode != 0:
             raise SystemExit(rich_demo.stdout)

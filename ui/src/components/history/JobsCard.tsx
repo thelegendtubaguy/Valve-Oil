@@ -4,7 +4,6 @@ import { Card, Choices, Dialog, Empty, MenuButton, Spinner, Toggle, confirm } fr
 import { attempt, toast } from '../toast'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { deleteAllJobs, history, loadHistory, useHistoryState } from '../../state/history'
-import { usePrinter } from '../../state/printer'
 import { displayName } from '../../lib/format'
 import { csvHeader, exportValue, filterJobs, fmtDateTime, fmtLength, fmtSpan, groupLabel, historyColumns, isVisible, mergeColumns, sortJobs, statusGroup, STATUS_GROUPS, toggleColumn, type Column, type ConfiguredColumn, type StatusGroup } from './logic'
 import { toCsv } from './csv'
@@ -20,7 +19,7 @@ export function JobsCard() {
   const loaded = useHistoryState((s) => s.loaded)
   const loading = useHistoryState((s) => s.loading)
   const allLoaded = useHistoryState((s) => s.allLoaded)
-  const instance = usePrinter((s) => (s.status.tltg_printer?.name as string | undefined) ?? location.hostname)
+  const instance = location.hostname
   const [configured, saveConfigured] = useDbItem<ConfiguredColumn[] | null>(FLUIDD, 'uiSettings.tableHeaders.history', null)
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<StatusGroup | 'all'>('all')

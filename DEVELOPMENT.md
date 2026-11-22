@@ -11,7 +11,7 @@ Every push to `dev` publishes a fresh installer to the [`prerelease`](https://gi
 2. Run this. It's one command on two lines, so copy both. Add `-- --dry-run` to the end to preview without changing anything.
 
    ```bash
-   TLTG_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/valve-oil/releases/download/prerelease/valve-oil-dev.tar.gz \
+   VO_INSTALLER_ARCHIVE_URL=https://github.com/thelegendtubaguy/valve-oil/releases/download/prerelease/valve-oil-dev.tar.gz \
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/thelegendtubaguy/valve-oil/dev/installer/release/install-latest.sh)"
    ```
 
@@ -30,4 +30,4 @@ Run both again to pick up newer dev changes.
 - **Before opening a PR,** run the checks for what you touched, listed under **Validation** in [AGENTS.md](AGENTS.md#validation).
 - **Trace QIDI's Box code:** `scripts/box_trace/box_trace.sh install qidi@<printer-ip>` adds a log-only tracer that records each QIDI Box call, the settings it reads, its G-code, and the Box motor positions during loads and unloads. `fetch` copies the log back and `remove` takes the tracer off. See [`scripts/box_trace/README.md`](scripts/box_trace/README.md).
 - **THR firmware:** building and checking the FIFO fix is in [`firmware/README.md`](firmware/README.md). It never flashes a printer.
-- **Fake printer:** `TLTG_OPTIMIZED_PRINTER_DATA_ROOT`, `TLTG_OPTIMIZED_FIRMWARE_MANIFEST`, and `TLTG_OPTIMIZED_MOONRAKER_URL` point the installer at a fixture directory instead of a live printer, as `installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` do.
+- **Fake printer:** `VO_PRINTER_DATA_ROOT`, `VO_FIRMWARE_MANIFEST`, and `VO_MOONRAKER_URL` point the installer at a fixture directory instead of a live printer, as `installer/tests/helpers.py` and `scripts/smoke_test_installer_bundle.py` do.

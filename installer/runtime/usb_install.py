@@ -369,7 +369,7 @@ class Session:
         while not boot_path.boot_files_allow_reboot(self.paths, reporter=self.reporter, environ=self.env):
             if self._not_restarted(boot_path.describe(boot_path.reboot_problems(self.paths, self.env))) == QUIT:
                 return
-        password = getattr(self.hold, "password", None) or self.env.get("TLTG_OPTIMIZED_SUDO_PASSWORD") or ""
+        password = getattr(self.hold, "password", None) or self.env.get("VO_SUDO_PASSWORD") or ""
         run_sudo(["systemctl", "reboot"], run=self.run, password=password, timeout=60)
         self.sleep(60)  # the reboot ends this process
 

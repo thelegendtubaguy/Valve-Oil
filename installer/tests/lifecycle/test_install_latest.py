@@ -105,8 +105,8 @@ def _run_install_latest(home: Path, archive_path: Path, *, path: str | None = No
     env = {
         **os.environ,
         "HOME": str(home),
-        "TLTG_INSTALLER_ARCHIVE_URL": archive_path.as_uri(),
-        "TLTG_INSTALLER_CHECKSUM_URL": (archive_path.parent / "bundle.tar.gz.sha256").as_uri(),
+        "VO_INSTALLER_ARCHIVE_URL": archive_path.as_uri(),
+        "VO_INSTALLER_CHECKSUM_URL": (archive_path.parent / "bundle.tar.gz.sha256").as_uri(),
     }
     if path is not None:
         env["PATH"] = path

@@ -49,7 +49,7 @@ class InstallScreenTests(unittest.TestCase):
     def setUp(self):
         root = temp_path("install-screen")
         self.paths = SimpleNamespace(printer_data_root=root, moonraker_url="http://moonraker.invalid",
-                                     recovery_sentinel_path=root / ".tltg_recovery_required", restart_marker_path=root / "none")
+                                     recovery_sentinel_path=root / ".vo_recovery_required", restart_marker_path=root / "none")
         self.host = Host()
         self.output = io.StringIO()
 

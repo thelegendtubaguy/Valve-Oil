@@ -16,7 +16,7 @@ from .reporter import create_reporter
 from .safety import ensure_no_recovery_sentinel
 from .sudo import SudoError, authenticate_sudo
 
-SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"
+SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
 
 

@@ -14,7 +14,7 @@ action=${1:?usage: box_trace.sh install|fetch|remove qidi@<printer-ip> [local-fi
 host=${2:?usage: box_trace.sh install|fetch|remove qidi@<printer-ip> [local-file]}
 url="http://${host#*@}"
 module=klipper/klippy/extras/dev_box_trace.py
-cfg=printer_data/config/tltg-optimized-macros/dev_box_trace.cfg
+cfg=printer_data/config/vo-macros/dev_box_trace.cfg
 log=printer_data/logs/dev_box_trace.log
 
 state() {
@@ -67,7 +67,7 @@ case $action in
       exit 1
     fi ;;
   fetch)
-    dest=${3:-$(cd "$here/../.." && pwd)/tltg-local/box-trace/dev_box_trace-$(date +%Y%m%d-%H%M%S).log}
+    dest=${3:-$(cd "$here/../.." && pwd)/vo-local/box-trace/dev_box_trace-$(date +%Y%m%d-%H%M%S).log}
     mkdir -p "$(dirname "$dest")"
     scp -q -o BatchMode=yes "$host:$log" "$dest"
     echo "$dest" ;;

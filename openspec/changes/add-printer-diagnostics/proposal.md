@@ -17,11 +17,11 @@ QIDI's code changes printer state behind Klipper's back, and nothing notices unt
 
 ### Modified Capabilities
 
-None. Fixes for the faults the program finds change `optimized-printer-behavior` in their own changes.
+None. Fixes for the faults the program finds change `printer-behavior` in their own changes.
 
 ## Impact
 
-- `installer/runtime/`: the signature catalog and the log checker, shared by the `tltg-status` service and a developer script.
+- `installer/runtime/`: the signature catalog and the log checker, shared by the `vo-status` service and a developer script.
 - `installer/klipper/extras/`: fault watchers in the Box modules, beside the unload logging in `box_flow_recovery.py`.
 - `ui/`: the Diagnostics screen, in English, Spanish, and Russian.
 - `scripts/`: the log checker for attached logs and the soak runner.

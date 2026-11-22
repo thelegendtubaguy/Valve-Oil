@@ -18,14 +18,14 @@ DiskUsageFn = Callable[[Path], object]
 UrlOpenFn = Callable[..., object]
 
 
-THR_RECOVERY_MARKER = ".tltg_thr_firmware_pending.json"
-BOX_RECOVERY_MARKER = ".tltg_box_firmware_pending.json"
-MAINBOARD_RECOVERY_MARKER = ".tltg_mainboard_firmware_pending.json"
+THR_RECOVERY_MARKER = ".vo_thr_firmware_pending.json"
+BOX_RECOVERY_MARKER = ".vo_box_firmware_pending.json"
+MAINBOARD_RECOVERY_MARKER = ".vo_mainboard_firmware_pending.json"
 # The QIDI firmware update's pending record (firmware_update.py). While it exists no other installer operation runs,
 # except the update's own steps and child install, which carry its id in FIRMWARE_UPDATE_RUN_ENV, and the Box and
 # mainboard rescues a failed board write in it may need.
-FIRMWARE_UPDATE_MARKER = ".tltg_firmware_update_pending.json"
-FIRMWARE_UPDATE_RUN_ENV = "TLTG_FIRMWARE_UPDATE_RUN"
+FIRMWARE_UPDATE_MARKER = ".vo_firmware_update_pending.json"
+FIRMWARE_UPDATE_RUN_ENV = "VO_FIRMWARE_UPDATE_RUN"
 
 
 def firmware_update_blocks(printer_data_root: Path) -> bool:
@@ -53,7 +53,7 @@ def firmware_update_allows_rescue(printer_data_root: Path) -> bool:
     import subprocess
 
     try:
-        active = subprocess.run(["systemctl", "is-active", "tltg-firmware-update.service"], capture_output=True,
+        active = subprocess.run(["systemctl", "is-active", "vo-firmware-update.service"], capture_output=True,
                                 text=True, timeout=10).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         active = ""

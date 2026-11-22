@@ -2,8 +2,8 @@
 // Fluidd v1.30.5 (/home/qidi/fluidd/assets/index-DlFvHGAh.js). fluidd_box_filaments.py inserts this file
 // verbatim into the bundle's module scope, so it may use that bundle's minified Vuetify components:
 // F VDivider, xe VCardText, Oe VBtn, ce VTextField, Y VRow, k VCol. Do not declare local names
-// that shadow them. The section reads printer.tltg_box_feed_motion and edits only through TLTG_BOX_MOTION.
-const TltgBoxMotion = (() => {
+// that shadow them. The section reads printer.vo_box_feed_motion and edits only through VO_BOX_MOTION.
+const VoBoxMotion = (() => {
   const FIELDS = [
     ["fast_length", "Fast length", v => v.fast_length],
     ["fast_speed_1", "Fast speed 1", v => v.fast_speed_1],
@@ -30,11 +30,11 @@ const TltgBoxMotion = (() => {
   const slotLabel = n => Math.floor(n / 4) + 1 + String.fromCharCode((n % 4) + 65);
 
   return {
-    name: "TltgBoxMotion",
+    name: "VoBoxMotion",
     data: () => ({ open: null, drafts: {}, errors: {}, pending: false, failed: false }),
     computed: {
       motion() {
-        const value = this.$store.state.printer.printer.tltg_box_feed_motion;
+        const value = this.$store.state.printer.printer.vo_box_feed_motion;
         return value && typeof value === "object" ? value : null;
       },
       active() {
@@ -62,7 +62,7 @@ const TltgBoxMotion = (() => {
       }
     },
     errorCaptured(error) {
-      console.error("[tltg] Box motion section failed", error);
+      console.error("[Valve Oil] Box motion section failed", error);
       this.failed = true;
       return false;
     },
@@ -134,7 +134,7 @@ const TltgBoxMotion = (() => {
         const params = this.changes(scope);
         if (!params || !params.length) return;
         const target = scope === "global" ? "" : " SLOT=" + slotNumber(scope);
-        this.run(scope, "TLTG_BOX_MOTION" + target + " " + params.join(" "));
+        this.run(scope, "VO_BOX_MOTION" + target + " " + params.join(" "));
       },
       toggle(key) {
         if (this.open) this.clearScope(this.open);
@@ -226,7 +226,7 @@ const TltgBoxMotion = (() => {
                 }),
                 ...this.renderActions(h, key, [
                   this.renderButton(h, "Reset slot", () =>
-                    this.run(key, "TLTG_BOX_MOTION SLOT=" + n + " RESET=1", "Clear every override for slot " + slotLabel(n) + "?"))
+                    this.run(key, "VO_BOX_MOTION SLOT=" + n + " RESET=1", "Clear every override for slot " + slotLabel(n) + "?"))
                 ])
               ])
             : null
@@ -251,7 +251,7 @@ const TltgBoxMotion = (() => {
           this.renderFields(h, "global", s.settings, key => FIELDS.find(([name]) => name === key)[2](s.vendor)),
           ...this.renderActions(h, "global", [
             this.renderButton(h, "Reset", () =>
-              this.run("global", "TLTG_BOX_MOTION RESET=1", "Reset all Box motion settings and every slot override to vendor values?"))
+              this.run("global", "VO_BOX_MOTION RESET=1", "Reset all Box motion settings and every slot override to vendor values?"))
           ]),
           h(F, { staticClass: "mt-2" }),
           ...this.slotKeys.map((key, i) => [i ? h(F) : null, this.renderSlot(h, key)]).flat()
@@ -263,10 +263,10 @@ const TltgBoxMotion = (() => {
       try {
         body = this.renderBody(h);
       } catch (error) {
-        console.error("[tltg] Box motion section failed", error);
+        console.error("[Valve Oil] Box motion section failed", error);
         body = [h("div", { staticClass: "text-body-2 text--secondary" }, [UNAVAILABLE])];
       }
-      return h("div", { staticClass: "tltg-box-motion" }, [h(F), h(xe, { staticClass: "pt-3" }, body)]);
+      return h("div", { staticClass: "vo-box-motion" }, [h(F), h(xe, { staticClass: "pt-3" }, body)]);
     }
   };
 })();

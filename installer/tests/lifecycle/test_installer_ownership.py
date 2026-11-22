@@ -17,7 +17,7 @@ from installer.tests.helpers import REPO_ROOT, temp_path
 def _printer(root: Path) -> RuntimePaths:
     home = root / "home/qidi"
     printer_data = home / "printer_data"
-    (printer_data / "config/tltg-optimized-macros").mkdir(parents=True)
+    (printer_data / "config/vo-macros").mkdir(parents=True)
     (printer_data / "model").mkdir()
     (home / "update").mkdir()
     (home / "valve-oil/installer").mkdir(parents=True)
@@ -29,8 +29,8 @@ def _printer(root: Path) -> RuntimePaths:
         config_root=printer_data / "config",
         firmware_manifest_path=home / "update/firmware_manifest.json",
         moonraker_url="http://127.0.0.1:7125",
-        lock_path=printer_data / ".tltg_optimized_installer.lock",
-        recovery_sentinel_path=printer_data / ".tltg_optimized_recovery_required",
+        lock_path=printer_data / ".vo_installer.lock",
+        recovery_sentinel_path=printer_data / ".vo_recovery_required",
         backup_root=printer_data,
         klipper_root=home / "klipper",
     )
@@ -77,12 +77,12 @@ class InstallerOwnershipRepairTests(unittest.TestCase):
         outside = _write(self.root / "outside.cfg")
         installer_owned = {
             _write(self.paths.lock_path),
-            _write(config / "tltg_optimized_state.yaml"),
-            _write(config / "tltg-optimized-macros/cooling.cfg"),
-            _write(self.home / "klipper/klippy/extras/tltg_box_eject.py"),
+            _write(config / "vo_state.yaml"),
+            _write(config / "vo-macros/cooling.cfg"),
+            _write(self.home / "klipper/klippy/extras/vo_box_eject.py"),
             self.home / "valve-oil",
         }
-        link = config / "tltg-link.cfg"
+        link = config / "vo-link.cfg"
         link.symlink_to(outside)
         qidi_owned = {
             _write(config / "box.cfg"),

@@ -31,7 +31,7 @@ from .thr_firmware import ThrFirmwareError, wait_for_thr_printer_ready
 SUBJECT = "Mainboard firmware"
 # The only mainboard manifest; a printer it pins no image for has no managed mainboard (board_images).
 MANIFEST = BOARD_MANIFESTS["mcu"][0]
-BACKUP_DIRECTORY = ".tltg_mainboard_firmware_backups"
+BACKUP_DIRECTORY = ".vo_mainboard_firmware_backups"
 CONFIRMATION = "FLASH"
 APP_RETURN_SECONDS = 30
 RESCUE_WAIT_SECONDS = 60

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's makerbase-webcam.service runs /root/auto-webcam-id.sh at boot to set the camera in crowsnest.conf. The script
@@ -11,9 +12,9 @@ from .errors import InstallerError
 # it never blanks the device; an empty device is filled in at the next boot.
 OPERATION = "webcam_id_wait"
 UNIT = "makerbase-webcam.service"
-FILE = f"/etc/systemd/system/{UNIT}.d/tltg-wait-for-camera.conf"
+FILE = f"/etc/systemd/system/{UNIT}.d/vo-wait-for-camera.conf"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:webcam-id-wait\n"
+MARKER = "# vo:webcam-id-wait\n"
 # systemd reads $$ as a literal $.
 CONTENT = MARKER + """\
 # Waits for the camera's index0 link before QIDI's auto-webcam-id.sh sets the crowsnest device. Installed by Valve Oil.
@@ -23,6 +24,6 @@ ExecStartPre=/bin/sh -c 'i=0; while [ $$i -lt 60 ]; do for link in /dev/v4l/by-i
 
 
 def patch_dropin(current: str) -> str:
-    if current == "" or current.startswith(MARKER):
+    if current == "" or has_marker(current, MARKER):
         return CONTENT
     raise InstallerError(f"Existing {FILE} is unrecognized and was preserved.")

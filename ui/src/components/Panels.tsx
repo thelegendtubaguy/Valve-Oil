@@ -139,7 +139,7 @@ const level = (v: number, [warn, bad]: readonly [number, number]): Level => (v >
 function useHealthLevel(): Level {
   const disk = useDisk()
   const key = usePrinter((s) => {
-    const h = s.status.tltg_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined
+    const h = s.status.vo_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined
     const levels: Level[] = []
     if (h?.main_thread_load != null) levels.push(level(h.main_thread_load, LIMITS.klipper))
     if (h?.timers != null && h.timers > LIMITS.timers) levels.push('warn')
@@ -188,7 +188,7 @@ export function HealthButton() {
 }
 
 export function Health({ className = '', bare }: { className?: string; bare?: boolean }) {
-  const health = usePrinter((s) => s.status.tltg_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined)
+  const health = usePrinter((s) => s.status.vo_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined)
   const host = usePrinter((s) => s.host)
   const mcus = usePrinter((s) =>
     s.objects

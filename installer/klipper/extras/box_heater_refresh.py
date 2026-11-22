@@ -57,7 +57,7 @@ class BoxHeaterRefresh:
             cycle_time = 0.
         if isinstance(value, bool) or \
                 not MIN_CYCLE_TIME <= cycle_time <= STOCK_CYCLE_TIME:
-            logging.warning("tltg_box_heater_refresh: %s=%r is not between"
+            logging.warning("vo_box_heater_refresh: %s=%r is not between"
                             " %g and %g s; Box heaters keep %g s",
                             CYCLE_TIME_VARIABLE, value, MIN_CYCLE_TIME,
                             STOCK_CYCLE_TIME, STOCK_CYCLE_TIME)
@@ -78,18 +78,18 @@ class BoxHeaterRefresh:
             pwm_delay = getattr(heater, "pwm_delay", None)
             if not callable(getattr(mcu_pwm, "setup_cycle_time", None)) \
                     or not isinstance(pwm_delay, (int, float)):
-                logging.warning("tltg_box_heater_refresh: %s has an unexpected"
+                logging.warning("vo_box_heater_refresh: %s has an unexpected"
                                 " heater layout; cycle time left unchanged",
                                 name)
                 continue
             if cycle_time > pwm_delay:
                 # Klipper's own limit for pwm_cycle_time.
-                logging.warning("tltg_box_heater_refresh: %s cycle time %g s"
+                logging.warning("vo_box_heater_refresh: %s cycle time %g s"
                                 " is above its sensor's %g s report time; left"
                                 " unchanged", name, cycle_time, pwm_delay)
                 continue
             mcu_pwm.setup_cycle_time(cycle_time)
-            logging.info("tltg_box_heater_refresh: %s switches every %g s",
+            logging.info("vo_box_heater_refresh: %s switches every %g s",
                          name, cycle_time)
 
     def _connect(self):
@@ -99,11 +99,11 @@ class BoxHeaterRefresh:
                 continue
             if not all(hasattr(heater, attr) for attr in
                        ("set_pwm", "next_pwm_time", "pwm_delay")):
-                logging.warning("tltg_box_heater_refresh: %s has an unexpected"
+                logging.warning("vo_box_heater_refresh: %s has an unexpected"
                                 " heater layout; refresh left unchanged", name)
                 continue
             heater.set_pwm = self._wrap(heater, heater.set_pwm)
-            logging.info("tltg_box_heater_refresh: %s resends every %.1f s",
+            logging.info("vo_box_heater_refresh: %s resends every %.1f s",
                          name, REFRESH_TIME)
 
     def _guard_sensors(self):
@@ -122,7 +122,7 @@ class BoxHeaterRefresh:
             except Exception:
                 if not self.printer.is_shutdown():
                     raise
-                logging.info("tltg_box_heater_refresh: %s sensor read failed after"
+                logging.info("vo_box_heater_refresh: %s sensor read failed after"
                              " shutdown; polling stopped", name)
                 return reactor.NEVER
         return sample

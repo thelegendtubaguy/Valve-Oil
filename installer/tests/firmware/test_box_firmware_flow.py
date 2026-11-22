@@ -49,7 +49,7 @@ class Printer(harness.Host):
 
     def __init__(self, manifest, stock, boot, apps, *, failure=None):
         super().__init__({"klipper.service": "active", "qidi-client.service": "active",
-                          "tltg-optimized-auto-update.timer": "inactive"},
+                          "vo-auto-update.timer": "inactive"},
                          fail_start="klipper.service" if failure == "restore" else None)
         self.manifest, self.stock, self.boot, self.failure = manifest, stock, boot, failure
         images = {"stock": stock, "patched": apply_patches(stock, protocol.image_spec(manifest), "test"),
@@ -286,7 +286,7 @@ class BoxFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
         self.assertEqual((printer.identity("mcu_box1"), printer.identity("mcu_box2")), ("patched", "stock"))
         self.assertEqual(printer.states, printer.original)
 
-    def test_install_updates_earlier_tltg_firmware_from_qidi_stock_image(self):
+    def test_install_updates_earlier_vo_firmware_from_qidi_stock_image(self):
         paths, printer, reporter = self.fixture({"mcu_box1": "superseded", "mcu_box2": "stock"})
         # Without QIDI's image for Box 1, Box 2 isn't flashed either.
         with self.assertRaises(box_firmware.BoxFirmwareError):
@@ -307,18 +307,18 @@ class BoxFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
         backups = paths.printer_data_root / box_firmware.BACKUP_DIRECTORY
         logs = paths.printer_data_root / "logs"
         # A report left for a Box no longer in box.cfg goes away.
-        (logs / "tltg_box_firmware_box2.json").write_text("{}")
+        (logs / "vo_box_firmware_box2.json").write_text("{}")
         self.after_install(paths, printer, reporter, environ=automatic)
         captures = list(backups.iterdir())
         self.assertEqual((len(captures), printer.transfers, printer.states), (1, [], printer.original))
         # Fluidd's banner and Logs get the shareable report.
-        published = json.loads((logs / "tltg_box_firmware_box1.json").read_text())
+        published = json.loads((logs / "vo_box_firmware_box1.json").read_text())
         self.assertFalse(published["supported_bootloader"])
-        self.assertEqual([path.name for path in logs.iterdir()], ["tltg_box_firmware_box1.json"])
+        self.assertEqual([path.name for path in logs.iterdir()], ["vo_box_firmware_box1.json"])
         changes = printer.service_changes
         self.after_install(paths, printer, reporter, environ=automatic)
         self.assertEqual((list(backups.iterdir()), printer.service_changes), (captures, changes))
-        self.assertTrue((logs / "tltg_box_firmware_box1.json").is_file())
+        self.assertTrue((logs / "vo_box_firmware_box1.json").is_file())
         # A later release admits the bootloader the capture found.
         manifest_path = paths.bundle_root / box_firmware.MANIFEST
         admitted = json.loads(manifest_path.read_text())
@@ -571,7 +571,7 @@ class Boards(harness.Host):
 
     def __init__(self, boards, specs=None):
         super().__init__({"klipper.service": "active", "qidi-client.service": "active",
-                          "tltg-optimized-auto-update.timer": "active"})
+                          "vo-auto-update.timer": "active"})
         self.boards = dict(boards)
         # Image specs that differ from the Max 4's, by board kind (the Smart 5's THR).
         self.specs = specs or {}
@@ -655,7 +655,7 @@ class BoardAdmissionTests(unittest.TestCase):
                   "box.cfg": "".join(f"[mcu mcu_{name}]\nserial: /dev/serial/by-id/{BOX_SERIAL}-{name}\n\n"
                                      for name in boards if name.startswith("box"))}
         if existing:
-            config["tltg_optimized_state.yaml"] = ""
+            config["vo_state.yaml"] = ""
         paths, reporter = harness.printer_home("board-admission-", config=config,
                                                firmware=harness.qidi_firmware(firmware, soc_prefix))
         (paths.printer_data_root / "logs").mkdir()
@@ -723,7 +723,7 @@ class BoardAdmissionTests(unittest.TestCase):
                                  printer.report(board)["bootloader_sha256"])
                 self.assertNotIn("hostname-secret", unquote(link))
                 # The board's shareable report is kept.
-                self.assertTrue(any(paths.printer_data_root.glob(".tltg_*_firmware_backups/**/before/report.json")))
+                self.assertTrue(any(paths.printer_data_root.glob(".vo_*_firmware_backups/**/before/report.json")))
 
     def test_reading_the_boards_survives_the_terminal_and_starts_every_service_again(self):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock")},
@@ -789,7 +789,7 @@ class BoardAdmissionTests(unittest.TestCase):
         calls, delivery = self.deliver(paths, printer, reporter, board_printer, admission)
         # No THR or mainboard firmware; the Box keeps getting Valve Oil's Box firmware as before.
         self.assertEqual(calls, [("box", (1,), None)])
-        warning = json.loads((paths.printer_data_root / "logs/tltg_thr_firmware.json").read_text())
+        warning = json.loads((paths.printer_data_root / "logs/vo_thr_firmware.json").read_text())
         self.assertEqual(warning["issue_url"], admission.board("thr").issue_url)
         self.assertNotIn("SECRETSERIAL", (paths.printer_data_root / board_firmware.ADMISSION_FILE).read_text())
         # The THR is replaced by one this release admits, reporting the same version.
@@ -811,7 +811,7 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertEqual(sorted(printer.snapshots[reads:]), ["mcu", "thr"])
         calls, _ = self.deliver(paths, printer, reporter, board_printer, admission)
         self.assertEqual([call[0] for call in calls], ["thr", "mcu"])
-        self.assertFalse((paths.printer_data_root / "logs/tltg_thr_firmware.json").exists())
+        self.assertFalse((paths.printer_data_root / "logs/vo_thr_firmware.json").exists())
 
     def test_admitted_boards_get_their_pinned_images_without_a_question_and_current_ones_are_left_alone(self):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock"),
@@ -872,7 +872,7 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertTrue(admission.delivery_admitted and not admission.admitted)
         calls, _ = self.deliver(paths, printer, reporter, board_printer, admission)
         self.assertEqual([call[0] for call in calls], ["thr"])
-        warning = json.loads((paths.printer_data_root / "logs/tltg_box_firmware_box1.json").read_text())
+        warning = json.loads((paths.printer_data_root / "logs/vo_box_firmware_box1.json").read_text())
         self.assertTrue(warning["issue_url"].startswith(board_firmware.ISSUE_FORM))
         self.assertIn("touchscreen's firmware page", warning["note"])
 
@@ -981,7 +981,7 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertTrue(deliver.call_args.kwargs["admission"].admitted)
         self.assertFalse(deliver.call_args.kwargs["dry_run"])
         # An existing install whose THR this release doesn't admit: installed, with QIDI's updates still blocked.
-        (paths.config_root / "tltg_optimized_state.yaml").write_text("")
+        (paths.config_root / "vo_state.yaml").write_text("")
         printer.boards["thr"] = ("unknown", "stock")
         code, block, _, _ = install()
         self.assertEqual((code, block), (0, True))
@@ -993,7 +993,7 @@ class BoardAdmissionTests(unittest.TestCase):
         printer.print_state = "standby"
         boot_id = paths.printer_data_root / "boot-id"
         boot_id.write_text("boot-one\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         paths.restart_marker_path.write_text("{}", encoding="utf-8")
         host_reboot.recommend_reboot(paths)
@@ -1080,10 +1080,10 @@ class BoardAdmissionTests(unittest.TestCase):
         flashed, pending = self.update_check(paths, printer, reporter, enrolled=True)
         self.assertEqual((flashed, printer.snapshots[reads:], printer.states), ([2], ["box2", "box3"], printer.original))
         self.assertNotIn("box2", pending)
-        warning = json.loads((paths.printer_data_root / "logs/tltg_box_firmware_box3.json").read_text())
+        warning = json.loads((paths.printer_data_root / "logs/vo_box_firmware_box3.json").read_text())
         self.assertTrue(warning["issue_url"].startswith(board_firmware.ISSUE_FORM))
         self.assertIn("Box 3: its bootloader is not supported yet", reporter.stream.getvalue())
-        self.assertIn("tltg_box_firmware_box3.json in Fluidd's Logs. To get it supported, open: "
+        self.assertIn("vo_box_firmware_box3.json in Fluidd's Logs. To get it supported, open: "
                       + warning["issue_url"], reporter.stream.getvalue())
         self.assertEqual(valve_oil_status.load_status(paths).run.kind, "automatic")
         # The next checks read neither again and stop nothing; Box 3 is no longer waiting, only warned about.
@@ -1129,7 +1129,7 @@ class BoardAdmissionTests(unittest.TestCase):
         box_cfg.write_text(f"[mcu mcu_box1]\nserial: /dev/serial/by-id/{BOX_SERIAL}-box1\n\n")
         self.update_check(paths, printer, reporter, enrolled=False)
         self.assertNotIn("box3", {board.id for board in valve_oil_status.load_status(paths).boards})
-        self.assertFalse((paths.printer_data_root / "logs/tltg_box_firmware_box3.json").exists())
+        self.assertFalse((paths.printer_data_root / "logs/vo_box_firmware_box3.json").exists())
 
     def test_box_firmware_install_reads_a_box_on_firmware_no_release_knows_and_shows_its_support_issue_everywhere(self):
         paths, printer, reporter = self.fixture({"thr": ("admitted", "patched"), "mcu": ("admitted", "patched"),
@@ -1162,7 +1162,7 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertNotIn("hostname-secret", unquote(link))
         # Fluidd's and the Valve Oil UI's warning, and the Valve Oil UI's board list, carry the same link now, and the
         # Box is no longer listed as waiting.
-        warning = json.loads((paths.printer_data_root / "logs/tltg_box_firmware_box1.json").read_text())
+        warning = json.loads((paths.printer_data_root / "logs/vo_box_firmware_box1.json").read_text())
         self.assertEqual(warning["issue_url"], link)
         self.assertIn("touchscreen's firmware page", warning["note"])
         status = valve_oil_status.load_status(paths)
@@ -1177,7 +1177,7 @@ class BoardAdmissionTests(unittest.TestCase):
         # Updated from the touchscreen and flashed, it is current at once, and its warning goes.
         printer.boards["box1"] = ("admitted", "patched")
         box_firmware_sh("install")
-        self.assertFalse((paths.printer_data_root / "logs/tltg_box_firmware_box1.json").exists())
+        self.assertFalse((paths.printer_data_root / "logs/vo_box_firmware_box1.json").exists())
         box = next(board for board in valve_oil_status.load_status(paths).boards if board.id == "box1")
         self.assertEqual((box.state, box.issue_url), ("current", None))
 

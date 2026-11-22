@@ -4,7 +4,7 @@
 
 The **QIDI Box** card in [this project's Fluidd](fluidd.md) shows every Box's slots, the filament path, and tool mapping, and controls loading, the Box heater, and Box settings. See [thelegendtubaguy/fluidd](https://github.com/thelegendtubaguy/fluidd) for how to use it.
 
-This page covers what the optimized configuration changes for the Box.
+This page covers what Valve Oil changes for the Box.
 
 ## Tool mapping
 
@@ -39,7 +39,7 @@ SAVE_VARIABLE VARIABLE=vo_box_heater_pwm_cycle_time VALUE=0.02
 FIRMWARE_RESTART
 ```
 
-It takes effect the next time Klipper restarts, a plain `RESTART` included. Values from `0.01` to `0.1` work; anything else, or no setting, keeps `0.1`. If you've shortened `pwm_cycle_time` for the bed or chamber, the same value is a good start. Switching faster doesn't change how much the heater heats. To go back, save `0.1` and restart Klipper. `klippy.log` shows the cycle each Box heater uses, for example `tltg_box_heater_refresh: heater_box1 switches every 0.02 s`. RS-485 Boxes aren't changed.
+It takes effect the next time Klipper restarts, a plain `RESTART` included. Values from `0.01` to `0.1` work; anything else, or no setting, keeps `0.1`. If you've shortened `pwm_cycle_time` for the bed or chamber, the same value is a good start. Switching faster doesn't change how much the heater heats. To go back, save `0.1` and restart Klipper. `klippy.log` shows the cycle each Box heater uses, for example `vo_box_heater_refresh: heater_box1 switches every 0.02 s`. RS-485 Boxes aren't changed.
 
 ### Turning spools while the Box heats
 
@@ -50,7 +50,7 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 - Nothing turns while the print is paused, while the Box loads, unloads, or changes tools, or while QIDI's own drying runs on that Box, which turns the spools itself.
 - It's off until you turn on **Turn spools while heating** in the QIDI Box card's settings in Fluidd, or run `SAVE_VARIABLE VARIABLE=vo_box_spool_roll VALUE=1`. `VALUE=0` turns it off again. The change applies at the next turn.
 
-`klippy.log` notes each turn, for example `tltg_box_spool_roll: turning 1A's spool 25 mm`.
+`klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
 
 ## Load and unload speed
 
@@ -248,7 +248,7 @@ SAVE_VARIABLE VARIABLE=last_load_slot VALUE='"slot1"'
 FLOW_RETRY
 ```
 
-Slots are numbered from 0: `slot0` is 1A, `slot1` is 1B, and `slot4` is 2A. `FLOW_RETRY` heats the nozzle again and repeats the unload. Each time, `klippy.log` gets a `tltg_box_loaded_slot: Box unload has no loaded slot` line with the Box's state; include it when [reporting a problem](troubleshooting.md#reporting-a-problem).
+Slots are numbered from 0: `slot0` is 1A, `slot1` is 1B, and `slot4` is 2A. `FLOW_RETRY` heats the nozzle again and repeats the unload. Each time, `klippy.log` gets a `vo_box_loaded_slot: Box unload has no loaded slot` line with the Box's state; include it when [reporting a problem](troubleshooting.md#reporting-a-problem).
 
 ## Failed Box loads and unloads
 
@@ -282,7 +282,7 @@ The slot can be [jogged](#moving-a-slot-by-hand) while the print or the failed u
 
 When Klipper didn't move the extruder for those pulls at all, the message says so instead, for example `Box unload of 1D stopped: Klipper didn't move the extruder for the 105 mm of pull-back QIDI's unload asked for, ...`, and names the [cancelled part](#filament-changes-inside-a-cancelled-part) the print is inside when that's why.
 
-`klippy.log` gets a line for every unload from the toolhead, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, and how many times the Box's buffer switch made the Box feed filament forward since the last unload and during this one. Attach it when you report an unload that stopped.
+`klippy.log` gets a line for every unload from the toolhead, starting `vo_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, and how many times the Box's buffer switch made the Box feed filament forward since the last unload and during this one. Attach it when you report an unload that stopped.
 
 ### Filament changes inside a cancelled part
 
@@ -337,7 +337,7 @@ See [Fixes](fixes.md#qidi-box-disconnects) for what this project changes, and [T
 
 QIDI's Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01` include support for Boxes, buffers, and filament racks that connect over RS-485 through a USB adapter, alongside the USB Boxes that run Klipper. This project hasn't been tested with RS-485 hardware yet, so it watches for it:
 
-- **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `tltg_box485_report.json` and `vo_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
+- **If you have RS-485 hardware,** the console asks you to open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues) once per Klipper start. Attach `vo_box485_report.json` and `vo_box485.log` from the `logs` folder in Fluidd. The log records what QIDI's code sends to and receives from each device, and the report summarizes the setup. Chip ids and USB serial numbers are replaced with codes that can't be traced back to your hardware. Nothing about how the hardware works is changed.
 - **To write the report yourself,** run `VO_RS_BOX_REPORT`. It says whether RS-485 hardware was found, and if it was, starts the log right away.
 - **Without RS-485 hardware,** nothing is written. QIDI's software looks for an RS-485 adapter and logs `Can not find 485 device` each time it's missing. That's normal for USB Boxes. Until RS-485 hardware has been seen, it now looks every 30 seconds instead of every 2, so a newly connected adapter can take up to 30 seconds to be found, and `klippy.log` gets that line once an hour, with a count.
 

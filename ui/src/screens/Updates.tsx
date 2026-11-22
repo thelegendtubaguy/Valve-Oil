@@ -516,7 +516,7 @@ function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; re
 // The report the installer leaves in Klipper's log folder for a board it can't support yet, as the printer warnings
 // name it (installer/runtime/board_firmware.py).
 const boardReportFile = (id: string) =>
-  id === 'thr' ? 'tltg_thr_firmware.json' : id === 'mcu' ? 'tltg_mainboard_firmware.json' : `tltg_box_firmware_${id}.json`
+  id === 'thr' ? 'vo_thr_firmware.json' : id === 'mcu' ? 'vo_mainboard_firmware.json' : `vo_box_firmware_${id}.json`
 
 /** What reporting a board Valve Oil can't support yet takes: the prefilled issue, what the form still asks, and the report. */
 function BoardSupport({ board, url }: { board: VoBoardView; url: string }) {

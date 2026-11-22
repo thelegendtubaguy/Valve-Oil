@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's system image runs ADB from usbdevice.service, Rockchip's USB gadget script (/usr/bin/usbdevice). The script
@@ -13,7 +14,7 @@ OPERATION = "adb_usb_only"
 SERVICE = "usbdevice.service"
 FILE = "/etc/profile.d/valve-oil-adb-usb-only.sh"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:adb-usb-only\n"
+MARKER = "# vo:adb-usb-only\n"
 CONTENT = MARKER + """\
 # Keeps QIDI's ADB (usbdevice.service) on the USB port and off the network: adbd listens on TCP only when
 # ADB_TCP_PORT is set, which /etc/profile.d/adbd.sh does. Installed by Valve Oil.
@@ -25,6 +26,6 @@ RETIRED_SERVICE_OPERATIONS = {f"service_{SERVICE}": OPERATION}
 
 
 def patch_profile(current: str) -> str:
-    if current == "" or current.startswith(MARKER):
+    if current == "" or has_marker(current, MARKER):
         return CONTENT
     raise InstallerError(f"Existing {FILE} is unrecognized and was preserved.")

@@ -138,7 +138,7 @@ class BoxConfigTests(unittest.TestCase):
 
         # A firmware update or a board waiting for its rescue owns the boards until it ends.
         printer.unplug("AAA")
-        rescue = printer.data / ".tltg_box_firmware_pending.json"
+        rescue = printer.data / ".vo_box_firmware_pending.json"
         rescue.write_text("{}")
         printer.at(30, rescue.unlink)
         printer.run()

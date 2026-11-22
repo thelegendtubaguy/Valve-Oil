@@ -25,7 +25,7 @@ class VelocityLimit:
         if not callable(getattr(toolhead, "cmd_SET_VELOCITY_LIMIT", None)) \
                 or self.gcode.register_command("SET_VELOCITY_LIMIT",
                                                None) is None:
-            logging.info("tltg_velocity_limit: SET_VELOCITY_LIMIT not found")
+            logging.info("vo_velocity_limit: SET_VELOCITY_LIMIT not found")
             return
         self.toolhead = toolhead
         self.gcode.register_command(

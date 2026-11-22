@@ -61,7 +61,7 @@ class CalibrationData:
 
 
 def _load():
-    """Import tltg_resonance_sweep with stand-ins for the QIDI code it
+    """Import vo_resonance_sweep with stand-ins for the QIDI code it
     wraps."""
     toolhead = types.SimpleNamespace(Move=Move, ToolHead=ToolHead)
     package = types.ModuleType("extras")
@@ -70,7 +70,7 @@ def _load():
         VibrationPulseTest=VibrationPulseTest, ResonanceTester=ResonanceTester)
     package.shaper_calibrate = types.SimpleNamespace(
         CalibrationData=CalibrationData, MIN_FREQ=5.)
-    return load_extra("resonance_sweep", "extras.tltg_resonance_sweep", stand_ins={
+    return load_extra("resonance_sweep", "extras.vo_resonance_sweep", stand_ins={
         "toolhead": toolhead, "extras": package})
 
 

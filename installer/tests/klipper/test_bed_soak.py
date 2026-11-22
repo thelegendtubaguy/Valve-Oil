@@ -124,7 +124,7 @@ class Printer:
         self.events = {}
         config = types.SimpleNamespace(get_printer=lambda: self)
         self.report = probe_report.load_config(config)
-        self.objects["tltg_probe_report"] = self.report
+        self.objects["vo_probe_report"] = self.report
         self.soak = bed_soak.load_config(config)
         for handler in self.events["klippy:connect"]:
             handler()
@@ -205,8 +205,8 @@ class Printer:
                 self._respond("probe at %.3f,%.3f is z=%.6f" % (x, y, z))
                 values.append(z)
             matrix.append(values)
-        self.mesh = ZMesh(matrix, "tltg_bed_soak")
-        self.bed_mesh.save_profile("tltg_bed_soak")
+        self.mesh = ZMesh(matrix, "vo_bed_soak")
+        self.bed_mesh.save_profile("vo_bed_soak")
 
     def _set_mesh(self, mesh):
         self.mesh = mesh
@@ -298,7 +298,7 @@ class BedSoakTest(unittest.TestCase):
         # The cold mesh came before any heating, after homing and Z tilt.
         heat = printer.scripts.index("M140 S100")
         self.assertLess(printer.scripts.index("Z_TILT_ADJUST"), heat)
-        self.assertLess(printer.scripts.index("_BED_MESH_CALIBRATE PROFILE=tltg_bed_soak "
+        self.assertLess(printer.scripts.index("_BED_MESH_CALIBRATE PROFILE=vo_bed_soak "
                                               "MESH_MIN=15,15 MESH_MAX=375,375 PROBE_COUNT=5,5"), heat)
         # As found: no profile saved, the old mesh back, heaters off.
         self.assertEqual(printer.saved_profiles, [])
@@ -351,7 +351,7 @@ class BedSoakTest(unittest.TestCase):
 
         def stop_mid_mesh(gcmd, probe=printer.helper.start_probe):
             if printer.heaters_on is not None and printer.now - printer.heaters_on > 600 and not stopped:
-                printer.endpoints["tltg_bed_soak/stop"](
+                printer.endpoints["vo_bed_soak/stop"](
                     types.SimpleNamespace(send=stopped.append))
                 self.assertEqual(printer.heater["heater_bed"].target, 0.)
                 self.assertEqual(printer.heater["chamber"].target, 0.)

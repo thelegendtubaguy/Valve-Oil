@@ -10,7 +10,7 @@ If the touchscreen stays on the boot logo and the printer never joins the networ
 
 Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why. Each run also saves a log in `~/printer_data/logs`, such as `valve-oil-install-20261117-091402.log`, which the installer names when it stops; attach it when you [report a problem](#reporting-a-problem). See [Logs](install.md#logs).
 
-**`[Errno 13] Permission denied: '/home/qidi/printer_data/.tltg_optimized_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
+**`[Errno 13] Permission denied: '/home/qidi/printer_data/.vo_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
 
 **Klipper is stopped with an error,** such as `... is not a valid config section`:
 
@@ -21,7 +21,7 @@ Automatic updates and **Update now** don't install anything while Klipper isn't 
 
 **A new install was refused because of a board,** with `This release of Valve Oil doesn't support a board on this printer yet, so nothing was installed.`: open the prefilled support issue link the installer printed above that line, and submit it. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet). If it says a Box `is listed in box.cfg but is not connected`, connect that Box, or remove it in the touchscreen's Box setup, and run the installer again.
 
-**The install or uninstall was cut off,** by a power cut, the printer restarting, or the SSH session closing: run the same command again. It finishes what the stopped run started, from wherever it stopped. An uninstall after a new install was cut off says `An earlier install stopped before it finished`: run the installer again first, then uninstall. Closing the SSH session no longer stops a run; it carries on to the end and writes only its log. If the earlier run left system changes it couldn't roll back, the next run says so, leaves them as they are, keeps the record as `~/printer_data/.tltg_optimized_system_journal.json.set-aside-<time>`, and goes on; attach that file when you [report a problem](#reporting-a-problem).
+**The install or uninstall was cut off,** by a power cut, the printer restarting, or the SSH session closing: run the same command again. It finishes what the stopped run started, from wherever it stopped. An uninstall after a new install was cut off says `An earlier install stopped before it finished`: run the installer again first, then uninstall. Closing the SSH session no longer stops a run; it carries on to the end and writes only its log. If the earlier run left system changes it couldn't roll back, the next run says so, leaves them as they are, keeps the record as `~/printer_data/.vo_system_journal.json.set-aside-<time>`, and goes on; attach that file when you [report a problem](#reporting-a-problem).
 
 **`A QIDI firmware update is in progress or did not finish; run ./install.sh to follow or finish it before anything else`:** run `~/valve-oil/install.sh`. See [A QIDI firmware update stopped part way](#a-qidi-firmware-update-stopped-part-way).
 
@@ -46,7 +46,7 @@ The installer, the printer warning, and the **Valve Oil** section in Fluidd and 
 | Reason | What to do |
 |---|---|
 | `a print is running or paused`, `a heater is set to a temperature`, or `Klipper didn't report whether the printer is idle` | Wait until the printer is idle, with every heater off, and Klipper is ready. |
-| `The firmware update needs <N> MiB free in /home/qidi.` or `there isn't enough free space on the printer` | The update already removed old logs and QIDI's leftover download. Free up more space in `/home/qidi`, such as large G-code files, timelapse videos, or old `tltg-optimized-macros-before-…zip` backups in `~/printer_data/`. `df -h /home/qidi` shows the free space. On the Max 4 the update needs about 2.1 GB. |
+| `The firmware update needs <N> MiB free in /home/qidi.` or `there isn't enough free space on the printer` | The update already removed old logs and QIDI's leftover download. Free up more space in `/home/qidi`, such as large G-code files, timelapse videos, or old `vo-macros-before-…zip` backups in `~/printer_data/`. `df -h /home/qidi` shows the free space. On the Max 4 the update needs about 2.1 GB. |
 | `The firmware package could not be downloaded from this project's mirror` or `the firmware download couldn't be reached` | Check that the printer is online and can reach `github.com`. A partial download resumes next time. |
 | `The downloaded firmware package does not match its pinned size and SHA-256.` | Try again. The bad download is deleted. If it keeps happening, [report it](#reporting-a-problem). |
 | `the update needs sudo with QIDI's default password, as automatic updates do` | The `qidi` password isn't QIDI's default, `qiditech`. The update runs without a terminal and can't ask for it. Set it back to `qiditech` with `passwd` while you update, or keep the firmware you have. |
@@ -108,7 +108,7 @@ Klipper shows this, and the touchscreen shows it under `QDC_100_005_000_001`, wh
 A factory reset isn't needed. `SAVE_CONFIG` keeps the file it replaces as `printer-YYYYMMDD_HHMMSS.cfg`, but QIDI's touchscreen app deletes those files each time it starts, so after a restart the copy to use is the one in the newest backup from a Valve Oil install or update. Over SSH, put that `printer.cfg` back and run the installer again, which puts back its own changes to the file:
 
 ```bash
-cd ~/printer_data && ls -t tltg-optimized-macros-before-*.zip | head -1
+cd ~/printer_data && ls -t vo-macros-before-*.zip | head -1
 unzip -p <that backup>.zip config/printer.cfg > config/printer.cfg
 cd ~/valve-oil && ./install.sh
 ```
@@ -127,7 +127,7 @@ To fix it without rebooting, run `sudo systemctl restart makerbase-webcam` over 
 
 ## Restore a backup
 
-Every install and uninstall saves a backup `.zip` of your configuration under `/home/qidi/printer_data/`, named `tltg-optimized-macros-before-optimize-...zip` or `tltg-optimized-macros-before-uninstall-...zip`.
+Every install and uninstall saves a backup `.zip` of your configuration under `/home/qidi/printer_data/`, named `vo-macros-before-optimize-...zip` or `vo-macros-before-uninstall-...zip`.
 
 Restore interactively over SSH:
 
@@ -244,7 +244,7 @@ def run(*cmd):
     try: return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception as exc: return f"unavailable ({exc.__class__.__name__})"
 home = os.path.expanduser("~")
-state = os.path.join(home, "printer_data/config/tltg_optimized_state.yaml")
+state = os.path.join(home, "printer_data/config/vo_state.yaml")
 try:
     text = open(state).read()
     print("Valve Oil:", re.search(r"^  version: *'?([0-9.]+)", text, re.M).group(1),
@@ -261,10 +261,10 @@ try:
 except OSError:
     print("USB Boxes in box.cfg: no box.cfg")
 print("Kernel:", run("uname", "-rv"))
-print("Auto-updates:", "on" if os.path.isfile(os.path.join(home, "printer_data/.tltg_optimized_auto_update_enrolled")) else "off")
+print("Auto-updates:", "on" if os.path.isfile(os.path.join(home, "printer_data/.vo_auto_update_enrolled")) else "off")
 print("zram:", "on" if "zram" in open("/proc/swaps").read() else "off")
 print("AI detection:", run("systemctl", "is-active", "algo_app.service") or "unknown")
-print("THR fix backups:", "yes" if os.path.isdir(os.path.join(home, "printer_data/.tltg_thr_firmware_backups")) else "no")
+print("THR fix backups:", "yes" if os.path.isdir(os.path.join(home, "printer_data/.vo_thr_firmware_backups")) else "no")
 try:
     import urllib.request
     q = "http://127.0.0.1:7125/printer/objects/query?print_stats=state&webhooks=state,state_message"
@@ -282,8 +282,8 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
 - **Installer log:** each install, update, and uninstall saves `valve-oil-<run>-<date>.log` in `~/printer_data/logs`, in the same **logs** list as `klippy.log`. The USB installer also saves it on the drive as `valve-oil-install.log`.
 - **Installer output:** copy everything the installer printed, from the command to the end. To see the log's detail as it runs, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
-- **Automatic update output:** `journalctl -u tltg-optimized-auto-update.service --since "2 days ago"`.
-- **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u tltg-firmware-update.service --since "2 days ago"`.
+- **Automatic update output:** `journalctl -u vo-auto-update.service --since "2 days ago"`. An update from a release before 26.11.22.1 is logged under that release's name, `tltg-optimized-auto-update.service`.
+- **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u vo-firmware-update.service --since "2 days ago"`.
 - **Update now output:** `~/.cache/valve-oil/status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.
 - **`moonraker.log`:** `~/printer_data/logs/moonraker.log`, for Fluidd or file upload problems.
 - **The sliced file**, for print problems: attach the `.gcode` or `.gcode.3mf`, zipped.

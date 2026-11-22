@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-PRINTER_DATA_ROOT_ENV = "TLTG_OPTIMIZED_PRINTER_DATA_ROOT"
+PRINTER_DATA_ROOT_ENV = "VO_PRINTER_DATA_ROOT"
 DEFAULT_PRINTER_DATA_ROOT = "/home/qidi/printer_data"
 BUNDLE_DIRECTORY = "valve-oil"  # naming.BUNDLE_ROOT_NAME; this module imports nothing from the bundle
 
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             def cli_main(*, argv, bundle_root):
                 return thr_rescue_main(argv=argv[1:], bundle_root=bundle_root)
         elif argv and argv[0] == "firmware-update":
-            # tltg-firmware-update.service: the QIDI firmware update run (installer/runtime/firmware_update.py).
+            # vo-firmware-update.service: the QIDI firmware update run (installer/runtime/firmware_update.py).
             from installer.runtime.firmware_update import main as firmware_update_main
 
             def cli_main(*, argv, bundle_root):

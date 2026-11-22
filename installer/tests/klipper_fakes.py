@@ -10,8 +10,8 @@ NEVER = 9999999999999999.
 
 
 def load_extra(name: str, module_name: str | None = None, *, stand_ins: dict | None = None):
-    """Import Valve Oil's Klipper module installer/klipper/extras/<name>.py, as tltg_<name> unless named."""
-    return load_source(module_name or f"tltg_{name}", EXTRAS_ROOT / f"{name}.py", stand_ins=stand_ins)
+    """Import Valve Oil's Klipper module installer/klipper/extras/<name>.py, as vo_<name> unless named."""
+    return load_source(module_name or f"vo_{name}", EXTRAS_ROOT / f"{name}.py", stand_ins=stand_ins)
 
 
 class CommandError(Exception):

@@ -1,8 +1,8 @@
-# tltg-optimized:remote-screen-server
+# vo:remote-screen-server
 """Serve the QIDI touchscreen to Fluidd's Printer screen card.
 
-Installed by Valve Oil as /usr/local/lib/tltg_remote_screen.py and run by
-tltg-remote-screen.service. nginx routes Fluidd's /tltg-screen/ here only after Moonraker
+Installed by Valve Oil as /usr/local/lib/vo_remote_screen.py and run by
+vo-remote-screen.service. nginx routes Fluidd's /vo-screen/ here only after Moonraker
 authorizes the client. The framebuffer is read only while a viewer is connected, and a
 JPEG is sent only when the screen changes. Touches are written to the touchscreen's
 evdev node, which qidiclient reads as real presses.

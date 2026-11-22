@@ -462,7 +462,7 @@ class ColdBoxFlowTest(unittest.TestCase):
         controller = Controller(gcode, flow, unload_failures, unload_errors)
         printer.objects["multi_color_controller"] = controller
         config = types.SimpleNamespace(get_printer=lambda: printer)
-        printer.objects["tltg_cold_cut"] = cold_cut.ColdCut(config)
+        printer.objects["vo_cold_cut"] = cold_cut.ColdCut(config)
         printer.objects["toolhead"].get_status = lambda e: {"max_accel": 20000.}
         printer.register_event_handler = lambda event, handler: None
         recovery = box_flow_recovery.BoxFlowRecovery(config)

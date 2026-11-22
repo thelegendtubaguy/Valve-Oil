@@ -16,7 +16,7 @@
 
 ## 3. Diagnostics in Valve Oil UI
 
-- [x] 3.1 Add a `tltg-status` endpoint that runs the checker on the printer's logs.
+- [x] 3.1 Add a `vo-status` endpoint that runs the checker on the printer's logs.
 - [x] 3.2 Add the Diagnostics screen: findings in plain language, what to do, the docs link, and a downloadable report. Text in English, Spanish, and Russian.
 - [x] 3.3 Decide the open questions in `design.md`.
 

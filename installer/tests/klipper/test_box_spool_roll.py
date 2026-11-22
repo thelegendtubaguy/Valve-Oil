@@ -54,7 +54,7 @@ def load_module(ffi):
     force_move.calc_move_time = calc_move_time
     chelper = types.ModuleType("chelper")
     chelper.get_ffi = lambda: (ffi, ffi)
-    return load_extra("box_spool_roll", "extras.tltg_box_spool_roll", stand_ins={
+    return load_extra("box_spool_roll", "extras.vo_box_spool_roll", stand_ins={
         "extras": extras, "extras.force_move": force_move, "chelper": chelper})
 
 

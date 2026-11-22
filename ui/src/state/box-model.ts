@@ -39,7 +39,7 @@ export type Lists = { legacy: QidiFilamentList | null; database: QidiFilament[] 
 /** A Box's climate. drying is QIDI's timed drying (BOX_START_DRYING); a target without it is a plain heater setting. */
 export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null; drying: boolean; dryMinutesLeft: number | null }
 
-/** Valve Oil's turn spools while heating (tltg_box_spool_roll): on, and the slot it's turning now. */
+/** Valve Oil's turn spools while heating (vo_box_spool_roll): on, and the slot it's turning now. */
 export type SpoolRoll = { enabled: boolean; rolling: string | null }
 
 export type BoxState = {
@@ -150,7 +150,7 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
   for (const [tool, slot] of Object.entries(toolMap)) (toolsBySlot[slot] ??= []).push(`T${tool}`)
   const enabled = Number(variables.enable_box ?? 0) === 1
   const currentTool = Number(variables.extrude_state)
-  const roll = st.tltg_box_spool_roll
+  const roll = st.vo_box_spool_roll
   const fromTag: Record<number, boolean> = {}
   for (const slot of slots) {
     const infos = slot.index === QIDI_BOX_EXTERNAL_SLOT ? [st.multi_color_controller?.extra?.filament_info] : st.box_extras?.boxes?.[Math.floor(slot.index / 4)]?.filament_info

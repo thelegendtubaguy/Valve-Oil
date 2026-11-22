@@ -8,7 +8,7 @@ Every setting this project adds, in one place. Run these from Fluidd's console.
 
 Set with `SAVE_VARIABLE VARIABLE=<name> VALUE=<value>`. They survive restarts and updates, and work with files you've already sliced unless noted.
 
-Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_keep_loaded_between_prints`. The first time Klipper starts after the update, each setting you saved is saved under its `vo_` name too, with the same value. From then on only the `vo_` name does anything; the `tltg_` one is kept for going back to an earlier release.
+Before 26.11.18.2 these were named `tltg_` instead of `vo_`, for example `tltg_keep_loaded_between_prints`. The first time Klipper starts after the update, each setting you saved is saved under its `vo_` name too, with the same value. From then on only the `vo_` name does anything; the `vo_` one is kept for going back to an earlier release.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -40,7 +40,7 @@ Before 26.11.18.2 these were named `TLTG_` instead of `VO_`, and several print m
 | [`UNLOAD_FILAMENT_CONTROL SLOT= COLD=1`, `EJECT_FILAMENT_CONTROL SLOT= COLD=1`](qidi-box.md#unloading-and-ejecting-cold) | QIDI's Box unload and eject without heating the nozzle. Not during a print. |
 | [`VO_FILAMENT_SENSOR ENABLE=0\|1`](tools.md#external-spool-runout-sensor) | Stops or restores external spool runout pauses until Klipper restarts. |
 | [`VO_SPOOLMAN_SLOT SLOT= SPOOL=`](spoolman.md#giving-each-slot-its-spool) | Sets the Spoolman spool for a QIDI Box slot or the external spool, which becomes the active spool whenever that slot is loaded. No parameters lists them. |
-| [`VO_RS_BOX_REPORT`](qidi-box.md#rs-485-boxes) | Writes the QIDI RS-485 Box report to `logs/tltg_box485_report.json` and says whether RS-485 hardware was found. |
+| [`VO_RS_BOX_REPORT`](qidi-box.md#rs-485-boxes) | Writes the QIDI RS-485 Box report to `logs/vo_box485_report.json` and says whether RS-485 hardware was found. |
 | [`VO_RESET_TOOL_MAPPINGS`](tools.md) | Restores the default Box tool-to-slot mapping. Idle only. |
 | [`VO_STEP_LOSS_CORRECT`](tools.md#correcting-the-position-after-a-slip) | Moves Klipper's X/Y position by the slip the X and Y motors report since X and Y were homed, instead of homing. Needs the step-loss monitor on. Max 4 only. |
 | [`VO_TEST_PROBE CONFIRM=1`](tools.md#nozzle-load-cell-check) | Checks the nozzle load cell without moving. |

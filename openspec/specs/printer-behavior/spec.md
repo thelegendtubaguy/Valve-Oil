@@ -1,15 +1,15 @@
-# optimized-printer-behavior Specification
+# printer-behavior Specification
 
 ## Purpose
 
-Optimized printer behavior shortens print transitions while preserving QIDI motion safety, slicer compatibility, hardware monitoring, and vendor-owned QIDI Box behavior.
+Valve Oil's printer behavior shortens print transitions while preserving QIDI motion safety, slicer compatibility, hardware monitoring, and vendor-owned QIDI Box behavior.
 
 ## Requirements
 
 ### Requirement: Guarded motion and calibration optimization
-Optimized configuration SHALL reduce homing, probing, mesh, and filament-transition overhead only where the selected firmware baseline, valid installer state, or explicit saved-mesh preference proves the change safe.
+Valve Oil's configuration SHALL reduce homing, probing, mesh, and filament-transition overhead only where the selected firmware baseline, valid installer state, or explicit saved-mesh preference proves the change safe.
 
-#### Scenario: Recognized state receives optimized behavior
+#### Scenario: Recognized state receives Valve Oil behavior
 - **WHEN** supported stock or proven prior-managed motion and timing inputs are installed
 - **THEN** guarded values and firmware-scoped payloads from `installer/package.yaml` are applied
 - **AND** unrecognized live values are preserved as user-modified
@@ -38,7 +38,7 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 
 #### Scenario: Printer warnings are published as status
 - **WHEN** X or Y lacks a saved input shaper calibration or a live shaper frequency
-- **THEN** Klipper status `tltg_printer_warnings.warnings` lists one `error` entry with an id, a title, and a message that names the acceleration limit, saying input shaping is off while an axis has no live frequency, and otherwise that QIDI's default shaper is in use
+- **THEN** Klipper status `vo_printer_warnings.warnings` lists one `error` entry with an id, a title, and a message that names the acceleration limit, saying input shaping is off while an axis has no live frequency, and otherwise that QIDI's default shaper is in use
 - **AND** the list is empty once both axes have a saved calibration and a live frequency
 - **AND** the startup and homing console warnings print each listed entry, so the console and any status reader show the same text
 
@@ -54,7 +54,7 @@ Optimized configuration SHALL reduce homing, probing, mesh, and filament-transit
 - **AND** a print that ends after reapplication saves the runtime offset, including touchscreen adjustments, as before
 
 ### Requirement: Motion-free nozzle load-cell signal check
-Optimized configuration SHALL provide an operator-invoked load-cell response check with console prompts and an automatic signal assessment, without homing, movement, heating, calibration changes, or homing-safety certification.
+Valve Oil's configuration SHALL provide an operator-invoked load-cell response check with console prompts and an automatic signal assessment, without homing, movement, heating, calibration changes, or homing-safety certification.
 
 #### Scenario: Operator checks the cold sensor response
 - **WHEN** the printer is idle, all heater targets are off, the nozzle and bed are below 40 °C, the raw readout command is available, and the operator confirms nozzle access and bed clearance
@@ -86,7 +86,7 @@ Optimized configuration SHALL provide an operator-invoked load-cell response che
 - **AND** normal homing and print-start behavior remain unchanged
 
 ### Requirement: Non-blocking saved Z-offset diagnostics
-Optimized configuration SHALL report requests to save a numeric zero to `z_offset` in the Klipper console and log without blocking or changing the save.
+Valve Oil's configuration SHALL report requests to save a numeric zero to `z_offset` in the Klipper console and log without blocking or changing the save.
 
 #### Scenario: Zero offset save is requested
 - **WHEN** `SAVE_VARIABLE` requests a numeric zero for `z_offset`, including when the saved offset is already zero
@@ -110,7 +110,7 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 
 #### Scenario: Existing printer state retains adaptive meshing
 - **WHEN** `vo_start_bed_mesh_profile` is absent from Klipper saved variables or contains an empty string
-- **THEN** optimized print start reports fresh adaptive `kamp` calibration to the Klipper console
+- **THEN** Valve Oil print start reports fresh adaptive `kamp` calibration to the Klipper console
 - **AND** it performs fresh adaptive `kamp` calibration
 - **AND** the behavior applies to existing sliced files and both repository slicer packs
 - **AND** the behavior applies to retained Box filament, fresh Box filament, and external-spool starts
@@ -118,7 +118,7 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 #### Scenario: Named saved profile is selected persistently
 - **WHEN** `vo_start_bed_mesh_profile` contains a non-empty profile name
 - **AND** the named saved profile exists
-- **THEN** optimized print start reports the named saved profile to the Klipper console
+- **THEN** Valve Oil print start reports the named saved profile to the Klipper console
 - **AND** it clears stale active mesh state and asks Klipper to load that exact profile name
 - **AND** it skips print-start bed-mesh calibration
 - **AND** the behavior applies to existing sliced files and both repository slicer packs
@@ -132,7 +132,7 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 
 #### Scenario: Saved-profile preference is operator-controlled
 - **WHEN** the operator saves a non-empty string to `vo_start_bed_mesh_profile`
-- **THEN** subsequent optimized starts use that named profile until the saved value changes
+- **THEN** subsequent Valve Oil starts use that named profile until the saved value changes
 - **AND** saving an empty string restores fresh adaptive calibration
 - **AND** installation does not create or overwrite the optional preference
 
@@ -144,7 +144,7 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 #### Scenario: Fresh Box filament retains vendor ownership
 - **WHEN** the Box is enabled and retained reuse is not proven
 - **THEN** start delegates feeder, cutter, retry, runout, RFID, and vendor cleaning ownership to the Box stack
-- **AND** optimized purge cleanup runs before a full-width cable-chain orientation traverse and rear scraping across the stock Y395–Y397 footprint
+- **AND** Valve Oil purge cleanup runs before a full-width cable-chain orientation traverse and rear scraping across the stock Y395–Y397 footprint
 
 #### Scenario: External spool avoids Box-only actions
 - **WHEN** the Box is unavailable or disabled
@@ -168,7 +168,7 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **AND** a print that ends before anything extrudes puts nothing back, and G0 through G3 go straight to Klipper again either way
 
 ### Requirement: Optional minimum chamber startup temperature
-Optimized print start SHALL accept a chamber startup minimum independently of the chamber heating target, with compatible slicer G-code for OrcaSlicer 2.4.2 and later.
+Valve Oil's print start SHALL accept a chamber startup minimum independently of the chamber heating target, with compatible slicer G-code for OrcaSlicer 2.4.2 and later.
 
 #### Scenario: Positive minimum releases startup while heating continues
 - **WHEN** OrcaSlicer start G-code supplies a positive minimum from the initial tool's filament profile
@@ -183,7 +183,7 @@ Optimized print start SHALL accept a chamber startup minimum independently of th
 - **AND** existing sliced files and QIDI Studio starts retain their established behavior
 
 #### Scenario: Updated slicer G-code remains usable with older macros
-- **WHEN** updated OrcaSlicer start G-code runs against older optimized macros
+- **WHEN** updated OrcaSlicer start G-code runs against older Valve Oil macros
 - **THEN** the optional minimum parameter is ignored and the established chamber wait remains active
 
 #### Scenario: Minimum applies to staggered heating
@@ -216,11 +216,11 @@ Optimized print start SHALL accept a chamber startup minimum independently of th
 - **THEN** the fan speed changes and no warning is printed
 
 ### Requirement: Filament and QIDI Box state lifecycle
-Optimized macros SHALL keep external-spool runout policy independent from vendor Box recovery, retain filament only when the saved preference equals `1` and physical Box state is provable, and normalize tool mappings only at safe lifecycle boundaries. Box-dependent behavior SHALL use one transport-independent Box-availability definition.
+Valve Oil's macros SHALL keep external-spool runout policy independent from vendor Box recovery, retain filament only when the saved preference equals `1` and physical Box state is provable, and normalize tool mappings only at safe lifecycle boundaries. Box-dependent behavior SHALL use one transport-independent Box-availability definition.
 
 #### Scenario: Box availability is transport-independent
 - **WHEN** a QIDI Box is attached through either the legacy USB configuration or the RS-485 Box stack
-- **THEN** optimized start, retention, unload, cleanup, runout, and resume paths take their Box branches
+- **THEN** Valve Oil start, retention, unload, cleanup, runout, and resume paths take their Box branches
 - **AND** with no attached Box they take their non-Box branches even though firmware always loads Box controller objects
 
 #### Scenario: External runout pause is independently switchable
@@ -244,9 +244,9 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 
 #### Scenario: Absent runtime preference disables retention
 - **WHEN** `vo_keep_loaded_between_prints` is absent from Klipper saved variables or does not equal `1`
-- **THEN** normal optimized print completion clears retained-filament state and delegates cutting and unloading to the existing QIDI Box sequence
+- **THEN** normal Valve Oil print completion clears retained-filament state and delegates cutting and unloading to the existing QIDI Box sequence
 - **AND** runout sensors are disabled before the intentional end-of-print unload so it cannot pause the remaining shutdown routine
-- **AND** optimized print start does not reuse retained filament
+- **AND** Valve Oil print start does not reuse retained filament
 
 #### Scenario: Retention follows the synchronized physical slot
 - **WHEN** `vo_keep_loaded_between_prints` equals `1`
@@ -256,7 +256,7 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 
 #### Scenario: Retention preference is operator-controlled
 - **WHEN** the operator saves `1` or `0` to `vo_keep_loaded_between_prints`
-- **THEN** subsequent optimized starts and normal completions respectively enable or disable retention until the saved value changes
+- **THEN** subsequent Valve Oil starts and normal completions respectively enable or disable retention until the saved value changes
 - **AND** installation initializes an absent preference to `1` and does not overwrite an existing value
 
 #### Scenario: Start repairs only missing active mappings
@@ -290,30 +290,30 @@ Optimized macros SHALL keep external-spool runout policy independent from vendor
 - **AND** any client that sets whether to use the Box in the meantime keeps its choice
 
 ### Requirement: Safe print transitions and helpers
-Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL preserve caller state, guard optional hardware, and avoid delayed or error-path actions that can affect a later print. Print-start cleaning SHALL keep staged cooldown wiping with mixed-speed pre-scrape motion and fast finishing after the cooled rear-bed scrape, as ordered by `openspec/contracts/gcode-paths/start-print.path.json`. Chute wipes SHALL release waste with package-owned motion, not vendor cleanup commands.
+Valve Oil's cut, purge, cooldown, cleaning, calibration, and cancel helpers MUST preserve caller state, guard optional hardware, and avoid delayed or error-path actions that can affect a later print. Print-start cleaning SHALL keep staged cooldown wiping with mixed-speed pre-scrape motion and fast finishing after the cooled rear-bed scrape, as ordered by `openspec/contracts/gcode-paths/start-print.path.json`. Chute wipes SHALL release waste with package-owned motion, not vendor cleanup commands.
 
 #### Scenario: Cut and cleanup preserve caller state
-- **WHEN** optimized cut, purge, chute, chamber, or Box-heater helpers run
+- **WHEN** Valve Oil cut, purge, chute, chamber, or Box-heater helpers run
 - **THEN** motion modes, extrusion modes, and temporary acceleration are restored
 - **AND** optional Box objects are called only when available and valid
 - **AND** fixed waits are reduced without replacing required motion completion waits
 
 #### Scenario: Slicer filament change avoids a double cut on every firmware
-- **WHEN** an optimized slicer filament change runs
-- **THEN** exactly one cut occurs: the optimized cut when the vendor tool-change flow is absent, or the vendor flow's cut when it is present
+- **WHEN** a Valve Oil slicer filament change runs
+- **THEN** exactly one cut occurs: Valve Oil's cut when the vendor tool-change flow is absent, or the vendor flow's cut when it is present
 - **AND** when the vendor flow is present, the toolhead goes from the print to the cutter without first visiting the chute; the vendor flow moves to the chute after cutting
-- **AND** the optimized macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
+- **AND** Valve Oil's macros recognize a slicer filament change from print state, so slicer G-code passes no tool-change parameter
 - **AND** the same slicer G-code remains correct with older supported firmware
 
 #### Scenario: Slicer filament change that keeps the loaded Box slot skips the reheat
-- **WHEN** an optimized slicer filament change runs during a print under the vendor tool-change flow
+- **WHEN** a Valve Oil slicer filament change runs during a print under the vendor tool-change flow
 - **AND** the Box slot loaded before the change is still loaded, with filament at the toolhead, when the slicer's filament-change heat wait runs
 - **THEN** the nozzle returns to its pre-change target instead of waiting at the filament-change temperature
 - **AND** the chute visit, purge, wipe, and the slicer's later temperature commands run unchanged
 - **AND** a change that loads another slot, a direct-feed spool change, a stale record from an earlier change, and older firmware keep the slicer's heat wait
 
-#### Scenario: Optimized cut keeps the vendor reliability sequence
-- **WHEN** the optimized filament cut or the stock-named cutter macro used by vendor flows runs
+#### Scenario: Valve Oil's cut keeps the vendor reliability sequence
+- **WHEN** Valve Oil's filament cut or the stock-named cutter macro used by vendor flows runs
 - **THEN** the extruder stepper is released and allowed to settle before the cutter strike
 - **AND** the cutter approach, strike, and post-cut retraction match the newest supported stock cut sequence
 - **AND** only the stock idle dwell after the toolhead leaves the cutter is omitted
@@ -331,20 +331,20 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **AND** waste-release positioning completes before leveling
 - **AND** unavailable vendor cleanup objects are not called
 
-#### Scenario: Optimized cleanup uses fast non-extruding silicone wipes
+#### Scenario: Valve Oil's cleanup uses fast non-extruding silicone wipes
 - **WHEN** retained-filament startup, non-start purge cleanup, unload cleanup, or staged end cleanup reaches an existing silicone-wiper pass
 - **THEN** it retains four back-and-forth finishing cycles at commanded 200 mm/s and its existing exit motion
 - **AND** no mixed-speed pre-scrape pattern is substituted into these unrelated cleanup paths
 
 #### Scenario: Wipe motion preserves state and unrelated cleanup
-- **WHEN** either optimized wipe pattern executes with the nozzle already positioned at the rear wiper
+- **WHEN** either Valve Oil wipe pattern executes with the nozzle already positioned at the rear wiper
 - **THEN** it preserves caller motion and extrusion modes, feed settings, and acceleration
 - **AND** the wipe itself performs no extrusion, Y/Z repositioning, heater changes, fixed dwell, or bed scraping
 - **AND** retained-filament startup, non-start purge cleanup, manual loading, unload cleanup, staged end cleanup, vendor cleanup commands, and slicer filament-change sequences retain their existing behavior
 - **AND** retained-filament startup does not gain a rear-bed scrape or post-scrape sequence
 
 #### Scenario: Chute waste release does not depend on vendor cleanup commands
-- **WHEN** an optimized chute wipe finishes
+- **WHEN** a Valve Oil chute wipe finishes
 - **THEN** the toolhead leaves the chute and re-enters it at the trash position so the waste drops
 - **AND** vendor `CLEAR_FLUSH` and `CLEAR_OOZE` are not called, so the release still happens on firmware that removes them
 - **AND** caller motion modes and acceleration are restored
@@ -357,12 +357,12 @@ Optimized cut, purge, cooldown, cleaning, calibration, and cancel helpers SHALL 
 - **AND** OrcaSlicer applies the configured completion exhaust only when the last filament has both air filtration and its on-completion option on, while QIDI Studio passes zero and omits unsupported indexed completion-air placeholders
 
 #### Scenario: Error cancellation is motion-free
-- **WHEN** optimized error cancellation executes
+- **WHEN** Valve Oil error cancellation executes
 - **THEN** heaters, fans, optional Box heat, pause state, and print state are cleaned up before base cancellation
 - **AND** no parking, wiping, or other toolhead motion occurs
 
 #### Scenario: Operator helpers remain guarded and available
-- **WHEN** optimized macros load
+- **WHEN** Valve Oil macros load
 - **THEN** supported bed-screw, probe-accuracy, mapping-reset, and startup reporting helpers are available
 - **AND** each helper validates required printer state and hardware bounds before acting
 
@@ -384,11 +384,11 @@ A paused print's idle timeout SHALL be the hours in the `vo_pause_timeout_hours`
 - **THEN** only QIDI's idle G-code runs
 
 ### Requirement: Firmware and vendor compatibility surfaces
-Optimized configuration SHALL preserve firmware-scoped peripheral ownership, stock integration names, and fan-failure safety while applying guarded hardware optimizations.
+Valve Oil's configuration SHALL preserve firmware-scoped peripheral ownership, stock integration names, and fan-failure safety while applying guarded hardware optimizations.
 
 #### Scenario: Polar cooler ownership remains firmware-compatible
 - **WHEN** firmware uses the direct polar-cooler output
-- **THEN** optimized pause and resume do not change its state or recreate removed smart-pin objects
+- **THEN** Valve Oil pause and resume do not change its state or recreate removed smart-pin objects
 - **AND** existing direct control remains available to approved start, cooling, end, and cancellation paths
 
 #### Scenario: Hotend fan sampling preserves protection
@@ -398,7 +398,7 @@ Optimized configuration SHALL preserve firmware-scoped peripheral ownership, sto
 - **AND** uninstall restores the owned firmware preimage while preserving user drift
 
 #### Scenario: Electronics temperatures are exposed without modifying Fluidd
-- **WHEN** optimized configuration is installed
+- **WHEN** Valve Oil configuration is installed
 - **THEN** Moonraker and Fluidd receive temperature sensors named `AP_Board_SOC`, `Toolhead_MCU`, and `Mainboard_MCU`
 - **AND** the AP-board sensor reads the Linux SoC thermal zone
 - **AND** the toolhead sensor reads the THR MCU internal sensor
@@ -406,15 +406,15 @@ Optimized configuration SHALL preserve firmware-scoped peripheral ownership, sto
 - **AND** the approximate mainboard sensor is observational and uses broad bounds so normal readings do not trigger a machine shutdown
 
 #### Scenario: Stock integration surfaces remain intact
-- **WHEN** optimized configuration is installed
+- **WHEN** Valve Oil configuration is installed
 - **THEN** stock-named macros required by QIDI software remain available
 - **AND** the active vendor Box stack and vendor command names are not redefined
 - **AND** stock tool-selection macros and Box transport sections, including `T0`–`T15`, `[box485]`, and `[box2base]` where firmware provides them, are neither redefined nor retuned
-- **AND** optimized filament-change and unload paths invoke only commands the detected firmware registers
+- **AND** Valve Oil filament-change and unload paths invoke only commands the detected firmware registers
 - **AND** `config/fluidd.cfg` and unproven externally consumed stock globals remain unmodified
 
 ### Requirement: Optional staggered print-start heating
-Optimized configuration SHALL provide a default-disabled print-start mode that orders requested heater warm-up as bed, chamber, then nozzle, applies a configurable non-negative dwell between active stages, and preserves the existing start entrypoint for previously installed slicer G-code.
+Valve Oil's configuration SHALL provide a default-disabled print-start mode that orders requested heater warm-up as bed, chamber, then nozzle, applies a configurable non-negative dwell between active stages, and preserves the existing start entrypoint for previously installed slicer G-code.
 
 #### Scenario: Default startup behavior remains compatible
 - **WHEN** staggered heating is disabled or not configured
@@ -426,7 +426,7 @@ Optimized configuration SHALL provide a default-disabled print-start mode that o
 - **THEN** the requested bed reaches its startup wait threshold and the configured dwell completes before requested chamber heating begins
 - **AND** the requested chamber reaches its startup wait threshold and the configured dwell completes before nozzle heating begins
 - **AND** the inter-stage dwell defaults to 10 seconds
-- **AND** saved enablement and dwell overrides survive optimized installer updates
+- **AND** saved enablement and dwell overrides survive Valve Oil installer updates
 - **AND** homing and subsequent print preparation retain their established probing-temperature and safety behavior
 
 #### Scenario: Zero dwell retains ordered activation
@@ -436,7 +436,7 @@ Optimized configuration SHALL provide a default-disabled print-start mode that o
 
 #### Scenario: Prior slicer G-code uses active targets
 - **WHEN** staggered heating is enabled and prior slicer G-code establishes bed and chamber targets before invoking the start entrypoint without temperature arguments
-- **THEN** the optimized start derives the requested stages from the active targets
+- **THEN** Valve Oil's start derives the requested stages from the active targets
 - **AND** assumes ordered heater control without rejecting the prior invocation
 
 #### Scenario: Unrequested heater stages are skipped
@@ -445,7 +445,7 @@ Optimized configuration SHALL provide a default-disabled print-start mode that o
 - **AND** the remaining requested stages retain bed-before-chamber-before-nozzle order
 
 ### Requirement: Operator-configurable QIDI Box feed motion
-Optimized configuration SHALL let operators set the QIDI Box hub push and park speeds, the load fast distance, fast and approach speeds, and acceleration, and the unload speeds and acceleration, in Klipper saved variables. Where QIDI's Box code loads and unloads in stages, as on the Max 4, the fast, approach, and unload settings SHALL also be settable per slot. It SHALL keep vendor motion when settings are absent, invalid, or unsupported. Hot phases and flow control SHALL remain vendor-owned.
+Valve Oil's configuration SHALL let operators set the QIDI Box hub push and park speeds, the load fast distance, fast and approach speeds, and acceleration, and the unload speeds and acceleration, in Klipper saved variables. Where QIDI's Box code loads and unloads in stages, as on the Max 4, the fast, approach, and unload settings SHALL also be settable per slot. It SHALL keep vendor motion when settings are absent, invalid, or unsupported. Hot phases and flow control SHALL remain vendor-owned.
 
 #### Scenario: Absent settings keep vendor motion
 - **WHEN** no feed-motion settings are saved
@@ -510,7 +510,7 @@ The feed-motion integration SHALL publish its effective per-slot motion as Klipp
 - **THEN** it reports whether the integration is active, the global settings, their bounds, and for each slot its overrides, the load and unload profile its next operation would use, and why a profile falls back to vendor motion
 
 ### Requirement: QIDI Box eject without an unneeded toolhead park
-Optimized configuration SHALL keep the toolhead still during a QIDI Box eject that the vendor runs as its eject step alone, and SHALL leave the rest of that eject and every other vendor Box flow unchanged.
+Valve Oil's configuration SHALL keep the toolhead still during a QIDI Box eject that the vendor runs as its eject step alone, and SHALL leave the rest of that eject and every other vendor Box flow unchanged.
 
 #### Scenario: A Box-only eject leaves the toolhead alone
 - **WHEN** the vendor runs an eject as its eject step alone, such as with the Box hub clear
@@ -526,7 +526,7 @@ Optimized configuration SHALL keep the toolhead still during a QIDI Box eject th
 - **THEN** its G-code runs unchanged
 
 ### Requirement: Unknown QIDI Box filament IDs do not shut Klipper down
-Optimized configuration SHALL let a QIDI Box load, unload, or swap proceed when a saved filament ID is missing from the vendor filament database, using QIDI PLA Basic (`QFA00`) temperatures for that ID as the vendor does for saved IDs that are not strings, and SHALL refuse an external-spool filament update whose filament and vendor the database does not know, as the vendor does for a Box slot.
+Valve Oil's configuration SHALL let a QIDI Box load, unload, or swap proceed when a saved filament ID is missing from the vendor filament database, using QIDI PLA Basic (`QFA00`) temperatures for that ID as the vendor does for saved IDs that are not strings, and SHALL refuse an external-spool filament update whose filament and vendor the database does not know, as the vendor does for a Box slot.
 
 #### Scenario: A saved filament ID the database doesn't know
 - **WHEN** a Box operation compares the temperatures of a saved filament ID that is missing from the vendor filament database, such as `filament_slot16 = 'None'`
@@ -551,7 +551,7 @@ Optimized configuration SHALL let a QIDI Box load, unload, or swap proceed when 
 - **THEN** the corresponding vendor behavior is unchanged
 
 ### Requirement: QIDI Box unload of hub filament with no recorded slot
-Optimized configuration SHALL record which QIDI Box slot's own motion brought filament to the Box hub sensor, so that record survives a Box disconnect or Klipper restart. When the vendor Box unload would refuse because filament is at the hub while `last_load_slot` is `slot16` or missing, it SHALL log the Box state to `klippy.log` and SHALL name the hub's slot only from that record or from the only slot holding filament, never by guessing among several.
+Valve Oil's configuration SHALL record which QIDI Box slot's own motion brought filament to the Box hub sensor, so that record survives a Box disconnect or Klipper restart. When the vendor Box unload would refuse because filament is at the hub while `last_load_slot` is `slot16` or missing, it SHALL log the Box state to `klippy.log` and SHALL name the hub's slot only from that record or from the only slot holding filament, never by guessing among several.
 
 #### Scenario: A slot motion brings filament to the hub
 - **WHEN** a slot's own motion starts with the hub sensor clear and ends with filament at it, such as the automatic slot load on insertion or a load
@@ -578,7 +578,7 @@ Optimized configuration SHALL record which QIDI Box slot's own motion brought fi
 - **THEN** the vendor unload runs unchanged
 
 ### Requirement: Manual QIDI Box slot jog
-Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is printing or a vendor Box task is moving. It SHALL run while a print is paused and while a vendor Box task is paused at a failed step.
+Valve Oil's configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is printing or a vendor Box task is moving. It SHALL run while a print is paused and while a vendor Box task is paused at a failed step.
 
 #### Scenario: An idle jog
 - **WHEN** the printer is idle and the command names a configured slot, a distance, and optionally a speed
@@ -604,7 +604,7 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **AND** the console reports an error that says to run `FIRMWARE_RESTART` before using the Box
 
 ### Requirement: Filament cut with the nozzle cold
-Optimized configuration SHALL provide a console command that cuts the filament at the toolhead with the optimized cutter sequence at any nozzle temperature, without changing the heater, and SHALL refuse it while a print is running or paused or a vendor Box task is running or paused. While the cut runs, Klipper's cold-extrusion check SHALL let extruder retracts through and SHALL still refuse extrusion below `min_extrude_temp`; outside the cut the check SHALL be unchanged.
+Valve Oil's configuration SHALL provide a console command that cuts the filament at the toolhead with Valve Oil's cutter sequence at any nozzle temperature, without changing the heater, and SHALL refuse it while a print is running or paused or a vendor Box task is running or paused. While the cut runs, Klipper's cold-extrusion check SHALL let extruder retracts through and SHALL still refuse extrusion below `min_extrude_temp`; outside the cut the check SHALL be unchanged.
 
 #### Scenario: A cut with the nozzle cold
 - **WHEN** the printer is idle and the nozzle is below `min_extrude_temp`
@@ -621,10 +621,10 @@ Optimized configuration SHALL provide a console command that cuts the filament a
 - **THEN** the command refuses without moving, and the console says why
 
 ### Requirement: Cuts never stop at the cutter
-The optimized cut and the stock-named cutter macro SHALL let their post-cut retract through the cold-extrusion check as the cold-cut command does, wherever they run, and SHALL move the toolhead off the cutter when a cut ends with an error.
+Valve Oil's cut and the stock-named cutter macro SHALL let their post-cut retract through the cold-extrusion check as the cold-cut command does, wherever they run, and SHALL move the toolhead off the cutter when a cut ends with an error.
 
 #### Scenario: Any cut with the nozzle cold
-- **WHEN** the optimized cut or the stock-named cutter macro runs, by hand, while a print is paused, in a filament change, or in a vendor Box flow, with the nozzle below `min_extrude_temp`
+- **WHEN** Valve Oil's cut or the stock-named cutter macro runs, by hand, while a print is paused, in a filament change, or in a vendor Box flow, with the nozzle below `min_extrude_temp`
 - **THEN** its post-cut retract passes the cold-extrusion check as during the cold-cut command, and extrusion below `min_extrude_temp` is still refused
 
 #### Scenario: A cut that ends with an error
@@ -632,7 +632,7 @@ The optimized cut and the stock-named cutter macro SHALL let their post-cut retr
 - **THEN** the toolhead still moves off the cutter to the cut's normal exit position before the error is reported
 
 ### Requirement: QIDI Box unload and eject with the nozzle cold
-Optimized configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
+Valve Oil's configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` with `COLD=1`, while no print is running or paused, run the vendor Box flow without heating the hotend, when that flow consists only of Box heat, cut, unload, and eject steps. Its extruder retracts SHALL pass the cold-extrusion check as during a cold cut, extrusion below `min_extrude_temp` SHALL still be refused, and without `COLD=1` the commands SHALL be unchanged.
 
 #### Scenario: A cold unload or eject
 - **WHEN** a Box unload or eject runs with `COLD=1` and the nozzle below `min_extrude_temp`
@@ -652,7 +652,7 @@ Optimized configuration SHALL let `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_
 - **THEN** the command refuses without moving, and the console says why
 
 ### Requirement: QIDI Box flow stop
-Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
+Valve Oil's configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or the vendor's flow-stop endpoint, end the flow and return without blocking later G-code, SHALL turn the hotend off after stopping a flow only when no print is running or paused, and SHALL leave `FLOW_RETRY` unchanged. A vendor Box flow step that raises an error instead of failing SHALL leave the flow paused on that step, as a failed step does, so `FLOW_RETRY` and `FLOW_STOP` apply.
 
 #### Scenario: Stopping a paused flow while idle
 - **WHEN** `FLOW_STOP` runs while a vendor Box flow is paused at a failed step and no print is running or paused
@@ -678,7 +678,7 @@ Optimized configuration SHALL let a vendor Box flow stop, from `FLOW_STOP` or th
 - **AND** `FLOW_RETRY` reruns the step and `FLOW_STOP` ends the flow as for any paused flow
 
 ### Requirement: QIDI Box filament stranded between the hub and the toolhead
-When the USB Box hub sensor detects filament, the toolhead filament sensor does not, and no print is running or paused, optimized configuration SHALL make `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` of the hub's slot pull that slot's filament back until the hub sensor clears, without heating the hotend and after stopping a paused vendor Box flow. Whenever neither the vendor command nor this recovery would move filament, the console SHALL say why.
+When the USB Box hub sensor detects filament, the toolhead filament sensor does not, and no print is running or paused, Valve Oil configuration SHALL make `UNLOAD_FILAMENT_CONTROL` and `EJECT_FILAMENT_CONTROL` of the hub's slot pull that slot's filament back until the hub sensor clears, without heating the hotend and after stopping a paused vendor Box flow. Whenever neither the vendor command nor this recovery would move filament, the console SHALL say why.
 
 #### Scenario: Naming the hub's slot
 - **WHEN** an unload or eject runs in that state
@@ -712,7 +712,7 @@ When the USB Box hub sensor detects filament, the toolhead filament sensor does 
 - **THEN** the vendor command runs unchanged, except that an unload with nothing past the hub does not run, as above, and an unload of stranded filament during a print does not run and the console says to resume or cancel the print first
 
 ### Requirement: QIDI Box tool change only during a print
-Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead. During a print, a vendor tool-change step that raises an error instead of failing SHALL pause the tool-change flow on that step and pause the print, as a failed step does, unless Klipper has shut down.
+Valve Oil's configuration SHALL run the vendor tool change, `T_MANAGER` as called by `T0`–`T15`, only while a print is running or paused. Otherwise it SHALL move nothing and the console SHALL say how to load a slot instead. During a print, a vendor tool-change step that raises an error instead of failing SHALL pause the tool-change flow on that step and pause the print, as a failed step does, unless Klipper has shut down.
 
 #### Scenario: Tool change outside a print
 - **WHEN** `T<n>` or `T_MANAGER T=<n>` runs with no print running or paused
@@ -732,7 +732,7 @@ Optimized configuration SHALL run the vendor tool change, `T_MANAGER` as called 
 - **THEN** the print pauses as above, and the console names the slot that ran out, says `RESUME` loads the new tool's slot, and says to put filament in the slot that ran out before the print needs it again
 
 ### Requirement: QIDI Box unload with filament caught at the toolhead
-Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor unload's pull-back, its first two extruder pulls, while the toolhead sensor detects filament. When the vendor asks for another pull with the sensor still detecting filament, the unload SHALL stop before the Box pulls, with an error that names the slot, says how far the extruder pulled, and says why it stopped.
+Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendor unload's pull-back, its first two extruder pulls, while the toolhead sensor detects filament. When the vendor asks for another pull with the sensor still detecting filament, the unload SHALL stop before the Box pulls, with an error that names the slot, says how far the extruder pulled, and says why it stopped.
 
 #### Scenario: The sensor clears within two pulls
 - **WHEN** the toolhead sensor clears during the pull-back or within 20 mm past it
@@ -761,7 +761,7 @@ Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor 
 - **THEN** the unload stops once those pulls reach 20 mm with the sensor still detecting filament, the same as with 10 mm pulls
 
 ### Requirement: QIDI Box slot step clock before an unload's pull-back
-Optimized configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with auto-feed aborted again, all moves finished, and the slot idle, wherever the vendor Box code has auto-feed and that unload path.
+Valve Oil's configuration SHALL reset a Box slot motor's step clock, as a homing move does, after the vendor unload from the toolhead has stopped auto-feed and before it ties the slot to the extruder for the pull-back, with auto-feed aborted again, all moves finished, and the slot idle, wherever the vendor Box code has auto-feed and that unload path.
 
 #### Scenario: Auto-feed left the slot's step clock off
 - **WHEN** print start re-armed auto-feed while a feed was running, so the Box kept a step clock for the slot that is off from Klipper's
@@ -772,7 +772,7 @@ Optimized configuration SHALL reset a Box slot motor's step clock, as a homing m
 - **THEN** the reset happens once, before the first pull-back, and `klippy.log` says so, and the vendor's tie to the extruder and pull-backs then run unchanged
 
 ### Requirement: Filament changes and pauses move inside cancelled parts
-Optimized configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
+Valve Oil's configuration SHALL let moves through Klipper's object exclusion during a print from `TOOL_CHANGE_START` to `TOOL_CHANGE_END`, while the vendor tool change `T_MANAGER` runs, and while the print is paused, on every printer and whatever slicer wrote the file. A cancelled part's own lines outside those times SHALL still be dropped.
 
 #### Scenario: Filament change inside a cancelled part
 - **WHEN** a print reaches `TOOL_CHANGE_START` while inside a cancelled part, after the slicer's lift was dropped
@@ -800,7 +800,7 @@ When parts were cancelled before a power loss, optimized configuration SHALL, af
 - **THEN** the rest of the filament change moves the toolhead and extruder, and the cancelled part's lines after `TOOL_CHANGE_END` are dropped
 
 ### Requirement: Spoolman spools follow the loaded QIDI Box slot
-Optimized configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
+Valve Oil's configuration SHALL keep an operator-assigned Spoolman spool for each QIDI Box slot and the external spool, and SHALL make the loaded slot's spool Moonraker's active spool whenever the slot recorded as loaded changes.
 
 #### Scenario: A slot is loaded
 - **WHEN** at least one slot has a spool and the slot recorded as loaded changes
@@ -821,7 +821,7 @@ Optimized configuration SHALL keep an operator-assigned Spoolman spool for each 
 - **AND** without parameters the command lists the assignments and the loaded slot, and names a missing Moonraker Spoolman connection
 
 ### Requirement: QIDI Box processor temperature
-Optimized configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
+Valve Oil's configuration SHALL provide a temperature sensor named `BoxN_MCU` for the processor of each USB QIDI Box Klipper is configured with, numbered as that Box's MCU, and none when no Box is configured. These sensors SHALL set no temperature limits.
 
 #### Scenario: One sensor per configured Box
 - **WHEN** Klipper starts with zero to four USB Boxes configured
@@ -847,7 +847,7 @@ The optional QIDI Box link monitor SHALL stay inert until its saved variable ena
 - **THEN** no monitor log is written and printing is unaffected
 
 ### Requirement: X/Y top speed within each motor's limit
-On the Max 4, the toolhead top speed SHALL keep every CoreXY motor at or below 800 mm/s of belt in any direction: `max_velocity`, Z tilt `speed`, and bed mesh `speed` SHALL be at most 565 mm/s, optimized macros and guarded speed patches SHALL not move X/Y faster than that, and `SET_VELOCITY_LIMIT VELOCITY=` SHALL not raise the limit above the configured `max_velocity`.
+On the Max 4, the toolhead top speed SHALL keep every CoreXY motor at or below 800 mm/s of belt in any direction: `max_velocity`, Z tilt `speed`, and bed mesh `speed` SHALL be at most 565 mm/s, Valve Oil macros and guarded speed patches SHALL not move X/Y faster than that, and `SET_VELOCITY_LIMIT VELOCITY=` SHALL not raise the limit above the configured `max_velocity`.
 
 #### Scenario: Top speed and probing travel are capped
 - **WHEN** install or update finds `max_velocity` at QIDI's 800, Z tilt or bed mesh `speed` at QIDI's 150 or this project's earlier 600, or any of them above 565, including an operator's own value
@@ -937,7 +937,7 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 - **THEN** the guard sends the drivers nothing and homing behaves as without it
 
 ### Requirement: QIDI RS-485 device evidence
-The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.
+Valve Oil's configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.
 
 #### Scenario: Printer without RS-485 hardware
 - **WHEN** no RS-485 adapter, device, or saved RS-485 Box id is present
@@ -949,7 +949,7 @@ The optimized configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, 
 - **THEN** every frame in both directions is recorded with its time, address, command, and payload, identical repeats are counted rather than repeated, and the console asks once for an issue with the report and log
 
 ### Requirement: QIDI RS-485 code stays off Klipper MCU ports
-The optimized configuration SHALL keep QIDI's RS-485 code from opening a serial port that belongs to a Klipper MCU, and SHALL say in the console how to fix `[box485] serial_port`.
+Valve Oil's configuration SHALL keep QIDI's RS-485 code from opening a serial port that belongs to a Klipper MCU, and SHALL say in the console how to fix `[box485] serial_port`.
 
 #### Scenario: `[box485]` points at a Klipper MCU
 - **WHEN** `[box485] serial_port` resolves to the port of a configured `[mcu]` or names a Klipper USB device
@@ -963,10 +963,10 @@ QIDI's `Can not find 485 device` SHALL reach `klippy.log` at most once an hour, 
 - **THEN** `klippy.log` gains one `Can not find 485 device` line an hour, the later ones with a repeat count
 
 ### Requirement: Print-start mesh save does not block Klipper
-When optimized print start calibrates a fresh adaptive mesh, it SHALL save the pending configuration to `printer.cfg` for power-loss recovery without blocking Klipper's main thread for the read, parse, and write. The saved file SHALL match what QIDI's `SAVE_CONFIG_QD` writes for the same pending values, `printer.cfg` SHALL exist at every moment of the save, and `SAVE_CONFIG` or `SAVE_CONFIG_QD` issued during the save SHALL wait for it to finish.
+When Valve Oil print start calibrates a fresh adaptive mesh, it SHALL save the pending configuration to `printer.cfg` for power-loss recovery without blocking Klipper's main thread for the read, parse, and write. The saved file SHALL match what QIDI's `SAVE_CONFIG_QD` writes for the same pending values, `printer.cfg` SHALL exist at every moment of the save, and `SAVE_CONFIG` or `SAVE_CONFIG_QD` issued during the save SHALL wait for it to finish.
 
 #### Scenario: Fresh mesh saved in the background
-- **WHEN** optimized print start calibrates a fresh `kamp` mesh
+- **WHEN** Valve Oil print start calibrates a fresh `kamp` mesh
 - **THEN** the mesh and `profile_name` are saved for power-loss recovery
 - **AND** print start continues while the file is written, with no Klipper stall from the save
 
@@ -987,7 +987,7 @@ With the root filesystem mounted without `sync`, `SAVE_CONFIG` and `SAVE_CONFIG_
 - **THEN** `printer.cfg` holds the new calibration after the next boot
 
 ### Requirement: Fast variable saves
-Optimized configuration SHALL make `SAVE_VARIABLE` and the vendor Box modules' own variable saves leave `saved_variables.cfg` and the saved values Klipper reports exactly as the vendor code would, without rewriting an unchanged file or re-reading it after a write. A completed write SHALL replace the file whole. Names and values whose round trip through the file is not exact SHALL use the vendor code unchanged.
+Valve Oil's configuration SHALL make `SAVE_VARIABLE` and the vendor Box modules' own variable saves leave `saved_variables.cfg` and the saved values Klipper reports exactly as the vendor code would, without rewriting an unchanged file or re-reading it after a write. A completed write SHALL replace the file whole. Names and values whose round trip through the file is not exact SHALL use the vendor code unchanged.
 
 #### Scenario: Unchanged value
 - **WHEN** `SAVE_VARIABLE` stores the value a variable already has, such as print end resetting retained-filament state that is already reset
@@ -1002,14 +1002,14 @@ Optimized configuration SHALL make `SAVE_VARIABLE` and the vendor Box modules' o
 - **THEN** only saves that change the file write it, and the file and saved values match what the vendor save produces, including a mixed-case name such as `BOX_DRYING_ROLL_ENABLE`
 
 ### Requirement: Earlier command names
-Optimized configuration SHALL answer to the `TLTG_` and `OPTIMIZED_` names its commands and print macros had before 26.11.18.2 by running the `VO_` command each became and saying the new name, unless another command already has the earlier name or the printer lacks the new command. The `OPTIMIZED_` macros the slicer packs call SHALL keep their names.
+Valve Oil's configuration SHALL answer to the `TLTG_` and `OPTIMIZED_` names its commands and print macros had before 26.11.18.2 by running the `VO_` command each became and saying the new name, unless another command already has the earlier name or the printer lacks the new command. The `OPTIMIZED_` macros the slicer packs call SHALL keep their names.
 
 #### Scenario: Earlier command name
 - **WHEN** an operator, macro button, or vendor-file patch runs `TLTG_BED_SOAK BED=60`
 - **THEN** `VO_BED_SOAK BED=60` runs and the console says `TLTG_BED_SOAK is now VO_BED_SOAK.`
 
 ### Requirement: Earlier saved-variable names
-When Klipper starts, optimized configuration SHALL save each saved variable named `tltg_<name>` whose `vo_<name>` is not saved under `vo_<name>` with the same value, and SHALL keep the `tltg_` variable.
+When Klipper starts, Valve Oil configuration SHALL save each saved variable named `tltg_<name>` whose `vo_<name>` is not saved under `vo_<name>` with the same value, and SHALL keep the `tltg_` variable.
 
 #### Scenario: Settings from an earlier release
 - **WHEN** Klipper starts with `tltg_keep_loaded_between_prints = 0` saved and no `vo_keep_loaded_between_prints`
@@ -1020,7 +1020,7 @@ When Klipper starts, optimized configuration SHALL save each saved variable name
 - **THEN** neither is changed
 
 ### Requirement: QIDI Box heater refresh
-Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged output at most about one second after the last one it sent, so that a Klipper main-loop stall of up to about three seconds does not let the Box MCU's 5 s heater limit expire. Other heaters, heater limits, and heater verification SHALL be unchanged.
+Valve Oil's configuration SHALL make each USB QIDI Box heater resend an unchanged output at most about one second after the last one it sent, so that a Klipper main-loop stall of up to about three seconds does not let the Box MCU's 5 s heater limit expire. Other heaters, heater limits, and heater verification SHALL be unchanged.
 
 #### Scenario: Steady Box heater through a host stall
 - **WHEN** a Box heater holds a steady output, including full power, and Klipper's main loop stalls for up to about three seconds
@@ -1031,7 +1031,7 @@ Optimized configuration SHALL make each USB QIDI Box heater resend an unchanged 
 - **THEN** it is resent on Klipper's normal schedule
 
 ### Requirement: QIDI Box heater switching speed
-Optimized configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_time` set the PWM cycle time of every USB QIDI Box heater, from 0.01 s to 0.1 s and no longer than the heater sensor's report time, taking effect when Klipper next configures the Box MCUs. Without the variable, or with any other value, Box heaters SHALL keep QIDI's 0.1 s. Other heaters SHALL be unchanged.
+Valve Oil's configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_time` set the PWM cycle time of every USB QIDI Box heater, from 0.01 s to 0.1 s and no longer than the heater sensor's report time, taking effect when Klipper next configures the Box MCUs. Without the variable, or with any other value, Box heaters SHALL keep QIDI's 0.1 s. Other heaters SHALL be unchanged.
 
 #### Scenario: Faster Box heater switching
 - **WHEN** `vo_box_heater_pwm_cycle_time` is `0.02` and Klipper restarts
@@ -1042,7 +1042,7 @@ Optimized configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_ti
 - **THEN** Box heaters keep a 0.1 s cycle and `klippy.log` says why for a value that was set
 
 ### Requirement: Turning empty QIDI Box slots' spools while the Box heats
-While a USB QIDI Box heater has a nonzero target and the saved variable `vo_box_spool_roll` is `1`, optimized configuration SHALL turn each empty slot of that Box back 25 mm at 20 mm/s every 300 s, one slot at a time, starting 300 s after the target is set. A slot is empty only when its saved vendor state is `0`, it is neither `slot_sync` nor `last_load_slot`, and its inlet sensor reads no filament. Turns SHALL NOT hold back or reorder toolhead motion.
+While a USB QIDI Box heater has a nonzero target and the saved variable `vo_box_spool_roll` is `1`, Valve Oil configuration SHALL turn each empty slot of that Box back 25 mm at 20 mm/s every 300 s, one slot at a time, starting 300 s after the target is set. A slot is empty only when its saved vendor state is `0`, it is neither `slot_sync` nor `last_load_slot`, and its inlet sensor reads no filament. Turns SHALL NOT hold back or reorder toolhead motion.
 
 #### Scenario: Box heat on during a print
 - **WHEN** a print runs from a Box slot with that Box's heater target set, and other slots of the Box hold spools with no filament fed
@@ -1059,7 +1059,7 @@ While a USB QIDI Box heater has a nonzero target and the saved variable `vo_box_
 - **AND** a motor the vendor Box code took during the turn stays enabled and gets its vendor kinematics back once the vendor's moves have run
 
 ### Requirement: Klipper main-loop health
-Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
+Valve Oil's configuration SHALL unregister the vendor Box load-cell timers (`_read_wei_timer`, `_init_probe_data_advance`) once they are stopped and the vendor object no longer holds them, and SHALL leave every other timer registered. It SHALL warn when Klipper's timers pile up or its main loop stays saturated, SHALL report Klipper's recent load when an endstop sync fails, and SHALL log MCU commands that Klipper sends too late to take effect on time.
 
 #### Scenario: Timers pile up or the main loop stays busy
 - **WHEN** Klipper's timer count grows 50 or more past its count a minute after starting, or its main thread stays at least 45% busy for five minutes
@@ -1091,7 +1091,7 @@ Optimized configuration SHALL unregister the vendor Box load-cell timers (`_read
 - **AND** the command is sent unchanged, and commands without a clock parameter are not checked
 
 ### Requirement: Macros read cheap printer facts
-Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `tltg_macro_status`, which SHALL report the values those objects gave.
+Valve Oil's macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.multi_color_controller`, or `printer.box_extras`, whose whole status Klipper copies on its main loop. They SHALL read Box availability, whether `T_MANAGER` is registered, the loaded slot, and the configured `max_accel` from `vo_macro_status`, which SHALL report the values those objects gave.
 
 #### Scenario: Filament change with a USB Box
 - **WHEN** a print's filament change and its temperature wait run
@@ -1106,14 +1106,14 @@ Optimized macros SHALL NOT read `printer.configfile`, `printer.gcode`, `printer.
 - **THEN** no Box is available, and without `multi_color_controller` the loaded slot is empty
 
 ### Requirement: Light status copies
-Optimized configuration SHALL copy `multi_color_controller`'s status, and each printer object's status a macro reads, without `copy.deepcopy` when it holds only plain dicts, lists, tuples, and values, and SHALL leave anything else to `copy.deepcopy`.
+Valve Oil's configuration SHALL copy `multi_color_controller`'s status, and each printer object's status a macro reads, without `copy.deepcopy` when it holds only plain dicts, lists, tuples, and values, and SHALL leave anything else to `copy.deepcopy`.
 
 #### Scenario: Box status for clients
 - **WHEN** Moonraker or a macro reads `multi_color_controller`'s status
 - **THEN** it receives the same values and types as with the vendor deep copy, unaffected by later vendor changes
 
 #### Scenario: Macro reads a printer object
-- **WHEN** a stock or optimized macro reads an object such as `printer.configfile` or `printer.toolhead`
+- **WHEN** a stock or Valve Oil macro reads an object such as `printer.configfile` or `printer.toolhead`
 - **THEN** it receives the same values and types as with Klipper's deep copy, and changing them does not change the object
 
 ### Requirement: Moonraker keeps running while its cloud MQTT connection is made
@@ -1152,7 +1152,7 @@ When a vendor config update turns LAN-only mode on (`general.lan_mode` `"1"`) wh
 - **THEN** the module leaves it unpatched and Moonraker's log says the fix was not applied
 
 ### Requirement: Upstream Klipper fixes
-Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
+Valve Oil's configuration SHALL apply upstream Klipper's fixes for homing endstop sync timing, MCU restart shutdowns, command waits on lost MCUs, TMC enable order, heater main-loop and stale-temperature checks, and concurrent timer runs, each only when the function it replaces matches the vendor original it was written for, and SHALL log which were applied and which were skipped.
 
 #### Scenario: Matching vendor Klipper
 - **WHEN** Klipper starts with the vendor functions these fixes were written for
@@ -1175,7 +1175,7 @@ Optimized configuration SHALL apply upstream Klipper's fixes for homing endstop 
 - **THEN** the callback is not started again until the paused run returns
 
 ### Requirement: Fan and pin requests stay within their MCU's reach
-When the vendor fan and output pin functions match their originals, optimized configuration SHALL queue `M106`, `M107`, `SET_FAN_SPEED`, and `SET_PIN` requests in upstream Klipper's G-code request queue and send each no earlier than 3 s before it takes effect, with the vendor fan and pin code still setting the pin. The fix is listed and skipped as the other upstream Klipper fixes are.
+When the vendor fan and output pin functions match their originals, Valve Oil configuration SHALL queue `M106`, `M107`, `SET_FAN_SPEED`, and `SET_PIN` requests in upstream Klipper's G-code request queue and send each no earlier than 3 s before it takes effect, with the vendor fan and pin code still setting the pin. The fix is listed and skipped as the other upstream Klipper fixes are.
 
 #### Scenario: Fan or pin request after a long move
 - **WHEN** `M106`, `M107`, `SET_FAN_SPEED`, or `SET_PIN` follows a move that ends more than 3 s ahead of the MCU
@@ -1191,7 +1191,7 @@ When the vendor fan and output pin functions match their originals, optimized co
 - **THEN** they are dropped unsent
 
 ### Requirement: Early stepper enables stay schedulable
-When the vendor stepper enable function matches the original that enables `ENABLE_DELAY_TIME` before a stepper's first step, optimized configuration SHALL schedule the enable at that time but no earlier than 20 ms after the later of the stepper MCU's estimated time and the enable pin's previous change, and no later than the first step. The enable callbacks, the pin, and the vendor `ENABLE delay` log line SHALL use that same time.
+When the vendor stepper enable function matches the original that enables `ENABLE_DELAY_TIME` before a stepper's first step, Valve Oil configuration SHALL schedule the enable at that time but no earlier than 20 ms after the later of the stepper MCU's estimated time and the enable pin's previous change, and no later than the first step. The enable callbacks, the pin, and the vendor `ENABLE delay` log line SHALL use that same time.
 
 #### Scenario: Klipper that enables at the first step
 - **WHEN** the vendor stepper enable has no `ENABLE_DELAY_TIME`, as on the Plus 5
@@ -1214,7 +1214,7 @@ When the vendor stepper enable function matches the original that enables `ENABL
 - **THEN** it is marked enabled and its callbacks receive the same scheduled time, and no pin change is sent
 
 ### Requirement: Cheaper status updates
-Optimized configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison. When Klipper can import `msgspec` and the vendor client send matches its original, Klipper SHALL encode what it sends Moonraker with `msgspec`.
+Valve Oil's configuration SHALL replace the vendor once-a-second status update pass, only when it matches the vendor original, with one that sends each subscriber the same updates while skipping objects whose status is the same object as in the previous pass and comparing `multi_color_controller` values natively before the vendor nested comparison. When Klipper can import `msgspec` and the vendor client send matches its original, Klipper SHALL encode what it sends Moonraker with `msgspec`.
 
 #### Scenario: Subscriber updates
 - **WHEN** Moonraker is subscribed and printer objects change between passes
@@ -1225,7 +1225,7 @@ Optimized configuration SHALL replace the vendor once-a-second status update pas
 - **THEN** that update is encoded with `json` as the vendor send does, and Klipper keeps running
 
 ### Requirement: Box temperatures in status updates
-The optimized status update pass SHALL report each Box's `box_extras` `aht20_temp` as its last reported value until the reading moves 0.1 °C from it. Macros SHALL read the current value.
+Valve Oil's status update pass SHALL report each Box's `box_extras` `aht20_temp` as its last reported value until the reading moves 0.1 °C from it. Macros SHALL read the current value.
 
 #### Scenario: Box temperature wobble
 - **WHEN** a Box's temperature changes by less than 0.1 °C from the value last reported and nothing else in the Box status changes
@@ -1254,7 +1254,7 @@ When the same fix is in place, a toolhead move in normal printing that does not 
 - **THEN** it is queued as one move
 
 ### Requirement: Sweeping resonance test
-Optimized configuration SHALL run upstream Klipper's sweeping resonance test for `SHAPER_CALIBRATE` and `TEST_RESONANCES` unless the saved variable `vo_resonance_sweep` is false or the command passes `SWEEPING_PERIOD=0`, in which case the vendor test SHALL run unchanged.
+Valve Oil's configuration SHALL run upstream Klipper's sweeping resonance test for `SHAPER_CALIBRATE` and `TEST_RESONANCES` unless the saved variable `vo_resonance_sweep` is false or the command passes `SWEEPING_PERIOD=0`, in which case the vendor test SHALL run unchanged.
 
 #### Scenario: Changed vendor Klipper
 - **WHEN** the vendor resonance tester, junction calculation, `M204`, or calibration-data normalization differs from the original this was written for
@@ -1292,7 +1292,7 @@ Once Klipper has shut down, a failed read of a Box heater's AHT20 SHALL stop tha
 - **THEN** Klipper remains in its shutdown state showing the original reason and does not restart itself
 
 ### Requirement: QIDI Box reads vendor spool tags
-On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL answer QIDI's RFID reads by reading the tag according to its type, decoding Anycubic, Elegoo, Bambu Lab, Creality, TigerTag, and OpenTag3D tags to a filament database ID and colors, and handing QIDI's parser the result in QIDI's v1 layout. QIDI's confirmation, slot saving, and clients SHALL stay unchanged, and a Box on any other firmware SHALL keep QIDI's read.
+On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL answer QIDI's RFID reads by reading the tag according to its type, decoding Anycubic, Elegoo, Bambu Lab, Creality, TigerTag, and OpenTag3D tags to a filament database ID and colors, and handing QIDI's parser the result in QIDI's v1 layout. QIDI's confirmation, slot saving, and clients SHALL stay unchanged, and a Box on any other firmware SHALL keep QIDI's read.
 
 #### Scenario: QIDI spool is recognized
 - **WHEN** QIDI reads a Box slot holding a QIDI-tagged spool
@@ -1333,7 +1333,7 @@ On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL a
 - **THEN** RFID reads behave exactly as stock
 
 ### Requirement: Startup tag read waits for the vendor Box controller
-Optimized configuration SHALL keep `INIT_RFID_READ` from raising an internal error when it runs before the vendor Box controller's ready callback, by running the vendor command once the controller has its saved variables and Box adapter. If the controller has neither within 60 seconds, or Klipper shuts down first, the startup read SHALL be left out and logged.
+Valve Oil's configuration SHALL keep `INIT_RFID_READ` from raising an internal error when it runs before the vendor Box controller's ready callback, by running the vendor command once the controller has its saved variables and Box adapter. If the controller has neither within 60 seconds, or Klipper shuts down first, the startup read SHALL be left out and logged.
 
 #### Scenario: Startup read runs before the controller is ready
 - **WHEN** the vendor startup macro runs `INIT_RFID_READ` before the vendor Box controller's ready callback has run
@@ -1345,10 +1345,10 @@ Optimized configuration SHALL keep `INIT_RFID_READ` from raising an internal err
 - **THEN** the vendor command runs at once, unchanged
 
 ### Requirement: Vendor filaments in QIDI's database
-At each Klipper start, optimized configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
+At each Klipper start, Valve Oil configuration SHALL add to every QIDI `filament-*.json` the catalog's Anycubic, Elegoo, Bambu Lab, and Creality 1.75 mm filaments for that nozzle size that the file lacks. It MUST NOT change or remove existing entries, and MUST NOT add an entry whose name or filament ID is already present. Catalog IDs SHALL use `QFX`, `QFY`, `QFZ`, and `QFW` and SHALL never be reassigned.
 
 #### Scenario: Database after a QIDI update
-- **WHEN** a QIDI firmware update has replaced the filament files and the optimized configuration is installed again
+- **WHEN** a QIDI firmware update has replaced the filament files and Valve Oil's configuration is installed again
 - **THEN** the next Klipper start adds the catalog filaments again, and QIDI's entries are unchanged
 
 #### Scenario: QIDI already names the filament
@@ -1360,7 +1360,7 @@ At each Klipper start, optimized configuration SHALL add to every QIDI `filament
 - **THEN** that entry is kept and the catalog filament is not added
 
 ### Requirement: Spool tag reports
-Optimized configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `VO_BOX_RFID_REPORT SLOT=`, also answering to its earlier name `TLTG_BOX_RFID_REPORT`, SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
+Valve Oil's configuration SHALL save a report in Klipper's log folder for each distinct tag a Box with the Valve Oil Box firmware reads but cannot use, and `VO_BOX_RFID_REPORT SLOT=`, also answering to its earlier name `TLTG_BOX_RFID_REPORT`, SHALL read a slot's tag without slot motion into a report. Reports MUST NOT contain tag UID bytes.
 
 #### Scenario: Unknown tag during a QIDI read
 - **WHEN** QIDI reads a tag whose layout is unknown, that opens with no known key, or whose type is unsupported
@@ -1371,7 +1371,7 @@ Optimized configuration SHALL save a report in Klipper's log folder for each dis
 - **THEN** the full readable tag memory and its decoding are saved without the spool's serial number, and the console names the file
 
 ### Requirement: Bed soak test
-Optimized configuration SHALL provide an operator-run bed soak test that sets up as print start does, measures one full-bed mesh with the bed and chamber heaters off, then heats the bed and, optionally, the chamber and measures further meshes until it ends. The nozzle SHALL stay at print start's probing temperature throughout, and Z tilt adjust SHALL run only during setup.
+Valve Oil's configuration SHALL provide an operator-run bed soak test that sets up as print start does, measures one full-bed mesh with the bed and chamber heaters off, then heats the bed and, optionally, the chamber and measures further meshes until it ends. The nozzle SHALL stay at print start's probing temperature throughout, and Z tilt adjust SHALL run only during setup.
 
 #### Scenario: Test runs to the end
 - **WHEN** an operator starts the test while the printer is idle, giving a bed target, an optional chamber target, a mesh size, a time limit, whether to stop once the bed stops moving, and whether to keep heating afterwards
@@ -1451,7 +1451,7 @@ A probe point whose samples keep disagreeing SHALL be retried at most `samples_t
 - **THEN** it is left unchanged and `klippy.log` says the fix was skipped
 
 ### Requirement: Problem points from any bed mesh
-Optimized configuration SHALL record, for every bed mesh measured, including print start's, the points whose probe samples disagreed and needed a retry, with each point's number of tries and sample spread. It SHALL publish them for the most recent mesh measured since Klipper started, without changing how the mesh is probed.
+Valve Oil's configuration SHALL record, for every bed mesh measured, including print start's, the points whose probe samples disagreed and needed a retry, with each point's number of tries and sample spread. It SHALL publish them for the most recent mesh measured since Klipper started, without changing how the mesh is probed.
 
 #### Scenario: Mesh with retried points
 - **WHEN** a bed mesh is measured and a point needs a retry
@@ -1476,7 +1476,7 @@ The package's Fluidd build SHALL show a Bed soak card under Bed mesh on its Tune
 - **THEN** the card starts and stops the test, follows it live, shows the results and problem points, and lists, opens, compares, and deletes saved runs
 
 ### Requirement: Plus 5 motion follows its own hardware
-On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, positions, cutter, wiper, and waste-chute coordinates under the same macro names as on the Max 4, and SHALL issue no QIDI closed-loop driver command.
+On the Plus 5, Valve Oil's macros SHALL use the Plus 5's homing sequence, positions, cutter, wiper, and waste-chute coordinates under the same macro names as on the Max 4, and SHALL issue no QIDI closed-loop driver command.
 
 #### Scenario: Plus 5 homing uses QIDI's sensorless currents without staging moves
 - **WHEN** X or Y homes on a Plus 5
@@ -1485,19 +1485,19 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **AND** no closed-loop homing mode or enforce-mode command is sent
 
 #### Scenario: Plus 5 nozzle moves stay within its travel
-- **WHEN** the optimized cut, wipe, chute, park, or print-start moves run on a Plus 5
+- **WHEN** Valve Oil's cut, wipe, chute, park, or print-start moves run on a Plus 5
 - **THEN** they use the Plus 5's coordinates, all inside its configured X −7–326 and Y −5–340 travel
 
 #### Scenario: Plus 5 rear moves stay inside the chute window
-- **WHEN** an optimized macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
+- **WHEN** a Valve Oil macro or a project Plus 5 slicer pack moves the toolhead behind Y 320 on a Plus 5
 - **THEN** the toolhead stays between X 75 and X 231 for the whole move, including where it crosses Y 320
 
 #### Scenario: Plus 5 cut presses the cutter once
-- **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by the optimized macros
+- **WHEN** the filament is cut on a Plus 5, by QIDI's tool change and unload or by Valve Oil's macros
 - **THEN** the extruder motor is released and the toolhead presses the Plus 5 cutter once at QIDI's Plus 5 cutter speed, with no dwell at the cutter
 
 #### Scenario: Plus 5 chute approach is fast up to the chute entrance
-- **WHEN** QIDI's or the optimized move to the waste chute runs on a Plus 5
+- **WHEN** QIDI's or Valve Oil's move to the waste chute runs on a Plus 5
 - **THEN** from the bed the toolhead moves in one travel move straight to the chute entrance at Y 320 at the package's chute travel speed and acceleration, then pushes from Y 320 into the chute
 
 #### Scenario: Plus 5 mainboard fan runs with the X/Y motors
@@ -1519,7 +1519,7 @@ On the Plus 5, the optimized macros SHALL use the Plus 5's homing sequence, posi
 - **THEN** its start path follows the Plus 5 start-print contract, including the Plus 5 prime line and `M1006 Z` temperature compensation
 
 ### Requirement: Writing a slot's filament to a spool tag
-On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL, on operator request, write a filament from the printer's filament database, by default the slot's own, and up to four colors to the tag of the spool in that slot, then read the tag back and report whether the write took. It MUST NOT write a tag that is locked, a Bambu Lab tag, or a tag holding another brand's data.
+On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL, on operator request, write a filament from the printer's filament database, by default the slot's own, and up to four colors to the tag of the spool in that slot, then read the tag back and report whether the write took. It MUST NOT write a tag that is locked, a Bambu Lab tag, or a tag holding another brand's data.
 
 #### Scenario: Blank tag is written
 - **WHEN** an operator asks to write a slot's filament and a spool with a blank MIFARE Classic 1K or NTAG213/215/216 tag comes past the slot's reader
@@ -1546,7 +1546,7 @@ On a USB Box running the Valve Oil Box firmware, optimized configuration SHALL, 
 - **THEN** nothing is written and the console says the Box firmware is needed
 
 ### Requirement: Smart 5 motion follows its own hardware
-On the Smart 5, the optimized macros SHALL use the Smart 5's homing sequence, positions, cutter, wiper, scrape, and waste-chute coordinates under the same macro names as on the other printers, and SHALL issue no TMC driver or QIDI closed-loop driver command.
+On the Smart 5, Valve Oil's macros SHALL use the Smart 5's homing sequence, positions, cutter, wiper, scrape, and waste-chute coordinates under the same macro names as on the other printers, and SHALL issue no TMC driver or QIDI closed-loop driver command.
 
 #### Scenario: Smart 5 homing uses QIDI's touches without staging moves
 - **WHEN** X or Y homes on a Smart 5
@@ -1555,15 +1555,15 @@ On the Smart 5, the optimized macros SHALL use the Smart 5's homing sequence, po
 - **AND** no `SET_TMC_CURRENT`, closed-loop homing mode, or enforce-mode command is sent
 
 #### Scenario: Smart 5 nozzle moves stay within its travel
-- **WHEN** the optimized cut, wipe, chute, scrape, park, or print-start moves run on a Smart 5
+- **WHEN** Valve Oil's cut, wipe, chute, scrape, park, or print-start moves run on a Smart 5
 - **THEN** they use the Smart 5's coordinates, all inside its configured X −2–185 and Y −4–200 travel
 
 #### Scenario: Smart 5 rear moves stay inside QIDI's chute range
-- **WHEN** an optimized macro or a project Smart 5 slicer pack moves the toolhead behind Y 180 on a Smart 5
+- **WHEN** a Valve Oil macro or a project Smart 5 slicer pack moves the toolhead behind Y 180 on a Smart 5
 - **THEN** the toolhead stays between X 66 and X 100 for the whole move, including where it crosses Y 180
 
 #### Scenario: Smart 5 rear-bed scrape follows the probed strip height
-- **WHEN** the optimized print start scrapes the nozzle behind the bed on a Smart 5
+- **WHEN** Valve Oil's print start scrapes the nozzle behind the bed on a Smart 5
 - **THEN** it probes the strip once and scrapes 0.1 mm above the probed height, as QIDI's Smart 5 nozzle clean does
 
 #### Scenario: Smart 5 speed and homing values stay at QIDI's
@@ -1575,10 +1575,10 @@ On the Smart 5, the optimized macros SHALL use the Smart 5's homing sequence, po
 - **THEN** its start path follows the Smart 5 start-print contract, with no chamber command, and the prime line starts no further right than X 160
 
 ### Requirement: Leveling steps run only on printers that have them
-The optimized macros SHALL run `Z_TILT_ADJUST` only when Klipper has a `z_tilt` object, and the bed screw check only when screw positions are configured.
+Valve Oil's macros SHALL run `Z_TILT_ADJUST` only when Klipper has a `z_tilt` object, and the bed screw check only when screw positions are configured.
 
 #### Scenario: Print start without Z tilt
-- **WHEN** an optimized print start or bed soak test runs on a printer without `[z_tilt]`
+- **WHEN** a Valve Oil print start or bed soak test runs on a printer without `[z_tilt]`
 - **THEN** it skips the Z tilt step and its sub-status and continues to the bed mesh
 
 #### Scenario: Bed screw check without screw positions

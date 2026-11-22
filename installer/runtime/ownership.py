@@ -13,7 +13,8 @@ from .naming import BUNDLE_ROOT_NAME
 from .sudo import SudoError, authenticate_sudo, run_sudo
 
 RunFn = Callable[..., subprocess.CompletedProcess]
-INSTALLER_PREFIXES = ("tltg", ".tltg")
+# Valve Oil's names, and the names releases before 26.11.22.1 used, which an install moves to Valve Oil's.
+INSTALLER_PREFIXES = ("vo_", "vo-", ".vo_", ".vo-", "tltg", ".tltg")
 CHOWN_BATCH = 200
 
 
@@ -34,7 +35,7 @@ def repair_installer_ownership(
     Runs started as root before the installer switched to that user left the
     files they created owned by root, so a later run could not open its lock,
     read its state, or replace its own bundle. Everything the project names
-    `tltg` under printer_data, its config folder, the home folder, and
+    `vo_`, `vo-`, or earlier `tltg` under printer_data, its config folder, the home folder, and
     Klipper's extras, and the installed bundle in the home folder, belongs to that user, as an unprivileged run creates it;
     QIDI's own files are left alone. Returns the number of entries changed.
     """
@@ -98,7 +99,7 @@ def _owner(path: Path) -> int | None:
 
 
 def _named_children(directory: Path, *, extra_prefixes: tuple[str, ...] = (), extra_names: tuple[str, ...] = ()) -> list[Path]:
-    """The installer's entries in `directory`: named `tltg` or `.tltg`, and in the home folder also the installed
+    """The installer's entries in `directory`: named with INSTALLER_PREFIXES, and in the home folder also the installed
     bundle and its copies in progress (bootstrap.copy_bundle)."""
     prefixes = INSTALLER_PREFIXES + extra_prefixes
     try:

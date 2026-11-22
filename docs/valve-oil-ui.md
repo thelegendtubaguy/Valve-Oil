@@ -76,10 +76,10 @@ Each finding is marked:
 
 ## What the installer does
 
-- **Installs the build in `~/tltg-valve-oil-ui`** and has the printer's web server serve it at `/valve-oil/`, next to Fluidd. It reaches Klipper through the same Moonraker connection Fluidd uses, so there's nothing to set up.
+- **Installs the build in `~/vo-valve-oil-ui`** and has the printer's web server serve it at `/valve-oil/`, next to Fluidd. It reaches Klipper through the same Moonraker connection Fluidd uses, so there's nothing to set up.
 - **Updates replace the whole build.** Open Valve Oil UI tabs switch to the new version by themselves.
-- **It's served only together with this project's [Fluidd](fluidd.md).** If the installer doesn't recognize QIDI's web server configuration for Fluidd, or `~/tltg-valve-oil-ui` already holds files the installer didn't put there, it leaves them alone and `/valve-oil/` isn't served.
+- **It's served only together with this project's [Fluidd](fluidd.md).** If the installer doesn't recognize QIDI's web server configuration for Fluidd, or `~/vo-valve-oil-ui` already holds files the installer didn't put there, it leaves them alone and `/valve-oil/` isn't served.
 
 ## Undoing it
 
-Uninstalling removes the `/valve-oil/` route and `~/tltg-valve-oil-ui`. Fluidd isn't affected.
+Uninstalling removes the `/valve-oil/` route and `~/vo-valve-oil-ui`. Fluidd isn't affected.

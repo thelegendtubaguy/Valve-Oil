@@ -21,7 +21,7 @@ GCODE_PATCHED = (
     "            except ValueError:",
     "                extruders = []",
     "                return extruders",
-    "        # tltg-optimized: OrcaSlicer writes no used_extruders line; the filaments it used have a length",
+    "        # vo: OrcaSlicer writes no used_extruders line; the filaments it used have a length",
     "        line = regex_find_string(r'filament\\sused\\s\\[mm\\]\\s=\\s(%S)\\n', self.footer_data)",
     '        return [i for i, mm in enumerate(regex_find_floats(r"(%F)", line or "")) if mm > 0]',
 )
@@ -33,7 +33,7 @@ SLICE_INFO_STOCK = (
 )
 SLICE_INFO_PATCHED = (
     '                    plate_num = len(xml_root.findall("plate"))',
-    "                    # tltg-optimized: each plate's own filaments; plate_N.json can hold another plate's",
+    "                    # vo: each plate's own filaments; plate_N.json can hold another plate's",
     "                    metadata['used_extruders'] = sorted({",
     '                        int(filament.get("id")) - 1',
     '                        for filament in plate.findall("filament")',

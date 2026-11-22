@@ -79,7 +79,7 @@ def load_module(name, ffi):
     force_move.calc_move_time = calc_move_time
     chelper = types.ModuleType("chelper")
     chelper.get_ffi = lambda: (ffi, ffi)
-    return load_extra(name, "extras.tltg_" + name, stand_ins={
+    return load_extra(name, "extras.vo_" + name, stand_ins={
         "extras": extras, "extras.force_move": force_move, "chelper": chelper})
 
 
@@ -428,8 +428,8 @@ class Box:
         objects.update(("box_stepper slot%d" % number, slot) for number, slot in enumerate(self.slots))
         self.printer = Printer(objects, log_dir)
         for name in modules:
-            objects["tltg_" + name] = load_module(name, Ffi(self)).load_config(Config(self.printer))
-        self.jog = objects.get("tltg_box_slot_jog")
+            objects["vo_" + name] = load_module(name, Ffi(self)).load_config(Config(self.printer))
+        self.jog = objects.get("vo_box_slot_jog")
         self.printer.send_event("klippy:ready")
         # QIDI's Box adapter registers its flow steps after Klipper is ready.
         self.controller.task_queue_manager.method_map["BOX_UNLOAD"] = self.adapter.unload_filament

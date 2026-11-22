@@ -4,21 +4,22 @@ from functools import lru_cache
 from pathlib import Path
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # Fluidd's Add-ons settings reach a package-owned service through the Fluidd nginx site (see remote_screen.NGINX_BLOCK).
 # The service runs addons.sh for each change, which outlives a restart of the service.
 UNIT_OPERATION = "addons_service_unit"
 SERVER_OPERATION = "addons_service_server"
-UNIT = "tltg-addons.service"
+UNIT = "vo-addons.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
-SERVER_FILE = "/usr/local/lib/tltg_addons.py"
+SERVER_FILE = "/usr/local/lib/vo_addons.py"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_addons.py"
 LISTEN_PORT = 7131
 
 # Package-created files start with a marker line so later package versions replace earlier ones.
-SERVER_MARKER = "# tltg-optimized:addons-server\n"
-UNIT_MARKER = "# tltg-optimized:addons-unit\n"
+SERVER_MARKER = "# vo:addons-server\n"
+UNIT_MARKER = "# vo:addons-unit\n"
 
 # Restarting the unit without the server, before install or after restore, is a clean no-op. The jobs it starts need
 # sudo and write system files, so the unit has no sandboxing; KillMode=process lets a running job finish when the
@@ -53,12 +54,12 @@ def server_source() -> str:
         raise InstallerError(f"Add-ons service is missing from the package: {exc}") from exc
     if not source.startswith(SERVER_MARKER):
         raise InstallerError("Add-ons service payload lacks its package marker.")
-    compile(source, "tltg_addons.py", "exec")
+    compile(source, "vo_addons.py", "exec")
     return source
 
 
 def _patch_created(current: str, desired: str, marker: str, name: str) -> str:
-    if current == "" or current.startswith(marker):
+    if current == "" or has_marker(current, marker):
         return desired
     raise InstallerError(f"Existing {name} is unrecognized and was preserved.")
 

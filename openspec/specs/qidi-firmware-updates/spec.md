@@ -199,7 +199,7 @@ The update check SHALL notice a configured USB Box that is not on its pinned fir
 - **THEN** update checks leave that Box on QIDI's firmware until the next release is installed
 
 ### Requirement: Pending work is shown wherever the operator looks
-While a release, a firmware update, or a board flash is waiting, `tltg_printer_warnings.warnings` SHALL list it without a Klipper restart, and Fluidd and Valve Oil UI SHALL show a Valve Oil section with the installed release, the printer's QIDI firmware, each board's firmware, and what is waiting. A waiting release is either a newer one or the installed release installed again, and SHALL be shown as which it is.
+While a release, a firmware update, or a board flash is waiting, `vo_printer_warnings.warnings` SHALL list it without a Klipper restart, and Fluidd and Valve Oil UI SHALL show a Valve Oil section with the installed release, the printer's QIDI firmware, each board's firmware, and what is waiting. A waiting release is either a newer one or the installed release installed again, and SHALL be shown as which it is.
 
 #### Scenario: Automatic updates are off
 - **WHEN** the update check finds a newer release or a firmware update on a printer that is not enrolled

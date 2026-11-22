@@ -11,9 +11,9 @@ BOX_TRACKING_STOCK = ("        access_tracking = {}",)
 # which QIDI's box.cfg sets to 90 C, above the Box's advertised 65 C; box.cfg is regenerated per Box count,
 # so the limit is capped here. QIDI's SET_HEATER_TEMPERATURE enforces target_max_temp only for the chamber.
 BOX_TRACKING_PATCHED = (
-    "        if module == 'heater_generic':  # tltg-optimized: cap Box heater targets at 65 C",
+    "        if module == 'heater_generic':  # vo: cap Box heater targets at 65 C",
     "            fileconfig.set(section_name, 'target_max_temp', str(min(fileconfig.getfloat(section_name, 'target_max_temp'), 65.)))",
-    "        access_tracking = config.access_tracking if module == 'heater_generic' else {}  # tltg-optimized: expose Box heater settings",
+    "        access_tracking = config.access_tracking if module == 'heater_generic' else {}  # vo: expose Box heater settings",
 )
 
 

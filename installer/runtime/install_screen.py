@@ -35,8 +35,8 @@ from .fs_atomic import atomic_write_text
 from .sudo import SudoError, authenticate_sudo, run_sudo
 
 TOUCHSCREEN = "qidi-client.service"
-MARKER = ".tltg_install_screen"  # in printer_data while an install holds the app stopped
-WATCHER_UNIT_PREFIX = "tltg-install-screen-"
+MARKER = ".vo_install_screen"  # in printer_data while an install holds the app stopped
+WATCHER_UNIT_PREFIX = "vo-install-screen-"
 # Without a description, systemd-run makes one from the command line, and systemd writes it unescaped into the transient
 # unit file; a systemctl daemon-reload while the install runs then reads the script's lines as broken settings.
 WATCHER_DESCRIPTION = "Valve Oil install screen watcher"

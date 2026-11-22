@@ -7,7 +7,7 @@ Both faults of 2026-11-22 had log signatures:
 
 QIDI's host code doesn't handle those replies, so Klipper logs them raw as `mcu 'mcu_boxN': got {...}`. Reading them took an hour per log by hand. An operator's `klippy.log` runs to 20–90 MB, and the printer has four slow cores and 486 MB of memory. A full scan with `awk` has run for minutes on the printer.
 
-`tltg-status` already serves Valve Oil UI's Updates screen and builds the **Report a problem** support bundle.
+`vo-status` already serves Valve Oil UI's Updates screen and builds the **Report a problem** support bundle.
 
 ## Goals / Non-Goals
 
@@ -18,7 +18,7 @@ QIDI's host code doesn't handle those replies, so Klipper logs them raw as `mcu 
 - Every fault found becomes a permanent signature.
 
 **Non-Goals:**
-- Fixing faults in this change. Each fix goes to `optimized-printer-behavior` in its own change.
+- Fixing faults in this change. Each fix goes to `printer-behavior` in its own change.
 - Telemetry or anything that leaves the printer without the operator sending it.
 - Watching Klipper's own behavior where QIDI hasn't changed it.
 
@@ -38,7 +38,7 @@ A slot's clock changed behind Klipper when the Box reports a clock for it that d
 
 ### One signature catalog, two runners
 
-Signatures live in one Python module, run by `tltg-status` on the printer and by `scripts/` on a developer's machine. Each entry gives:
+Signatures live in one Python module, run by `vo-status` on the printer and by `scripts/` on a developer's machine. Each entry gives:
 - its id;
 - the log lines that show it, the `vo_` line first and QIDI's raw lines as fallback;
 - what it means, what the operator should do, and which release fixed it, if any;

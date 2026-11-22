@@ -1,10 +1,11 @@
-# Installer manifest for staged optimized-macro install and guarded stock-value patches.
+# Installer manifest for Valve Oil: its staged macro install and guarded stock-value patches.
 
 schema_version: 1
 
 package:
-  # The id predates multi-printer support; installed state records it, so it stays.
-  id: qidi-max4-optimized
+  # Installed state records it; state from releases before 26.11.22.1 records qidi-max4-optimized, which an install
+  # moves to this id (earlier_names).
+  id: valve-oil
   display_name: Valve Oil
   version: "26.11.22.3"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
@@ -153,10 +154,10 @@ printers:
 
 backup:
   source_directory: "config"
-  label_prefix: "tltg-optimized-macros-before-optimize"
+  label_prefix: "vo-before-install"
 
 state:
-  record_file: "config/tltg_optimized_state.yaml"
+  record_file: "config/vo_state.yaml"
 
 preflight:
   required_files:
@@ -180,13 +181,13 @@ preflight:
 
 install:
   ensure_directories:
-    - "config/tltg-optimized-macros"
+    - "config/vo-macros"
 
   # The common macros install together with the detected printer's `macros` folder; the two may not share a file.
   managed_tree:
-    id: optimized_macro_tree
+    id: valve_oil_macro_tree
     source: "klipper/macros"
-    destination: "config/tltg-optimized-macros"
+    destination: "config/vo-macros"
     mode: mirror
     required_files:
       - "homing.cfg"
@@ -232,105 +233,105 @@ install:
       - "renamed_commands.cfg"
 
   ensure_lines:
-    - id: include_optimized_macros
+    - id: include_valve_oil_macros
       file: "config/printer.cfg"
-      line: "[include tltg-optimized-macros/*.cfg]"
+      line: "[include vo-macros/*.cfg]"
       after: "[include klipper-macros-qd/*.cfg]"
 
   extra_modules:
     - id: box_link_monitor
       source: "klipper/extras/box_link_monitor.py"
-      destination: "klippy/extras/tltg_box_link_monitor.py"
+      destination: "klippy/extras/vo_box_link_monitor.py"
     - id: box_mcu_temperature
       source: "klipper/extras/box_mcu_temperature.py"
-      destination: "klippy/extras/tltg_box_mcu_temperature.py"
+      destination: "klippy/extras/vo_box_mcu_temperature.py"
     - id: background_save_config
       source: "klipper/extras/background_save_config.py"
-      destination: "klippy/extras/tltg_background_save_config.py"
+      destination: "klippy/extras/vo_background_save_config.py"
     - id: box_heater_refresh
       source: "klipper/extras/box_heater_refresh.py"
-      destination: "klippy/extras/tltg_box_heater_refresh.py"
+      destination: "klippy/extras/vo_box_heater_refresh.py"
     - id: klipper_health
       source: "klipper/extras/klipper_health.py"
-      destination: "klippy/extras/tltg_klipper_health.py"
+      destination: "klippy/extras/vo_klipper_health.py"
     - id: macro_status
       source: "klipper/extras/macro_status.py"
-      destination: "klippy/extras/tltg_macro_status.py"
+      destination: "klippy/extras/vo_macro_status.py"
     - id: printer_warnings
       source: "klipper/extras/printer_warnings.py"
-      destination: "klippy/extras/tltg_printer_warnings.py"
+      destination: "klippy/extras/vo_printer_warnings.py"
     - id: klipper_fixes
       source: "klipper/extras/klipper_fixes.py"
-      destination: "klippy/extras/tltg_klipper_fixes.py"
+      destination: "klippy/extras/vo_klipper_fixes.py"
     - id: save_variables_fast
       source: "klipper/extras/save_variables_fast.py"
-      destination: "klippy/extras/tltg_save_variables_fast.py"
+      destination: "klippy/extras/vo_save_variables_fast.py"
     - id: box_feed_motion
       source: "klipper/extras/box_feed_motion.py"
-      destination: "klippy/extras/tltg_box_feed_motion.py"
+      destination: "klippy/extras/vo_box_feed_motion.py"
     - id: box_eject
       source: "klipper/extras/box_eject.py"
-      destination: "klippy/extras/tltg_box_eject.py"
+      destination: "klippy/extras/vo_box_eject.py"
     - id: box_filament_guard
       source: "klipper/extras/box_filament_guard.py"
-      destination: "klippy/extras/tltg_box_filament_guard.py"
+      destination: "klippy/extras/vo_box_filament_guard.py"
     - id: box_loaded_slot
       source: "klipper/extras/box_loaded_slot.py"
-      destination: "klippy/extras/tltg_box_loaded_slot.py"
+      destination: "klippy/extras/vo_box_loaded_slot.py"
     - id: box_slot_jog
       source: "klipper/extras/box_slot_jog.py"
-      destination: "klippy/extras/tltg_box_slot_jog.py"
+      destination: "klippy/extras/vo_box_slot_jog.py"
     - id: box_spool_roll
       source: "klipper/extras/box_spool_roll.py"
-      destination: "klippy/extras/tltg_box_spool_roll.py"
+      destination: "klippy/extras/vo_box_spool_roll.py"
     - id: box_rfid
       source: "klipper/extras/box_rfid.py"
-      destination: "klippy/extras/tltg_box_rfid.py"
+      destination: "klippy/extras/vo_box_rfid.py"
     - id: filament_catalog
       source: "klipper/extras/filament_catalog.py"
-      destination: "klippy/extras/tltg_filament_catalog.py"
+      destination: "klippy/extras/vo_filament_catalog.py"
     - id: box_flow_recovery
       source: "klipper/extras/box_flow_recovery.py"
-      destination: "klippy/extras/tltg_box_flow_recovery.py"
+      destination: "klippy/extras/vo_box_flow_recovery.py"
     - id: cold_cut
       source: "klipper/extras/cold_cut.py"
-      destination: "klippy/extras/tltg_cold_cut.py"
+      destination: "klippy/extras/vo_cold_cut.py"
     - id: box485_monitor
       source: "klipper/extras/box485_monitor.py"
-      destination: "klippy/extras/tltg_box485_monitor.py"
+      destination: "klippy/extras/vo_box485_monitor.py"
     - id: spoolman
       source: "klipper/extras/spoolman.py"
-      destination: "klippy/extras/tltg_spoolman.py"
+      destination: "klippy/extras/vo_spoolman.py"
     - id: probe_test
       source: "klipper/extras/probe_test.py"
-      destination: "klippy/extras/tltg_probe_test.py"
+      destination: "klippy/extras/vo_probe_test.py"
     - id: chamber_exhaust_guard
       source: "klipper/extras/chamber_exhaust_guard.py"
-      destination: "klippy/extras/tltg_chamber_exhaust_guard.py"
+      destination: "klippy/extras/vo_chamber_exhaust_guard.py"
     - id: step_loss_monitor
       source: "klipper/extras/step_loss_monitor.py"
-      destination: "klippy/extras/tltg_step_loss_monitor.py"
+      destination: "klippy/extras/vo_step_loss_monitor.py"
     - id: homing_guard
       source: "klipper/extras/homing_guard.py"
       destination: "klippy/extras/vo_homing_guard.py"
     - id: velocity_limit
       source: "klipper/extras/velocity_limit.py"
-      destination: "klippy/extras/tltg_velocity_limit.py"
+      destination: "klippy/extras/vo_velocity_limit.py"
     - id: resonance_sweep
       source: "klipper/extras/resonance_sweep.py"
-      destination: "klippy/extras/tltg_resonance_sweep.py"
+      destination: "klippy/extras/vo_resonance_sweep.py"
     - id: pause_timeout
       source: "klipper/extras/pause_timeout.py"
-      destination: "klippy/extras/tltg_pause_timeout.py"
+      destination: "klippy/extras/vo_pause_timeout.py"
     - id: update_lights
       source: "klipper/extras/update_lights.py"
-      destination: "klippy/extras/tltg_update_lights.py"
+      destination: "klippy/extras/vo_update_lights.py"
     - id: probe_report
       source: "klipper/extras/probe_report.py"
-      destination: "klippy/extras/tltg_probe_report.py"
+      destination: "klippy/extras/vo_probe_report.py"
     - id: bed_soak
       source: "klipper/extras/bed_soak.py"
-      destination: "klippy/extras/tltg_bed_soak.py"
+      destination: "klippy/extras/vo_bed_soak.py"
     - id: renamed_commands
       source: "klipper/extras/renamed_commands.py"
       destination: "klippy/extras/vo_renamed_commands.py"
@@ -780,7 +781,7 @@ patches:
 postflight:
   verify_lines:
     - file: "config/printer.cfg"
-      line: "[include tltg-optimized-macros/*.cfg]"
+      line: "[include vo-macros/*.cfg]"
 
 system_optimizations:
   enabled_by_default: true
@@ -825,10 +826,10 @@ system_optimizations:
     service_worker: /home/qidi/fluidd/sw.js
   # The project's Fluidd fork release; the bundle builder downloads and verifies it.
   fluidd_build:
-    version: v1.37.7-tltg-e85f13b
-    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-tltg-e85f13b/fluidd.zip
+    version: v1.37.7-vo-23f8ee1
+    url: https://github.com/thelegendtubaguy/fluidd/releases/download/v1.37.7-vo-23f8ee1/fluidd.zip
     archive: system/fluidd.zip
-    sha256: 6474582f1ebbf30698f9c51abf3493993703d2a8fa2003abeb72388d55ac2f02
+    sha256: 74f6af973bd9fda500962dd97866e914718419e46ea52df79ad35777a39ece28
   # Valve Oil UI; the bundle builder builds it from source and adds the archive's sha256 to the bundled manifest.
   valve_oil_ui:
     source: ui

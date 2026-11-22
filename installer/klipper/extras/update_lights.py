@@ -3,7 +3,7 @@
 # Stock printer.cfg starts [output_pin caselight] on, so every Klipper start
 # an update causes (a service restart, a QIDI firmware update, the reboot
 # after an install) turns the chamber light on. An automatic update that
-# finds the light off writes ~/printer_data/.tltg_update_lights_hold.json
+# finds the light off writes ~/printer_data/.vo_update_lights_hold.json
 # with the time the hold ends (installer/runtime/update_window.py); while it
 # hasn't ended, this module turns the light off when Klipper is ready. An
 # ended hold is removed.
@@ -13,7 +13,7 @@ import logging
 import os
 import time
 
-HOLD_FILE = ".tltg_update_lights_hold.json"
+HOLD_FILE = ".vo_update_lights_hold.json"
 PIN = "caselight"
 
 
@@ -56,10 +56,10 @@ class UpdateLights:
         try:
             self.printer.lookup_object("gcode").run_script(
                 "SET_PIN PIN=%s VALUE=0" % (PIN,))
-            logging.info("tltg_update_lights: chamber light kept off "
+            logging.info("vo_update_lights: chamber light kept off "
                          "during an automatic update")
         except Exception:
-            logging.exception("tltg_update_lights: couldn't turn the "
+            logging.exception("vo_update_lights: couldn't turn the "
                               "chamber light off")
 
 

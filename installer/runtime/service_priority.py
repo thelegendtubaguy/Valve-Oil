@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI runs Klipper, Moonraker, and the touchscreen app at the same CPU priority. Keeping a print alive comes first,
@@ -49,9 +50,9 @@ CPU_AFFINITY = {
 # them up at its next start; they match QIDI's unit anyway. The camera may be missing, so its restart can fail.
 RESTART = {operation: service for operation, service in SERVICES.items() if operation != ALGO_APP_OPERATION}
 OPTIONAL_RESTART = frozenset({CROWSNEST_OPERATION})
-FILES = {operation: f"/etc/systemd/system/{service}.d/tltg-priority.conf" for operation, service in SERVICES.items()}
+FILES = {operation: f"/etc/systemd/system/{service}.d/vo-priority.conf" for operation, service in SERVICES.items()}
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:priority\n"
+MARKER = "# vo:priority\n"
 
 
 def content(operation: str) -> str:
@@ -65,7 +66,7 @@ Nice={NICE[operation]}
 
 def patch_dropin(operation: str) -> Callable[[str], str]:
     def patch(current: str) -> str:
-        if current == "" or current.startswith(MARKER):
+        if current == "" or has_marker(current, MARKER):
             return content(operation)
         raise InstallerError(f"Existing {FILES[operation]} is unrecognized and was preserved.")
     return patch

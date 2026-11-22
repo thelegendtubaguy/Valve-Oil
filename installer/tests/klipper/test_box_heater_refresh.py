@@ -5,7 +5,7 @@ import unittest
 from installer.tests.klipper_fakes import load_extra
 
 
-box_heater_refresh = load_extra("box_heater_refresh", "extras.tltg_box_heater_refresh")
+box_heater_refresh = load_extra("box_heater_refresh", "extras.vo_box_heater_refresh")
 
 
 class Pwm:

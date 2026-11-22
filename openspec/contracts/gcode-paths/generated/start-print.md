@@ -102,7 +102,7 @@ G29.0`
 
 ### staggered_start_settings
 
-Condition: `all optimized starts`
+Condition: `all Valve Oil starts`
 
 Source: `installer/klipper/macros/start_end.cfg:65-72`
 
@@ -263,7 +263,7 @@ Forbidden patterns:
 
 ### tool_mapping_reconciliation
 
-Condition: `all optimized starts`
+Condition: `all Valve Oil starts`
 
 Source: `installer/klipper/macros/filament.cfg:207-259`
 
@@ -549,7 +549,7 @@ Forbidden patterns:
 
 ### silicone_wiper_finishing_strokes
 
-Condition: `optimized cleanup with the nozzle already at the rear wiper`
+Condition: `Valve Oil cleanup with the nozzle already at the rear wiper`
 
 Source: `installer/klipper/printers/max4/nozzle_motion.cfg:112-124`
 
@@ -586,7 +586,7 @@ Forbidden patterns:
 
 ### chute_wipe_and_drop_dispatch
 
-Condition: `PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through the optimized chute drop`
+Condition: `PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through Valve Oil's chute drop`
 
 Source: `installer/klipper/macros/filament.cfg:168-174`
 
@@ -616,7 +616,7 @@ Forbidden patterns:
 
 ### chute_waste_release
 
-Condition: `nozzle at the rear wiper after an optimized wipe`
+Condition: `nozzle at the rear wiper after a Valve Oil wipe`
 
 Source: `installer/klipper/printers/max4/nozzle_motion.cfg:128-137`
 
@@ -703,7 +703,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `box_available = printer.tltg_macro_status.box_available`
+- `box_available = printer.vo_macro_status.box_available`
 - `VO_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle`
 - `TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}`
 - `{% if box_available %}`

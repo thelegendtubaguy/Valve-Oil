@@ -35,7 +35,7 @@ class BoxFilamentGuard:
         max_temp = getattr(database, "get_max_temp_id", None)
         if not callable(max_temp) or not callable(
                 getattr(database, "get_filament_info_by_id", None)):
-            logging.info("tltg_box_filament_guard: inactive: QIDI filament "
+            logging.info("vo_box_filament_guard: inactive: QIDI filament "
                          "database not found")
             return
         self.database = database
@@ -47,13 +47,13 @@ class BoxFilamentGuard:
         if callable(set_info) and callable(find_id):
             external.set_filament_information = self._wrap_set_info(set_info,
                                                                     find_id)
-            logging.info("tltg_box_filament_guard: active")
+            logging.info("vo_box_filament_guard: active")
         else:
-            logging.info("tltg_box_filament_guard: active; external spool "
+            logging.info("vo_box_filament_guard: active; external spool "
                          "filament updates not found")
 
     def _report(self, message):
-        logging.info("tltg_box_filament_guard: %s", message)
+        logging.info("vo_box_filament_guard: %s", message)
         if message in self._reported:
             return
         self._reported.add(message)
@@ -77,7 +77,7 @@ class BoxFilamentGuard:
                 if not kwargs and len(args) == 2:
                     args = tuple(self._known(i) for i in args)
             except Exception:
-                logging.exception("tltg_box_filament_guard: filament ID "
+                logging.exception("vo_box_filament_guard: filament ID "
                                   "check failed")
             return original(*args, **kwargs)
         return get_max_temp_id
@@ -93,11 +93,11 @@ class BoxFilamentGuard:
                         message = ("External spool filament not changed: %s "
                                    "%s is not in QIDI's filament list"
                                    % (vendor, filament))
-                        logging.info("tltg_box_filament_guard: %s", message)
+                        logging.info("vo_box_filament_guard: %s", message)
                         self.gcode.respond_info(message)
                         return None
             except Exception:
-                logging.exception("tltg_box_filament_guard: external spool "
+                logging.exception("vo_box_filament_guard: external spool "
                                   "filament check failed")
             return original(*args, **kwargs)
         return set_filament_information

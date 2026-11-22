@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's Moonraker already uses msgspec for JSON and uvloop for its event loop when it can import them, but QIDI's
@@ -17,27 +18,27 @@ from .errors import InstallerError
 # virtualenv's import path, so nothing QIDI installed is replaced and removal restores stock Moonraker.
 OPERATION = "moonraker_speedups"
 PATH_OPERATION = "moonraker_speedups_path"
-DESTINATION = "/home/qidi/tltg-moonraker-speedups"
+DESTINATION = "/home/qidi/vo-moonraker-speedups"
 # Updates stage the new packages beside the destination and keep the replaced ones until the host transaction ends.
-STAGING = f"{DESTINATION}.tltg-staging"
-PREVIOUS = f"{DESTINATION}.tltg-previous"
-REMOVING = f"{DESTINATION}.tltg-removing"
+STAGING = f"{DESTINATION}.vo-staging"
+PREVIOUS = f"{DESTINATION}.vo-previous"
+REMOVING = f"{DESTINATION}.vo-removing"
 # Marks the directory as package-owned and records the wheels it was extracted from.
-MARKER = ".tltg-moonraker-speedups"
+MARKER = ".vo-moonraker-speedups"
 # The wheels are built for QIDI's Python 3.9 virtualenv.
 SITE_PACKAGES = "/home/qidi/moonraker-env/lib/python3.9/site-packages"
-PATH_FILE = f"{SITE_PACKAGES}/tltg-moonraker-speedups.pth"
+PATH_FILE = f"{SITE_PACKAGES}/vo-moonraker-speedups.pth"
 RESTART_SERVICE = "moonraker.service"
 # Package-created path files start with a marker line so later package versions replace earlier ones.
-PATH_MARKER = "# tltg-optimized:moonraker-speedups\n"
+PATH_MARKER = "# vo:moonraker-speedups\n"
 PATH_CONTENT = PATH_MARKER + f"{DESTINATION}\n"
-# Klipper's tltg_klipper_fixes encodes the status it sends Moonraker with msgspec when it can import it. A second path
+# Klipper's vo_klipper_fixes encodes the status it sends Moonraker with msgspec when it can import it. A second path
 # file adds the same directory to QIDI's Klipper virtualenv, also Python 3.9; Klipper doesn't use uvloop.
 KLIPPER_PATH_OPERATION = "klipper_speedups_path"
 KLIPPER_SITE_PACKAGES = "/home/qidi/klippy-env/lib/python3.9/site-packages"
-KLIPPER_PATH_FILE = f"{KLIPPER_SITE_PACKAGES}/tltg-klipper-speedups.pth"
+KLIPPER_PATH_FILE = f"{KLIPPER_SITE_PACKAGES}/vo-klipper-speedups.pth"
 KLIPPER_RESTART_SERVICE = "klipper.service"
-KLIPPER_PATH_MARKER = "# tltg-optimized:klipper-speedups\n"
+KLIPPER_PATH_MARKER = "# vo:klipper-speedups\n"
 KLIPPER_PATH_CONTENT = KLIPPER_PATH_MARKER + f"{DESTINATION}\n"
 MAX_ENTRIES = 4096
 MAX_BYTES = 64 * 1024 * 1024
@@ -53,13 +54,13 @@ class MoonrakerSpeedupsError(InstallerError):
 
 
 def patch_path_file(current: str) -> str:
-    if current == "" or current.startswith(PATH_MARKER):
+    if current == "" or has_marker(current, PATH_MARKER):
         return PATH_CONTENT
     raise InstallerError(f"Existing {PATH_FILE} is unrecognized and was preserved.")
 
 
 def patch_klipper_path_file(current: str) -> str:
-    if current == "" or current.startswith(KLIPPER_PATH_MARKER):
+    if current == "" or has_marker(current, KLIPPER_PATH_MARKER):
         return KLIPPER_PATH_CONTENT
     raise InstallerError(f"Existing {KLIPPER_PATH_FILE} is unrecognized and was preserved.")
 

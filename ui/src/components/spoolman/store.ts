@@ -168,7 +168,7 @@ async function diagnose(url: string) {
 
 // ---- actions ----
 
-/** Sets Moonraker's active spool; with tltg_spoolman it also becomes the loaded slot's spool. Null clears it. */
+/** Sets Moonraker's active spool; with vo_spoolman it also becomes the loaded slot's spool. Null clears it. */
 export async function setActiveSpool(id: number | null) {
   const r = await client.call<{ spool_id: number | null }>('server.spoolman.post_spool_id', id == null ? {} : { spool_id: id })
   patch({ activeSpool: r?.spool_id ?? id })

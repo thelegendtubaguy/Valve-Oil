@@ -10,14 +10,14 @@ from installer.runtime.manifest import load_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-OPTIMIZED_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "macros"
+MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "macros"
 PRINTER_MACRO_ROOT = REPO_ROOT / "installer" / "klipper" / "printers"
 
 
 def installed_macro_files(printer: str) -> tuple[Path, ...]:
     """The optimized macro files a printer receives: the common macros and the printer's own folder."""
     return tuple(
-        sorted((*OPTIMIZED_MACRO_ROOT.glob("*.cfg"), *(PRINTER_MACRO_ROOT / printer).glob("*.cfg")))
+        sorted((*MACRO_ROOT.glob("*.cfg"), *(PRINTER_MACRO_ROOT / printer).glob("*.cfg")))
     )
 
 

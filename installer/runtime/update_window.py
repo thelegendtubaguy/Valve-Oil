@@ -9,7 +9,7 @@ given. Without a timezone the window is read in UTC. The status service (install
 writes the same file.
 
 The light hold: an automatic run that is about to restart Klipper, install, or start a firmware update while the
-chamber light is off writes LIGHTS_HOLD_FILE, and until it expires tltg_update_lights (installer/klipper/extras/
+chamber light is off writes LIGHTS_HOLD_FILE, and until it expires vo_update_lights (installer/klipper/extras/
 update_lights.py) turns the light off again whenever Klipper starts, as the stock `[output_pin caselight]` starts it on.
 It expires on its own (LIGHTS_HOLD_SECONDS) because a QIDI firmware update and the reboot an install schedules end after
 the run that started them.
@@ -29,8 +29,8 @@ from . import safety
 from .errors import PrinterStateError
 from .fs_atomic import atomic_delete, atomic_write_text
 
-SETTINGS_FILE = ".tltg_optimized_auto_update_settings.json"
-LIGHTS_HOLD_FILE = ".tltg_update_lights_hold.json"
+SETTINGS_FILE = ".vo_auto_update_settings.json"
+LIGHTS_HOLD_FILE = ".vo_update_lights_hold.json"
 # A QIDI firmware update with its board flashes and the reboot after it take well under this.
 LIGHTS_HOLD_SECONDS = 3 * 3600
 SOURCES = ("lookup", "browser", "operator")

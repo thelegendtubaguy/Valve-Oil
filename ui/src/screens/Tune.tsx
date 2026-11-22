@@ -16,7 +16,7 @@ type Tab = 'mesh' | 'soak' | 'calibrate'
 export function TuneScreen() {
   const sub = useSubPath()[0]
   const hasMesh = usePrinter((s) => 'bed_mesh' in s.status)
-  const hasSoak = usePrinter((s) => 'tltg_bed_soak' in s.status)
+  const hasSoak = usePrinter((s) => 'vo_bed_soak' in s.status)
   const tab: Tab = sub === 'soak' && hasSoak ? 'soak' : sub === 'calibrate' || !hasMesh ? 'calibrate' : 'mesh'
 
   // A bed soak mesh shown on the Bed mesh tab belongs to this screen.

@@ -121,7 +121,7 @@ class StepLossMonitor:
         if not callable(getattr(cl, "send_command", None)) \
                 or not isinstance(addrs, dict) \
                 or not all(name in addrs for name in STEPPERS):
-            logging.info("tltg_step_loss_monitor: no QIDI closed-loop X/Y"
+            logging.info("vo_step_loss_monitor: no QIDI closed-loop X/Y"
                          " drivers; monitor off")
             return
         self.cl = cl
@@ -265,7 +265,7 @@ class StepLossMonitor:
         try:
             return self._poll(eventtime)
         except Exception:
-            logging.exception("tltg_step_loss_monitor: poll failed")
+            logging.exception("vo_step_loss_monitor: poll failed")
             self.waiting = None
             return eventtime + IDLE_INTERVAL
 
@@ -295,7 +295,7 @@ class StepLossMonitor:
             try:
                 self._rx(name, data)
             except Exception:
-                logging.exception("tltg_step_loss_monitor: reply failed")
+                logging.exception("vo_step_loss_monitor: reply failed")
         return handler
 
     def _rx(self, name, data):
@@ -358,7 +358,7 @@ class StepLossMonitor:
         event = ("The stepper_%s motor slipped %s: the toolhead is no longer"
                  " where Klipper thinks it is. Home X and Y before moving it"
                  " again." % (name, self._size(name, cycles)))
-        logging.warning("tltg_step_loss_monitor: %s Position error %+d counts"
+        logging.warning("vo_step_loss_monitor: %s Position error %+d counts"
                         " from its baseline.", event, cycles * CYCLE)
         action = self.action
         if printing and action is None:
@@ -399,7 +399,7 @@ class StepLossMonitor:
         try:
             self.gcode.run_script("PAUSE")
         except Exception:
-            logging.exception("tltg_step_loss_monitor: PAUSE failed")
+            logging.exception("vo_step_loss_monitor: PAUSE failed")
 
     def _cancel(self):
         # As Fluidd's and the screen's cancel: QIDI's virtual_sdcard cancel
@@ -414,7 +414,7 @@ class StepLossMonitor:
                 self._try_script("VO_STEP_LOSS_CORRECT")
             self.gcode.run_script("CANCEL_PRINT")
         except Exception:
-            logging.exception("tltg_step_loss_monitor: cancel failed")
+            logging.exception("vo_step_loss_monitor: cancel failed")
 
     def _recover(self):
         if not self._printing(self.reactor.monotonic()):
@@ -436,7 +436,7 @@ class StepLossMonitor:
         try:
             self.gcode.run_script(script)
         except Exception:
-            logging.exception("tltg_step_loss_monitor: %s failed", script)
+            logging.exception("vo_step_loss_monitor: %s failed", script)
             return False
         return True
 
@@ -453,7 +453,7 @@ class StepLossMonitor:
         except gcmd.error:
             raise
         except Exception:
-            logging.exception("tltg_step_loss_monitor: correction failed")
+            logging.exception("vo_step_loss_monitor: correction failed")
             raise gcmd.error("The slip couldn't be corrected; see"
                              " klippy.log.")
 
@@ -475,7 +475,7 @@ class StepLossMonitor:
         message = ("Moved Klipper's position by X%+.2f Y%+.2f mm for the slip"
                    " (stepper_x %+d, stepper_y %+d step cycles)."
                    % (dx, dy, cycles["x"], cycles["y"]))
-        logging.info("tltg_step_loss_monitor: %s", message)
+        logging.info("vo_step_loss_monitor: %s", message)
         gcmd.respond_info(message)
 
     def _settle(self, gcmd):

@@ -9,7 +9,7 @@ from .errors import InstallerError
 
 # Scoped admission preserves the vendor module and rejects unreviewed metadata changes.
 STOCK_CLASS_SHA256 = "16374372639ce76bede68cc35caa68ac93cd7e7d15ab9213a01c0c4fd721eaee"
-PATCHED_CLASS_SHA256 = "57988d33edebac362199aa3d7e830c8621aab0e1902d6be99d2605621ec4b0a3"
+PATCHED_CLASS_SHA256 = "75e43d5fb0adf4c57b6022ae6dcae5f55e918aca4a1a26d46deb8ce7840e5cfe"
 METASCAN_STOCK_SHA256 = "e11adab7f2771ed11b4c28f5403e103db4513aed4c118cbf45d7fc7612adb8b3"
 METASCAN_PATCHED_SHA256 = "5e639a40f028a4789d7077337b6ee322e8c4efcb82bfceeb27c17e78341c8ded"
 OPERATION = "moonraker_file_manager_3mf_cache"
@@ -93,7 +93,7 @@ def _patch_metadata_storage(text: str) -> str:
         raise MoonrakerFileManagerError("Moonraker MetadataStorage does not match the reviewed QIDI source; preserving file_manager.py.")
     replacements = {
         "_has_valid_data": '''\
-    def _tltg_3mf_extractor_stamp(self):
+    def _vo_3mf_extractor_stamp(self):
         # Detect extractor replacement as well as edits, without rereading it per archive.
         try:
             st = os.stat(METADATA_SCRIPT)
@@ -102,12 +102,12 @@ def _patch_metadata_storage(text: str) -> str:
         return [st.st_mtime_ns, st.st_ctime_ns, st.st_size, self.enable_object_proc]
 
     def _has_valid_data(self, fname, path_info):
-        if path_info.get('ufp_path') is not None or path_info.get('_tltg_force_rescan'):
+        if path_info.get('ufp_path') is not None or path_info.get('_vo_force_rescan'):
             return False
         mdata = self.metadata.get(fname, {})
         if path_info.get('_3mf_path') is not None:
-            stamp = self._tltg_3mf_extractor_stamp()
-            if stamp is None or mdata.get('tltg_3mf_extractor') != stamp:
+            stamp = self._vo_3mf_extractor_stamp()
+            if stamp is None or mdata.get('vo_3mf_extractor') != stamp:
                 return False
         return all(mdata.get(field) == path_info.get(field) and field in mdata
                    for field in ('size', 'modified'))
@@ -122,13 +122,13 @@ def _patch_metadata_storage(text: str) -> str:
         # Join pending work rather than running a second extractor for the same archive.
         if fname in self.pending_requests:
             request, event = self.pending_requests[fname]
-            request['_tltg_force_rescan'] = True
+            request['_vo_force_rescan'] = True
         else:
-            request = dict(path_info, _tltg_force_rescan=True)
+            request = dict(path_info, _vo_force_rescan=True)
             event = self.parse_3mf_thumbnail(fname, request)
         await event.wait()
         metadata = self.get(fname)
-        if not request.get('_tltg_extraction_succeeded') or metadata is None:
+        if not request.get('_vo_extraction_succeeded') or metadata is None:
             raise self.server.error(f"Failed to parse metadata for file '{fname}'", 500)
         return metadata
 ''',
@@ -140,12 +140,12 @@ def _patch_metadata_storage(text: str) -> str:
             lines[method.lineno - 1:method.end_lineno] = [replacements[method.name]]
     patched = ''.join(lines)
     edits = (
-        ("                else:\n                    break\n            else:\n                if ufp_path is None:\n", "                else:\n                    path_info['_tltg_extraction_succeeded'] = True\n                    break\n            else:\n                if ufp_path is None and not path_info.get('_tltg_force_rescan'):\n"),
+        ("                else:\n                    break\n            else:\n                if ufp_path is None:\n", "                else:\n                    path_info['_vo_extraction_succeeded'] = True\n                    break\n            else:\n                if ufp_path is None and not path_info.get('_vo_force_rescan'):\n"),
         ("ext = os.path.splitext(fname)[1]\n", "ext = os.path.splitext(fname)[1].lower()\n"),
         ("list(self.pending_requests.items())[0]", "next(iter(self.pending_requests.items()))"),
         ("            if self._has_valid_data(fname, path_info):\n                mevt.set()", "            if self._has_valid_data(fname, path_info):\n                self.pending_requests.pop(fname, None)\n                mevt.set()"),
-        ('        # Escape single quotes in the file name so that it may be\n', '        extractor_stamp = self._tltg_3mf_extractor_stamp() if _3mf_path is not None else None\n        # Escape single quotes in the file name so that it may be\n'),
-        ("        metadata.update({'print_start_time': None, 'job_id': None})\n", "        metadata.update({'print_start_time': None, 'job_id': None})\n        if _3mf_path is not None and extractor_stamp is not None:\n            metadata['tltg_3mf_extractor'] = extractor_stamp\n"),
+        ('        # Escape single quotes in the file name so that it may be\n', '        extractor_stamp = self._vo_3mf_extractor_stamp() if _3mf_path is not None else None\n        # Escape single quotes in the file name so that it may be\n'),
+        ("        metadata.update({'print_start_time': None, 'job_id': None})\n", "        metadata.update({'print_start_time': None, 'job_id': None})\n        if _3mf_path is not None and extractor_stamp is not None:\n            metadata['vo_3mf_extractor'] = extractor_stamp\n"),
     )
     for before, after in edits:
         if patched.count(before) != 1:

@@ -2,7 +2,7 @@
 (install_screen.py).
 
 A still image is written to the framebuffer: a landscape screen drawn upright on the Max 4's 800x480 panel and turned
-for the Plus 5's 480x800 panel, which QIDI's app also draws on its side (see tltg_remote_screen.py). The geometry, pixel
+for the Plus 5's 480x800 panel, which QIDI's app also draws on its side (see vo_remote_screen.py). The geometry, pixel
 format, and line length are read from the framebuffer each time. A screen is either text drawn from the 5x7 font below,
 or an Image: an 800x480 PNG rendered by scripts/render_touchscreen_images.py, saved so that zlib alone decodes it, with
 text to draw instead when it can't be shown. No third-party module is needed. Drawing is best-effort: any failure is

@@ -164,7 +164,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                     self.assertEqual(printer.transfers, 0 if patched else 1)
                     self.assertEqual(printer.states, printer.original)
                     self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-                    directories = list((paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir())
+                    directories = list((paths.printer_data_root / '.vo_thr_firmware_backups').iterdir())
                     self.assertEqual(len(directories), 1)
                     evidence = json.loads((directories[0] / 'verification.json').read_text())
                     self.assertTrue(evidence['verified'])
@@ -223,7 +223,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertEqual(printer.transfers, 0)
                 self.assertEqual(printer.states, printer.original)
                 self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-                directory, = (paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir()
+                directory, = (paths.printer_data_root / '.vo_thr_firmware_backups').iterdir()
                 capture = directory / 'before'
                 self.assertEqual((capture / 'application-region.bin').stat().st_size, 0x18000)
                 for path in capture.iterdir():
@@ -243,7 +243,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         self.assertTrue((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
         self.assertEqual(printer.transfers, 0)
         # Klipper wouldn't start; the services after it are started anyway.
-        self.assertEqual((printer.states['klipper.service'], printer.states['tltg-optimized-auto-update.timer']),
+        self.assertEqual((printer.states['klipper.service'], printer.states['vo-auto-update.timer']),
                          ('inactive', 'active'))
 
     def test_the_terminal_going_away_or_ctrl_c_does_not_stop_a_flash(self):
@@ -301,7 +301,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertEqual(printer.rescues, ['programming'])
                 self.assertEqual(printer.states, printer.original)
                 self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-                directory, = (paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir()
+                directory, = (paths.printer_data_root / '.vo_thr_firmware_backups').iterdir()
                 evidence = json.loads((directory / 'verification.json').read_text())
                 expected = 'patched_sha256' if rescue == 'patched' else 'stock_sha256'
                 self.assertEqual(evidence['application_sha256'], printer.manifest['thr'][expected])
@@ -326,7 +326,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertFalse(marker.exists())
                 self.assertEqual(protocol.digest(printer.image), printer.manifest['thr']['patched_sha256'])
                 self.assertEqual(printer.states['klipper.service'], 'active')
-                self.assertTrue((paths.printer_data_root / 'logs/tltg_input_shaper_thr_flash.json').is_file())
+                self.assertTrue((paths.printer_data_root / 'logs/vo_input_shaper_thr_flash.json').is_file())
                 ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
 
     def test_boot_unit_settles_the_rescue_it_ran(self):
@@ -365,7 +365,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertEqual(thr_firmware._catch_build(printer.run, thr_firmware.CATCH_BINARY),
                                  protocol.digest((REPO_ROOT / 'installer/system/vo_thr_catch.c').read_bytes()) if gcc
                                  else None)
-                self.assertIn('tltg-optimized-auto-update.service',
+                self.assertIn('vo-auto-update.service',
                               next(line for line in lines if line.startswith('Before=')).split('=')[1].split())
                 self.assertIn(thr_firmware.RESCUE_UNIT, printer.enabled)
                 printer.tool(['python', first.split()[1], 'rescue', '--record', str(marker)])
@@ -373,7 +373,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                         self.patched_profiles(printer):
                     code = thr_firmware.boot_main([], bundle_root=paths.bundle_root)
                 self.assertEqual((code, marker.exists()), (0, False) if settled else (1, True))
-                shaper = paths.printer_data_root / 'logs/tltg_input_shaper_thr_flash.json'
+                shaper = paths.printer_data_root / 'logs/vo_input_shaper_thr_flash.json'
                 self.assertEqual(shaper.exists(), rescue == 'patched')
 
     def test_a_rescue_at_boot_leaves_ownership_to_the_units_ordering(self):
@@ -448,7 +448,7 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         self.assertEqual(printer.transfers, 1)
         self.assertEqual(printer.states, printer.original)
         self.assertFalse((paths.printer_data_root / THR_RECOVERY_MARKER).exists())
-        directory, = (paths.printer_data_root / '.tltg_thr_firmware_backups').iterdir()
+        directory, = (paths.printer_data_root / '.vo_thr_firmware_backups').iterdir()
         evidence = json.loads((directory / 'verification.json').read_text())
         self.assertEqual(evidence['application_sha256'], printer.manifest['thr']['stock_sha256'])
 

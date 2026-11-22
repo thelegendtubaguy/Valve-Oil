@@ -204,7 +204,7 @@ def _wrap_trsync(cls):
             sync["link"] = link_counters(trsync.get_mcu())
             sync["system"] = _system_snapshot()
         except Exception:
-            logging.exception("tltg_klipper_health: sync start figures")
+            logging.exception("vo_klipper_health: sync start figures")
         trsync._vo_sync = sync
         return start(trsync, *args, **kwargs)
 
@@ -227,7 +227,7 @@ def _wrap_trsync(cls):
         return result
 
     handle_report._vo_klipper_health = True
-    # Lets tltg_klipper_fixes find its homing fix under this wrapper.
+    # Lets vo_klipper_fixes find its homing fix under this wrapper.
     start_sync.__wrapped__ = start
     handle_report.__wrapped__ = handle
     stop_sync.__wrapped__ = stop
@@ -606,7 +606,7 @@ def _wrap_home_wait(cls, error, failure):
                     health.note_homing_timeout(failure,
                                                _endstop_trsyncs(endstop))
                 except Exception:
-                    logging.exception("tltg_klipper_health: homing timeout "
+                    logging.exception("vo_klipper_health: homing timeout "
                                       "report failed")
             raise
         health = _current[0]
@@ -614,7 +614,7 @@ def _wrap_home_wait(cls, error, failure):
             try:
                 health.note_sync(_endstop_trsyncs(endstop))
             except Exception:
-                logging.exception("tltg_klipper_health: sync timing failed")
+                logging.exception("vo_klipper_health: sync timing failed")
         return result
     home_wait._vo_klipper_health = True
     cls.home_wait = home_wait
@@ -630,7 +630,7 @@ def _late_command(mcu, command, ahead, reach):
         health.note_late_command(mcu.get_name(), command, ahead,
                                  sys._getframe(2), reach)
     except Exception:
-        logging.exception("tltg_klipper_health: late command report failed")
+        logging.exception("vo_klipper_health: late command report failed")
 
 
 def watch_command(mcu, command, msgformat):
@@ -692,7 +692,7 @@ def _watch_late_commands(cls):
             try:
                 watch_command(mcu, command, msgformat)
             except Exception:
-                logging.exception("tltg_klipper_health: cannot check %s",
+                logging.exception("vo_klipper_health: cannot check %s",
                                   msgformat)
             return command
         lookup_watched._vo_klipper_health = True
@@ -775,13 +775,13 @@ class KlipperHealth:
             mcu = None
         if not _wrap_home_wait(getattr(mcu, "MCU_endstop", None),
                                HOMING_TIMEOUT, HOMING_TIMEOUT):
-            logging.info("tltg_klipper_health: Klipper's endstop layout is "
+            logging.info("vo_klipper_health: Klipper's endstop layout is "
                          "not as expected; homing timeouts are not reported")
         if not _watch_late_commands(getattr(mcu, "MCU", None)):
-            logging.info("tltg_klipper_health: Klipper's MCU commands are not "
+            logging.info("vo_klipper_health: Klipper's MCU commands are not "
                          "as expected; late commands are not reported")
         if not _wrap_trsync(getattr(mcu, "MCU_trsync", None)):
-            logging.info("tltg_klipper_health: Klipper's endstop sync is not "
+            logging.info("vo_klipper_health: Klipper's endstop sync is not "
                          "as expected; failed syncs do not report their "
                          "status reports")
         self.printer.register_event_handler("klippy:connect", self._connect)
@@ -792,13 +792,13 @@ class KlipperHealth:
         if air is not None and not _wrap_home_wait(
                 getattr(air, "WeighEndstopWrapper", None),
                 PROBE_SYNC_ERROR, PROBE_SYNC_FAILURE):
-            logging.info("tltg_klipper_health: QIDI's load-cell probe is not "
+            logging.info("vo_klipper_health: QIDI's load-cell probe is not "
                          "as expected; its endstop sync failures are not "
                          "reported")
         for name in STATUS_COPIERS:
             obj = self.printer.lookup_object(name, None)
             if obj is not None and not lighten_status_copy(obj):
-                logging.info("tltg_klipper_health: %s does not use the copy "
+                logging.info("vo_klipper_health: %s does not use the copy "
                              "module as expected; its status copy is "
                              "unchanged", name)
 
@@ -824,7 +824,7 @@ class KlipperHealth:
             removed += 1
         if removed:
             self.removed += removed
-            logging.info("tltg_klipper_health: removed %d finished QIDI "
+            logging.info("vo_klipper_health: removed %d finished QIDI "
                          "load-cell timers (%d since Klipper started)",
                          removed, self.removed)
         return removed
@@ -864,7 +864,7 @@ class KlipperHealth:
             self.timer_baseline = timers
         load, peak, delay = self._window(eventtime, REPORT_INTERVAL)
         if load is not None:
-            logging.info("tltg_klipper_health: timers=%d removed=%d "
+            logging.info("vo_klipper_health: timers=%d removed=%d "
                          "main_thread_load=%.2f peak=%.2f max_delay=%.3f",
                          timers, self.removed, load, peak, delay)
         if timers >= self.timer_baseline + TIMER_GROWTH_WARNING:
@@ -896,7 +896,7 @@ class KlipperHealth:
         if last is not None and eventtime - last < WARNING_REPEAT:
             return
         self.last_warning[kind] = eventtime
-        logging.warning("tltg_klipper_health: %s", message)
+        logging.warning("vo_klipper_health: %s", message)
         self.gcode.respond_info(message)
 
     # ------------------------------------------------------- homing timeouts
@@ -922,14 +922,14 @@ class KlipperHealth:
         message = ("%s on %s.%s In the %d s before it, %s, with %d timers."
                    % (failure, " and ".join(mcus) or "an endstop", summary,
                       TIMEOUT_CONTEXT, context, self.timer_count()))
-        logging.warning("tltg_klipper_health: %s", message)
+        logging.warning("vo_klipper_health: %s", message)
         if detail:
-            logging.info("tltg_klipper_health: %s", detail)
+            logging.info("vo_klipper_health: %s", detail)
         if figures:
-            logging.info("tltg_klipper_health: endstop sync timing: %s",
+            logging.info("vo_klipper_health: endstop sync timing: %s",
                          _timing_detail(figures))
         if system:
-            logging.info("tltg_klipper_health: during the sync: %s", system)
+            logging.info("vo_klipper_health: during the sync: %s", system)
         self.gcode.respond_info(message)
 
     # ---------------------------------------------------- passing syncs
@@ -978,7 +978,7 @@ class KlipperHealth:
         if summary is None:
             return
         logging.info(
-            "tltg_klipper_health: %d endstop syncs from %s passed; %s",
+            "vo_klipper_health: %d endstop syncs from %s passed; %s",
             summary["count"],
             time.strftime("%H:%M:%S", time.localtime(summary["first"])),
             _timing_detail(summary["boards"]))
@@ -1008,7 +1008,7 @@ class KlipperHealth:
         else:
             timing = "only %.1f ms ahead" % (ahead * 1000.,)
         logging.warning(
-            "tltg_klipper_health: %s: %s on '%s' %s when sent"
+            "vo_klipper_health: %s: %s on '%s' %s when sent"
             "%s; called from %s", kind, command, mcu_name, timing,
             " (%d more since the last report)" % (skipped,) if skipped else "",
             " < ".join("%s:%d %s" % (os.path.basename(call.filename),

@@ -7,7 +7,7 @@
 const SPEED = 20
 const MESH_MIN = [15, 15]
 const MESH_MAX = [375, 375]
-const BED_SOAK_DIR = 'tltg_bed_soak'
+const BED_SOAK_DIR = 'vo_bed_soak'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const round = (v, d = 6) => Math.round(v * 10 ** d) / 10 ** d
 
@@ -161,7 +161,7 @@ export function install(fake) {
   }
   const publishMesh = () => {
     set('bed_mesh', meshStatus())
-    set('tltg_probe_report', { ...report, loaded: !!mesh.loaded && report.profile === mesh.loaded })
+    set('vo_probe_report', { ...report, loaded: !!mesh.loaded && report.profile === mesh.loaded })
   }
   const publishPending = () => set('configfile', { save_config_pending: pending.removed || Object.keys(pending.items).length > 0, save_config_pending_items: { ...pending.items } })
   const pointsText = (points) => '\n' + points.map((r) => r.map((v) => v.toFixed(6)).join(', ')).join('\n')
@@ -286,10 +286,10 @@ export function install(fake) {
 
   // ---- load-cell check ----
   async function loadCellCheck(p) {
-    const t = st().tltg_probe_test
+    const t = st().vo_probe_test
     if (t.active) throw rpcError('A load-cell response check is already running.')
     if (p.CONFIRM !== '1') throw rpcError('Make sure the cold nozzle is accessible and clear of the bed, without homing. Then run VO_TEST_PROBE CONFIRM=1.')
-    set('tltg_probe_test', { active: true, result: null, metrics: {} })
+    set('vo_probe_test', { active: true, result: null, metrics: {} })
     pushConsole('// Load-cell response check: the printer will not move, heat, or change calibration. Do not home or jog during the test. Press lightly only when prompted; never force the nozzle.')
     for (const [instruction, reminder, cue] of [
       ['Measuring the unloaded sensor. Do not touch the nozzle.', 'DO NOT TOUCH', 'Measuring...'],
@@ -302,7 +302,7 @@ export function install(fake) {
       for (let i = 0; i < 3; i++) (pushConsole(`// ${cue}`), await sleep(1000))
     }
     const metrics = { change: 1840, required_change: 212, noise: 26.4, release_error: 38 }
-    set('tltg_probe_test', { active: false, result: 'RESPONSE_DETECTED', metrics })
+    set('vo_probe_test', { active: false, result: 'RESPONSE_DETECTED', metrics })
     pushConsole('// VO_TEST_PROBE RESPONSE_DETECTED: Your load cell readings look correct. The signal changed under light pressure and returned to baseline on release.')
     pushConsole(`// Signal change ${metrics.change} counts (needed ${metrics.required_change}); baseline noise ${Math.round(metrics.noise)}; release error ${metrics.release_error}.`)
     pushConsole('// This checks the sensor signal only; it does not verify the homing trigger.')
@@ -401,7 +401,7 @@ export function install(fake) {
   let soakRun = null
   const publishSoak = (fields) => {
     soak = { ...soak, ...fields }
-    set('tltg_bed_soak', soak)
+    set('vo_bed_soak', soak)
   }
 
   /** The bed's change from cold t seconds after the heaters turned on: height rises with the bed and keeps creeping. */
@@ -493,7 +493,7 @@ export function install(fake) {
   seedRun({ daysAgo: 2.1, bed: 110, chamber: 60, end: 'stopped', reason: 'Stopped by the operator', maxMeshes: 4 })
   seedRun({ daysAgo: 1.3, bed: 90, chamber: null, count: 5, maxMeshes: 3, noResult: true })
 
-  /** The live run: the same steps as tltg_bed_soak, sped up. */
+  /** The live run: the same steps as vo_bed_soak, sped up. */
   async function startSoak(p) {
     if (soak.state === 'running') throw rpcError('A bed soak test is already running')
     if (st().print_stats?.state === 'printing') throw rpcError("A bed soak test can't run during a print")
@@ -779,7 +779,7 @@ export function install(fake) {
       set('query_endstops', { last_query: { x: 0, y: 0, z: 0 } })
       return { x: 'open', y: 'open', z: 'open' }
     },
-    'printer.tltg_bed_soak.stop': () => {
+    'printer.vo_bed_soak.stop': () => {
       if (soak.state !== 'running') throw rpcError('No bed soak test is running')
       soakRun.stop = 'now'
       publishSoak({ stop_requested: true })
@@ -821,9 +821,9 @@ export function install(fake) {
   fake.status((status, scenario) => {
     Object.assign(status, {
       bed_mesh: meshStatus(),
-      tltg_probe_report: { ...report, loaded: !!mesh.loaded && report.profile === mesh.loaded },
-      tltg_probe_test: { active: false, result: null, metrics: {} },
-      tltg_bed_soak: soak,
+      vo_probe_report: { ...report, loaded: !!mesh.loaded && report.profile === mesh.loaded },
+      vo_probe_test: { active: false, result: null, metrics: {} },
+      vo_bed_soak: soak,
       screws_tilt_adjust: { error: false, max_deviation: null, results: [] },
       z_tilt: { applied: scenario === 'printing' },
       query_endstops: { last_query: {} },
@@ -834,7 +834,7 @@ export function install(fake) {
       configfile: { ...(status.configfile ?? {}), save_config_pending: pending.removed || Object.keys(pending.items).length > 0, save_config_pending_items: { ...pending.items }, warnings: [] },
     })
     status.toolhead = { axis_minimum: [-2, -5, -5, 0], axis_maximum: [392, 410, 342, 0], ...status.toolhead }
-    status.tltg_macro_status = { box_available: true, vendor_flow: true, loaded_slot: 'slot1', max_accel: 30000, ...status.tltg_macro_status, input_shaper: { loaded: true, unshaped_axes: '', saved: true } }
+    status.vo_macro_status = { box_available: true, vendor_flow: true, loaded_slot: 'slot1', max_accel: 30000, ...status.vo_macro_status, input_shaper: { loaded: true, unshaped_axes: '', saved: true } }
     if (scenario === 'bed-soak' && soak.state !== 'running') setTimeout(() => startSoak({ BED: '100', CHAMBER: '45', PROBE_COUNT: '5' }), 500)
   })
 }

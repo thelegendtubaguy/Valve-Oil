@@ -279,7 +279,7 @@ def _validate_external_restore_targets(
 
 
 def _snapshot_source_firmware(snapshot: dict[str, bytes]) -> tuple[bool, str | None]:
-    state = snapshot.get("config/tltg_optimized_state.yaml")
+    state = snapshot.get("config/vo_state.yaml")
     if state is None:
         return False, None
     try:

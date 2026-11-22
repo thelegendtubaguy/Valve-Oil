@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's Klipper and Moonraker units, from the upstream install scripts, set RemainAfterExit=yes. A process that exits
@@ -10,11 +11,11 @@ from .errors import InstallerError
 MOONRAKER_OPERATION = "moonraker_restart_on_exit"
 KLIPPER_OPERATION = "klipper_restart_on_exit"
 FILES = {
-    MOONRAKER_OPERATION: "/etc/systemd/system/moonraker.service.d/tltg-restart-on-exit.conf",
-    KLIPPER_OPERATION: "/etc/systemd/system/klipper.service.d/tltg-restart-on-exit.conf",
+    MOONRAKER_OPERATION: "/etc/systemd/system/moonraker.service.d/vo-restart-on-exit.conf",
+    KLIPPER_OPERATION: "/etc/systemd/system/klipper.service.d/vo-restart-on-exit.conf",
 }
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:restart-on-exit\n"
+MARKER = "# vo:restart-on-exit\n"
 CONTENT = MARKER + """\
 # Restarts the service after any exit outside systemd. Installed by Valve Oil.
 [Service]
@@ -24,7 +25,7 @@ RemainAfterExit=no
 
 def patch_dropin(path: str) -> Callable[[str], str]:
     def patch(current: str) -> str:
-        if current == "" or current.startswith(MARKER):
+        if current == "" or has_marker(current, MARKER):
             return CONTENT
         raise InstallerError(f"Existing {path} is unrecognized and was preserved.")
     return patch
