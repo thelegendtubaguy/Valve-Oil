@@ -489,15 +489,28 @@ done
 printf '%s\\n' "$*" >> "$(dirname "$0")/refused"
 exit 1
 """
+SYSTEMCTL_GUARD = """#!/bin/sh
+# Stands in for systemctl while the smoke test runs the bundle: the stand-in printer runs no services, so queries say
+# each one is stopped, and any command that would change one is recorded and refused.
+case "$1" in
+    show) echo "ActiveState=inactive"; exit 0 ;;
+    is-active) echo "inactive"; exit 3 ;;
+esac
+printf 'systemctl %s\\n' "$*" >> "$(dirname "$0")/refused"
+exit 1
+"""
 
 
 def host_guard(workspace: Path) -> Path:
-    """A PATH entry whose sudo refuses every command, so a bundle run on a stand-in printer can't change this host."""
+    """A PATH entry whose sudo and systemctl refuse every command that would change this host, so a bundle run on a
+    stand-in printer can't."""
     guard = workspace / "host-guard"
     if not guard.exists():
         guard.mkdir(parents=True)
         (guard / "sudo").write_text(SUDO_GUARD, encoding="utf-8")
         (guard / "sudo").chmod(0o755)
+        (guard / "systemctl").write_text(SYSTEMCTL_GUARD, encoding="utf-8")
+        (guard / "systemctl").chmod(0o755)
     return guard
 
 
