@@ -101,8 +101,12 @@ class StatusServiceTests(unittest.TestCase):
         cls.restarts = threading.Semaphore(0)
         cls.restart_fails = False
 
+        cls.restarted = threading.Event()
+
         def restart():
+            # Until Klipper has restarted, the Klipper Moonraker reports is the one being replaced.
             cls.restarts.release()
+            cls.restarted.wait(5)
             if cls.restart_fails:
                 raise OSError("Moonraker went away")
 
@@ -494,6 +498,13 @@ class StatusServiceTests(unittest.TestCase):
             status, body = switch({"use": "valve_oil"})
             self.assertEqual((status, body["klipper"]["selected"], body["klipper"]["running"]), (202, "valve_oil", None))
             self.assertTrue(self.restarts.acquire(timeout=5))
+            self.assertIsNone(klipper()["running"])
+            self.restarted.set()
+            for _ in range(100):
+                if klipper()["running"]:
+                    break
+            self.assertEqual(klipper()["running"], "qidi")
+            self.restarted.clear()
             saved = json.loads(choice.read_text())
             self.assertEqual((saved["use"], saved["source"]), ("valve_oil", "ui"))
             self.assertFalse(launch.exists() or ready.exists())
@@ -520,6 +531,7 @@ class StatusServiceTests(unittest.TestCase):
             status, body = switch({"use": "qidi", "source": "console"})
             self.assertEqual((status, body["klipper"]["selected"]), (202, "qidi"))
             self.assertTrue(self.restarts.acquire(timeout=5))
+            self.restarted.set()
             self.assertEqual(json.loads(choice.read_text())["source"], "console")
             for _ in range(100):
                 if klipper()["restart_error"]:
@@ -529,6 +541,7 @@ class StatusServiceTests(unittest.TestCase):
             self.process.update(moonraker=False, state=None)
             self.assertEqual(codes(switch({"use": "qidi"})), (409, ["printer_state_unknown"]))
         finally:
+            self.restarted.set()
             type(self).live = ()
             type(self).restart_fails = False
             type(self).klipper_check = None

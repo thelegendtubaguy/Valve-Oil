@@ -60,7 +60,8 @@ switch: {to, allowed, blocked_by: [{code, message}]}}}.
   choice (KLIPPER_CHOICE_FILE; "qidi" when there is none); running is the tree of the Klipper Moonraker is connected
   to, or the launcher's record of its last start, or null while Klipper starts. available and unavailable_reason come
   from the launcher's --check (cached); version is Valve Oil's Klipper's. fallback_reason says why QIDI's runs although
-  Valve Oil's is selected. restart_error: the last switch's Klipper restart failed, until the next switch. switch:
+  Valve Oil's is selected. running is null from a switch until Moonraker has restarted Klipper. restart_error: the
+  last switch's Klipper restart failed, until the next switch. switch:
   whether POST api/klipper would switch to `to`, the one not selected, and if not every reason: printing,
   printer_state_unknown (Moonraker didn't answer), run_in_progress, installer_busy, and, only towards Valve Oil's,
   firmware_update_pending, recovery_required, and valve_oil_unavailable. Choosing QIDI's needs only no print and no
@@ -472,7 +473,9 @@ def status_body(jobs: Jobs) -> dict:
 
 _klipper_check = {"key": None, "until": 0.0, "value": None}
 _klipper_check_lock = threading.Lock()
-_klipper_restart = {"error": None}
+# The restart a switch asked for: running is reported as unknown until Moonraker has restarted Klipper, as the Klipper
+# it reports before then is the one being replaced.
+_klipper_restart = {"error": None, "restarting": False}
 
 
 def klipper_choice() -> str:
@@ -611,6 +614,8 @@ def klipper_body(live: tuple[str, ...] | None, busy: bool, process: dict | None 
     running = _tree_of(process["path"])
     if running is None and launch.get("running") in KLIPPER_CHOICES:
         running = launch["running"]
+    if _klipper_restart["restarting"]:
+        running = None
     fallback = None
     if selected == "valve_oil" and running == "qidi":
         fallback = (_text(launch.get("reason")) if launch.get("running") == "qidi" else None) or check["reason"] \
@@ -647,10 +652,10 @@ def switch_klipper(use: str, source: str, jobs: Jobs) -> dict:
     except OSError as exc:
         log(f"Klipper choice failed: {exc}")
         raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "The Klipper choice could not be saved.") from exc
-    _klipper_restart["error"] = None
+    _klipper_restart.update(error=None, restarting=True)
     log(f"Klipper: {use} chosen from the {source}; restarting Klipper")
     threading.Thread(target=_restart_klipper_later, daemon=True).start()
-    return klipper_body(live, busy, {**process, "path": None, "state": None})
+    return klipper_body(live, busy, process)
 
 
 def _restart_klipper_later() -> None:
@@ -660,6 +665,8 @@ def _restart_klipper_later() -> None:
     except (OSError, ValueError) as exc:
         _klipper_restart["error"] = "Moonraker didn't restart Klipper; restart Klipper to finish switching"
         log(f"Klipper restart failed: {exc}")
+    finally:
+        _klipper_restart["restarting"] = False
 
 
 def restart_klipper() -> None:
