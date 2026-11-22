@@ -126,7 +126,9 @@ EARLIER_FIRMWARE_UPDATE_RECORD = ".tltg_firmware_update_pending.json"
 FIRMWARE_UPDATE_RECORD = ".vo_firmware_update_pending.json"
 # Kept for an earlier release's run that started this one, which writes its result there after this run ends.
 EARLIER_PARENT_FILES = frozenset({".tltg_valve_oil_status.json", "config/tltg_optimized_auto_update_state.json"})
-EARLIER_STAGED_PREFIX = "..tltg_"
+# What earlier releases' interrupted writes left: an atomic write stages "<dir>/.<name>.<random>", and a backup
+# "<printer_data>/.<label>.<random>.zip"; finished backups never start with a dot.
+EARLIER_STAGED_PREFIX = ("..tltg_", ".tltg-optimized-macros-before-")
 # The macros folder printer.cfg includes.
 EARLIER_INCLUDE = "[include tltg-optimized-macros/*.cfg]"
 INCLUDE = "[include vo-macros/*.cfg]"
@@ -183,7 +185,6 @@ def migrate_printer_data(paths: RuntimePaths) -> bool:
                 if path.name.startswith(earlier_prefix):
                     moved |= _move(path, directory / (prefix + path.name[len(earlier_prefix):]), LATER)
     moved |= _move_macros(paths)
-    # What earlier releases' interrupted writes left: an atomic write stages "<dir>/.<name>.<random>".
     for directory in (root, root / "config"):
         with suppress(OSError):
             for path in directory.iterdir():
