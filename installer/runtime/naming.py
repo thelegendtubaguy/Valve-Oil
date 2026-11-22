@@ -22,10 +22,10 @@ LEGACY_CACHE_DIRECTORIES = (".cache/tltg-auto-update", ".cache/tltg-firmware-upd
                             ".cache/tltg-addons")
 INSTALL_BACKUP_LABEL_PREFIX = "vo-before-install"
 UNINSTALL_BACKUP_LABEL_PREFIX = "vo-before-uninstall"
-# Configuration backups releases before 26.11.22.2 made keep their names and are listed and restored like new ones.
+# Configuration backups releases before 26.11.22.3 made keep their names and are listed and restored like new ones.
 EARLIER_INSTALL_BACKUP_LABEL_PREFIX = "tltg-optimized-macros-before-optimize"
 EARLIER_UNINSTALL_BACKUP_LABEL_PREFIX = "tltg-optimized-macros-before-uninstall"
-# Files the package writes start with a marker line, "# vo:<name>"; releases before 26.11.22.2 wrote
+# Files the package writes start with a marker line, "# vo:<name>"; releases before 26.11.22.3 wrote
 # "# tltg-optimized:<name>". Either marks the file as the package's own.
 MARKER_PREFIX = "# vo:"
 EARLIER_MARKER_PREFIX = "# tltg-optimized:"

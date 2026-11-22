@@ -13,7 +13,7 @@ from .naming import BUNDLE_ROOT_NAME
 from .sudo import SudoError, authenticate_sudo, run_sudo
 
 RunFn = Callable[..., subprocess.CompletedProcess]
-# Valve Oil's names, and the names releases before 26.11.22.2 used, which an install moves to Valve Oil's.
+# Valve Oil's names, and the names releases before 26.11.22.3 used, which an install moves to Valve Oil's.
 EARLIER_PREFIXES = ("tltg", ".tltg")
 INSTALLER_PREFIXES = ("vo_", "vo-", ".vo_", ".vo-", *EARLIER_PREFIXES)
 HOME_NAMES = ("vo-fluidd", "vo-valve-oil-ui", "vo-moonraker-speedups", "vo-addons")

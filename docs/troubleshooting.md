@@ -282,7 +282,7 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
 - **Installer log:** each install, update, and uninstall saves `valve-oil-<run>-<date>.log` in `~/printer_data/logs`, in the same **logs** list as `klippy.log`. The USB installer also saves it on the drive as `valve-oil-install.log`.
 - **Installer output:** copy everything the installer printed, from the command to the end. To see the log's detail as it runs, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
-- **Automatic update output:** `journalctl -u vo-auto-update.service --since "2 days ago"`. An update from a release before 26.11.22.2 is logged under that release's name, `tltg-optimized-auto-update.service`.
+- **Automatic update output:** `journalctl -u vo-auto-update.service --since "2 days ago"`. An update from a release before 26.11.22.3 is logged under that release's name, `tltg-optimized-auto-update.service`.
 - **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u vo-firmware-update.service --since "2 days ago"`.
 - **Update now output:** `~/.cache/valve-oil/status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.
 - **`moonraker.log`:** `~/printer_data/logs/moonraker.log`, for Fluidd or file upload problems.

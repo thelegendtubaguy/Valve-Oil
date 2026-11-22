@@ -33,7 +33,7 @@ ROOT = "/home/qidi/vo-addons"
 # moves them now.
 EARLIER_ROOT = "/home/qidi/tltg-addons"
 SYSTEM_ROOT = "/usr/local/lib/vo-addons"
-# Where releases before 26.11.22.2 put add-on kernel modules; move_earlier_addons moves them with their add-on.
+# Where releases before 26.11.22.3 put add-on kernel modules; move_earlier_addons moves them with their add-on.
 EARLIER_SYSTEM_ROOT = "/usr/local/lib/tltg-addons"
 MODULE_LOADER = "load-modules.sh"
 OSRELEASE = "/proc/sys/kernel/osrelease"
@@ -42,7 +42,7 @@ UNIT_DIR = "/etc/systemd/system"
 SYSTEM_PYTHON = "/usr/bin/python3"
 # Marks a package-owned add-on directory and records what it was built from.
 MARKER = ".vo-addon.json"
-# The same two markers as releases before 26.11.22.2 named them. Both are read; an update or move_earlier_addons
+# The same two markers as releases before 26.11.22.3 named them. Both are read; an update or move_earlier_addons
 # replaces them.
 EARLIER_MARKER = ".tltg-addon.json"
 EARLIER_DATA_MARKER = ".tltg-addon-data"

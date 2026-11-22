@@ -101,7 +101,7 @@ On a working printer:
 - `sbin`, `bin`, and `lib` are links: `sbin -> usr/sbin`, `bin -> usr/bin`, and `lib -> usr/lib`.
 - `/usr/sbin/init` is a link to `/lib/systemd/systemd`.
 - `e2fsck -n` reports no errors.
-- The boot partition's sha256 matches `written` in `.vo_boot_logo.json` (`.tltg_boot_logo.json` on releases before 26.11.22.2), or `original` if Valve Oil's boot logo isn't installed.
+- The boot partition's sha256 matches `written` in `.vo_boot_logo.json` (`.tltg_boot_logo.json` on releases before 26.11.22.3), or `original` if Valve Oil's boot logo isn't installed.
 
 ### `sbin` is a folder instead of a link
 
@@ -132,7 +132,7 @@ e2fsck -fy /dev/mmcblk1p6
 
 ### The boot partition doesn't match
 
-Valve Oil keeps QIDI's boot partition as `vo_system_backups/boot-partition-<hash>.img` (`tltg_optimized_system_backups/` on releases before 26.11.22.2). Check that the backup's sha256 is the `original` in `.vo_boot_logo.json`, then write it back:
+Valve Oil keeps QIDI's boot partition as `vo_system_backups/boot-partition-<hash>.img` (`tltg_optimized_system_backups/` on releases before 26.11.22.3). Check that the backup's sha256 is the `original` in `.vo_boot_logo.json`, then write it back:
 
 ```sh
 B=$(ls /mnt/root/home/qidi/printer_data/vo_system_backups/boot-partition-*.img /mnt/root/home/qidi/printer_data/tltg_optimized_system_backups/boot-partition-*.img 2>/dev/null)
@@ -190,7 +190,7 @@ The Plus 5 and Smart 5 have the same RK3308 host board, MODE and SOC-RST buttons
 python3 scripts/build_rescue_kit.py --boot boot-partition-<hash>.img --recovery recovery.img --output-dir rescue-kit
 ```
 
-- `--boot` is QIDI's boot partition. On a printer with Valve Oil, use its backup in `~/printer_data/vo_system_backups/` (`tltg_optimized_system_backups/` on releases before 26.11.22.2). Valve Oil's boot logo doesn't change the kernel or device tree, but QIDI's own copy keeps the kit to stock bytes.
+- `--boot` is QIDI's boot partition. On a printer with Valve Oil, use its backup in `~/printer_data/vo_system_backups/` (`tltg_optimized_system_backups/` on releases before 26.11.22.3). Valve Oil's boot logo doesn't change the kernel or device tree, but QIDI's own copy keeps the kit to stock bytes.
 - `--recovery` is `/dev/block/by-name/recovery`, read with `sudo dd`.
 
 The loader is built from Rockchip's [rkbin](https://github.com/rockchip-linux/rkbin) with `tools/boot_merger` and an RK3308 `MINIALL` file that uses `rk3308_ddr_589MHz_uart2_m1_v2.11.bin`, `rk3308_usbplug_wo_ftl_v1.46.bin`, and `rk3308_miniloader_wo_ftl_v1.43.bin`.

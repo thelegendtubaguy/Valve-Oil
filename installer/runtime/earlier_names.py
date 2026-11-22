@@ -1,4 +1,4 @@
-"""Moves what releases before 26.11.22.2 named `tltg` to Valve Oil's `vo` names.
+"""Moves what releases before 26.11.22.3 named `tltg` to Valve Oil's `vo` names.
 
 Those releases named Valve Oil's files in printer_data, its services and their files, the folders it serves, and
 its Klipper modules `tltg`. Every run moves printer_data to the new names first (migrate_printer_data), before it
@@ -29,7 +29,7 @@ from .sudo import run_sudo
 RunFn = Callable[..., subprocess.CompletedProcess]
 
 # ---- the environment -------------------------------------------------------------------------------------------------
-# What one run passes to another, under the names releases before 26.11.22.2 used.
+# What one run passes to another, under the names releases before 26.11.22.3 used.
 EARLIER_ENVIRONMENT = {
     "VO_INSTALLER_LOCK_HELD": "TLTG_OPTIMIZED_INSTALLER_LOCK_HELD",
     "VO_FIRMWARE_UPDATE_KIND": "TLTG_FIRMWARE_UPDATE_KIND",
@@ -551,7 +551,7 @@ _EARLIER_TEXT = (
 
 def current_text(text: str) -> str:
     """`text` with the earlier names the package wrote into it replaced by their current ones, so a patch made by a
-    release before 26.11.22.2 reads as this release's."""
+    release before 26.11.22.3 reads as this release's."""
     if "tltg" not in text and "Tltg" not in text and "TLTG" not in text:
         return text
     for pattern, replacement in _EARLIER_TEXT:

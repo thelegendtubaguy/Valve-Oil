@@ -17,12 +17,12 @@ from installer.runtime.uninstall import run_uninstall
 from installer.tests.helpers import REPO_ROOT, build_env, homing_fixture_bytes, moonraker_urlopen, stock_printer_data
 
 FIRMWARE = "01.01.06.03"
-# Modules releases before 26.11.22.2 already installed under vo_ names.
+# Modules releases before 26.11.22.3 already installed under vo_ names.
 ALREADY_VO = {"vo_renamed_commands.py", "vo_homing_guard.py", "vo_prime_handoff.py"}
 
 
 class EarlierNamesTests(unittest.TestCase):
-    """Printers on releases before 26.11.22.2, whose names were tltg, move to the vo names."""
+    """Printers on releases before 26.11.22.3, whose names were tltg, move to the vo names."""
 
     def setUp(self) -> None:
         earlier_names.EARLIER_PARENT = False

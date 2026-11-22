@@ -101,7 +101,7 @@ Confirm no print is running or paused and every heater target, including the cha
 
 ```bash
 systemctl is-active klipper.service qidi-client.service vo-auto-update.timer
-sudo systemctl stop vo-auto-update.timer  # tltg-optimized-auto-update.timer before 26.11.22.2
+sudo systemctl stop vo-auto-update.timer  # tltg-optimized-auto-update.timer before 26.11.22.3
 sudo systemctl stop qidi-client.service
 sudo systemctl stop klipper.service
 ```

@@ -201,7 +201,7 @@ def _validate_source_destination(path: str) -> str:
     return pure.as_posix()
 
 
-# The package id releases before 26.11.22.2 recorded, from before the project was named Valve Oil.
+# The package id releases before 26.11.22.3 recorded, from before the project was named Valve Oil.
 EARLIER_PACKAGE_ID = "qidi-max4-optimized"
 PACKAGE_ID = "valve-oil"
 

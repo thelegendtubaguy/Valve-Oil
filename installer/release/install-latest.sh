@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# TLTG_INSTALLER_ARCHIVE_URL and TLTG_INSTALLER_CHECKSUM_URL are the names instructions before 26.11.22.2 used.
+# TLTG_INSTALLER_ARCHIVE_URL and TLTG_INSTALLER_CHECKSUM_URL are the names instructions before 26.11.22.3 used.
 ARCHIVE_URL=${VO_INSTALLER_ARCHIVE_URL:-${TLTG_INSTALLER_ARCHIVE_URL:-https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/valve-oil.tar.gz}}
 CHECKSUM_URL=${VO_INSTALLER_CHECKSUM_URL:-${TLTG_INSTALLER_CHECKSUM_URL:-${ARCHIVE_URL}.sha256}}
 ARCHIVE_NAME=${ARCHIVE_URL##*/}
