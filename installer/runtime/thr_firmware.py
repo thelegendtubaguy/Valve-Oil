@@ -616,6 +616,28 @@ def install_rescue_unit(paths, *, run, password) -> None:
     os.sync()
 
 
+def refresh_rescue_unit(paths, *, run, password) -> bool:
+    """Rewrite an installed rescue unit, its generator, and the catch where they still name what releases before
+    26.11.22.1 called tltg. Nothing is installed where there is no rescue unit, or while a flash is unfinished."""
+    try:
+        current = (SYSTEMD_DIR / RESCUE_UNIT).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not current.startswith(RESCUE_UNIT_MARKER) or (paths.printer_data_root / THR_RECOVERY_MARKER).exists():
+        return False
+    texts = [current]
+    for path in (GENERATOR, CATCH_SCRIPT):
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            pass
+    if not any("tltg" in text for text in texts):
+        return False
+    (paths.printer_data_root / BACKUP_DIRECTORY).mkdir(mode=0o700, exist_ok=True)
+    install_rescue_unit(paths, run=run, password=password)
+    return True
+
+
 def remove_rescue_unit(*, run, password) -> None:
     """Uninstall: disable and remove the unit, which an uninstall leaves only when no THR record exists."""
     target = SYSTEMD_DIR / RESCUE_UNIT

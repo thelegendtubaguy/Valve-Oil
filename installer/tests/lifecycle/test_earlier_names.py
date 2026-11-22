@@ -61,6 +61,7 @@ class EarlierNamesTests(unittest.TestCase):
             if module.name not in ALREADY_VO:
                 module.rename(extras / ("tltg_" + module.name[len("vo_"):]))
         (root / ".tltg_box485_salt").write_text("salt\n", encoding="utf-8")
+        (root / "..tltg_optimized_host_reboot_required.5kooz5tg").write_text("", encoding="utf-8")
         (root / "logs").mkdir(exist_ok=True)
         (root / "logs/tltg_box_firmware_box2.json").write_text("{}\n", encoding="utf-8")
         (root / "config/tltg_bed_soak").mkdir(exist_ok=True)

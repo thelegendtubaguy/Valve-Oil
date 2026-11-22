@@ -40,6 +40,7 @@ from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import moonraker_used_extruders
 from . import earlier_names
+from . import thr_firmware
 from . import qidiclient_firmware_popup
 from . import addons_service
 from . import status_service
@@ -2426,6 +2427,10 @@ def apply_system_optimizations(
         ) or applied_any
         # Their folders go once nginx and the .pth files point at the current ones.
         retire_earlier_names(root=root, sudo_password=sudo_password, run=run, reporter=reporter, folders=True)
+        if not _is_fake_root(root):
+            with suppress(InstallerError, OSError):
+                if thr_firmware.refresh_rescue_unit(paths, run=run, password=sudo_password or ""):
+                    reporter.debug(event="system_optimizations.thr_rescue_unit_refreshed")
     except BaseException as exc:
         if current_preimages:
             last_id = next(reversed(current_preimages))

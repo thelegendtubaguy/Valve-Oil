@@ -126,6 +126,7 @@ EARLIER_FIRMWARE_UPDATE_RECORD = ".tltg_firmware_update_pending.json"
 FIRMWARE_UPDATE_RECORD = ".vo_firmware_update_pending.json"
 # Kept for an earlier release's run that started this one, which writes its result there after this run ends.
 EARLIER_PARENT_FILES = frozenset({".tltg_valve_oil_status.json", "config/tltg_optimized_auto_update_state.json"})
+EARLIER_STAGED_PREFIX = "..tltg_"
 # The macros folder printer.cfg includes.
 EARLIER_INCLUDE = "[include tltg-optimized-macros/*.cfg]"
 INCLUDE = "[include vo-macros/*.cfg]"
@@ -182,6 +183,12 @@ def migrate_printer_data(paths: RuntimePaths) -> bool:
                 if path.name.startswith(earlier_prefix):
                     moved |= _move(path, directory / (prefix + path.name[len(earlier_prefix):]), LATER)
     moved |= _move_macros(paths)
+    # What earlier releases' interrupted writes left: an atomic write stages "<dir>/.<name>.<random>".
+    for directory in (root, root / "config"):
+        with suppress(OSError):
+            for path in directory.iterdir():
+                if path.name.startswith(EARLIER_STAGED_PREFIX) and path.is_file() and not path.is_symlink():
+                    path.unlink()
     for relative in CONTENT_FILES:
         _rewrite(root / relative, rewrites)
     _remove_earlier_bundle_link(root.parent)
@@ -475,6 +482,10 @@ def earlier_names_present(paths: RuntimePaths) -> bool:
         return True
     if (root / EARLIER_MACROS).exists() or (root.parent / LEGACY_BUNDLE_ROOT_NAME).is_symlink():
         return True
+    for directory in (root, root / "config"):
+        with suppress(OSError):
+            if any(path.name.startswith(EARLIER_STAGED_PREFIX) for path in directory.iterdir()):
+                return True
     for folder, earlier_prefix, _ in PRINTER_DATA_PREFIX_MOVES:
         with suppress(OSError):
             if any(path.name.startswith(earlier_prefix) for path in (root / folder if folder else root).iterdir()):
