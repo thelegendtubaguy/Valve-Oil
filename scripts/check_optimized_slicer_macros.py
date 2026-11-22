@@ -10,6 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 GCODE_MACRO_RE = re.compile(r"^\[gcode_macro\s+([^\]]+)\]\s*$", re.IGNORECASE)
+MODULE_COMMAND_RE = re.compile(r"register_command\(\s*\"([A-Z0-9_]+)\"")
 COMMAND_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)(?=$|[\s\[])")
 CONTROL_BLOCK_RE = re.compile(r"\{(?:if|else|elsif|endif)\b[^}]*\}", re.IGNORECASE)
 NUMERIC_SUFFIX_RE = re.compile(r"^(.*?)(\d+)$")
@@ -87,6 +88,14 @@ def iter_macro_names(*macro_dirs: Path) -> set[str]:
             if match:
                 macros.add(match.group(1).strip().upper())
     return macros
+
+
+def iter_module_commands(extras_dir: Path) -> set[str]:
+    """Commands Valve Oil's Klipper modules register."""
+    commands: set[str] = set()
+    for path in sorted(extras_dir.glob("*.py")):
+        commands.update(MODULE_COMMAND_RE.findall(path.read_text()))
+    return commands
 
 
 def build_dynamic_prefixes(macros: set[str]) -> set[str]:
@@ -175,7 +184,7 @@ def validate_repo(
         macros = iter_macro_names(
             repo_root / "installer" / "klipper" / "macros",
             repo_root / "installer" / "klipper" / "printers" / printer,
-        )
+        ) | iter_module_commands(repo_root / "installer" / "klipper" / "extras")
         files = iter_slicer_files(repo_root, printer)
         failures.extend(_validate_files(repo_root, files, macros))
         checked_files.extend(files)
@@ -231,7 +240,7 @@ def main() -> int:
         return 1
 
     print(
-        f"Validated {len(checked_files)} optimized slicer G-code files against {len(macros)} optimized source macros."
+        f"Validated {len(checked_files)} optimized slicer G-code files against {len(macros)} optimized macros and commands."
     )
     return 0
 

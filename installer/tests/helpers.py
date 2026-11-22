@@ -412,7 +412,7 @@ def fake_host_run(root: Path):
         command = list(command)
         if command[:4] == ["sudo", "-S", "-p", ""]:
             command = command[4:]
-        if command == ["-v"]:
+        if command in (["-v"], ["-k", "-v"]):
             return result(command)
         if command[:2] == ["systemctl", "is-enabled"]:
             state = service_state(command[2])

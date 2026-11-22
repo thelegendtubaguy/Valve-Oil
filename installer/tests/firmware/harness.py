@@ -10,9 +10,11 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.reporter import create_reporter
+from installer.runtime.sudo import PUBLIC_DEFAULT_SUDO_PASSWORD
 from installer.tests.helpers import REPO_ROOT, build_env, temp_path
 
 
@@ -20,14 +22,23 @@ class Host:
     """The host as a board flow sees it through `run`: sudo, and the services that own the boards' serial ports.
 
     `states` maps each service to "active" or "inactive"; a service left out isn't installed. Any other command goes to
-    the subclass's `tool`, which answers for the board tools. `fail_start` names a service that won't start.
+    the subclass's `tool`, which answers for the board tools. `fail_start` names a service that won't start. `gcc`
+    False is a host without a C compiler.
+
+    sudo takes `password`. Once it has accepted one, it keeps credentials for the terminal, as a printer's sudo does:
+    `-v` from the terminal then passes whatever password it is given, while `-k -v` and a command in its own session
+    check the password.
     """
 
-    def __init__(self, states, *, fail_start=None):
+    def __init__(self, states, *, fail_start=None, password=PUBLIC_DEFAULT_SUDO_PASSWORD, gcc=True):
         self.states = dict(states)
         self.original = dict(states)
         self.fail_start = fail_start
+        self.password = password
+        self.terminal_credentials = False
+        self.gcc = gcc
         self.stops = self.service_changes = self.tool_runs = 0
+        self.enabled = set()
 
     def run(self, command, **kwargs):
         command = list(command)
@@ -37,12 +48,56 @@ class Host:
 
         if command[:4] == ["sudo", "-S", "-p", ""]:
             command = command[4:]
-        if command == ["-v"]:
+            from_terminal = not kwargs.get("start_new_session")
+            cached = from_terminal and self.terminal_credentials and command[0] != "-k"
+            if not cached and kwargs.get("input", "").rstrip("\n") != self.password:
+                return result(1)
+            self.terminal_credentials |= from_terminal
+        if command in (["-v"], ["-k", "-v"]):
             return result()
         if command[:2] == ["systemctl", "show"]:
             if command[2] not in self.states:
                 return result(1, "LoadState=not-found\nActiveState=inactive\n")
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
+        if command[:2] == ["install", "-m"] and command[2] in ("0644", "0755"):
+            shutil.copyfile(command[3], command[4])
+            os.chmod(command[4], int(command[2], 8))
+            return result()
+        if command == ["systemctl", "daemon-reload"]:
+            return result()
+        if command[:2] == ["mkdir", "-p"]:
+            os.makedirs(command[2], exist_ok=True)
+            return result()
+        if command[0] == "gcc":
+            # A build that reports, as the compiled THR catch does, the source it was built from.
+            if not self.gcc:
+                raise FileNotFoundError("gcc")
+            built = next(flag.split("=", 1)[1].strip('"') for flag in command if flag.startswith("-DSOURCE_SHA256="))
+            output = command[command.index("-o") + 1]
+            with open(output, "w") as handle:
+                handle.write(built + "\n")
+            os.chmod(output, 0o755)
+            return result()
+        if command[1:] == ["--check"]:
+            try:
+                with open(command[0]) as handle:
+                    return result(output=handle.read())
+            except OSError:
+                raise FileNotFoundError(command[0])
+        if command[:2] == ["rm", "-f"]:
+            for path in command[2:]:
+                if os.path.commonpath([os.path.realpath(path), os.path.realpath(tempfile.gettempdir())]) != \
+                        os.path.realpath(tempfile.gettempdir()):
+                    raise AssertionError("A test removed a host path: " + path)
+                if os.path.exists(path):
+                    os.unlink(path)
+            return result()
+        if command[:2] == ["systemctl", "enable"]:
+            self.enabled.add(command[2])
+            return result()
+        if command[:2] == ["systemctl", "is-active"]:
+            state = self.states.get(command[2], "inactive")
+            return result(0 if state == "active" else 3, state + "\n")
         if command[0] == "systemctl" and command[1] in ("stop", "start"):
             self.service_changes += 1
             self.stops += command[1] == "stop"

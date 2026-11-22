@@ -903,7 +903,8 @@ def _saved_shaper(paths) -> dict[str, str]:
     return values
 
 
-def _mark_thr_flashed(paths) -> None:
+def mark_thr_flashed(paths) -> None:
+    """Fluidd's input shaper warning after a THR flash, until printer.cfg holds another calibration."""
     target = _log_dir(paths) / THR_SHAPER_MARKER
     try:
         ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
@@ -1033,7 +1034,7 @@ def deliver_board_firmware(
         if outcome in ("current", "flashed"):
             statuses[board] = replace(status, state=CURRENT, application=pinned.build, version=pinned.version)
         if board == "thr" and outcome == THR_FLASHED:
-            _mark_thr_flashed(paths)
+            mark_thr_flashed(paths)
 
     boxes = [name for name, status in statuses.items() if status.kind == "box" and status.state == NEEDS_IMAGE
              and (status.application != QIDI_APPLICATION or deliverable_now(status, printer, firmware, paths.bundle_root))]

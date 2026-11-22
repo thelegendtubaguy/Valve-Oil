@@ -4,6 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import hashlib
 
+# What a bootloader does when a data session goes quiet for session_ticks: every build first erases the first application
+# page. WAITS then stays in the bootloader, answering identity and start, until power is lost; RESTARTS resets into its
+# startup window; HALTS faults in its reset code and does nothing more until power is lost.
+WAITS, RESTARTS, HALTS = "waits", "restarts", "halts"
+
 
 @dataclass(frozen=True)
 class BootloaderProfile:
@@ -30,10 +35,16 @@ class BootloaderProfile:
     startup_ticks: int | None = None
     session_ticks: int | None = None
     exit_ticks: int | None = None
+    after_session: str | None = None
+
+    # startup_ticks: after a reset, the bootloader stays only for an identity and a start that both arrive within
+    # this many ticks; otherwise it jumps to the application, whatever the application region holds.
 
     @property
     def recoverable(self) -> bool:
-        return None not in (self.reset_hook, self.startup_ticks, self.session_ticks, self.exit_ticks)
+        """Whether its timing is known well enough for recovery mode (Bootloader.transfer_recovering) and rescue."""
+        timed = None not in (self.tick, self.startup_ticks, self.session_ticks, self.exit_ticks, self.after_session)
+        return timed and (self.after_session != RESTARTS or self.reset_hook is not None)
 
 
 FIRST = BootloaderProfile(
@@ -48,6 +59,7 @@ FIRST = BootloaderProfile(
     dispatch=0x080014d8, receive_buffer=0x20000458,
     receive_flags=(0x20000c62, 0x2000003d),
     session_timer=0x20000034, exit_timer=0x20000008,
+    tick=0x08000aec, startup_ticks=10000, session_ticks=10000, exit_ticks=1000, after_session=WAITS,
 )
 SECOND = BootloaderProfile(
     sha256="31f8344db7b091df5429960bc9cd06065e2188c3b8092e43fb65eb3f2833723c",
@@ -62,15 +74,20 @@ SECOND = BootloaderProfile(
     receive_flags=(0x2000088e, 0x2000000b),
     session_timer=0x20000014, exit_timer=0x20000018,
     reset_hook=0x08000130, tick=0x08001bfc, startup_ticks=4000,
-    session_ticks=10000, exit_ticks=1000,
+    session_ticks=10000, exit_ticks=1000, after_session=RESTARTS,
 )
 # The Smart 5's: FIRST's code with one more call in main, which sends the identity reply once at startup, unasked; every
-# hook and buffer below that call keeps FIRST's address. It identifies as bootloader 1.3.
+# hook and buffer below that call keeps FIRST's address. It identifies as bootloader 1.3, and its startup window is
+# half of FIRST's.
 THIRD = replace(FIRST, sha256="a21a3019004a4a3e50ec2e07882b8b39b7ff028161e692e83191144c14da7342",
-                identity_reply=bytes.fromhex("01020103"))
-PROFILES = {profile.sha256: profile for profile in (FIRST, SECOND, THIRD)}
+                identity_reply=bytes.fromhex("01020103"), startup_ticks=5000)
+# SECOND with one byte changed, at 0x0133: the first instruction of its reset code (0x08000130), SECOND's `dsb sy`, is an
+# undefined instruction here, so where SECOND resets after a quiet data session this build faults and stays halted; it
+# has no watchdog. Everything else, including every transfer that doesn't go quiet, is SECOND's.
+FOURTH = replace(SECOND, sha256="0302f39c204e13a63fdc5c917085afee1f1b5354467c23f8ae2b9eca0dade3f0", after_session=HALTS)
+PROFILES = {profile.sha256: profile for profile in (FIRST, SECOND, THIRD, FOURTH)}
 # Admission requires matching offline checks and live non-erasing evidence.
-ADMITTED_BOOTLOADERS = frozenset((FIRST.sha256, SECOND.sha256, THIRD.sha256))
+ADMITTED_BOOTLOADERS = frozenset((FIRST.sha256, SECOND.sha256, THIRD.sha256, FOURTH.sha256))
 
 
 def identify_bootloader(data: bytes, *, admitted: bool = True) -> BootloaderProfile:

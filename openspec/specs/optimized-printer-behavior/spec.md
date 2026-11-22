@@ -161,6 +161,12 @@ OrcaSlicer and QIDI Studio packs SHALL implement the same functional print-start
 - **THEN** the prime line uses available room ahead of first-layer bounds or a fixed safe fallback
 - **AND** nozzle-temperature Z compensation is applied from a known absolute reference after mesh and offset application
 
+#### Scenario: Prime line retract is put back at the first part
+- **WHEN** compatible slicer start G-code finishes the prime line's tapered end
+- **THEN** it calls `_VO_PRIME_RETRACT`, which retracts 0.8 mm before the nozzle lifts off and travels to the first part
+- **AND** the next G0, G1, G2 or G3 that extrudes, after that travel, first extrudes the same 0.8 mm back, once, without changing the G-code E position
+- **AND** a print that ends before anything extrudes puts nothing back, and G0 through G3 go straight to Klipper again either way
+
 ### Requirement: Optional minimum chamber startup temperature
 Optimized print start SHALL accept a chamber startup minimum independently of the chamber heating target, with compatible slicer G-code for OrcaSlicer 2.4.2 and later.
 

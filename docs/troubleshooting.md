@@ -77,7 +77,7 @@ When a board write can't be verified, the board may hold part of an image. Klipp
 
 - Mainboard: `./mainboard-firmware.sh rescue`. See [If a flash fails](../firmware/MAINBOARD_FIRMWARE.md#if-a-flash-fails).
 - USB Box: `./box-firmware.sh rescue --box N`. See [If a flash fails](../firmware/BOX_FIRMWARE.md#if-a-flash-fails).
-- THR: follow the recovery in [THR-only operations](../firmware/FLASHING.md), using the recovery files the installer named.
+- THR: nothing to run. Turn the printer off with its power switch, wait 10 seconds, and turn it on again: Valve Oil finishes the THR firmware as the printer starts, before Klipper does. `./install.sh` finishes it too. See [If a THR flash is interrupted](firmware.md#if-a-thr-flash-is-interrupted).
 
 During a QIDI firmware update, rescue runs only once the update has stopped with that failure. Then run `./install.sh` to finish the update.
 

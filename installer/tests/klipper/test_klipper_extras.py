@@ -673,3 +673,88 @@ class UpdateLightsTest(unittest.TestCase):
         for held, caselight in ((None, True), ({"until": "soon"}, True), ({"until": time.time() + 600}, False)):
             with self.subTest(hold=held, caselight=caselight):
                 self.assertEqual(self.start_klipper(held, caselight=caselight)[0], [])
+
+
+prime_handoff = load_extra("prime_handoff", "vo_prime_handoff")
+
+
+class _Move:
+    """A G-code command line with Klipper's parameter reads."""
+
+    def __init__(self, line):
+        self.line = line
+        self.params = {word[0]: word[1:] for word in line.split()[1:]}
+
+    def get_float(self, name, default=None, minval=None, maxval=None):
+        return float(self.params[name]) if name in self.params else default
+
+
+class PrimeHandoffTest(unittest.TestCase):
+    """The prime line's retract is put back once, right before the first
+    move that extrudes, wherever the slicer travelled first; a print that
+    ends before then puts nothing back."""
+
+    def arm(self, *, absolute=False, e_position=0., state="printing"):
+        ran = []
+        klipper = {name: (lambda gcmd: ran.append(gcmd.line)) for name in ("G0", "G1")}
+        handlers = dict(klipper)
+
+        def register_command(name, func, desc=None):
+            if func is None:
+                return handlers.pop(name, None)
+            self.assertNotIn(name, handlers)
+            handlers[name] = func
+
+        def run_script_from_command(script):
+            # Only the extruder moves; the G-code E position is kept.
+            self.assertIn("SAVE_GCODE_STATE", script)
+            self.assertIn("RESTORE_GCODE_STATE", script)
+            ran.append(float(script.split(" E")[1].split()[0]))
+
+        gcode = types.SimpleNamespace(register_command=register_command, gcode_help={},
+                                      run_script_from_command=run_script_from_command)
+        print_stats = _Status({"state": state})
+        objects = {
+            "gcode": gcode,
+            "print_stats": print_stats,
+            "gcode_move": types.SimpleNamespace(
+                absolute_extrude=absolute,
+                get_status=lambda eventtime=None: {"gcode_position": (10., 0., 1., e_position)}),
+        }
+        events = {}
+        printer = types.SimpleNamespace(
+            get_reactor=lambda: types.SimpleNamespace(monotonic=lambda: 1.),
+            lookup_object=lambda name, default=None: objects.get(name, default),
+            register_event_handler=events.__setitem__)
+        prime_handoff.load_config(types.SimpleNamespace(get_printer=lambda: printer))
+        events["klippy:connect"]()
+        handlers["_VO_PRIME_RETRACT"](_Move("_VO_PRIME_RETRACT"))
+
+        def run(*lines):
+            for line in lines:
+                handlers[line.split()[0]](_Move(line))
+
+        return run, ran, handlers, klipper, print_stats
+
+    def test_put_back_after_orcaslicers_travel_to_the_first_part(self) -> None:
+        run, ran, handlers, klipper, _ = self.arm()
+        # OrcaSlicer's layer-change retract, travel and unretract, then the first wall.
+        run("G1 Z1 F1200", "G1 E-.1 F1800", "G1 X265.573 Y209.566 F30000", "G1 Z.2",
+            "G1 E.1 F1800", "G1 X242.427 Y232.712 E1.18189", "G1 X216.458 Y258.681 E1.32602")
+        self.assertEqual(ran, [-0.8, "G1 Z1 F1200", "G1 E-.1 F1800", "G1 X265.573 Y209.566 F30000",
+                               "G1 Z.2", 0.8, "G1 E.1 F1800", "G1 X242.427 Y232.712 E1.18189",
+                               "G1 X216.458 Y258.681 E1.32602"])
+        self.assertIs(handlers["G1"], klipper["G1"])
+        self.assertIs(handlers["G0"], klipper["G0"])
+
+    def test_absolute_extrusion_puts_back_on_the_first_move_past_the_e_position(self) -> None:
+        run, ran, _, _, _ = self.arm(absolute=True, e_position=5.)
+        run("G0 X100 Y100", "G1 E4.9 F1800", "G1 X101 E5.2")
+        self.assertEqual(ran, [-0.8, "G0 X100 Y100", "G1 E4.9 F1800", 0.8, "G1 X101 E5.2"])
+
+    def test_a_print_that_ends_first_puts_nothing_back(self) -> None:
+        run, ran, handlers, klipper, print_stats = self.arm()
+        print_stats.status["state"] = "cancelled"
+        run("G1 E10 F300")
+        self.assertEqual(ran, [-0.8, "G1 E10 F300"])
+        self.assertIs(handlers["G1"], klipper["G1"])
