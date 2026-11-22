@@ -22,6 +22,7 @@ import { jobProgress, remainingSeconds, useJob } from '../state/job'
 import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
+import { useMedia } from '../components/tune/hooks'
 import { href } from '../lib/router'
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
@@ -30,13 +31,19 @@ import { tr } from '../i18n/rich'
  * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
  * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
  * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
- * and a phone one.
+ * under the camera, each stacking its cards straight under one another, and a phone one.
  */
 export function HomeScreen() {
   const job = useJob()
   const showJob = !!job.filename && job.state !== 'standby'
   const jobs = useHistory(500)
   const boxPresent = useBoxPresent()
+  const twoColumns = useMedia('(min-width: 768px) and (not (min-width: 100rem))')
+  const jobCard = showJob ? <JobCard /> : <ReadyCard jobs={jobs} />
+  const recent = <RecentFiles jobs={jobs} className="min-h-[240px]" />
+  const macros = <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
+  const consoleCard = <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
+  // The camera and the first cards under it keep their places in every layout, so changing layout doesn't restart them.
   return (
     <div className="deck deck-4">
       <div className="half">
@@ -45,22 +52,40 @@ export function HomeScreen() {
           <div className="col">
             {boxPresent && <BoxDeck />}
             <SpoolmanCard />
+            {twoColumns && (
+              <>
+                <ToolheadCard />
+                {jobCard}
+                {macros}
+              </>
+            )}
           </div>
           <div className="col">
             <OutputsDeck />
+            {twoColumns && (
+              <>
+                <TempsCard />
+                {recent}
+                {consoleCard}
+              </>
+            )}
           </div>
         </div>
       </div>
-      <div className="col">
-        <ToolheadCard />
-        <TempsCard />
-      </div>
-      <div className="col">
-        {showJob ? <JobCard /> : <ReadyCard jobs={jobs} />}
-        <RecentFiles jobs={jobs} className="min-h-[240px]" />
-        <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
-        <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
-      </div>
+      {!twoColumns && (
+        <>
+          <div className="col">
+            <ToolheadCard />
+            <TempsCard />
+          </div>
+          <div className="col">
+            {jobCard}
+            {recent}
+            {macros}
+            {consoleCard}
+          </div>
+        </>
+      )}
     </div>
   )
 }
