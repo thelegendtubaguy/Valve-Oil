@@ -10,6 +10,7 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.reporter import create_reporter
@@ -20,13 +21,15 @@ class Host:
     """The host as a board flow sees it through `run`: sudo, and the services that own the boards' serial ports.
 
     `states` maps each service to "active" or "inactive"; a service left out isn't installed. Any other command goes to
-    the subclass's `tool`, which answers for the board tools. `fail_start` names a service that won't start.
+    the subclass's `tool`, which answers for the board tools. `fail_start` names a service that won't start. `gcc`
+    False is a host without a C compiler.
     """
 
-    def __init__(self, states, *, fail_start=None):
+    def __init__(self, states, *, fail_start=None, gcc=True):
         self.states = dict(states)
         self.original = dict(states)
         self.fail_start = fail_start
+        self.gcc = gcc
         self.stops = self.service_changes = self.tool_runs = 0
         self.enabled = set()
 
@@ -52,6 +55,30 @@ class Host:
             return result()
         if command[:2] == ["mkdir", "-p"]:
             os.makedirs(command[2], exist_ok=True)
+            return result()
+        if command[0] == "gcc":
+            # A build that reports, as the compiled THR catch does, the source it was built from.
+            if not self.gcc:
+                raise FileNotFoundError("gcc")
+            built = next(flag.split("=", 1)[1].strip('"') for flag in command if flag.startswith("-DSOURCE_SHA256="))
+            output = command[command.index("-o") + 1]
+            with open(output, "w") as handle:
+                handle.write(built + "\n")
+            os.chmod(output, 0o755)
+            return result()
+        if command[1:] == ["--check"]:
+            try:
+                with open(command[0]) as handle:
+                    return result(output=handle.read())
+            except OSError:
+                raise FileNotFoundError(command[0])
+        if command[:2] == ["rm", "-f"]:
+            for path in command[2:]:
+                if os.path.commonpath([os.path.realpath(path), os.path.realpath(tempfile.gettempdir())]) != \
+                        os.path.realpath(tempfile.gettempdir()):
+                    raise AssertionError("A test removed a host path: " + path)
+                if os.path.exists(path):
+                    os.unlink(path)
             return result()
         if command[:2] == ["systemctl", "enable"]:
             self.enabled.add(command[2])

@@ -32,10 +32,11 @@ TRIGGERS = ("start", 0, 1, 17, 34, "end")
 DURATIONS = (0.5, 3, 6, 9.5, 10.5, 12, 14, 15.5, 17, 25, 40)
 QUICK_DURATIONS = (3, 12)
 RESCUE_DELAYS = (0.5, 3, 12, 40)
-# Seconds from power-on to the catch's first identity request, and to the THR tool's rescue: on a Max 4 the kernel
-# starts 1.4 s after power-on; the generator's catch 1.9 s after the kernel, the unit's own catch (when the generator
-# didn't run) 3.4 s after it, and the THR tool about 9.6 s after it; then slower boots.
-BOOT_DELAYS = ((3.3, 11.0), (4.8, 11.0), (8.0, 14.0), (20.0, 26.0))
+# Seconds from power-on to the catch's first identity request, and to the THR tool's rescue, from cold boots: the kernel
+# starts 1.3 s (Smart 5) and 1.4 s (Max 4) after power-on; the generator's compiled catch sends 1.8 to 1.9 s after the
+# kernel, its Python catch (on a printer without gcc) 2.3 s after it, the unit's own catch (when the generator didn't
+# run) 3.4 s after it, and the THR tool about 9.6 s after it; then slower boots.
+BOOT_DELAYS = ((3.2, 11.0), (3.4, 11.0), (3.7, 11.0), (4.8, 11.0), (8.0, 14.0), (20.0, 26.0))
 KERNEL_AFTER_POWER = 1.4
 HOLD_INTERVAL = 2.0  # installer/system/vo_thr_catch.py
 # Seconds a rescue spends finding no application before it waits out any session.

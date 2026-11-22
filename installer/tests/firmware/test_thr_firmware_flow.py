@@ -34,10 +34,10 @@ class Printer(harness.Host):
     """
 
     def __init__(self, manifest, stock, boot, *, patched=False, superseded=False, failure=None, timer=True,
-                 rescue="patched"):
+                 rescue="patched", gcc=True):
         states = {service: 'active' for service in protocol.SERVICES if timer or not service.endswith('.timer')}
         states['qidi-client.service'] = 'inactive'
-        super().__init__(states, fail_start='klipper.service' if failure == 'restore' else None)
+        super().__init__(states, fail_start='klipper.service' if failure == 'restore' else None, gcc=gcc)
         self.manifest = manifest
         self.stock, self.boot = stock, boot
         self.image = patch_thr(stock, manifest) if patched else harness.superseded_image(stock) if superseded else stock
@@ -125,12 +125,14 @@ class ThrFirmwareFlowTests(unittest.TestCase):
             'thr-firmware-flow-', config={}, firmware=harness.qidi_firmware(),
             bundle={'scripts/flash_thr_firmware.py': '# the Printer fake answers for the tool',
                     'installer/system/vo_thr_catch.py': (REPO_ROOT / 'installer/system/vo_thr_catch.py').read_text(),
+                    'installer/system/vo_thr_catch.c': (REPO_ROOT / 'installer/system/vo_thr_catch.c').read_text(),
                     'firmware/max4-thr-valve-oil-v1.json': json.dumps(manifest)})
         printer = Printer(manifest, stock, boot, **kwargs)
         printer.profile = replace(profile, sha256=protocol.digest(boot))
         units = paths.printer_data_root.parent / 'systemd'
         units.mkdir()
         for name, value in (('SYSTEMD_DIR', units), ('CATCH_SCRIPT', units / 'vo_thr_catch.py'),
+                            ('CATCH_BINARY', units / 'vo_thr_catch'),
                             ('GENERATOR', units / 'system-generators/vo-thr-catch')):
             patcher = patch.object(thr_firmware, name, value)
             patcher.start()
@@ -328,9 +330,13 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 ensure_no_recovery_sentinel(paths.recovery_sentinel_path)
 
     def test_boot_unit_settles_the_rescue_it_ran(self):
-        for rescue, settled in (('patched', True), ('stock', True), ('fail', False)):
-            with self.subTest(rescue=rescue):
-                paths, printer, reporter = self.fixture(failure='interrupt', rescue=rescue)
+        for rescue, settled, gcc in (('patched', True, True), ('stock', True, True), ('fail', False, True),
+                                     ('patched', True, False)):
+            with self.subTest(rescue=rescue, gcc=gcc):
+                paths, printer, reporter = self.fixture(failure='interrupt', rescue=rescue, gcc=gcc)
+                if not gcc:
+                    # One built from other source is never left for the generator to start.
+                    thr_firmware.CATCH_BINARY.write_text('other\n')
                 marker = paths.printer_data_root / THR_RECOVERY_MARKER
                 with self.assertRaises(KeyboardInterrupt):
                     self.execute(paths, printer, reporter)
@@ -352,7 +358,13 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertTrue(thr_firmware.GENERATOR.stat().st_mode & 0o100)
                 self.assertIn(f"[ -e '{marker}' ] || exit 0", generator)
                 self.assertIn('[ -e /run/vo-thr-catch.started ] && exit 0', generator)
+                # It starts the catch compiled on the printer, built from this bundle's source; on a printer without a C
+                # compiler, the same catch in Python.
                 self.assertIn(f'{thr_firmware.CATCH_SCRIPT} --early', generator)
+                self.assertIn(f'{thr_firmware.CATCH_BINARY} --early', generator)
+                self.assertEqual(thr_firmware._catch_build(printer.run, thr_firmware.CATCH_BINARY),
+                                 protocol.digest((REPO_ROOT / 'installer/system/vo_thr_catch.c').read_bytes()) if gcc
+                                 else None)
                 self.assertIn('tltg-optimized-auto-update.service',
                               next(line for line in lines if line.startswith('Before=')).split('=')[1].split())
                 self.assertIn(thr_firmware.RESCUE_UNIT, printer.enabled)

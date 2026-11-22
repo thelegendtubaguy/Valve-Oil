@@ -7,9 +7,11 @@ to the dialout group, as udev does later in boot, so the THR tool can open it as
 identity requests, never a start or data packet; and records in CATCH whether and when the bootloader answered and
 when it last sent (scripts/flash_thr_firmware.py read_catch).
 
-  --early  started by the generator (vo-thr-catch-generator) about a second after the kernel: catches, and holds an
+  --early  started by the generator (vo-thr-catch) about a second after the kernel when the compiled catch
+           (vo_thr_catch.c, the same catch without Python's start-up time) isn't installed: catches, and holds an
            answering bootloader until the unit joins it (or HOLD_LIMIT seconds pass).
-  (none)   the unit's first step: stops an early catch still holding and keeps its record, or catches now if none ran.
+  (none)   the unit's first step: stops an early catch still holding, compiled or not, and keeps its record, or catches
+           now if none ran.
 
 Installed by Valve Oil at /usr/local/lib/vo_thr_catch.py.
 """
@@ -136,7 +138,7 @@ def join():
         with open(PID) as handle:
             pid = int(handle.read().strip())
         with open(f"/proc/{pid}/cmdline", "rb") as handle:
-            running = b"vo_thr_catch.py" in handle.read()
+            running = b"vo_thr_catch" in handle.read()  # this script, or vo_thr_catch.c built
     except (OSError, ValueError):
         running = False
     if running:

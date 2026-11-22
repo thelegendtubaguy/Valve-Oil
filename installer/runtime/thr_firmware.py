@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -103,6 +104,9 @@ RESCUE_UNIT_MARKER = "# valve-oil:thr-firmware-rescue\n"
 SYSTEMD_DIR = Path("/etc/systemd/system")
 # The unit's first step, root-owned: it reaches the THR before the THR tool can (installer/system/vo_thr_catch.py).
 CATCH_SCRIPT = Path("/usr/local/lib/vo_thr_catch.py")
+# The same catch compiled on the printer (installer/system/vo_thr_catch.c), which starts about 0.4 s sooner; the generator
+# starts it when it is in place, and vo_thr_catch.py --early otherwise.
+CATCH_BINARY = Path("/usr/local/lib/vo_thr_catch")
 # Starts that catch about a second after the kernel, before any unit, while a record exists.
 GENERATOR = Path("/etc/systemd/system-generators/vo-thr-catch")
 GENERATOR_MARKER = "# valve-oil:thr-catch-generator\n"
@@ -509,16 +513,56 @@ def generator_text(paths) -> str:
     record = paths.printer_data_root / THR_RECOVERY_MARKER
     return ("#!/bin/sh\n" + GENERATOR_MARKER
             + "# While a THR firmware flash is unfinished, reaches the THR's bootloader inside its startup window, before\n"
-            "# any unit starts: vo_thr_catch.py --early holds it until vo-thr-firmware.service joins it. Once per boot and\n"
-            "# only in its first 30 seconds, since systemd also runs generators at every daemon-reload, when Klipper may\n"
-            "# own the THR's port. Installed by Valve Oil.\n"
+            "# any unit starts: the catch, compiled where it could be, holds it until vo-thr-firmware.service joins it.\n"
+            "# Once per boot and only in its first 30 seconds, since systemd also runs generators at every daemon-reload,\n"
+            "# when Klipper may own the THR's port. Installed by Valve Oil.\n"
             f"[ -e '{record}' ] || exit 0\n"
             "[ -e /run/vo-thr-catch.started ] && exit 0\n"
             "read -r up _ < /proc/uptime\n"
             '[ "${up%%.*}" -lt 30 ] || exit 0\n'
             ": > /run/vo-thr-catch.started\n"
-            f"setsid /usr/bin/python3 -I -S {CATCH_SCRIPT} --early < /dev/null > /dev/null 2>&1 &\n"
+            f"if [ -x {CATCH_BINARY} ]; then\n"
+            f"  setsid {CATCH_BINARY} --early < /dev/null > /dev/null 2>&1 &\n"
+            "else\n"
+            f"  setsid /usr/bin/python3 -I -S {CATCH_SCRIPT} --early < /dev/null > /dev/null 2>&1 &\n"
+            "fi\n"
             "exit 0\n")
+
+
+def _catch_build(run, binary: Path) -> str | None:
+    """What `binary --check` reports: the sha256 of the source it was built from; None when it doesn't run."""
+    try:
+        result = run([str(binary), "--check"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def install_catch_binary(paths, bundle, *, run, password) -> bool:
+    """Compile the catch with the printer's gcc and install it at CATCH_BINARY, unless the one there was built from
+    this source. True when it is in place; otherwise none is, and the generator starts vo_thr_catch.py --early."""
+    source = bundle / "installer/system/vo_thr_catch.c"
+    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+    if _catch_build(run, CATCH_BINARY) == source_sha256:
+        return True
+    staged = paths.printer_data_root / BACKUP_DIRECTORY / CATCH_BINARY.name
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.unlink(missing_ok=True)
+    try:
+        try:
+            built = run(["gcc", "-O2", f'-DSOURCE_SHA256="{source_sha256}"', "-o", str(staged), str(source)],
+                        capture_output=True, text=True, timeout=120).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            built = False
+        if built and _catch_build(run, staged) == source_sha256 and not run_sudo(
+                ["install", "-m", "0755", str(staged), str(CATCH_BINARY)], run=run, password=password,
+                timeout=60).returncode:
+            return True
+    finally:
+        staged.unlink(missing_ok=True)
+    # Never leave a catch built from other source for the generator to start.
+    run_sudo(["rm", "-f", str(CATCH_BINARY)], run=run, password=password, timeout=60)
+    return False
 
 
 def install_rescue_unit(paths, *, run, password) -> None:
@@ -534,6 +578,7 @@ def install_rescue_unit(paths, *, run, password) -> None:
         if run_sudo(["install", "-m", "0644", str(catch), str(CATCH_SCRIPT)], run=run, password=password,
                     timeout=60).returncode:
             raise ThrFirmwareError(f"Could not install {CATCH_SCRIPT}; THR firmware was not changed.")
+    install_catch_binary(paths, bundle, run=run, password=password)
     try:
         current_generator = GENERATOR.read_text(encoding="utf-8")
     except OSError:
@@ -579,6 +624,7 @@ def remove_rescue_unit(*, run, password) -> None:
             return
     except OSError:
         return
-    for step in (["systemctl", "disable", RESCUE_UNIT], ["rm", "-f", str(target), str(CATCH_SCRIPT), str(GENERATOR)],
+    for step in (["systemctl", "disable", RESCUE_UNIT],
+                 ["rm", "-f", str(target), str(CATCH_SCRIPT), str(CATCH_BINARY), str(GENERATOR)],
                  ["systemctl", "daemon-reload"]):
         run_sudo(step, run=run, password=password, timeout=60)
