@@ -54,7 +54,7 @@ from . import zram_swap
 from . import boot_screen
 from . import box_config
 from .auto_update import current_auto_update_checksum
-from .errors import FirmwareDetectionError, InstallerError
+from .errors import InstallerError
 from .firmware import detect_firmware, detect_supported_firmware_best_effort
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
 from .host_reboot import HostRebootError, clear_host_reboot_marker, read_host_reboot_marker, recommend_reboot, write_host_reboot_marker
