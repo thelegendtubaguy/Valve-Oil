@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePrinter } from '../state/printer'
 import { prettyName } from '../lib/format'
 import { t } from '../i18n'
+import { bucketPoints } from './temp-chart-points'
 
 // Series colors come from --series-N in fixed order; an entity keeps its slot whatever is hidden.
 const SLOTS = 8
@@ -54,7 +55,12 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
       Object.fromEntries(
         series.map((x) => {
           const t = temps[x.obj]
-          return [x.obj, { temps: (t?.temperatures ?? []).slice(-n), targets: (t?.targets ?? []).slice(-n) }]
+          const all = t?.temperatures ?? []
+          // The number of the series' last sample plus one; the first drawn sample's number is this less what's drawn.
+          const end = t?.end ?? all.length
+          const vals = all.slice(-n)
+          const targets = (t?.targets ?? []).slice(-n)
+          return [x.obj, { temps: vals, targets, first: end - vals.length, targetsFirst: end - targets.length }]
         }),
       ),
     [series, temps, n],
@@ -83,29 +89,15 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
   const top = Math.max(bottom + 2 * step, Math.ceil((hi - step / 10) / step) * step)
   const xAt = (i: number) => pad.l + (n <= 1 ? iw : (i / (win - 1)) * iw) + (n < win ? ((win - n) / (win - 1)) * iw : 0)
   const yAt = (v: number) => pad.t + ih - ((v - bottom) / (top - bottom)) * ih
-  // Downsample to about one point per 2 px.
-  const stride = Math.max(1, Math.floor(n / (iw / 2)))
-  const path = (vals: number[]) => {
-    // Moonraker records 0 °C while Klipper restarts; those samples are gaps, not readings.
+  // About one point per 2 px, from the window rather than the samples there are, so the buckets keep their size as the
+  // history fills.
+  const stride = Math.max(1, Math.floor(win / (iw / 2)))
+  const path = (vals: number[], first: number, how: 'mean' | 'last') => {
     let d = ''
     let on = false
-    const point = (i: number) => {
-      if (vals[i] > 0) {
-        d += `${on ? 'L' : 'M'}${xAt(i).toFixed(1)} ${yAt(vals[i]).toFixed(1)}`
-        on = true
-      } else on = false
-    }
-    for (let i = 0; i < vals.length; i += stride) point(i)
-    if (vals.length && (vals.length - 1) % stride) point(vals.length - 1)
-    return d
-  }
-  const targetPath = (vals: number[]) => {
-    // Only where the heater has a target; breaks the line where it's off.
-    let d = ''
-    let on = false
-    for (let i = 0; i < vals.length; i += stride) {
-      if (vals[i] > 0) {
-        d += `${on ? 'L' : 'M'}${xAt(i).toFixed(1)} ${yAt(vals[i]).toFixed(1)}`
+    for (const p of bucketPoints(vals, first, stride, how)) {
+      if (p.v != null) {
+        d += `${on ? 'L' : 'M'}${xAt(p.i).toFixed(1)} ${yAt(p.v).toFixed(1)}`
         on = true
       } else on = false
     }
@@ -181,10 +173,10 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
             </text>
           ))}
           {shown.map((x) => (
-            <path key={`${x.obj}-t`} d={targetPath(data[x.obj].targets)} fill="none" stroke={`var(--series-${x.slot})`} strokeOpacity={0.55} strokeWidth={1.25} strokeDasharray="4 4" />
+            <path key={`${x.obj}-t`} d={path(data[x.obj].targets, data[x.obj].targetsFirst, 'last')} fill="none" stroke={`var(--series-${x.slot})`} strokeOpacity={0.55} strokeWidth={1.25} strokeDasharray="4 4" />
           ))}
           {shown.map((x) => (
-            <path key={x.obj} d={path(data[x.obj].temps)} fill="none" stroke={`var(--series-${x.slot})`} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <path key={x.obj} d={path(data[x.obj].temps, data[x.obj].first, 'mean')} fill="none" stroke={`var(--series-${x.slot})`} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           ))}
           {hover != null && (
             <g>

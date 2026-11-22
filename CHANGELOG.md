@@ -1,5 +1,8 @@
 # Changelog
 
+## 26.11.22.2
+- Valve Oil UI's temperature chart no longer jumps around at **10m** and **20m** (issue #364). To fit the chart, it drew only every second or fourth reading, and which readings it picked moved by one each second, so a heater whose reading wobbles from second to second, usually the nozzle, was drawn as a different line on every refresh. It now draws the average of each few seconds, so the line holds still as it moves along.
+
 ## 26.11.22.1
 - Valve Oil UI is now in Spanish and Russian as well as English. It starts in your browser's language and **Settings → General → Language** picks another, kept in that browser. Messages from the printer, such as Klipper's, the console's, printer warnings, and update and install steps, stay in English. See [Language](docs/valve-oil-ui.md#language).
 - Valve Oil UI's Home now has every control on one screen, in four columns on a desktop, two on a tablet, and one on a phone. It shows the camera, the QIDI Box, the fans and lights, the toolhead, the temperatures, the print, recent files, and the macros and console, which stay folded until opened. The toolhead card moves, homes, turns the motors off, extrudes, and sets the Z offset, speed, flow, and pressure advance. The temperature chart fits its scale to the lines shown instead of always starting at 0°.
