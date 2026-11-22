@@ -1471,6 +1471,18 @@ def _restore_calibration(ctx: _Run) -> None:
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             summary = f"The saved calibration could not be restored ({type(exc).__name__}: {exc}).{where}"
         ctx.record["calibration_result"] = {"summary": summary}
+    # QIDI's postinst copies variables saved_variables.cfg lacks out of its .bak without their quotes, and Klipper
+    # won't start with a value it can't read.
+    try:
+        repaired = saved_calibration.repair_saved_variables(ctx.paths.config_root / "saved_variables.cfg")
+    except (OSError, UnicodeDecodeError) as exc:
+        note = f"saved_variables.cfg could not be checked after QIDI's package ({exc})."
+    else:
+        note = ("Repaired saved_variables.cfg values QIDI's package wrote without their quotes, which Klipper "
+                "can't read: " + ", ".join(repaired) + ".") if repaired else ""
+    if note:
+        summary = ctx.record["calibration_result"]["summary"]
+        ctx.record["calibration_result"]["summary"] = f"{summary} {note}" if summary else note
     if ctx.record["calibration_result"]["summary"]:
         ctx.reporter.line("  " + ctx.record["calibration_result"]["summary"])
     ctx.save()

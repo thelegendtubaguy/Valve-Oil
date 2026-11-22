@@ -100,6 +100,11 @@ A firmware update SHALL run independently of the session that started it, SHALL 
 - **AND** an update resumed after a power loss puts back the calibration captured before QIDI's package first ran, never QIDI's
 - **AND** a calibration that can't be restored is reported the same way and doesn't fail the update
 
+#### Scenario: Saved variables QIDI's package copied without quotes
+- **WHEN** QIDI's package has added variables to `saved_variables.cfg` whose values Klipper's save_variables loader cannot read, such as `last_load_slot = slot16` or `filepath = `
+- **THEN** before Klipper starts, each such value is written back as a string, an empty value as `''`, and every value the loader reads is left as it is
+- **AND** the result names the repaired variables, and a file the loader can't read for another reason is left unchanged
+
 #### Scenario: Uninstall after a firmware update
 - **WHEN** a firmware update installs QIDI's package, which deletes Valve Oil's installed state with the config folder
 - **THEN** the install that follows still holds what the earlier install recorded about the host before it changed it, for every host change that is still as that install left it, and keeps the operator's earlier choices about the optional OS optimizations and AI detection
