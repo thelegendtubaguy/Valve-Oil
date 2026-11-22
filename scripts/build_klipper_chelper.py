@@ -9,6 +9,7 @@ in chelper/ and builds the patched library the installer ships. See chelper/READ
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import shutil
 import subprocess
@@ -19,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from installer.runtime import klipper_chelper
+from installer.runtime import klipper_chelper, klipper_tree
 
 KLIPPER_REPOSITORY = "https://github.com/Klipper3d/klipper"
 KLIPPER_COMMIT = "ca815f52c8420225f93f90698768a5c4714654a9"
@@ -64,11 +65,27 @@ build /out/qidi_c_helper.so
 rm -rf klippy/chelper
 cp -R /patched klippy/chelper
 build /out/c_helper.so
+# Valve Oil's Klipper tree, built where the installer puts it, with its own source list.
+mkdir -p "$TREE_ROOT/klippy"
+cd "$TREE_ROOT"
+cp -R /tree "$TREE_ROOT/klippy/chelper"
+paths=""
+for source in $TREE_SOURCES; do paths="$paths $TREE_ROOT/klippy/chelper/$source"; done
+gcc -Wall -g -O2 -shared -fPIC -flto -fwhole-program -fno-use-linker-plugin -o /out/tree_c_helper.so $paths
 """
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def tree_sources() -> list[str]:
+    """klipper/klippy/chelper/__init__.py's SOURCE_FILES, in its build order."""
+    module = ast.parse((klipper_tree.TREE_SOURCE / "klippy/chelper/__init__.py").read_text())
+    for node in module.body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "SOURCE_FILES" for t in node.targets):
+            return list(ast.literal_eval(node.value))
+    raise SystemExit("klipper/klippy/chelper/__init__.py has no SOURCE_FILES")
 
 
 def fetch_klipper(destination: Path) -> None:
@@ -89,7 +106,10 @@ def build(output_dir: Path) -> None:
             "docker", "run", "--rm", "--platform", "linux/arm64",
             "-v", f"{(work / 'stock/klippy/chelper').resolve()}:/stock:ro",
             "-v", f"{(work / 'patched/klippy/chelper').resolve()}:/patched:ro",
+            "-v", f"{(klipper_tree.TREE_SOURCE / 'klippy/chelper').resolve()}:/tree:ro",
             "-v", f"{output_dir.resolve()}:/out",
+            "-e", f"TREE_ROOT={klipper_tree.TREE_ROOT}",
+            "-e", f"TREE_SOURCES={' '.join(tree_sources())}",
             "-e", f"SNAPSHOT={SNAPSHOT}",
             "-e", f"PACKAGES={' '.join(PACKAGES)}",
             BUILD_IMAGE, "bash", "-c", BUILD_SCRIPT,
@@ -119,9 +139,12 @@ def main(argv: list[str] | None = None) -> int:
 
     built_stock = args.output_dir / "qidi_c_helper.so"
     built_patched = args.output_dir / "c_helper.so"
-    actual_stock, actual_patched = sha256(built_stock), sha256(built_patched)
+    built_tree = args.output_dir / "tree_c_helper.so"
+    actual_stock, actual_patched, actual_tree = sha256(built_stock), sha256(built_patched), sha256(built_tree)
     print(f"qidi_c_helper.so {actual_stock}")
     print(f"c_helper.so {actual_patched}")
+    print(f"klipper tree c_helper.so {actual_tree} ({built_tree.stat().st_size} bytes,"
+          f" sources {klipper_tree.chelper_sources_sha256()})")
     if actual_stock != stock:
         print("The unpatched build is not QIDI's library; the toolchain or sources differ.", file=sys.stderr)
         return 1
@@ -130,11 +153,17 @@ def main(argv: list[str] | None = None) -> int:
         payloads.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(built_stock, payloads / reviewed.stock_payload)
         shutil.copyfile(built_patched, payloads / reviewed.patched_payload)
+        shutil.copyfile(built_tree, klipper_tree.CHELPER_PAYLOAD)
         return 0
+    status = 0
     if actual_patched != reviewed.patched_sha256:
         print("The patched build differs from installer/runtime/klipper_chelper.py.", file=sys.stderr)
-        return 1
-    return 0
+        status = 1
+    if actual_tree != klipper_tree.CHELPER_SHA256 \
+            or klipper_tree.chelper_sources_sha256() != klipper_tree.CHELPER_SOURCES_SHA256:
+        print("The Klipper tree's build differs from installer/runtime/klipper_tree.py.", file=sys.stderr)
+        status = 1
+    return status
 
 
 if __name__ == "__main__":
