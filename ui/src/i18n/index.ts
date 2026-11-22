@@ -75,6 +75,7 @@ async function loadTable(lang: Lang): Promise<Table> {
 export const languageStore = createStore<{ lang: Lang; choice: LangChoice }>({ lang: 'en', choice: 'auto' })
 let current: Table = english
 let ready = false
+let latestApply = 0
 
 function savedChoice(): LangChoice {
   try {
@@ -96,6 +97,7 @@ export function browserLanguage(): Lang {
 }
 
 async function apply(choice: LangChoice) {
+  const request = ++latestApply
   const lang = choice === 'auto' ? browserLanguage() : choice
   let table = english
   try {
@@ -103,6 +105,7 @@ async function apply(choice: LangChoice) {
   } catch {
     // A chunk that can't load (a build replaced underneath an open tab) leaves the UI in English.
   }
+  if (request !== latestApply) return
   current = table
   ready = true
   if (typeof document !== 'undefined') document.documentElement.lang = table === english ? 'en' : lang
