@@ -586,7 +586,7 @@ GUARDED_FILE_PATCHES = {
     # The launcher goes before the drop-in that runs it, so restoration removes the drop-in first. Neither restarts
     # Klipper: until the operator chooses Valve Oil's Klipper, the launcher starts QIDI's command unchanged.
     klipper_tree.LAUNCHER_OPERATION: _GuardedFilePatch(
-        label="Valve Oil's Klipper launcher",
+        label="launcher for Valve Oil's Klipper",
         file=lambda spec: klipper_tree.LAUNCHER_FILE,
         patch=klipper_tree.patch_launcher,
         restart_service=None,
@@ -595,7 +595,7 @@ GUARDED_FILE_PATCHES = {
         create_if_missing=True,
     ),
     klipper_tree.DROPIN_OPERATION: _GuardedFilePatch(
-        label="Valve Oil's Klipper drop-in",
+        label="drop-in for Valve Oil's Klipper",
         file=lambda spec: klipper_tree.DROPIN_FILE,
         patch=klipper_tree.patch_dropin,
         restart_service=None,
