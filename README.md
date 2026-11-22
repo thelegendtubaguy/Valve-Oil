@@ -87,6 +87,11 @@ No computer handy? [Install from a USB drive](docs/install.md#install-from-a-usb
 
 [Valve Oil UI →](docs/valve-oil-ui.md)
 
+### Newer Klipper
+- Optional: upstream Klipper v0.14 with QIDI's changes, installed beside QIDI's Klipper and off until you choose it, with a switch back at any time.
+
+[Valve Oil's Klipper →](docs/klipper.md)
+
 ### Fixes for QIDI bugs
 - The real error instead of a bare `MCU shutdown`.
 - Fewer Boxes dropping with `Lost communication with MCU 'mcu_boxN'`.
