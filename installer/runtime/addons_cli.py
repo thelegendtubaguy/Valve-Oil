@@ -78,6 +78,8 @@ def main(
                         "sudo didn't accept the printer's default password. Run "
                         f"~/valve-oil/addons.sh {args.action} {args.addon} over SSH and enter it there."
                     ) from exc
+            for failure in addons.move_earlier_addons(root=root, sudo_password=sudo_password, run=run, status=reporter.status):
+                raise addons.AddonError(f"Could not move an add-on to {addons.ROOT}. {failure}")
             if args.action == "relink":
                 addons.relink_addon(args.addon, server=args.server, root=root, sudo_password=sudo_password, run=run, status=reporter.status)
             elif args.action == "remove":
@@ -121,13 +123,15 @@ def _ensure_not_printing(moonraker_url: str, *, urlopen=urllib.request.urlopen) 
 def maybe_update_installed_addons(*, paths: RuntimePaths, manifest, reporter, input_stream, environ: dict[str, str], run) -> None:
     """After install or update, bring installed add-ons to this package's pinned builds; failures only warn."""
     root = Path(environ.get(SYSTEM_ROOT_ENV, "/"))
-    if not _host_allowed(paths, environ) or not addons.installed_addon_ids(root=root):
+    if not _host_allowed(paths, environ) or not (addons.installed_addon_ids(root=root) or addons.earlier_addon_ids(root=root)):
         return
     try:
         sudo_password = None if root != Path("/") else authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
     except SudoError:
         reporter.line("Warning: add-ons were not updated because sudo failed; run ~/valve-oil/addons.sh update <id>.")
         return
+    for failure in addons.move_earlier_addons(root=root, sudo_password=sudo_password, run=run, status=reporter.status):
+        reporter.line(f"Warning: add-on not moved to {addons.ROOT}. {failure}")
     failures = addons.update_installed_addons(
         spec=manifest.addons,
         installer_root=paths.installer_root,
@@ -145,7 +149,11 @@ def maybe_remove_addons(*, paths: RuntimePaths, reporter, input_stream, environ:
     root = Path(environ.get(SYSTEM_ROOT_ENV, "/"))
     if not _host_allowed(paths, environ):
         return
-    if not addons.installed_addon_ids(root=root) and not any(addons.unit_owned(d, root=root) for d in addons.DEFINITIONS.values()):
+    if (
+        not addons.installed_addon_ids(root=root)
+        and not addons.earlier_addon_ids(root=root)
+        and not any(addons.unit_owned(d, root=root) for d in addons.DEFINITIONS.values())
+    ):
         return
     try:
         sudo_password = None if root != Path("/") else authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)

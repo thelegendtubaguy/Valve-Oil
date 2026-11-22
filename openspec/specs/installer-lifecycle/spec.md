@@ -1140,7 +1140,7 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 - **THEN** the install fails, Klipper, the touchscreen, and the automatic-update timer stay stopped, and the output names the `rescue` command
 
 ### Requirement: Optional add-ons
-The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/tltg-addons/`, its systemd unit, and, for an add-on that needs a kernel module QIDI's kernel lacks, its root-owned directory under `/usr/local/lib/tltg-addons/`. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
+The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/vo-addons/`, its systemd unit, and, for an add-on that needs a kernel module QIDI's kernel lacks, its root-owned directory under `/usr/local/lib/tltg-addons/`. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
 
 #### Scenario: An add-on installs offline into its own directories
 - **WHEN** the operator installs an add-on while no print is running or paused and Klipper is not running G-code such as a calibration, whether or not a heater is on
@@ -1170,6 +1170,13 @@ The package SHALL let the operator install, update, and remove the add-ons pinne
 - **THEN** the new build is staged completely before it replaces the installed one, and the previous build is put back if the new one does not stay running
 - **AND** an add-on that fails to update is reported without failing the install
 - **AND** an installed add-on already at the release's build is not rebuilt
+
+#### Scenario: Add-ons from the earlier add-ons folder move
+- **WHEN** install, update, or an `addons.sh` action runs with a package-owned add-on or its data still under `~/tltg-addons/`, where releases up to 26.11.18.1 installed them
+- **THEN** each moves into `~/vo-addons/` with its service stopped, keeping its data, and its unit is rewritten for the new folder and started, without rebuilding the add-on
+- **AND** a move that was interrupted is finished by the next one
+- **AND** when the same add-on was installed again under `~/vo-addons/`, that install keeps running, the earlier program directory is deleted, and the earlier data is kept until the add-on is removed
+- **AND** `~/tltg-addons/` is removed once nothing is left in it
 
 #### Scenario: Installs made outside the package are left alone
 - **WHEN** an add-on's unit exists without the package marker, or the add-on's own installer left its directories

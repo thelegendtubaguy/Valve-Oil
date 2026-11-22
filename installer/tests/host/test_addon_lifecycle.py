@@ -165,6 +165,57 @@ class AddonLifecycleTests(unittest.TestCase):
         self.assertIsNone(addons.read_marker(ADDON.id, root=self.root))
         self.assertFalse(self.path(UNIT_FILE).exists())
 
+    def test_addons_installed_under_the_earlier_folder_move_with_their_data(self) -> None:
+        spec = _bundle(self.installer_root, "1.0")
+        earlier = addons.addon_paths(ADDON.id, addons.EARLIER_ROOT)
+
+        def install_earlier() -> None:
+            # As releases up to 26.11.18.1 left it: the add-on, its data, and a unit running it from the earlier folder.
+            self.install(spec)
+            self.path(addons.ROOT).rename(self.path(addons.EARLIER_ROOT))
+            self.path(UNIT_FILE).write_text(ADDON.render_unit(earlier), encoding="utf-8")
+            self.path(f"{earlier.data}/store/identity").write_text("printer key\n", encoding="utf-8")
+
+        def move() -> list[str]:
+            return addons.move_earlier_addons(root=self.root, sudo_password=None, run=self.host)
+
+        install_earlier()
+        self.assertEqual(addons.installed_addon_ids(root=self.root), [])
+        self.assertEqual(move(), [])
+        self.assertEqual(addons.read_marker(ADDON.id, root=self.root)["version"], "1.0")
+        self.assertEqual(self.path(f"{PATHS.data}/store/identity").read_text(encoding="utf-8"), "printer key\n")
+        self.assertEqual(self.path(UNIT_FILE).read_text(encoding="utf-8"), ADDON.render_unit(PATHS))
+        self.assertLess(self.host.commands.index(["systemctl", "stop", ADDON.unit]), self.host.commands.index(["systemctl", "start", ADDON.unit]))
+        self.assertFalse(self.path(addons.EARLIER_ROOT).exists())
+        # Already moved: the next install neither rebuilds nor finds anything to move.
+        self.assertEqual(addons.update_installed_addons(spec=spec, installer_root=self.installer_root, root=self.root, sudo_password=None, run=self.host, sleep=lambda _: None), [])
+        self.assertEqual(self.host.builds(), 1)
+        addons.remove_addon(ADDON.id, root=self.root, sudo_password=None, run=self.host)
+
+        # A move cut off after the program moved finishes with the data, and points the unit at both.
+        install_earlier()
+        self.path(addons.ROOT).mkdir()
+        self.path(earlier.code).rename(self.path(PATHS.code))
+        self.assertEqual(move(), [])
+        self.assertEqual(self.path(f"{PATHS.data}/store/identity").read_text(encoding="utf-8"), "printer key\n")
+        self.assertEqual(self.path(UNIT_FILE).read_text(encoding="utf-8"), ADDON.render_unit(PATHS))
+        self.assertFalse(self.path(addons.EARLIER_ROOT).exists())
+        addons.remove_addon(ADDON.id, root=self.root, sudo_password=None, run=self.host)
+
+        # Installed again under the new folder since: that install keeps running, the earlier program goes, and the
+        # earlier data stays until the add-on is removed.
+        install_earlier()
+        self.path(UNIT_FILE).unlink()
+        self.install(spec)
+        unit = self.path(UNIT_FILE).read_text(encoding="utf-8")
+        self.assertEqual(move(), [])
+        self.assertEqual(self.path(UNIT_FILE).read_text(encoding="utf-8"), unit)
+        self.assertFalse(self.path(earlier.code).exists())
+        self.assertEqual(self.path(f"{earlier.data}/store/identity").read_text(encoding="utf-8"), "printer key\n")
+        self.assertTrue(addons.remove_addon(ADDON.id, root=self.root, sudo_password=None, run=self.host))
+        self.assertFalse(self.path(addons.EARLIER_ROOT).exists())
+        self.assertFalse(self.path(addons.ROOT).exists())
+
     def test_installs_made_outside_valve_oil_are_left_alone(self) -> None:
         spec = _bundle(self.installer_root, "1.0")
         for foreign in (UNIT_FILE, "/home/qidi/octoeverywhere/install.sh"):

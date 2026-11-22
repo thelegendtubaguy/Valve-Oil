@@ -52,8 +52,8 @@ After installing, the OctoEverywhere panel under **Add-ons** shows whether it's 
 
 OctoEverywhere's own installer is written for many kinds of printer. On a QIDI printer it also installs system packages, removes the `ntp` and `ntpdate` packages, rewrites the clock settings, and adds itself to Moonraker's update manager. That last change turns on Moonraker's update panel in Fluidd, which then offers to upgrade the printer's Debian packages, and QIDI warns against using that panel after installing OctoEverywhere. Valve Oil's install does none of that. It installs:
 
-- the OctoEverywhere release and its packages in `~/tltg-addons/octoeverywhere/`;
-- its settings and identity in `~/tltg-addons/octoeverywhere-data/`;
+- the OctoEverywhere release and its packages in `~/vo-addons/octoeverywhere/`;
+- its settings and identity in `~/vo-addons/octoeverywhere-data/`;
 - the `octoeverywhere` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
 Its log is `octoeverywhere.log` in Fluidd's **Logs**. Fluidd's power menu lists the `octoeverywhere` service with **Restart**, **Stop**, and **Start**. Valve Oil sets OctoEverywhere's remote access to open the Fluidd on port 80. OctoEverywhere uses about 55 MB of the printer's memory. During a print it also uses about 14% of one CPU core, mostly for the camera snapshots it takes every few seconds while printing.
@@ -82,8 +82,8 @@ Click **Change** next to the server to choose Obico Cloud or your own Obico serv
 
 Obico's own installer also installs system packages, adds itself to Moonraker's update manager, keeps its settings in `printer_data/config`, and adds `[include moonraker_obico_macros.cfg]` to `printer.cfg`. Valve Oil's install does none of that. It installs:
 
-- the Obico release and its packages in `~/tltg-addons/obico/`;
-- its settings and account link in `~/tltg-addons/obico-data/`;
+- the Obico release and its packages in `~/vo-addons/obico/`;
+- its settings and account link in `~/vo-addons/obico-data/`;
 - the `moonraker-obico` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
 Its log is `moonraker-obico.log` in Fluidd's **Logs**. Fluidd's power menu lists the `moonraker-obico` service once Moonraker has restarted. Valve Oil sets Obico's remote access to open the Fluidd on port 80, and keeps the server you chose when Obico is updated.
@@ -127,8 +127,8 @@ The printer's own programs can't open connections to other devices on your tailn
 
 Tailscale's own packages install system-wide and expect a tunnel device, firewall, and routing features that QIDI's Linux kernel doesn't have, so they don't work on a QIDI printer. Valve Oil runs Tailscale's own programs in their userspace networking mode, which needs none of those, as the `qidi` user instead of root. It changes no routes, firewall rules, or DNS settings. It installs:
 
-- Tailscale's `tailscaled` and `tailscale` programs, unmodified, in `~/tltg-addons/tailscale/`;
-- the printer's Tailscale identity and settings in `~/tltg-addons/tailscale-data/`;
+- Tailscale's `tailscaled` and `tailscale` programs, unmodified, in `~/vo-addons/tailscale/`;
+- the printer's Tailscale identity and settings in `~/vo-addons/tailscale-data/`;
 - the `tailscaled` service, running on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
 On the test Plus 5, a connected Tailscale that nobody is using takes about 34 MB of memory and under 0.5% of one CPU core. Watching the camera over Tailscale took about 27% of one core, since Tailscale encrypts everything it carries. Devices on the same home network as the printer connect to it directly, and Tailscale relays through its servers only when no direct path exists.
@@ -136,7 +136,7 @@ On the test Plus 5, a connected Tailscale that nobody is using takes about 34 MB
 Its log is in the system journal. Read it with `journalctl -u tailscaled` over SSH. To use Tailscale's command line, name its socket:
 
 ```bash
-~/tltg-addons/tailscale/app/tailscale --socket=$HOME/tltg-addons/tailscale-data/tailscaled.sock status
+~/vo-addons/tailscale/app/tailscale --socket=$HOME/vo-addons/tailscale-data/tailscaled.sock status
 ```
 
 Removing Tailscale logs the printer out of your tailnet and deletes its identity, so installing it again later means logging in again, and it joins as a new machine. If you installed Tailscale some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.
@@ -177,8 +177,8 @@ Join the printer only to networks whose devices and people you'd let use it. To 
 
 ZeroTier's own package installs system-wide and runs as root. Valve Oil installs:
 
-- ZeroTier's `zerotier-one` program, unmodified, in `~/tltg-addons/zerotier/`;
-- the printer's ZeroTier identity and its networks in `~/tltg-addons/zerotier-data/`;
+- ZeroTier's `zerotier-one` program, unmodified, in `~/vo-addons/zerotier/`;
+- the printer's ZeroTier identity and its networks in `~/vo-addons/zerotier-data/`;
 - the `tun` driver and the script that loads it in `/usr/local/lib/tltg-addons/zerotier/`, owned by root, since root loads them;
 - the `zerotier-one` service, which loads the `tun` driver as root and then runs ZeroTier as the `qidi` user with only the rights it needs to create and configure its network connection, on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
@@ -187,7 +187,7 @@ On the test Plus 5, ZeroTier takes about 12 MB of memory and under 1% of one CPU
 Its log is in the system journal. Read it with `journalctl -u zerotier-one` over SSH. To use ZeroTier's command line, name its folder:
 
 ```bash
-~/tltg-addons/zerotier/app/zerotier-one -q -D$HOME/tltg-addons/zerotier-data listnetworks
+~/vo-addons/zerotier/app/zerotier-one -q -D$HOME/vo-addons/zerotier-data listnetworks
 ```
 
 Removing ZeroTier unloads the `tun` driver and deletes the printer's ZeroTier identity, so installing it again later gives the printer a new node ID, which you authorize again. If you installed ZeroTier some other way, Fluidd shows it as installed outside Valve Oil and leaves it alone.
