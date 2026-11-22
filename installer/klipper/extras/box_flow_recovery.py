@@ -144,6 +144,8 @@ PULLBACK_MOVES = 2
 EXTRA_PULL_MM = 20.
 TOOLHEAD_SENSOR = "filament_switch_sensor filament_switch_sensor"
 RETRACT_LINE = re.compile(r"G1 E-(\d+(?:\.\d+)?) F\d+(?:\.\d+)?$")
+# QIDI's box_autofeed log line for the Box buffer switch.
+BUFFER_EVENT = "[MCB] limit_a_event: raw_state="
 # Below this share of the pulls asked for, the extruder counts as not moved.
 MOVED_SHARE = .5
 # Raising the nozzle out of a cancelled part: a relative move just above the
@@ -206,22 +208,58 @@ def _mm(value):
     return "%d" % value if value == int(value) else "%.1f" % value
 
 
+def _add(total, start, end):
+    """TOTAL plus START - END, or None once any of them is unknown."""
+    if total is None or start is None or end is None:
+        return None
+    return total + start - end
+
+
+class _BufferFeeds(logging.Handler):
+    """Counts the QIDI Box buffer switch's feed triggers, which QIDI's
+    box_autofeed logs as `[MCB] limit_a_event: raw_state=0 normalized=1`
+    and its releases as `normalized=0`; every trigger makes the Box feed
+    filament forward on its own."""
+
+    def __init__(self):
+        logging.Handler.__init__(self, logging.INFO)
+        self.feeds = 0
+        self.pressed = None
+
+    def emit(self, record):
+        try:
+            message = record.getMessage()
+        except Exception:
+            return
+        if not message.startswith(BUFFER_EVENT):
+            return
+        if message.endswith("normalized=1"):
+            self.feeds += 1
+            self.pressed = True
+        elif message.endswith("normalized=0"):
+            self.pressed = False
+
+
 class _UnloadWatch:
     """A Box slot's G-code object for one unload from the toolhead: it adds
     up the extruder's pulls, notes where the toolhead sensor cleared, and
     raises stop(watch) instead of a pull once the pulls after the pull-back
     reach EXTRA_PULL_MM with the sensor still detecting filament."""
 
-    def __init__(self, gcode, toolhead_filament, extruder_position, stop):
+    def __init__(self, gcode, toolhead_filament, extruder_position,
+                 slot_position, stop):
         self._gcode = gcode
         self._toolhead_filament = toolhead_filament
         self._extruder_position = extruder_position
+        self._slot_position = slot_position
         self._stop = stop
         self.moves = 0
         self.pullback = 0.
         self.extra = 0.
-        # How far the extruder moved back for the pulls; None if unknown.
+        # How far the extruder moved back for the pulls, and how far Klipper
+        # moved the slot's motor during them; None if unknown.
         self.moved = 0.
+        self.slot_moved = 0.
         self.cleared_at = None
 
     @property
@@ -242,13 +280,12 @@ class _UnloadWatch:
 
     def _run(self, run, script):
         self._before(script)
-        start = self._extruder_position()
+        start = (self._extruder_position(), self._slot_position())
         result = run(script)
-        end = self._extruder_position()
-        if self.moved is not None and any(
-                RETRACT_LINE.match(line) for line in self._lines(script)):
-            self.moved = None if start is None or end is None \
-                else self.moved + start - end
+        end = (self._extruder_position(), self._slot_position())
+        if any(RETRACT_LINE.match(line) for line in self._lines(script)):
+            self.moved = _add(self.moved, start[0], end[0])
+            self.slot_moved = _add(self.slot_moved, end[1], start[1])
         self._after(script)
         return result
 
@@ -281,6 +318,18 @@ class _UnloadWatch:
         return getattr(self._gcode, name)
 
 
+def _buffer_feeds():
+    """The one buffer feed counter on Python's root logger, kept across
+    Klipper restarts, which reuse this module."""
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if type(handler).__name__ == "_BufferFeeds":
+            return handler
+    handler = _BufferFeeds()
+    root.addHandler(handler)
+    return handler
+
+
 class BoxFlowRecovery:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -304,6 +353,10 @@ class BoxFlowRecovery:
         self._in_cancelled_part = None
         # Between TOOL_CHANGE_START and TOOL_CHANGE_END of a print.
         self._filament_change = False
+        # The Box buffer's feed triggers, and their count at the last unload
+        # from the toolhead.
+        self._buffer = None
+        self._feeds_at_unload = 0
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("virtual_sdcard:reset_file",
                                             self._end_filament_change)
@@ -453,6 +506,9 @@ class BoxFlowRecovery:
         lookup_objects = getattr(self.printer, "lookup_objects", None)
         if not callable(lookup_objects):
             return
+        if self._buffer is None:
+            self._buffer = _buffer_feeds()
+            self._feeds_at_unload = self._buffer.feeds
         watched = []
         for name, stepper in lookup_objects("box_stepper"):
             original = getattr(stepper, "extruder_unload_single_func", None)
@@ -476,6 +532,18 @@ class BoxFlowRecovery:
         position = get_position()
         return position[3] if len(position) > 3 else None
 
+    def _slot_position(self, box_stepper):
+        """Where Klipper has moved the slot's motor to, in mm; None if
+        unknown."""
+        stepper = getattr(box_stepper, "stepper", None)
+        try:
+            return stepper.get_mcu_position() * stepper.get_step_dist()
+        except Exception:
+            return None
+
+    def _feeds(self):
+        return None if self._buffer is None else self._buffer.feeds
+
     def _toolhead_filament(self):
         """The toolhead sensor: True with filament, None if unknown."""
         sensor = self.printer.lookup_object(TOOLHEAD_SENSOR, None)
@@ -498,8 +566,10 @@ class BoxFlowRecovery:
                 return original(*args, **kwargs)
             watch = _UnloadWatch(
                 real, self._toolhead_filament, self._extruder_position,
+                lambda: self._slot_position(stepper),
                 lambda watch: self._toolhead_stuck(slot, watch))
-            before = (self._toolhead_filament(), self._hub_filament())
+            before = (self._toolhead_filament(), self._hub_filament(),
+                      self._feeds())
             stepper.gcode = watch
             outcome = "raised"
             try:
@@ -525,15 +595,27 @@ class BoxFlowRecovery:
         after = (self._toolhead_filament(), self._hub_filament())
         cleared = "" if watch.cleared_at is None else \
             ", cleared after %s mm" % (_mm(watch.cleared_at),)
-        moved = "unknown" if watch.moved is None \
-            else "%s mm" % (_mm(round(watch.moved, 1)),)
+        def mm(value):
+            return "unknown" if value is None \
+                else "%s mm" % (_mm(round(value, 1)),)
+        feeds = self._feeds()
+        if feeds is None or before[2] is None:
+            buffer = "unknown"
+        else:
+            buffer = ("%d feeds before it since the last unload from the "
+                      "toolhead, %d during it, switch %s"
+                      % (before[2] - self._feeds_at_unload, feeds - before[2],
+                         {True: "pressed", False: "released"}.get(
+                             self._buffer.pressed, "not seen yet")))
+            self._feeds_at_unload = feeds
         logging.info(
             "tltg_box_flow_recovery: %s unload from the toolhead: toolhead "
             "sensor %s -> %s%s; hub sensor %s -> %s; extruder pulled back %s "
-            "mm, %s of them after its pull-back, and moved %s; %s",
+            "mm, %s of them after its pull-back, and moved %s; slot motor "
+            "moved %s during the pulls; Box buffer %s; %s",
             slot_label(slot), state(before[0]), state(after[0]), cleared,
             state(before[1]), state(after[1]), _mm(watch.pulled), _mm(watch.extra),
-            moved, outcome)
+            mm(watch.moved), mm(watch.slot_moved), buffer, outcome)
 
     def _toolhead_stuck(self, slot, watch):
         if watch.skipped:

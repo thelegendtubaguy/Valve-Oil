@@ -578,7 +578,7 @@ Optimized configuration SHALL record which QIDI Box slot's own motion brought fi
 - **THEN** the vendor unload runs unchanged
 
 ### Requirement: Manual QIDI Box slot jog
-Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is running or paused or a vendor Box task is running.
+Optimized configuration SHALL provide a console command that moves one USB QIDI Box slot's filament a requested distance toward the toolhead or back toward the spool regardless of the slot, hub, and toolhead sensors and of saved Box state, and SHALL refuse it while a print is printing or a vendor Box task is moving. It SHALL run while a print is paused and while a vendor Box task is paused at a failed step.
 
 #### Scenario: An idle jog
 - **WHEN** the printer is idle and the command names a configured slot, a distance, and optionally a speed
@@ -587,9 +587,12 @@ Optimized configuration SHALL provide a console command that moves one USB QIDI 
 - **AND** saved vendor Box state is unchanged and no runout pause runs
 
 #### Scenario: A jog while the printer or Box is busy
-- **WHEN** a print is running or paused, or a vendor Box task is running or paused at a failed step
+- **WHEN** a print is printing, or a vendor Box task is running and not paused
 - **THEN** the command refuses without moving the slot
-- **AND** for a paused Box task the console names the failed step and says that `FLOW_RETRY` retries it and `FLOW_STOP` ends it
+
+#### Scenario: A jog while a print or a failed Box step is paused
+- **WHEN** a print is paused, or a vendor Box task is paused at a failed step, such as an unload that stopped with filament caught
+- **THEN** the slot moves as for an idle jog and the motor is handed back afterwards, so `RESUME` or `FLOW_RETRY` carries on from the sensors
 
 #### Scenario: A jog changes the hub sensor
 - **WHEN** a jog starts with the hub sensor clear and ends with filament at it, or ends with it clear
@@ -751,7 +754,7 @@ Optimized configuration SHALL let the extruder pull at most 20 mm past a vendor 
 
 #### Scenario: Every unload from the toolhead is logged
 - **WHEN** a vendor unload from the toolhead ends, however it ends
-- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder was asked to pull and how far it moved, and where the toolhead sensor cleared
+- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during the pulls, the Box buffer's feed triggers since the last unload from the toolhead and during this one, and where the toolhead sensor cleared
 
 #### Scenario: Box code with other pulls
 - **WHEN** the vendor Box code pulls past the pull-back in steps other than 10 mm, or at another speed

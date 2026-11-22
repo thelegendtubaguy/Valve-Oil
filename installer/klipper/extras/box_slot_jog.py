@@ -4,8 +4,9 @@
 # slot's filament toward the toolhead (positive DISTANCE) or back toward the
 # spool (negative), whatever the slot, hub, and toolhead sensors read and
 # whatever QIDI's saved slot state says. It refuses only while a print is
-# running or paused or a QIDI Box task is running, because those own the slot
-# motors.
+# printing or a QIDI Box task is moving, because those own the slot motors.
+# A paused print, or a Box flow paused on a failed step, moves nothing, so a
+# jog can work stuck filament free before Resume or FLOW_RETRY.
 #
 # The slot motor is borrowed from QIDI's Box code for the move and handed
 # back afterwards, the way the cold feed measurements in
@@ -61,14 +62,13 @@ class BoxSlotJog:
 
     def _blocker(self):
         state = self._status("print_stats").get("state")
-        if state in ("printing", "paused"):
-            return "a print is %s" % state
-        # Idle reports flow_id None with an empty queue and step.
+        if state == "printing":
+            return "a print is printing"
+        # Idle reports flow_id None with an empty queue and step; a flow
+        # paused on a failed step keeps them but moves nothing.
         task = self._status("multi_color_controller").get("task")
         if hasattr(task, "get") and task.get("is_paused"):
-            return ("a QIDI Box flow is paused at %s. FLOW_RETRY tries that "
-                    "step again and FLOW_STOP ends the flow"
-                    % (task.get("current_step") or "a failed step",))
+            return None
         if hasattr(task, "get") and (task.get("flow_id") not in (None, 0)
                                      or task.get("current_queue")
                                      or task.get("current_step")):

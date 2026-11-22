@@ -159,7 +159,7 @@ The QIDI Box card in Fluidd has **In** and **Out** buttons that jog the selected
 
 - The slot moves whatever its sensors read and whatever the printer has recorded as loaded. QIDI's saved Box state, such as which slot is loaded, isn't changed.
 - The extruder doesn't turn during a jog, so jogging the filament that's in the extruder pushes or pulls against its gears.
-- A jog is refused while a print is running or paused or the Box is busy, including while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`.
+- A jog is refused while a print is printing or the Box is moving filament. It works while a print is paused and while a failed Box step waits for `FLOW_RETRY` or `FLOW_STOP`, for example to work filament free after [an unload stops](#filament-caught-at-the-toolhead).
 - Jogging out until the slot's inlet sensor no longer sees filament takes the filament out of the slot's feeder, and jogging in won't grab it again. Push it back into the inlet by hand, and the Box loads it as it does any newly inserted filament. With long tubes to the hub, that can take well over a meter of jogging.
 - A jog that brings filament to the Box hub, or clears it, updates the printer's record of which slot is at the hub, as for [stuck Box loads](#stuck-box-loads).
 
@@ -276,9 +276,11 @@ The unload now stops once the extruder has pulled 20 mm past the pull-back witho
 - During a print, **Resume** tries the tool change again.
 - Otherwise, **Retry** (`FLOW_RETRY`) repeats the unload, or **Stop** (`FLOW_STOP`) ends it.
 
+The slot can be [jogged](#moving-a-slot-by-hand) while the print or the failed unload is paused, for example `VO_BOX_SLOT_JOG SLOT=2 DISTANCE=-20` to pull 1C back, or the **Out** button on the Box card in Valve Oil UI.
+
 When Klipper didn't move the extruder for those pulls at all, the message says so instead, for example `Box unload of 1D stopped: Klipper didn't move the extruder for the 105 mm of pull-back QIDI's unload asked for, ...`, and names the [cancelled part](#filament-changes-inside-a-cancelled-part) the print is inside when that's why.
 
-`klippy.log` gets a line for every unload from the toolhead, with both sensors before and after, how far the extruder was asked to pull and how far it moved, and where the toolhead sensor cleared, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`.
+`klippy.log` gets a line for every unload from the toolhead, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, and how many times the Box's buffer switch made the Box feed filament forward since the last unload and during this one. Attach it when you report an unload that stopped.
 
 ### Filament changes inside a cancelled part
 

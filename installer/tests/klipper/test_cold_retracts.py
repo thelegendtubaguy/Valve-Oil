@@ -544,6 +544,7 @@ class BoxStepper:
 
     def extruder_unload_single_func(self):
         self.start = len(self.printer.moves)
+        getattr(self, "during_unload", lambda: None)()
         sensor = self.printer.lookup_object(box_flow_recovery.TOOLHEAD_SENSOR)
         for attempt in range(3):
             if attempt:
@@ -645,6 +646,28 @@ class ToolheadUnloadTest(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("didn't move the extruder for the 105 mm", message)
         self.assertNotIn("Something is holding", message)
+
+    def test_unload_log_counts_the_box_buffer_feeds_before_and_during_it(self) -> None:
+        logging.disable(logging.NOTSET)
+        root = logging.getLogger()
+        lines = []
+        capture = logging.Handler(logging.INFO)
+        capture.emit = lambda record: lines.append(record.getMessage())
+        root.addHandler(capture)
+        self.addCleanup(root.removeHandler, capture)
+        self.addCleanup(root.setLevel, root.level)
+        root.setLevel(logging.INFO)
+        printer, gcode, manager, stepper = self.setup(40.)
+        feed = "[MCB] limit_a_event: raw_state=0 normalized=1"
+        for _ in range(3):
+            logging.info(feed)
+            logging.info("[MCB] limit_a_event: raw_state=1 normalized=0")
+        stepper.during_unload = lambda: logging.info(feed)
+        self.unload(gcode)
+        self.unload(gcode)
+        unloads = [line for line in lines if "1C unload from the toolhead" in line]
+        self.assertIn("3 feeds before it since the last unload from the toolhead, 1 during it, switch pressed", unloads[0])
+        self.assertIn("0 feeds before it since the last unload from the toolhead, 1 during it", unloads[1])
 
     def test_box_code_with_other_pulls_stops_after_the_same_20_mm(self) -> None:
         printer, gcode, manager, stepper = self.setup(None, pull="G1 E-5 F600")
