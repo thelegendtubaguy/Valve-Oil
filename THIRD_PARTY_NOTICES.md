@@ -19,10 +19,13 @@ The full GPLv3 text is available in [`LICENSE`](LICENSE) and [`LICENSES/GPL-3.0-
   - `installer/klipper/extras/resonance_sweep.py` (adapted portions)
   - `installer/system/klipper_chelper/*.so`
   - `chelper/*.patch`
+  - `klipper/` (upstream Klipper v0.14.0 with QIDI's Klipper changes and Valve Oil's port)
 
 The installer payloads are modified QIDI/Klipper homing sources. `homing.py` was modified for QIDI Max 4 homing behavior and timing on 2026-07-26. `homing-sync-reset.py` carries the same modifications against the alternate QIDI source variant dated 2026-07-28. Copyright and licensing notices in those files remain in effect.
 
 `installer/system/klipper_chelper/qidi_c_helper.so` is Klipper's C helper library built unmodified from commit `ca815f52c8420225f93f90698768a5c4714654a9`, byte for byte the library QIDI ships. `installer/system/klipper_chelper/c_helper.so` is the same code built with the patches in [`chelper/`](chelper/), backports of later upstream Klipper commits. [`scripts/build_klipper_chelper.py`](scripts/build_klipper_chelper.py) and [`chelper/README.md`](chelper/README.md) hold the steps that rebuild both.
+
+`klipper/` is upstream Klipper v0.14.0 (commit `c9559fa04`) with QIDI's GPL-3.0 Klipper sources for the Max 4 (01.01.07.01), Plus 5 and Smart 5 (01.01.02.01) merged in and modified for Valve Oil from 2026-11-22; [`klipper/README.md`](klipper/README.md) describes the changes. Copyright and licensing notices in its files remain in effect, and `klipper/COPYING` is Klipper's license text.
 
 `resonance_sweep.py` adapts the sweeping resonance test from Klipper's `klippy/extras/resonance_tester.py` (Copyright (C) 2020-2024 Dmitry Butyugin) and the junction calculation from `klippy/toolhead.py` (Copyright (C) 2016-2024 Kevin O'Connor) on 2026-11-07, as credited in its header.
 
