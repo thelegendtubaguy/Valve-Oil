@@ -71,7 +71,7 @@ The warning still appears when QIDI's server refuses the printer's account, or a
 
 ## MQTT errors after turning LAN only mode on
 
-QIDI's LAN only mode, on the touchscreen or in Fluidd's [Valve Oil settings](settings.md#qidis-cloud), disconnects the printer from QIDI's cloud. QIDI's code only closed the connection when it was connected, though. On a printer with no QIDI account, turning LAN only mode off makes it try to connect, QIDI's cloud refuses it every few seconds with `Bad user name or password`, and turning LAN only mode back on left those tries running. The touchscreen kept showing an MQTT connection error, and Fluidd showed **Moonraker has failed plugins** with `mqtt` and `MQTT Connection Failed: Bad user name or password`, until Moonraker restarted.
+QIDI's LAN only mode, on the touchscreen or in [Valve Oil UI](settings.md#qidis-cloud), disconnects the printer from QIDI's cloud. QIDI's code only closed the connection when it was connected, though. On a printer with no QIDI account, turning LAN only mode off makes it try to connect, QIDI's cloud refuses it every few seconds with `Bad user name or password`, and turning LAN only mode back on left those tries running. The touchscreen kept showing an MQTT connection error, and Fluidd showed **Moonraker has failed plugins** with `mqtt` and `MQTT Connection Failed: Bad user name or password`, until Moonraker restarted.
 
 Now, turning LAN only mode on also stops QIDI's tries to connect and clears that warning. A printer that is connected to QIDI's cloud is disconnected by QIDI's own code, as before.
 
