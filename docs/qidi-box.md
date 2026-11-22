@@ -269,14 +269,22 @@ When a step of a filament change during a print fails, QIDI pauses the print, an
 
 ### Filament caught at the toolhead
 
-An unload pulls the filament back with the extruder until the toolhead filament sensor is clear, and only then does the Box pull it back. While the sensor still detects filament, QIDI pulls 10 mm more at a time, up to seven times, then moves or shakes the toolhead and starts over, three times in all, before `Code:QDE_004_008; Message:Extruder unloading failure.` That's more than 400 mm and about a minute and a half of pulling on filament that isn't moving, which grinds it.
+An unload pulls the filament back with the extruder, with the slot's feeder turning along with it, until the toolhead filament sensor is clear, and only then does the Box pull it back. While the sensor still detects filament, QIDI pulls 10 mm more at a time, up to seven times, then moves or shakes the toolhead and starts over, three times in all, before `Code:QDE_004_008; Message:Extruder unloading failure.` That's more than 400 mm and about a minute and a half of pulling on filament that isn't moving, which grinds it.
 
-The unload now stops once the extruder has pulled 20 mm past the pull-back without the sensor clearing, 105 mm in all with the Max 4's default pull-back, and the console says what's wrong, for example `Box unload of 1D stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, ...`. Something at the toolhead is holding the filament, such as a cutter blade that hasn't sprung back or a swollen cut end. Free it there, then:
+The unload now stops once the extruder has pulled 20 mm past the pull-back without the sensor clearing, 105 mm in all with the Max 4's default pull-back, and the console says what's wrong, for example `Box unload of 1D stopped: the toolhead filament sensor still detects filament after the extruder pulled it back 105 mm, ...`. Something is holding the filament: at the toolhead, such as a cutter blade that hasn't sprung back or a swollen cut end, or in the Box, such as a slot feeder that won't turn. Free it, then:
 
 - During a print, **Resume** tries the tool change again.
 - Otherwise, **Retry** (`FLOW_RETRY`) repeats the unload, or **Stop** (`FLOW_STOP`) ends it.
 
-`klippy.log` gets a line for every unload from the toolhead, with both sensors before and after, how far the extruder pulled, and where the toolhead sensor cleared, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`.
+When Klipper didn't move the extruder for those pulls at all, the message says so instead, for example `Box unload of 1D stopped: Klipper didn't move the extruder for the 105 mm of pull-back QIDI's unload asked for, ...`, and names the [cancelled part](#filament-changes-inside-a-cancelled-part) the print is inside when that's why.
+
+`klippy.log` gets a line for every unload from the toolhead, with both sensors before and after, how far the extruder was asked to pull and how far it moved, and where the toolhead sensor cleared, starting `tltg_box_flow_recovery: 1D unload from the toolhead:`.
+
+### Filament changes inside a cancelled part
+
+Klipper drops every move while a print is inside a part you've cancelled (skipped), extruder moves included. OrcaSlicer marks where a part ends only when the next part starts, so a filament change right after a part's last line runs inside that part. When that part was cancelled, the change ran with the Box motors but without the toolhead or extruder: no cut, no pull-back, no purge. The unload then stopped as if filament were [caught at the toolhead](#filament-caught-at-the-toolhead), and the paused print stayed inside the cancelled part, so retracting, unloading, and loading by hand did nothing either.
+
+Moves now go through during a filament change, from QIDI's `TOOL_CHANGE_START` to its `TOOL_CHANGE_END`, and while the print is paused. A change that starts inside a cancelled part first raises the nozzle straight up to the height the change expects, since the slicer's lift before it was dropped, then cuts, unloads, loads, and purges as usual. The cancelled part's own lines are still skipped, before and after the change. This works with any slicer and with files already sliced.
 
 ### A slot that runs out during a tool change
 

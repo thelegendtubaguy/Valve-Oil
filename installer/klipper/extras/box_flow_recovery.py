@@ -69,17 +69,36 @@
 #
 # Filament caught at the toolhead: QIDI's unload from the toolhead
 # (box_stepper's extruder_unload_single_func) pulls the cut filament back
-# 30 mm and then exl_2, and only starts the Box's pull once the toolhead
-# sensor is clear. While the sensor still detects filament it pulls 10 mm
-# more at a time, up to seven times, then moves or shakes the toolhead and
-# starts again, three times in all, before QDE_004_008: about 450 mm and a
-# minute and a half of pulling on filament that isn't moving. On any Box
-# code, the first two extruder pulls of an unload are its pull-back; once
-# pulls after them add up to EXTRA_PULL_MM with the sensor still detecting
-# filament, the next pull is refused and the unload stops with an error that
-# says what's wrong. Every unload from the toolhead logs both sensors before
-# and after, how far the extruder pulled, and where the toolhead sensor
-# cleared.
+# 30 mm and then exl_2, with the slot's motor turning with the extruder, and
+# only starts the Box's pull once the toolhead sensor is clear. While the
+# sensor still detects filament it pulls 10 mm more at a time, up to seven
+# times, then moves or shakes the toolhead and starts again, three times in
+# all, before QDE_004_008: about 450 mm and a minute and a half of pulling on
+# filament that isn't moving. On any Box code, the first two extruder pulls
+# of an unload are its pull-back; once pulls after them add up to
+# EXTRA_PULL_MM with the sensor still detecting filament, the next pull is
+# refused and the unload stops with an error that says what's wrong: either
+# something holds the filament, at the toolhead or in the Box, or Klipper
+# didn't move the extruder for the pulls, as inside a cancelled part. Every
+# unload from the toolhead logs both sensors before and after, how far the
+# extruder was asked to pull and how far it moved, and where the toolhead
+# sensor cleared.
+#
+# Cancelled parts: Klipper's exclude_object drops every move while the print
+# is inside a cancelled part, extruder-only moves included. OrcaSlicer closes
+# a part's EXCLUDE_OBJECT_START/END block only when the next part starts, so
+# a filament change after a part's last line runs inside that part's block,
+# and when that part was cancelled, the cut, the extruder's pull-backs and
+# loads, and the purge and wipe were all dropped while the Box motors still
+# ran. The print then paused inside the cancelled part, where every move the
+# operator made was dropped too. Moves now go through a cancelled part from
+# TOOL_CHANGE_START to TOOL_CHANGE_END, while T_MANAGER runs, and while the
+# print is paused; the part's own lines are still dropped. A filament change
+# that starts inside a cancelled part first raises the nozzle straight up to
+# the height the G-code expects, since the slicer's lift before
+# TOOL_CHANGE_START was dropped. The next EXCLUDE_OBJECT_START or
+# EXCLUDE_OBJECT_END, or a new print, ends a filament change that never sent
+# TOOL_CHANGE_END.
 #
 # External spool loads: QIDI's external-spool load flow ends with EXT_WIPE,
 # whose ExternalAdapter.wipe runs its purge and chute wipe and then returns
@@ -125,6 +144,13 @@ PULLBACK_MOVES = 2
 EXTRA_PULL_MM = 20.
 TOOLHEAD_SENSOR = "filament_switch_sensor filament_switch_sensor"
 RETRACT_LINE = re.compile(r"G1 E-(\d+(?:\.\d+)?) F\d+(?:\.\d+)?$")
+# Below this share of the pulls asked for, the extruder counts as not moved.
+MOVED_SHARE = .5
+# Raising the nozzle out of a cancelled part: a relative move just above the
+# G-code's height, which exclude_object makes straight up, then back down.
+LIFT_STATE = "_vo_cancelled_part_lift"
+LIFT_SCRIPT = ("SAVE_GCODE_STATE NAME=%s\nG91\nG1 Z0.01 F1200\nG1 Z-0.01\n"
+               "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE, LIFT_STATE))
 
 
 def _slot_number(slot):
@@ -186,13 +212,16 @@ class _UnloadWatch:
     raises stop(watch) instead of a pull once the pulls after the pull-back
     reach EXTRA_PULL_MM with the sensor still detecting filament."""
 
-    def __init__(self, gcode, toolhead_filament, stop):
+    def __init__(self, gcode, toolhead_filament, extruder_position, stop):
         self._gcode = gcode
         self._toolhead_filament = toolhead_filament
+        self._extruder_position = extruder_position
         self._stop = stop
         self.moves = 0
         self.pullback = 0.
         self.extra = 0.
+        # How far the extruder moved back for the pulls; None if unknown.
+        self.moved = 0.
         self.cleared_at = None
 
     @property
@@ -211,6 +240,24 @@ class _UnloadWatch:
                 and self._toolhead_filament() is True:
             raise self._stop(self)
 
+    def _run(self, run, script):
+        self._before(script)
+        start = self._extruder_position()
+        result = run(script)
+        end = self._extruder_position()
+        if self.moved is not None and any(
+                RETRACT_LINE.match(line) for line in self._lines(script)):
+            self.moved = None if start is None or end is None \
+                else self.moved + start - end
+        self._after(script)
+        return result
+
+    @property
+    def skipped(self):
+        """Whether Klipper didn't move the extruder for the pulls."""
+        return self.moved is not None and self.pulled > 0. \
+            and self.moved < self.pulled * MOVED_SHARE
+
     def _after(self, script):
         for line in self._lines(script):
             retract = RETRACT_LINE.match(line)
@@ -225,16 +272,10 @@ class _UnloadWatch:
                 self.cleared_at = self.pulled
 
     def run_script_from_command(self, script):
-        self._before(script)
-        result = self._gcode.run_script_from_command(script)
-        self._after(script)
-        return result
+        return self._run(self._gcode.run_script_from_command, script)
 
     def run_script(self, script):
-        self._before(script)
-        result = self._gcode.run_script(script)
-        self._after(script)
-        return result
+        return self._run(self._gcode.run_script, script)
 
     def __getattr__(self, name):
         return getattr(self._gcode, name)
@@ -258,7 +299,14 @@ class BoxFlowRecovery:
         self._external_wipe_fixed = False
         # T_MANAGER is running a print's tool change.
         self._tool_change = False
+        # Klipper's exclude_object and its own test for a cancelled part.
+        self._exclude = None
+        self._in_cancelled_part = None
+        # Between TOOL_CHANGE_START and TOOL_CHANGE_END of a print.
+        self._filament_change = False
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
+        self.printer.register_event_handler("virtual_sdcard:reset_file",
+                                            self._end_filament_change)
 
     # ----------------------------------------------------------------- setup
     def _handle_ready(self):
@@ -267,6 +315,11 @@ class BoxFlowRecovery:
         except Exception:
             logging.exception("tltg_box_flow_recovery: watching unloads from "
                               "the toolhead failed")
+        try:
+            self._watch_cancelled_parts()
+        except Exception:
+            logging.exception("tltg_box_flow_recovery: watching cancelled "
+                              "parts failed")
         controller = self.printer.lookup_object("multi_color_controller", None)
         manager = getattr(controller, "task_queue_manager", None)
         if not callable(getattr(manager, "stop", None)) \
@@ -288,14 +341,18 @@ class BoxFlowRecovery:
                 ("UNLOAD_FILAMENT_CONTROL", self.cmd_UNLOAD_FILAMENT_CONTROL),
                 ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL),
                 ("T_MANAGER", self.cmd_T_MANAGER)):
-            original = self.gcode.register_command(name, None)
-            if original is None:
-                logging.info("tltg_box_flow_recovery: %s not found", name)
-                continue
-            self.originals[name] = original
-            self.gcode.register_command(name, handler,
-                                        desc=self.gcode.gcode_help.get(name))
+            self._wrap_command(name, handler)
         logging.info("tltg_box_flow_recovery: active")
+
+    def _wrap_command(self, name, handler):
+        original = self.gcode.register_command(name, None)
+        if original is None:
+            logging.info("tltg_box_flow_recovery: %s not found", name)
+            return False
+        self.originals[name] = original
+        self.gcode.register_command(name, handler,
+                                    desc=self.gcode.gcode_help.get(name))
+        return True
 
     # ------------------------------------------------------------------ state
     def _print_state(self):
@@ -409,6 +466,16 @@ class BoxFlowRecovery:
             logging.info("tltg_box_flow_recovery: watching unloads from the "
                          "toolhead on %s", ", ".join(watched))
 
+    def _extruder_position(self):
+        """The toolhead's extruder position, which moves only with the
+        extruder; None if unknown."""
+        toolhead = self.printer.lookup_object("toolhead", None)
+        get_position = getattr(toolhead, "get_position", None)
+        if not callable(get_position):
+            return None
+        position = get_position()
+        return position[3] if len(position) > 3 else None
+
     def _toolhead_filament(self):
         """The toolhead sensor: True with filament, None if unknown."""
         sensor = self.printer.lookup_object(TOOLHEAD_SENSOR, None)
@@ -430,7 +497,7 @@ class BoxFlowRecovery:
             if isinstance(real, _UnloadWatch):
                 return original(*args, **kwargs)
             watch = _UnloadWatch(
-                real, self._toolhead_filament,
+                real, self._toolhead_filament, self._extruder_position,
                 lambda watch: self._toolhead_stuck(slot, watch))
             before = (self._toolhead_filament(), self._hub_filament())
             stepper.gcode = watch
@@ -458,25 +525,39 @@ class BoxFlowRecovery:
         after = (self._toolhead_filament(), self._hub_filament())
         cleared = "" if watch.cleared_at is None else \
             ", cleared after %s mm" % (_mm(watch.cleared_at),)
+        moved = "unknown" if watch.moved is None \
+            else "%s mm" % (_mm(round(watch.moved, 1)),)
         logging.info(
             "tltg_box_flow_recovery: %s unload from the toolhead: toolhead "
             "sensor %s -> %s%s; hub sensor %s -> %s; extruder pulled back %s "
-            "mm, %s of them after its pull-back; %s",
+            "mm, %s of them after its pull-back, and moved %s; %s",
             slot_label(slot), state(before[0]), state(after[0]), cleared,
             state(before[1]), state(after[1]), _mm(watch.pulled), _mm(watch.extra),
-            outcome)
+            moved, outcome)
 
     def _toolhead_stuck(self, slot, watch):
-        message = (
-            "Box unload of %s stopped: the toolhead filament sensor still "
-            "detects filament after the extruder pulled it back %s mm, %s mm "
-            "more than its %s mm pull-back. Something at the toolhead is "
-            "holding the filament, such as a cutter blade that hasn't sprung "
-            "back or a swollen cut end, so the Box hasn't pulled it, and "
-            "QIDI's further pulls would only grind it. Free the filament at "
-            "the toolhead"
-            % (slot_label(slot), _mm(watch.pulled), _mm(watch.extra),
-               _mm(watch.pullback)))
+        if watch.skipped:
+            part = self._cancelled_part()
+            message = (
+                "Box unload of %s stopped: Klipper didn't move the extruder "
+                "for the %s mm of pull-back QIDI's unload asked for%s, so the "
+                "toolhead filament sensor still detects filament and the Box "
+                "hasn't pulled it. Check that the extruder turns"
+                % (slot_label(slot), _mm(watch.pulled),
+                   "" if part is None else
+                   " because the print is inside %s, a cancelled part, where "
+                   "Klipper drops every move" % (part,)))
+        else:
+            message = (
+                "Box unload of %s stopped: the toolhead filament sensor still "
+                "detects filament after the extruder pulled it back %s mm, %s "
+                "mm more than its %s mm pull-back. Something is holding the "
+                "filament, at the toolhead, such as a cutter blade that hasn't "
+                "sprung back or a swollen cut end, or in the Box, such as a "
+                "slot feeder that won't turn, so the Box hasn't pulled it, and "
+                "QIDI's further pulls would only grind it. Free the filament"
+                % (slot_label(slot), _mm(watch.pulled), _mm(watch.extra),
+                   _mm(watch.pullback)))
         # A print's tool change says how to resume after the message.
         if not self._tool_change:
             if self._task() is not None:
@@ -486,6 +567,97 @@ class BoxFlowRecovery:
                 message += ", then unload again."
         logging.warning("tltg_box_flow_recovery: %s", message)
         return self.printer.command_error(message)
+
+    # ------------------------------------------------------ cancelled parts
+    def _watch_cancelled_parts(self):
+        exclude = self.printer.lookup_object("exclude_object", None)
+        in_cancelled_part = getattr(exclude, "_test_in_excluded_region", None)
+        if not callable(in_cancelled_part):
+            logging.info("tltg_box_flow_recovery: cancelled parts not "
+                         "watched: Klipper's exclude_object not found")
+            return
+        self._exclude = exclude
+        self._in_cancelled_part = in_cancelled_part
+
+        def drops_moves():
+            return in_cancelled_part() \
+                and not self._moves_through_cancelled_parts()
+        exclude._test_in_excluded_region = drops_moves
+        for name, handler in (
+                ("EXCLUDE_OBJECT_START", self.cmd_EXCLUDE_OBJECT_START),
+                ("EXCLUDE_OBJECT_END", self.cmd_EXCLUDE_OBJECT_END),
+                ("TOOL_CHANGE_START", self.cmd_TOOL_CHANGE_START),
+                ("TOOL_CHANGE_END", self.cmd_TOOL_CHANGE_END)):
+            self._wrap_command(name, handler)
+        logging.info("tltg_box_flow_recovery: moves go through cancelled "
+                     "parts during filament changes and pauses")
+
+    def _moves_through_cancelled_parts(self):
+        return self._filament_change or self._tool_change \
+            or self._print_state() == "paused"
+
+    def _drops_moves(self):
+        """Whether a move now would be dropped in a cancelled part."""
+        return self._exclude is not None \
+            and bool(self._exclude._test_in_excluded_region())
+
+    def _cancelled_part(self):
+        """The cancelled part the print is inside, or None."""
+        status = getattr(self._exclude, "get_status", None)
+        if not callable(status):
+            return None
+        status = status()
+        current = status.get("current_object")
+        return current if current is not None \
+            and current in (status.get("excluded_objects") or ()) else None
+
+    def _leave_cancelled_part(self):
+        """Raise the nozzle straight up to the G-code's height, from where
+        the moves dropped in a cancelled part left it."""
+        try:
+            self.gcode.run_script_from_command(LIFT_SCRIPT)
+        except Exception:
+            logging.exception("tltg_box_flow_recovery: raising the nozzle "
+                              "out of a cancelled part failed")
+            try:
+                self.gcode.run_script_from_command(
+                    "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE,))
+            except Exception:
+                logging.exception("tltg_box_flow_recovery: restoring the "
+                                  "G-code state failed")
+
+    def _start_moving(self, flag):
+        """Set FLAG so moves go through cancelled parts, raising the nozzle
+        first if moves were being dropped."""
+        part = self._cancelled_part() if self._drops_moves() else None
+        setattr(self, flag, True)
+        if part is not None:
+            logging.info("tltg_box_flow_recovery: filament change inside "
+                         "cancelled part %s; its moves go through until it "
+                         "ends", part)
+            self._leave_cancelled_part()
+
+    def _end_filament_change(self):
+        self._filament_change = False
+
+    def cmd_EXCLUDE_OBJECT_START(self, gcmd):
+        self._end_filament_change()
+        return self.originals["EXCLUDE_OBJECT_START"](gcmd)
+
+    def cmd_EXCLUDE_OBJECT_END(self, gcmd):
+        self._end_filament_change()
+        return self.originals["EXCLUDE_OBJECT_END"](gcmd)
+
+    def cmd_TOOL_CHANGE_START(self, gcmd):
+        if self._print_state() in ("printing", "paused"):
+            self._start_moving("_filament_change")
+        return self.originals["TOOL_CHANGE_START"](gcmd)
+
+    def cmd_TOOL_CHANGE_END(self, gcmd):
+        try:
+            return self.originals["TOOL_CHANGE_END"](gcmd)
+        finally:
+            self._end_filament_change()
 
     # ------------------------------------------------------------- cold flows
     def _cold_flow(self, flow_id):
@@ -610,8 +782,8 @@ class BoxFlowRecovery:
     # ------------------------------------------------------------ tool change
     def cmd_T_MANAGER(self, gcmd):
         if self._print_state() in ("printing", "paused"):
-            self._tool_change = True
             try:
+                self._start_moving("_tool_change")
                 return self.originals["T_MANAGER"](gcmd)
             except Exception as e:
                 if not self._pause_print_after_error(gcmd, e):
