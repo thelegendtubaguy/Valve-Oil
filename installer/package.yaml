@@ -333,6 +333,9 @@ install:
     - id: renamed_commands
       source: "klipper/extras/renamed_commands.py"
       destination: "klippy/extras/vo_renamed_commands.py"
+    - id: prime_handoff
+      source: "klipper/extras/prime_handoff.py"
+      destination: "klippy/extras/vo_prime_handoff.py"
 
   source_patches:
     - id: qidi_homing

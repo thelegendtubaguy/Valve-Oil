@@ -851,6 +851,25 @@ Normal install and update SHALL patch reviewed builds of QIDI's touchscreen exec
 - **THEN** it is left unchanged and recorded without failing other host patches
 - **AND** uninstall restores an unchanged patched executable to QIDI's original and restarts the touchscreen app
 
+### Requirement: Touchscreen P2P remote access stays out of Peergine's relay mesh
+The reviewed patched builds of QIDI's touchscreen executable SHALL keep its P2P remote access (Peergine's pgLibConnect) from forwarding other peers' sessions, routing its own through other peers, and answering NAT test requests, and SHALL ignore pushed options except the server list, while QIDI's phone app still reaches the camera and files directly and through QIDI's relay server. The patch travels with the firmware notice patch.
+
+#### Scenario: The printer is offered as a relay
+- **WHEN** QIDI's P2P server or another peer asks the printer to forward a session, or QIDI's init string or a pushed option sets a forwarding rate, use of forwarders, or session limit
+- **THEN** the printer's forwarding rate, use of forwarders, and session limit stay zero, it reports no forwarding capacity, and every incoming forwarding message is dropped
+
+#### Scenario: The phone can't reach the printer directly
+- **WHEN** QIDI's phone app opens the camera or files without a direct path to the printer
+- **THEN** the printer neither creates a forwarding key nor sends one to QIDI's server, and the session uses QIDI's relay server instead of another peer
+
+#### Scenario: A NAT test request arrives
+- **WHEN** the printer's P2P port receives a NAT test request (`0x8b`) naming any address, from QIDI's server or anyone else
+- **THEN** the printer sends nothing in reply and never names its public address to the address in the request
+
+#### Scenario: The server pushes options
+- **WHEN** QIDI's P2P server pushes forwarding or remote log pull options
+- **THEN** they are ignored, and a pushed server list is still applied
+
 ### Requirement: Klipper C helper library carries upstream fixes
 Normal install and update SHALL replace a reviewed build of QIDI's Klipper C helper library, `klippy/chelper/c_helper.so`, with the package's build of the same Klipper sources with upstream's later fixes for expired pressure advance entries, trsync timeout extension, step queue appends far in the future, and serial queue pipe descriptors, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
 

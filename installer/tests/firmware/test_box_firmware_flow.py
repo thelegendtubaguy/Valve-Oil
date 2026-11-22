@@ -16,7 +16,8 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from installer.runtime import board_firmware, box_firmware, host_reboot, mainboard_firmware, runner, update_check, valve_oil_status
+from installer.runtime import (board_firmware, box_firmware, host_reboot, mainboard_firmware, runner, sudo, update_check,
+                               valve_oil_status)
 from installer.runtime.board_images import BOARD_MANIFESTS as BOARD_MANIFEST_PATHS
 from installer.runtime.auto_update import LOCK_HELD_ENV
 from installer.runtime.board_images import managed_boards, pinned_board_image
@@ -739,6 +740,16 @@ class BoardAdmissionTests(unittest.TestCase):
         # Klipper wouldn't start; the touchscreen and the update timer run again anyway.
         self.assertEqual(printer.states, {**printer.original, "klipper.service": "inactive"})
         self.assertIs(signal.getsignal(signal.SIGINT), interrupt)
+
+    def test_a_changed_sudo_password_typed_earlier_in_the_run_reads_the_boards(self):
+        # The operator changed the printer's password and typed it at an earlier question, so sudo holds credentials
+        # for the terminal; the services stop and start in their own session, which those credentials don't reach.
+        paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock")},
+                                                existing=True)
+        printer.password, printer.terminal_credentials = "operator's own", True
+        with patch.object(sudo, "_entered", "operator's own"):
+            self.preflight(paths, printer, reporter, input_stream=None)
+        self.assertEqual((sorted(printer.snapshots), printer.states), (["mcu", "thr"], printer.original))
 
     def test_an_install_after_uninstall_is_new_and_an_enrolled_printer_is_not(self):
         from installer.runtime.auto_update import enrollment_path
