@@ -892,6 +892,37 @@ Normal install and update SHALL replace a reviewed build of QIDI's Klipper C hel
 - **WHEN** `scripts/build_klipper_chelper.py` builds upstream Klipper at QIDI's snapshot, unpatched and with the patches in `chelper/`
 - **THEN** the unpatched build is QIDI's library byte for byte and the patched build is the package's
 
+### Requirement: Valve Oil's Klipper beside QIDI's
+Normal install and update SHALL install the package's Klipper tree (`klipper/`, upstream Klipper v0.14 with QIDI's changes) as its own directory beside QIDI's untouched `~/klipper`, for printer firmware whose QIDI compiled modules are listed in the manifest, and SHALL start it in place of QIDI's Klipper only when the operator has chosen it and every launch check passes. It is off by default, independently of optional OS optimization policy.
+
+#### Scenario: The tree is installed for supported firmware
+- **WHEN** install or update runs on firmware listed under `system_optimizations.klipper_tree.qidi_modules` and QIDI's live compiled modules match that list
+- **THEN** it stages the tree with the printer's overlay, every package extra module, copies of QIDI's compiled modules, and the prebuilt C helper library as the newest file in its directory, writes the tree's marker last, and moves it into place, keeping the replaced tree until the host transaction ends
+- **AND** it installs the launcher and the `klipper.service` drop-in that starts Klipper through it
+- **AND** QIDI's `~/klipper` is left unchanged
+
+#### Scenario: Other firmware or unrecognized units leave QIDI's Klipper in use
+- **WHEN** the firmware has no module list, QIDI's live modules differ from it, the tree directory exists without the package marker, or `klipper.service` doesn't start Klipper as `~/klippy-env/bin/python $KLIPPER_ARGS`
+- **THEN** the outcome is recorded without failing the install, no drop-in overrides the unit, and QIDI's Klipper runs
+
+#### Scenario: Each Klipper start picks a tree
+- **WHEN** Klipper starts through the launcher
+- **THEN** it runs the package tree only when the operator's choice is Valve Oil's Klipper, no QIDI firmware update is pending, and the firmware, QIDI's compiled modules, and the tree's files still match the tree's marker, and fewer than three starts in a row on it went without a ready acknowledgement
+- **AND** otherwise, or on any error in the launcher, it runs QIDI's original command unchanged and records why in a status file the operator sees
+
+#### Scenario: The operator switches both ways
+- **WHEN** the operator chooses QIDI's or Valve Oil's Klipper in Valve Oil UI or with `VO_KLIPPER USE=`
+- **THEN** the status service writes the choice and restarts Klipper through Moonraker
+- **AND** it refuses while a print is running or paused, or while an installer run is in progress, and refuses Valve Oil's Klipper while it isn't available or a QIDI firmware update is pending
+
+#### Scenario: Uninstall returns to QIDI's Klipper
+- **WHEN** uninstall runs
+- **THEN** it removes the drop-in first, then the launcher, then the tree and the choice, status, and acknowledgement files, so QIDI's Klipper starts
+
+#### Scenario: The tree's C helper library is reproducible
+- **WHEN** `scripts/build_klipper_chelper.py` builds `klipper/klippy/chelper` with the printers' toolchain
+- **THEN** the library and the digest of its sources match the package's pinned build
+
 ### Requirement: Klipper and Moonraker come back after exiting outside systemd
 Normal install and update SHALL make systemd start Klipper and Moonraker again when their processes exit without systemd stopping them, independently of optional OS optimization policy, with the same recognition, preservation, and restoration as the other guarded host patches.
 
