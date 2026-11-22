@@ -13,6 +13,7 @@ import subprocess
 
 from installer.runtime.cli import resolve_runtime_paths
 from installer.runtime.reporter import create_reporter
+from installer.runtime.sudo import PUBLIC_DEFAULT_SUDO_PASSWORD
 from installer.tests.helpers import REPO_ROOT, build_env, temp_path
 
 
@@ -21,12 +22,18 @@ class Host:
 
     `states` maps each service to "active" or "inactive"; a service left out isn't installed. Any other command goes to
     the subclass's `tool`, which answers for the board tools. `fail_start` names a service that won't start.
+
+    sudo takes `password`. Once it has accepted one, it keeps credentials for the terminal, as a printer's sudo does:
+    `-v` from the terminal then passes whatever password it is given, while `-k -v` and a command in its own session
+    check the password.
     """
 
-    def __init__(self, states, *, fail_start=None):
+    def __init__(self, states, *, fail_start=None, password=PUBLIC_DEFAULT_SUDO_PASSWORD):
         self.states = dict(states)
         self.original = dict(states)
         self.fail_start = fail_start
+        self.password = password
+        self.terminal_credentials = False
         self.stops = self.service_changes = self.tool_runs = 0
 
     def run(self, command, **kwargs):
@@ -37,7 +44,12 @@ class Host:
 
         if command[:4] == ["sudo", "-S", "-p", ""]:
             command = command[4:]
-        if command == ["-v"]:
+            from_terminal = not kwargs.get("start_new_session")
+            cached = from_terminal and self.terminal_credentials and command[0] != "-k"
+            if not cached and kwargs.get("input", "").rstrip("\n") != self.password:
+                return result(1)
+            self.terminal_credentials |= from_terminal
+        if command in (["-v"], ["-k", "-v"]):
             return result()
         if command[:2] == ["systemctl", "show"]:
             if command[2] not in self.states:

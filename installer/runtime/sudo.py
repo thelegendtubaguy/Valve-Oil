@@ -25,17 +25,21 @@ _entered: str | None = None
 def authenticate_sudo(*, run: RunFn, environ: dict[str, str], reporter, input_stream) -> str:
     global _entered
     password = environ.get(SUDO_PASSWORD_ENV, PUBLIC_DEFAULT_SUDO_PASSWORD)
-    if run_sudo(["-v"], run=run, password=password).returncode == 0:
+    if _accepts(password, run=run):
         return password
-    if _entered is not None and run_sudo(["-v"], run=run, password=_entered).returncode == 0:
+    if _entered is not None and _accepts(_entered, run=run):
         return _entered
     fallback = _prompt_sudo_password(reporter=reporter, input_stream=input_stream)
-    if fallback is None:
-        raise SudoError(messages.AUTO_UPDATE_SUDO_FAILED)
-    if run_sudo(["-v"], run=run, password=fallback).returncode != 0:
+    if fallback is None or not _accepts(fallback, run=run):
         raise SudoError(messages.AUTO_UPDATE_SUDO_FAILED)
     _entered = fallback
     return fallback
+
+
+def _accepts(password: str, *, run: RunFn) -> bool:
+    # -k ignores the credentials sudo cached for this terminal, which would pass any password once the operator had
+    # typed theirs; commands run in their own session (board_guard.detached) don't get that cache.
+    return run_sudo(["-k", "-v"], run=run, password=password).returncode == 0
 
 
 def run_sudo_or_raise(
