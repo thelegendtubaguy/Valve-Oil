@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from installer.runtime import static_build
+from installer.runtime import klipper_tree, static_build
 from installer.runtime.manifest import load_manifest
 from installer.runtime.naming import (
     ARCHIVE_NAME,
@@ -140,6 +140,7 @@ def check_bundle(archive_path: Path, workspace: Path) -> None:
         static_build.VALVE_OIL_UI.archive_files(bundle_root / "installer" / ui.archive, ui.sha256)
     except static_build.StaticBuildError as exc:
         raise SystemExit(f"bundle Valve Oil UI archive is invalid: {exc.message}") from exc
+    check_klipper_tree(bundle_root, package_manifest)
     package_version = read_package_version(bundle_root / "installer/package.yaml")
     help_output = run_command([str(bundle_root / "install.sh"), "--help"], cwd=bundle_root, env=os.environ.copy())
     if help_output.returncode != 0:
@@ -216,6 +217,28 @@ environ = dict(os.environ)
 paths = resolve_runtime_paths(bundle_root=bundle_root, environ=environ)
 run_install(paths, load_manifest(paths.installer_root / "package.yaml"), PlainReporter(sys.stdout), environ=environ)
 """
+
+
+def check_klipper_tree(bundle_root: Path, manifest) -> None:
+    """Valve Oil's Klipper is in the bundle with a C helper library built from its sources, and makes a whole tree
+    for every printer on every firmware with a list of QIDI's modules."""
+    source = bundle_root / "klipper"
+    if not (source / "klippy/klippy.py").is_file():
+        raise SystemExit("bundle smoke test is missing Valve Oil's Klipper")
+    library = bundle_root / "installer" / klipper_tree.CHELPER_PAYLOAD_SUBDIR / "c_helper.so"
+    if not library.is_file() or klipper_tree.sha256_file(library) != klipper_tree.CHELPER_SHA256:
+        raise SystemExit("bundle Klipper C helper library doesn't match installer/runtime/klipper_tree.py")
+    for firmware, modules in manifest.system_optimizations.klipper_tree.qidi_modules:
+        printer = manifest.printer_for_firmware(firmware)
+        try:
+            klipper_tree.plan(
+                source=source, printer=printer.id, firmware=firmware, package_version=manifest.package.version,
+                extra_modules=[(bundle_root / "installer" / module.source, module.destination)
+                               for module in manifest.install.extra_modules],
+                qidi_modules=dict(modules),
+            )
+        except klipper_tree.KlipperTreeError as exc:
+            raise SystemExit(f"bundle Valve Oil's Klipper for {firmware}: {exc.message}") from exc
 
 
 def first_install(bundle_root: Path, workspace: Path, env: dict[str, str]) -> None:

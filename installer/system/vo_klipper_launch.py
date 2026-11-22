@@ -15,7 +15,8 @@ It then replaces QIDI's klippy.py in the arguments with the tree's, starts there
 Valve Oil's Klipper writes printer_data/.vo_klipper_ready.json {"launch_id": ...} once ready. Otherwise, and on any
 error, it starts QIDI's command unchanged. Each start is recorded in printer_data/.vo_klipper_status.json.
 
-`--check` prints what the next start would run, as JSON, and starts and writes nothing.
+`--check` prints whether Valve Oil's Klipper can run here and what the next start would run, as JSON, and starts and
+writes nothing. Each `reason` is a sentence shown to operators as it is; `code` names it for programs.
 """
 import hashlib
 import json
@@ -109,44 +110,77 @@ def _stamp(path):
         return None
 
 
-def decide(paths=None):
-    """What the next start runs: a status record (see the module docstring for the files it reads)."""
-    paths = dict(DEFAULTS, **(paths or {}))
-    data = paths["printer_data"]
-    status = {"selected": "qidi", "running": "qidi", "reason": "not_selected", "launch_id": None, "attempts": 0,
-              "firmware": None, "version": None, "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    manifest = _json(paths["firmware_manifest"])
-    soc = manifest.get("SOC") if manifest is not None else None
-    soc = {"version": soc.get("version"), "file": soc.get("file")} if isinstance(soc, dict) else None
-    status["firmware"] = soc["version"] if soc else None
-    marker = _json(os.path.join(paths["tree_root"], MARKER))
-    if marker is not None and marker.get("schema") != 1:
-        marker = None
-    status["version"] = marker.get("klipper_version") if marker else None
-    choice_path = os.path.join(data, CHOICE)
-    choice = _json(choice_path)
-    if choice is None and os.path.lexists(choice_path):
-        status["reason"] = "choice_unreadable"
-        return status
-    if choice is None or choice.get("use") != "valve_oil":
-        return status
-    status["selected"] = "valve_oil"
-    try:
-        with open(paths["dropin"], encoding="utf-8") as handle:
-            dropin = DROPIN_COMMAND in handle.read()
-    except OSError:
-        dropin = False
-    for reason, failed in (
-        ("firmware_update_pending", lambda: os.path.lexists(os.path.join(data, FIRMWARE_UPDATE))),
+# Shown to operators as they are: what the next start runs, and why.
+REASONS = {
+    "selected": "Valve Oil's Klipper is selected.",
+    "not_selected": "QIDI's Klipper is selected.",
+    "choice_unreadable": "The Klipper choice couldn't be read, so QIDI's Klipper runs.",
+    "firmware_update_pending": "A QIDI firmware update is in progress.",
+    "not_installed": "Valve Oil's Klipper isn't installed on this printer.",
+    "firmware_changed": "QIDI's firmware changed since Valve Oil's Klipper was installed.",
+    "qidi_modules_changed": "QIDI's Klipper modules changed since Valve Oil's Klipper was installed.",
+    "tree_changed": "Valve Oil's Klipper files changed since they were installed.",
+    "launcher_not_installed": "Klipper doesn't start through Valve Oil's launcher.",
+    "not_ready": f"Valve Oil's Klipper didn't reach ready in {MAX_UNACKNOWLEDGED} starts.",
+    "arguments_unrecognized": "QIDI's Klipper command isn't the one Valve Oil's launcher knows.",
+    "error": "Valve Oil's launcher hit an error, so QIDI's Klipper runs.",
+}
+
+
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _unavailable(paths, marker, soc):
+    """Why Valve Oil's Klipper can't run on this printer now, or None when it can."""
+    for code, failed in (
+        ("firmware_update_pending", lambda: os.path.lexists(os.path.join(paths["printer_data"], FIRMWARE_UPDATE))),
         ("not_installed", lambda: marker is None),
         ("firmware_changed", lambda: soc is None or marker.get("soc") != soc),
         ("qidi_modules_changed", lambda: not _qidi_modules_match(paths["qidi_klippy"], marker.get("qidi_modules"))),
         ("tree_changed", lambda: not _tree_matches(paths["tree_root"], marker.get("files"))),
-        ("launcher_not_installed", lambda: not dropin),
+        ("launcher_not_installed", lambda: not _dropin_active(paths["dropin"])),
     ):
         if failed():
-            status["reason"] = reason
-            return status
+            return code
+    return None
+
+
+def _dropin_active(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return DROPIN_COMMAND in handle.read()
+    except OSError:
+        return False
+
+
+def decide(paths=None, check=False):
+    """What the next start runs. Valve Oil's Klipper is checked only when it is selected, or for `check`."""
+    paths = dict(DEFAULTS, **(paths or {}))
+    data = paths["printer_data"]
+    manifest = _json(paths["firmware_manifest"])
+    soc = manifest.get("SOC") if manifest is not None else None
+    soc = {"version": soc.get("version"), "file": soc.get("file")} if isinstance(soc, dict) else None
+    marker = _json(os.path.join(paths["tree_root"], MARKER))
+    if marker is not None and marker.get("schema") != 1:
+        marker = None
+    choice_path = os.path.join(data, CHOICE)
+    choice = _json(choice_path)
+    selected = "valve_oil" if choice is not None and choice.get("use") == "valve_oil" else "qidi"
+    decision = {"selected": selected, "running": "qidi", "code": "not_selected", "launch_id": None, "attempts": 0,
+                "available": None, "unavailable_code": None,
+                "firmware": soc["version"] if soc else None, "version": marker.get("klipper_version") if marker else None,
+                "checked_at": _now()}
+    if selected == "valve_oil" or check:
+        unavailable = _unavailable(paths, marker, soc)
+        decision.update(available=unavailable is None, unavailable_code=unavailable)
+    if selected != "valve_oil":
+        if choice is None and os.path.lexists(choice_path):
+            decision["code"] = "choice_unreadable"
+        return decision
+    if decision["unavailable_code"]:
+        decision["code"] = decision["unavailable_code"]
+        return decision
     # Starts in a row without Klipper's ready acknowledgement, counted afresh when the operator chooses Valve Oil's
     # Klipper again or the tree is installed again.
     basis = f"{_stamp(choice_path)}:{_stamp(os.path.join(paths['tree_root'], MARKER))}"
@@ -156,27 +190,44 @@ def decide(paths=None):
     attempts = attempts if previous.get("basis") == basis and isinstance(attempts, int) and attempts >= 0 else 0
     if previous.get("running") == "valve_oil" and previous.get("launch_id") and ready.get("launch_id") == previous["launch_id"]:
         attempts = 0
-    status.update(basis=basis, attempts=attempts)
+    decision.update(basis=basis, attempts=attempts)
     if attempts >= MAX_UNACKNOWLEDGED:
-        status["reason"] = "not_ready"
-        return status
-    status.update(running="valve_oil", reason="selected")
-    return status
+        decision["code"] = "not_ready"
+        return decision
+    decision.update(running="valve_oil", code="selected")
+    return decision
 
 
-def _write_status(paths, status):
+def status_record(decision):
+    """What printer_data/.vo_klipper_status.json holds after a start."""
+    return {"selected": decision["selected"], "running": decision["running"], "reason": REASONS[decision["code"]],
+            "code": decision["code"], "launch_id": decision["launch_id"], "attempts": decision["attempts"],
+            "firmware": decision["firmware"], "version": decision["version"], "checked_at": decision["checked_at"],
+            "basis": decision.get("basis")}
+
+
+def check_record(decision):
+    """What `--check` prints."""
+    unavailable = decision["unavailable_code"]
+    return {"available": decision["available"], "unavailable_reason": REASONS[unavailable] if unavailable else None,
+            "unavailable_code": unavailable, "selected": decision["selected"], "would_run": decision["running"],
+            "reason": REASONS[decision["code"]], "code": decision["code"], "attempts": decision["attempts"],
+            "firmware": decision["firmware"], "version": decision["version"], "checked_at": decision["checked_at"]}
+
+
+def _write_status(paths, decision):
     path = os.path.join(paths["printer_data"], STATUS)
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
-        json.dump(status, handle, sort_keys=True)
+        json.dump(status_record(decision), handle, sort_keys=True)
         handle.write("\n")
     os.chmod(temporary, 0o644)
     os.replace(temporary, path)
 
 
-def _error(reason="error"):
-    return {"selected": "qidi", "running": "qidi", "reason": reason, "launch_id": None, "attempts": 0,
-            "firmware": None, "version": None, "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+def _error():
+    return {"selected": "qidi", "running": "qidi", "code": "error", "launch_id": None, "attempts": 0,
+            "available": None, "unavailable_code": None, "firmware": None, "version": None, "checked_at": _now()}
 
 
 def main(argv=None, paths=None, execv=os.execv, execve=os.execve):
@@ -184,34 +235,33 @@ def main(argv=None, paths=None, execv=os.execv, execve=os.execve):
     paths = dict(DEFAULTS, **(paths or {}))
     if argv[:1] == ["--check"]:
         try:
-            status = decide(paths)
+            decision = decide(paths, check=True)
         except Exception:
-            status = _error()
-        status.pop("basis", None)
-        print(json.dumps(status, sort_keys=True))
+            decision = _error()
+        print(json.dumps(check_record(decision), sort_keys=True))
         return 0
     qidi = [paths["python"], *argv]
     command = qidi
     try:
-        status = decide(paths)
-        if status["running"] == "valve_oil":
+        decision = decide(paths)
+        if decision["running"] == "valve_oil":
             found = [index for index, argument in enumerate(argv) if argument == paths["qidi_klippy_py"]]
             if len(found) != 1:
-                status.update(running="qidi", reason="arguments_unrecognized")
+                decision.update(running="qidi", code="arguments_unrecognized")
             else:
                 command = list(qidi)
                 command[found[0] + 1] = os.path.join(paths["tree_root"], "klippy", "klippy.py")
-                status.update(launch_id=uuid.uuid4().hex, attempts=status["attempts"] + 1)
+                decision.update(launch_id=uuid.uuid4().hex, attempts=decision["attempts"] + 1)
     except Exception:
-        status = _error()
+        decision = _error()
     try:
-        _write_status(paths, status)
+        _write_status(paths, decision)
     except Exception:
         pass
-    if status["running"] == "valve_oil":
+    if decision["running"] == "valve_oil":
         try:
             os.chdir(paths["tree_root"])
-            execve(paths["python"], command, dict(os.environ, **{LAUNCH_ENV: status["launch_id"]}))
+            execve(paths["python"], command, dict(os.environ, **{LAUNCH_ENV: decision["launch_id"]}))
         except Exception:
             try:
                 _write_status(paths, _error())

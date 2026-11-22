@@ -392,6 +392,60 @@ def with_moonraker_speedups(manifest):
     return dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, moonraker_speedups=pinned))
 
 
+def fake_klipper_tree(system_root: Path, manifest, firmware: str, *, unit: bool = True):
+    """Valve Oil's Klipper as a few small files, with its C helper library, QIDI's compiled modules for `firmware` as
+    small stand-ins under the system root's ~/klipper, and QIDI's klipper.service (unless `unit` is False). Returns the
+    manifest pinned to those modules, and a context manager that points the installer at the small tree."""
+    from unittest import mock
+
+    from installer.runtime import klipper_tree
+    from installer.runtime.models import ImagePin, SystemKlipperTreeSpec
+
+    source = temp_path("vo-klipper-source-") / "klipper"
+    for relative, text in {
+        "klippy/klippy.py": "# Valve Oil's klippy.py\n",
+        "klippy/extras/heaters.py": "# heaters\n",
+        "klippy/chelper/__init__.py": "# chelper\n",
+        "klippy/chelper/serialqueue.c": "/* serialqueue */\n",
+        "printers/plus5/klippy/extras/heaters.py": "# Plus 5 heaters\n",
+        "printers/smart5/klippy/mcu.py": "# Smart 5 mcu\n",
+        "COPYING": "GPLv3\n",
+    }.items():
+        (source / relative).parent.mkdir(parents=True, exist_ok=True)
+        (source / relative).write_text(text, encoding="utf-8")
+    library = source.parent / "c_helper.so"
+    library.write_bytes(b"\x7fELF Valve Oil c_helper")
+    qidi = system_root / klipper_tree.QIDI_KLIPPY.lstrip("/")
+    pins = {}
+    for relative in ("extras/box_stepper.so", "extras/cs1237.cpython-39-aarch64-linux-gnu.so"):
+        data = f"QIDI {relative} for {firmware}\n".encode()
+        (qidi / relative).parent.mkdir(parents=True, exist_ok=True)
+        (qidi / relative).write_bytes(data)
+        pins[relative] = ImagePin(size=len(data), sha256=hashlib.sha256(data).hexdigest())
+    (qidi / "chelper").mkdir(parents=True, exist_ok=True)
+    (qidi / "chelper/c_helper.so").write_bytes(b"\x7fELF QIDI c_helper")
+    (qidi / "klippy.py").write_text("# QIDI's klippy.py\n", encoding="utf-8")
+    if unit:
+        service = system_root / klipper_tree.UNIT_FILE.lstrip("/")
+        service.parent.mkdir(parents=True, exist_ok=True)
+        service.write_text(
+            "[Unit]\nDescription=Klipper 3D Printer Firmware SV1\n\n[Service]\nType=simple\nUser=qidi\n"
+            "RemainAfterExit=yes\nWorkingDirectory=/home/qidi/klipper\n"
+            "EnvironmentFile=/home/qidi/printer_data/systemd/klipper.env\n"
+            "ExecStart=/home/qidi/klippy-env/bin/python $KLIPPER_ARGS\nRestart=always\nRestartSec=10\n",
+            encoding="utf-8",
+        )
+    spec = manifest.system_optimizations
+    tree = SystemKlipperTreeSpec(qidi_modules=((firmware, tuple(sorted(pins.items()))),))
+    pinned = dataclasses.replace(manifest, system_optimizations=dataclasses.replace(spec, klipper_tree=tree))
+    patch = mock.patch.multiple(
+        klipper_tree, TREE_SOURCE=source, CHELPER_PAYLOAD=library,
+        CHELPER_SHA256=hashlib.sha256(library.read_bytes()).hexdigest(),
+        CHELPER_SOURCES_SHA256=klipper_tree.chelper_sources_sha256(source),
+    )
+    return pinned, patch
+
+
 def fake_host_run(root: Path):
     """Bounded command fixture for systemd and root-mount interactions."""
     def service_state(service: str) -> dict:
