@@ -43,7 +43,7 @@ Every time Klipper starts, QIDI's Klipper runs instead of Valve Oil's when:
 - QIDI's firmware, or QIDI's modules in its Klipper, changed since Valve Oil's Klipper was installed, as after a QIDI firmware update from the touchscreen;
 - a QIDI firmware update is in progress;
 - Valve Oil is installing or updating while Valve Oil's Klipper isn't ready, so that the install can run; Valve Oil's starts again when it ends;
-- Valve Oil's Klipper is incomplete or doesn't match the installed Valve Oil version;
+- Valve Oil's Klipper is missing, incomplete, or its files changed since they were installed;
 - Valve Oil's Klipper didn't stay ready in three starts in a row.
 
 Valve Oil's Klipper stays chosen, and a printer warning says why QIDI's is running. Updating or reinstalling Valve Oil installs Valve Oil's Klipper for the new firmware when it is supported. To try again, choose Valve Oil's Klipper again; to stop trying, choose QIDI's.
