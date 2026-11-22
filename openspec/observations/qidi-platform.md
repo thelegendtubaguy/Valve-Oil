@@ -476,6 +476,16 @@ The 4 KiB batch increased from `1.324 MiB/s` to `35.617 MiB/s`; the 256 KiB batc
 - **Runtime-confirmed (test Plus 5, `01.01.02.01`, 2026-11-11):** with the manifest's MCU version temporarily shortened to `02.01.01.1` and the mainboard reporting `02.01.01.12`, the stock client raised `QDC_100_005_005_001` at the MCU report and the THR report cleared it 2 ms later. The client with the same two branches changed (file offsets `0x226518` and `0x2266c0`) raised nothing.
 - **Unresolved:** which notices the other three handlers that share the predicates raise, and whether a notice stays up when the THR also reports a suffixed version.
 
+## Touchscreen P2P remote access (Peergine)
+
+QIDI's phone app reaches the camera and files through Peergine's pgLibConnect `2.15.1.38`, statically linked into `qidiclient` and running while the printer is linked to a QIDI account. Builds: Max 4 `b5285d1a…` (`01.01.07.01`), Plus 5 `6c09a58a…` and Smart 5 `6beea0a1…` (`01.01.02.01`); Smart 5 addresses below.
+
+- **Static-recovered (all three builds):** QIDI initializes the library with `(ForwardSpeed){1000000}(Digest){0}(NetCardFilterMode){2}(NetCardFilterList){docker*,*vpn*,zt*,veth*}`; the library's defaults are ForwardSpeed `0x80000`, ForwardUse `1`, ForwardMaxSess `3`, so node forwarding is on in both directions. The forwarding client keeps rate, use, and session limit at `+0x18`, `+0x24`, `+0x28`, written only by its constructor (`0x83fd1c`) and its SetOption (`0x83fb58`), which QIDI's init string and server-pushed options (items 1–5; items 6–7 configure remote log pulls) reach. The UDP driver's message dispatcher jump table (`0x595ab14`, types `0x82`–`0xa7`, common exit entry `0x001a`) is identical in all three builds; `0x8b` is a NAT test request the printer answers by sending a packet to an address in the request, and `0xa1`–`0xa7` are forwarding messages.
+- **Runtime-confirmed (Smart 5 test printer, 2026-11-21/22, account linked):** camera sessions from the phone app over cellular went through third-party devices (Peergine's log: `(Through){130}`), and the printer answered NAT test requests from QIDI's P2P server and from another LAN host.
+- **Runtime-confirmed (same printer, 2026-11-22, Valve Oil's P2P-only process with the blocking sites written into its memory):** the process logged in to QIDI's P2P server, sent no forwarding report, exchanged only keepalives with the server, and ignored a NAT test request. A cellular session from the phone app then went through QIDI's relay (`(Through){131}`, proxy `peershare.qidimaker.com`), and the phone showed a black camera picture: the printer sent only empty frame messages over that path.
+- **Static-recovered (Smart 5):** the stock app stops P2P only on logout or unlink (`0x68a130`); its LAN-only mode handler (`0x6a90f4`) only notifies the screen, so P2P keeps running in LAN-only mode.
+- **Unresolved:** what `(Digest){0}` disables; whether files work over QIDI's relay with the blocking sites.
+
 ## Touchscreen firmware updates
 
 Package layout and maintainer scripts are described in `Qidi-Max4-Defaults` `QIDI_MAX4_FIRMWARE_UPDATE_PROCESS.md`. Nothing in this section has been run on a printer.
