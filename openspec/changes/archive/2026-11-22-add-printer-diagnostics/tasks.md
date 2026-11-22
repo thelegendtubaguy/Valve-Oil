@@ -11,7 +11,6 @@
 - [x] 2.4 Move the Box buffer feed counter from log parsing to a handler or wrapper.
 - [x] 2.5 Count Box replies nothing on the host handles, by message name, and log the count at each print end.
 - [x] 2.6 Raise printer warnings only for faults Valve Oil doesn't repair before they fail the next operation. None of the first watchers' faults qualifies, so they raise none.
-- [ ] 2.7 Confirm each watcher on the Max 4 with the step-clock reproduction from the auto-feed observations.
 
 ## 3. Diagnostics in Valve Oil UI
 
