@@ -31,6 +31,7 @@ Before 26.11.18.2 these were named `TLTG_` instead of `VO_`, and several print m
 
 | Command | What it does |
 |---|---|
+| [`VO_KLIPPER [USE=VALVE_OIL\|QIDI]`](klipper.md#turning-it-on-and-off) | Says which Klipper is chosen and running, or switches between QIDI's Klipper and Valve Oil's, restarting Klipper. Not during a print. |
 | [`VO_BOX_MOTION`](qidi-box.md#load-and-unload-speed) | Shows or sets QIDI Box load and unload speeds, for all slots or one. |
 | [`VO_BOX_SLOT_JOG SLOT= DISTANCE=`](qidi-box.md#moving-a-slot-by-hand) | Moves a QIDI Box slot's filament in or out by a set distance. |
 | [`VO_BOX_RFID_REPORT SLOT= [SECONDS=]`](qidi-box.md#spools-that-dont-read) | Reads the spool tag in a QIDI Box slot into a report you can share. Needs the Valve Oil Box firmware. Before 26.11.16.1 it was `TLTG_BOX_RFID_REPORT`, which still works. |
