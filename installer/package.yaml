@@ -874,6 +874,83 @@ system_optimizations:
   klipper_print_stats_manager:
     file: /home/qidi/klipper/klippy/extras/print_stats_manager.py
     restart_service: klipper.service
+  # Valve Oil's Klipper (klipper/ in the repository), installed beside QIDI's ~/klipper, which it never changes. It
+  # needs QIDI's compiled modules, which the installer copies from the printer's ~/klipper/klippy only on firmware
+  # listed here, and only while the printer's set is exactly this one: these paths under klippy/ (QIDI's
+  # chelper/c_helper.so aside), with these sizes and sha256s, from QIDI's packages as the Qidi-*-Defaults
+  # repositories hold them. Valve Oil's Klipper isn't installed on any other firmware, and Klipper stays QIDI's.
+  klipper_tree:
+    qidi_modules:
+      # Max 4 01.01.07.01
+      "01.01.07.01":
+        extras/aht20_f.so: {size: 953032, sha256: 370e737caad9aee2af97cc90c5217da93d2fb91bef1370128140abfe6b75014b}
+        extras/air.cpython-39-aarch64-linux-gnu.so: {size: 335288, sha256: 6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69}
+        extras/box2base.so: {size: 7090664, sha256: d1cd52e412fd58a8d35b9dcd21913b7e23818b4e50e23fcb3a1bcae843f984d5}
+        extras/box485_buffer.so: {size: 292624, sha256: 59122be32cd1a4214cf4074ab5199e63ef499c8ffd96f6ced381876822f2e221}
+        extras/box485_multicolor.so: {size: 6756824, sha256: f055bb218fa274846a984bdb53f258057dbda7b8438860e6f0b73e5e0ab6a4ad}
+        extras/box485_rack.so: {size: 376616, sha256: eadce035974c9e6aac4d409eaaf9698b4439181eb916c111b5212bb51c66804f}
+        extras/box_autofeed.so: {size: 2042352, sha256: 03a38b456e1d95b3bd26fe5133f2a9714a2bd31bd0881d439040ea5a885b17da}
+        extras/box_detect.so: {size: 1732264, sha256: 8bae8af714b7ffccdafd56e17d7ba247ee6aadca65021a6449074d23dba835b4}
+        extras/box_device.so: {size: 4543536, sha256: c700ea6a3dbc4c13d0016b00ffbc680e2c3676ae34e4477ac2c62d88765a97c4}
+        extras/box_extras.so: {size: 5259400, sha256: 0878b5b9d48d71e6bb1a83792776a7f59a529239cc1ca35e9a55102721bde2a6}
+        extras/box_protocol.so: {size: 1070032, sha256: 7283df8242f1e264953d70421d573708aa1b25548a7c437d5ad69002b17ec3b8}
+        extras/box_rfid.so: {size: 883064, sha256: 6a196c69b79a70fe97eabfaeec84be9fbbd061a6bb7618fe773853f9a890fe78}
+        extras/box_stepper.so: {size: 4395504, sha256: 58ee8c61bffc3d4e18edc9e56a326495b6a218348bbfb13f7a012a946039b0a5}
+        extras/cl_interface.so: {size: 275064, sha256: 6bb1aa52b15371f8122b9be3e1454b744e00c00990ab65b14bd05031ee23e378}
+        extras/closed_loop.so: {size: 430656, sha256: 57f0833de869805f68fcc4ffb38f7f5f788fc50e2d2530d5f310b959a8193392}
+        extras/cs1237.cpython-39-aarch64-linux-gnu.so: {size: 1029424, sha256: 7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5}
+        extras/heater_air_core.cpython-39-aarch64-linux-gnu.so: {size: 1494216, sha256: 729ddd7286321e34f220ec5b1a52baf7f227ad368a315d8ced4ba1fd30b859c4}
+        extras/hx711.cpython-39-aarch64-linux-gnu.so: {size: 737352, sha256: 8109cbbf207c0cca9707ae28d75444c8f9e4ef65bfa8e4d2bf7e7d4b12a37221}
+        extras/motion_accuracy_calibration.so: {size: 2957496, sha256: e1d5a58e3495ed8e7eda543a5e9842a526e7dddcbb50a5fb4d5de1bc11295c96}
+        extras/multi_color_controller.so: {size: 5393928, sha256: b7e3bc21156fb9df9f5eea07f2c596a17c7ea5db852a36139ba9773160e43592}
+        extras/upgrade_motor.so: {size: 211544, sha256: e7a958f7e94be289a4c5d76fdff05d67fb0503370c3ce695c345243b03e726fe}
+      # Plus 5 01.01.02.01
+      "01.01.02.01":
+        extras/aht20_f.so: {size: 953032, sha256: 370e737caad9aee2af97cc90c5217da93d2fb91bef1370128140abfe6b75014b}
+        extras/air.cpython-39-aarch64-linux-gnu.so: {size: 335288, sha256: 6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69}
+        extras/box2base.so: {size: 7090664, sha256: d1cd52e412fd58a8d35b9dcd21913b7e23818b4e50e23fcb3a1bcae843f984d5}
+        extras/box485_buffer.so: {size: 292624, sha256: 59122be32cd1a4214cf4074ab5199e63ef499c8ffd96f6ced381876822f2e221}
+        extras/box485_multicolor.so: {size: 6756824, sha256: f055bb218fa274846a984bdb53f258057dbda7b8438860e6f0b73e5e0ab6a4ad}
+        extras/box485_rack.so: {size: 376616, sha256: eadce035974c9e6aac4d409eaaf9698b4439181eb916c111b5212bb51c66804f}
+        extras/box_autofeed.so: {size: 2042352, sha256: 03a38b456e1d95b3bd26fe5133f2a9714a2bd31bd0881d439040ea5a885b17da}
+        extras/box_detect.so: {size: 1732264, sha256: 8bae8af714b7ffccdafd56e17d7ba247ee6aadca65021a6449074d23dba835b4}
+        extras/box_device.so: {size: 4543536, sha256: c700ea6a3dbc4c13d0016b00ffbc680e2c3676ae34e4477ac2c62d88765a97c4}
+        extras/box_extras.so: {size: 5259400, sha256: e668d661600c4bbb737850a28e5c935adb5fe7ffc98eb93a16f5521402ae2871}
+        extras/box_protocol.so: {size: 1070032, sha256: 7283df8242f1e264953d70421d573708aa1b25548a7c437d5ad69002b17ec3b8}
+        extras/box_rfid.so: {size: 883064, sha256: 6a196c69b79a70fe97eabfaeec84be9fbbd061a6bb7618fe773853f9a890fe78}
+        extras/box_stepper.so: {size: 4382616, sha256: fc20d82a58b740c0d5e23a4043c23f3d2b9dcb386e72cda4e4619292331f6589}
+        extras/cl_interface.so: {size: 275064, sha256: 6bb1aa52b15371f8122b9be3e1454b744e00c00990ab65b14bd05031ee23e378}
+        extras/closed_loop.so: {size: 430656, sha256: 57f0833de869805f68fcc4ffb38f7f5f788fc50e2d2530d5f310b959a8193392}
+        extras/cs1237.cpython-39-aarch64-linux-gnu.so: {size: 1029424, sha256: 7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5}
+        extras/heater_air_core.cpython-39-aarch64-linux-gnu.so: {size: 1494216, sha256: 729ddd7286321e34f220ec5b1a52baf7f227ad368a315d8ced4ba1fd30b859c4}
+        extras/hx711.cpython-39-aarch64-linux-gnu.so: {size: 737352, sha256: 8109cbbf207c0cca9707ae28d75444c8f9e4ef65bfa8e4d2bf7e7d4b12a37221}
+        extras/motion_accuracy_calibration.so: {size: 2957496, sha256: e1d5a58e3495ed8e7eda543a5e9842a526e7dddcbb50a5fb4d5de1bc11295c96}
+        extras/multi_color_controller.so: {size: 5393928, sha256: b7e3bc21156fb9df9f5eea07f2c596a17c7ea5db852a36139ba9773160e43592}
+        extras/upgrade_motor.so: {size: 211544, sha256: e7a958f7e94be289a4c5d76fdff05d67fb0503370c3ce695c345243b03e726fe}
+      # Smart 5 01.01.02.01
+      "smart5-01.01.02.01":
+        extras/aht20_f.so: {size: 953032, sha256: 43b24623c3a9628a7222f94a93e5ccb02e8c5540c5c99120125ea6aea5edfca1}
+        extras/air.cpython-39-aarch64-linux-gnu.so: {size: 335288, sha256: 6d7af36d1061216b7aa5f1cd0eb9ae1c25158f8df9926ec7e69be7e411c67d69}
+        extras/box2base.so: {size: 7099000, sha256: 6891ffd77e987e3f40548793623a64ca71aca80139ccd81a192af7bb933297e2}
+        extras/box485_buffer.so: {size: 292624, sha256: 3ab69377125b05af0ff716a5461fbbaf255eac50d174ac41f1d1926f1fef888f}
+        extras/box485_multicolor.so: {size: 6756824, sha256: ea6b8b8eb8830e431cbbc2d1ebcf1508d599a62fa9edde1ff57bd6a31e74bd9f}
+        extras/box485_rack.so: {size: 376616, sha256: a44eacbcc0d08c33e4eaad551acf483924e3822800a01a2be1fa32e0e7b50d84}
+        extras/box_autofeed.so: {size: 2042352, sha256: b97bbbcfb686aea460bf405b6d1b3e460bd76ef64d1a26b72e12b81f9f701c6d}
+        extras/box_detect.so: {size: 1732264, sha256: c2f68768f8a22a6439a6c3bc825df3fa55f451ed4e09aa7f50aeb34668eacdcf}
+        extras/box_device.so: {size: 4543536, sha256: 06e94b877eb3b86774273f438f7ea3351226354f37106995eb8bf2f7490fbada}
+        extras/box_extras.so: {size: 4986304, sha256: 2d0228552d50dfe28e443745b7b54a0e36603c5f524376555b69375a4e67a8da}
+        extras/box_protocol.so: {size: 1070032, sha256: e737641579b9a0a7b402dc08f8269dc4fc1665700c584aaea67fdcf8dd828add}
+        extras/box_rfid.so: {size: 883064, sha256: ee9b9ac2304cb6502ea5fdf1ec039e3fe2bce23d40ca716858d5c40a3724ddbc}
+        extras/box_stepper.so: {size: 4392424, sha256: 6adf93a01d6a8969e4bffa85d01d9130f503676aca65d77f130bb8e7e902df56}
+        extras/cl_interface.so: {size: 275064, sha256: 6bb1aa52b15371f8122b9be3e1454b744e00c00990ab65b14bd05031ee23e378}
+        extras/closed_loop.so: {size: 434656, sha256: 45722351eb0bd1132b27e6788d2de235c9e3253629053410b77ce891f43615c0}
+        extras/cs1237.cpython-39-aarch64-linux-gnu.so: {size: 1029424, sha256: 7beb56413a902356d0aee2d0580e820342083b3b7f7194d1f5d7217f4b7ff4b5}
+        extras/cuc.so: {size: 285904, sha256: afcc4d7d6669f2430fc421776413d7b83ddcd586fce0cf89adc949df8f368372}
+        extras/heater_air_core.cpython-39-aarch64-linux-gnu.so: {size: 1494216, sha256: 729ddd7286321e34f220ec5b1a52baf7f227ad368a315d8ced4ba1fd30b859c4}
+        extras/hx711.cpython-39-aarch64-linux-gnu.so: {size: 737352, sha256: 8109cbbf207c0cca9707ae28d75444c8f9e4ef65bfa8e4d2bf7e7d4b12a37221}
+        extras/motion_accuracy_calibration.so: {size: 2957496, sha256: a617e368d876217fe9877967bba47448ab4cbbd710bd035773ed2357e5b9b4c7}
+        extras/multi_color_controller.so: {size: 5341752, sha256: caee552ffb7734e7ef3fd3b861ef5bad6f22e2bdacdf34a586de21fdaf316370}
+        extras/upgrade_motor.so: {size: 211544, sha256: e7a958f7e94be289a4c5d76fdff05d67fb0503370c3ce695c345243b03e726fe}
   fluidd_filament_config:
     link: config/qidi_filament_config
     target: /home/qidi/QIDI_Client/resource/filament_config

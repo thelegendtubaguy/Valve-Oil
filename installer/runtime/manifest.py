@@ -50,6 +50,7 @@ from .models import (
     SystemServicesSpec,
     SystemWheelSpec,
     SystemKernelModuleSpec,
+    SystemKlipperTreeSpec,
     SystemZramSwapSpec,
     TargetFirmwareSpec,
     ImagePin,
@@ -281,6 +282,11 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
     system_optimizations = _parse_system_optimizations(raw)
+    if system_optimizations is not None:
+        listed = set(firmware.supported)
+        for key, _ in system_optimizations.klipper_tree.qidi_modules:
+            if key not in listed:
+                raise ManifestValidationError(f"system_optimizations.klipper_tree.qidi_modules.{key} is not a listed firmware.")
     return Manifest(
         schema_version=schema_version,
         package=package,
@@ -830,7 +836,43 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
             target=_validate_absolute_path(_require_str(filament_config_raw, "target")),
         ),
         rockchip_root_sync=_parse_rockchip_root_sync(rockchip_raw),
+        klipper_tree=_parse_klipper_tree(_require_mapping(system_raw, "klipper_tree")),
     )
+
+
+# A path under QIDI's klippy/ the installer reads and copies from: plain names, no way out of the folder.
+_QIDI_MODULE_PATH = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*(/[A-Za-z0-9_][A-Za-z0-9_.-]*)*\.so")
+
+
+def _parse_klipper_tree(raw: dict[str, Any]) -> SystemKlipperTreeSpec:
+    key = "system_optimizations.klipper_tree.qidi_modules"
+    modules_raw = raw.get("qidi_modules")
+    if not isinstance(modules_raw, dict) or set(raw) != {"qidi_modules"}:
+        raise ManifestValidationError(f"{key} must map firmware to QIDI's compiled modules.")
+    entries: list[tuple[str, tuple[tuple[str, ImagePin], ...]]] = []
+    for firmware in sorted(modules_raw):
+        files_raw = modules_raw[firmware]
+        if not isinstance(firmware, str) or not isinstance(files_raw, dict) or not files_raw:
+            raise ManifestValidationError(f"{key}.{firmware} must list QIDI's compiled modules.")
+        files: list[tuple[str, ImagePin]] = []
+        for path in sorted(files_raw):
+            pin = files_raw[path]
+            size = pin.get("size") if isinstance(pin, dict) else None
+            if (
+                not isinstance(path, str)
+                or not _QIDI_MODULE_PATH.fullmatch(path)
+                or ".." in PurePosixPath(path).parts
+                or path == "chelper/c_helper.so"
+                or set(pin) != {"size", "sha256"}
+                or isinstance(size, bool)
+                or not isinstance(size, int)
+                or size <= 0
+            ):
+                raise ManifestValidationError(f"{key}.{firmware}.{path} must be a module under klippy/, other than "
+                                              "chelper/c_helper.so, with its size and sha256.")
+            files.append((path, ImagePin(size=size, sha256=_require_sha256(pin, "sha256"))))
+        entries.append((firmware, tuple(files)))
+    return SystemKlipperTreeSpec(qidi_modules=tuple(entries))
 
 
 def _parse_zram_swap(raw: dict[str, Any]) -> SystemZramSwapSpec:

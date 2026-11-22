@@ -6,7 +6,7 @@ import subprocess
 import urllib.request
 
 from .addons_cli import maybe_remove_addons
-from . import boot_logo, box_config, klipper_cfg, messages, patches
+from . import boot_logo, box_config, klipper_cfg, klipper_tree, messages, patches
 from .legacy_manual_install import install_started_path
 from .auto_update import (
     SYSTEM_ROOT_ENV,
@@ -501,6 +501,9 @@ def _execute_uninstall(
         # QIDI's touchscreen app is back and writes box.cfg again; the Box monitor and its rule are gone with the host
         # changes, and its records go with them.
         box_config.remove_files(paths)
+        # Valve Oil's Klipper is gone with the host changes: the operator's choice, the launcher's record, and Klipper's
+        # acknowledgement go with it.
+        klipper_tree.remove_state_files(paths.printer_data_root)
 
         if state_path.exists():
             journal.note_write()
