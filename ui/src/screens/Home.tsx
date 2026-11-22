@@ -26,8 +26,6 @@ import { href } from '../lib/router'
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
 
-const area = (name: string): CSSProperties => ({ gridArea: name })
-
 /**
  * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
  * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
@@ -241,7 +239,7 @@ export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | nul
     return [...files].sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified)).slice(0, 20)
   }, [files, byFile])
   return (
-    <section className={`card grow ${className}`} style={area('files')}>
+    <section className={`card grow ${className}`}>
       <h3 className="card-title">
         <Folder size={14} /> {t('home.recent.title')}
         <a href={href('files')} className="aside inline-flex items-center gap-1">
@@ -328,6 +326,9 @@ function useFullScreen() {
   return { box, page, full: native || page, toggle }
 }
 
+/** The widest a camera of this shape can be and stay under the height Home's layout caps it at, if any. */
+export const camMaxWidth = (ratio: number) => `calc(var(--cam-max-h, 100000px) * ${ratio})`
+
 /** The camera's width over height: Moonraker's aspect_ratio ("4:3"), turned for a 90° or 270° rotation. */
 export function cameraRatio(cam: Webcam, measured?: number | null) {
   const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(cam.aspect_ratio ?? '')
@@ -362,7 +363,7 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
   const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : fit ? 'relative min-w-0 rounded-[10px]' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
   const ratio = cameraRatio(cam, measured)
   return (
-    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0` } : undefined} onDoubleClick={fs.toggle}>
+    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0`, maxWidth: camMaxWidth(ratio) } : undefined} onDoubleClick={fs.toggle}>
       {!failed ? (
         <img ref={img} src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
       ) : (

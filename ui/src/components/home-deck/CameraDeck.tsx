@@ -6,7 +6,7 @@ import { MenuButton, Segmented } from '../ui'
 import { LivePreview } from '../gcode-preview/LivePreview'
 import { usePrinter } from '../../state/printer'
 import { t } from '../../i18n'
-import { CameraView, cameraRatio, useWebcams, type Webcam } from '../../screens/Home'
+import { CameraView, camMaxWidth, cameraRatio, useWebcams, type Webcam } from '../../screens/Home'
 
 const KEY = 'vo-home-cams'
 
@@ -59,11 +59,12 @@ export function CameraDeck() {
       />
     </div>
   )
+  const layersRatio = shown[0] ? cameraRatio(shown[0]) : 16 / 9
   if (layers)
     return (
       <section className="card relative p-2.5!">
         {toggle}
-        <div style={{ aspectRatio: shown[0] ? cameraRatio(shown[0]) : 16 / 9 }}>
+        <div className="mx-auto" style={{ aspectRatio: layersRatio, maxWidth: camMaxWidth(layersRatio) }}>
           <LivePreview className="h-full w-full rounded-[10px]" />
         </div>
       </section>
@@ -99,7 +100,7 @@ export function CameraDeck() {
 
   return (
     <section className="card p-2.5!">
-      <div className="flex gap-2.5">
+      <div className="flex justify-center gap-2.5">
         {shown.map((cam, i) => (
           <CameraView key={cam.name} cam={cam} fit name={picker(i)} toggle={i === shown.length - 1 ? toggle : undefined} />
         ))}

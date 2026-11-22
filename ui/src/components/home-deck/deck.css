@@ -39,6 +39,8 @@
 /* Below the four columns the macros scroll in a box of their own. In them the last card of each column stretches, so
    the columns end together. */
 @media not (min-width: 100rem) { .deck .grow > .grow-body { max-height: 340px; overflow: auto; } }
+/* Below the four columns the camera spans the screen, so it stops at about half the screen's height, keeping its shape. */
+@media not (min-width: 100rem) { .deck { --cam-max-h: min(55vh, 480px); } }
 @media (min-width: 100rem) { .half-cols > .col > .card:last-child:not(.folded), .deck > .col > .card:last-child:not(.folded) { flex-grow: 1; } }
 
 /* Mockup B's toolhead card. */
