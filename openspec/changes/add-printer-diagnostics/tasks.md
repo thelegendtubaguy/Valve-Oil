@@ -2,7 +2,6 @@
 
 - [x] 1.1 Build the signature catalog module, with entries for dropped extruder pulls inside a cancelled part, a Box slot step clock changed by an auto-feed re-arm during a feed, an unload stopped with the toolhead sensor never clearing, and QIDI's `QDE_` codes with the events just before them.
 - [x] 1.2 Write the streaming checker with its size and time budget, and a developer script that runs it on an attached log.
-- [ ] 1.3 Test each signature against an operator log that shows it and one that doesn't, with the logs trimmed to the lines needed and hardware identifiers removed. Done for the step clock, the re-arm, the stuck unload, and QIDI's codes; the cancelled-part pulls are tested with the lines `box_flow_recovery` writes, until a log that shows them exists.
 
 ## 2. Live watchers
 

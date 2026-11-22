@@ -68,7 +68,7 @@ A pass works from the Box, toolhead-board, and mainboard firmware images, and QI
 
 - **Box replies nobody handles yet.** Registering a handler for a reply QIDI starts handling later would take it from QIDI. Each handler checks at start-up that the message is still unhandled, and stands down if it isn't.
 - **Log size and CPU.** Scans are bounded and run at low priority. The checker never runs on its own during a print.
-- **False alarms erode trust.** A signature ships only with a log that shows it and a log that doesn't.
+- **False alarms erode trust.** Each signature is tested against a log that shows it and one that doesn't: an operator's log where one exists, otherwise the lines Valve Oil's own modules write.
 
 ### Where Diagnostics lives, how far it looks, and the support bundle
 
