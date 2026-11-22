@@ -52,6 +52,8 @@ class SignatureTest(unittest.TestCase):
              {"autofeed_rearmed_during_feed", "box_step_clock_offset", "unload_toolhead_sensor_stuck", "qidi_error"}),
             ("pull-backs dropped inside a cancelled part", _log(DROPPED_UNLOAD),
              {"cancelled_part_dropped_moves"}),
+            ("toolhead load-cell readings nothing waited for, and the load they failed", LOGS / "load-cell-reply-lost.log",
+             {"load_cell_reply_lost", "qidi_error"}),
         ):
             with self.subTest(name):
                 self.assertEqual(set(_found(path)), expected)

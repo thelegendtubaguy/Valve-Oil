@@ -16,6 +16,8 @@ BOX = "mcu_box1"
 STATE_OID = 23
 # Slot steppers 1A and 1B of Box 1, by their Klipper oids.
 SLOT_1A, SLOT_1B = 8, 11
+# The clock of Klipper's last step of each slot when a test starts: 20 s into the Box's 32-bit clock.
+LAST = 20 * FREQ
 
 
 class Serial:
@@ -46,6 +48,13 @@ class Mcu:
     def get_constants(self):
         return {"CLOCK_FREQ": FREQ}
 
+    # Print time is the host's clock in these tests, and the Box's clock counts from zero with it.
+    def estimated_print_time(self, eventtime):
+        return eventtime
+
+    def print_time_to_clock(self, print_time):
+        return int(print_time * FREQ)
+
 
 class Stepper:
     def __init__(self, oid: int, mcu: Mcu) -> None:
@@ -53,9 +62,13 @@ class Stepper:
         self.position = 0
         self.newest = None  # the clock of Klipper's newest step in its step history
         self.homing_ends = 0
+        self.markers = []
 
     def get_oid(self):
         return self.oid
+
+    def get_name(self):
+        return f"slot{self.oid}"
 
     def get_mcu(self):
         return self.mcu
@@ -64,12 +77,15 @@ class Stepper:
         return self.position
 
     def dump_steps(self, count, start_clock, end_clock):
-        if self.newest is None:
-            return [], 0
-        return [types.SimpleNamespace(last_clock=self.newest)], 1
+        # Klipper's step history, newest first: a step clock reset leaves a marker with no steps.
+        history = [types.SimpleNamespace(last_clock=clock, step_count=0) for clock in self.markers]
+        if self.newest is not None:
+            history.append(types.SimpleNamespace(last_clock=self.newest, step_count=1))
+        return history[:count], min(len(history), count)
 
     def note_homing_end(self):
         self.homing_ends += 1
+        self.markers.insert(0, int(self.mcu.estimated_print_time(0) * FREQ) + self.homing_ends)
 
 
 class SlotJog:
@@ -83,6 +99,36 @@ class SlotJog:
         return distance, False, True
 
 
+class EnableTracking:
+    """Klipper's stepper_enable tracking of one motor."""
+
+    def __init__(self) -> None:
+        self.is_enabled = False
+
+    def motor_enable(self, print_time):
+        self.is_enabled = True
+
+    def motor_disable(self, print_time):
+        self.is_enabled = False
+
+    def is_motor_enabled(self):
+        return self.is_enabled
+
+
+class AutoFeed:
+    """QIDI's box_autofeed: auto_abort aborts the Box of the bound slot; the test's `during` runs as it does."""
+
+    def __init__(self) -> None:
+        self.bind_stepper = "slot0"
+        self.during = lambda: None
+
+    def auto_abort(self):
+        self.during()
+
+    def auto_start(self, *args):
+        pass
+
+
 class Printer:
     def __init__(self) -> None:
         self.reactor = Reactor()
@@ -92,11 +138,15 @@ class Printer:
         mcu = Mcu(self.serial)
         self.steppers = {oid: Stepper(oid, mcu) for oid in (SLOT_1A, SLOT_1B)}
         self.jog = SlotJog()
+        self.autofeed = AutoFeed()
+        self.enables = {f"slot{oid}": EnableTracking() for oid in self.steppers}
         self.print_state = "standby"
         self.objects = {
             "box_stepper slot0": types.SimpleNamespace(stepper=self.steppers[SLOT_1A]),
             "box_stepper slot1": types.SimpleNamespace(stepper=self.steppers[SLOT_1B]),
             "vo_box_slot_jog": self.jog,
+            "box_autofeed": self.autofeed,
+            "stepper_enable": types.SimpleNamespace(lookup_enable=self.enables.__getitem__),
             "print_stats": types.SimpleNamespace(get_status=lambda eventtime: {"state": self.print_state}),
         }
         self.events = {}
@@ -119,6 +169,9 @@ class BoxWatchTest(unittest.TestCase):
         self.printer = Printer()
         self.watch = box_watch.load_config(types.SimpleNamespace(get_printer=lambda: self.printer))
         self.printer.events["klippy:ready"]()
+        # Klipper has moved both slots since it started and reset their step clocks.
+        for stepper in self.printer.steppers.values():
+            stepper.position, stepper.newest = 1, LAST
 
     def reply(self, **params) -> None:
         """The Box sends a reply, and Klipper's reactor runs what it was handed."""
@@ -133,8 +186,9 @@ class BoxWatchTest(unittest.TestCase):
     def put_back(self, clock: int) -> None:
         self.reply(**{"#name": "STEP-set_last_step", "now": clock + 100, "next_s": clock, "diff": 4294967196})
 
-    def feed_starts(self) -> None:
-        self.reply(**{"#name": "MCB_STATE", "oid": STATE_OID, "state": 2})
+    def feed_starts(self, at: float | None = None) -> None:
+        received = self.printer.reactor.now if at is None else at
+        self.reply(**{"#name": "MCB_STATE", "oid": STATE_OID, "state": 2, "#receive_time": received})
 
     def rearm(self, oid: int) -> None:
         self.reply(**{"#name": "MCB_CONFIG_STEPPER", "oid": STATE_OID, "stepper_oid": oid, "state": 0})
@@ -150,6 +204,7 @@ class BoxWatchTest(unittest.TestCase):
         late = (good + 22 * FREQ) % 2**32
 
         def print_start():
+            self.printer.steppers[SLOT_1A].newest = good
             self.saved(SLOT_1A, good)
             self.feed_starts()
             self.put_back(good)
@@ -187,26 +242,31 @@ class BoxWatchTest(unittest.TestCase):
         stepper = self.printer.steppers[SLOT_1A]
 
         def klipper_moves_the_slot():
-            self.saved(SLOT_1A, 1000)
-            self.put_back(1000)
+            self.saved(SLOT_1A, LAST)
+            self.put_back(LAST)
             self.rearm(SLOT_1A)  # print start with no feed running
             stepper.position += 400  # a load moves it
             self.saved(SLOT_1A, 5000)
-            stepper.note_homing_end()  # a homing end resets its clock
-            self.saved(SLOT_1A, 9000)
+            stepper.note_homing_end()  # a homing end resets its clock to 0
+            self.saved(SLOT_1A, 0)
+            stepper.position -= 400
             stepper.newest = 12000  # an unload's pull-back ends where it began
             self.saved(SLOT_1A, 12000)
             self.put_back(12000)
-            self.saved(SLOT_1B, 3)  # another slot's clock
+            stepper.note_homing_end()
+            stepper.position += 10
+            stepper.newest = 2**32 + 7000  # Klipper moves it after the reset; the Box's clock is 32 bits
+            self.saved(SLOT_1A, 7000)
+            self.saved(SLOT_1B, LAST)  # another slot's clock
         self.assertEqual(self.watch_lines(klipper_moves_the_slot), [])
-        self.assertEqual(stepper.homing_ends, 1)
+        self.assertEqual(stepper.homing_ends, 2)
 
     def test_a_feed_of_the_slot_valve_oil_is_moving_is_logged(self) -> None:
         def jog(oid):
             def during():
-                self.saved(oid, 1000)
+                self.saved(oid, LAST)
                 self.feed_starts()
-                self.put_back(1000)
+                self.put_back(LAST)
             self.printer.jog.during = during
             self.printer.jog._move(self.printer.steppers[SLOT_1A], 10., 20.)
         self.assertEqual(self.watch_lines(lambda: jog(SLOT_1B)), [])
@@ -231,6 +291,103 @@ class BoxWatchTest(unittest.TestCase):
         self.assertEqual(len(qidi), 2)
         self.assertEqual(lines, ["vo_box_watch: Box 1 replies no host module handled since the last print end: "
                                  "MCB_QUERY 1"])
+
+    def test_feeds_into_klipper_moves_and_after_an_abort_are_logged(self) -> None:
+        reactor, stepper = self.printer.reactor, self.printer.steppers[SLOT_1A]
+        autofeed = self.printer.autofeed
+
+        def klipper_queues(seconds):
+            stepper.newest = int((reactor.now + seconds) * FREQ)
+
+        def feed():
+            self.saved(SLOT_1A, stepper.newest % 2**32)
+            self.feed_starts()
+            self.put_back(stepper.newest % 2**32)
+
+        def runs():
+            klipper_queues(-1.)  # Klipper's last step of the slot is a second old
+            feed()
+            klipper_queues(0.4)  # a feed while Klipper still has 0.4 s of moves for the slot
+            feed()
+            klipper_queues(-1.)
+            autofeed.auto_abort()  # QIDI's unload aborts auto-feed ...
+            reactor.now += 0.01
+            self.feed_starts(at=reactor.now - 0.02)  # ... a feed that started before the abort reached the Box
+            reactor.now += 1.
+            feed()  # ... and one the Box started after it
+            autofeed.auto_abort()
+            autofeed.auto_start()  # re-armed, as print start does
+            reactor.now += 1.
+            feed()
+            # An abort during a feed while Klipper still has moves queued for the slot.
+            self.saved(SLOT_1A, stepper.newest % 2**32)
+            self.feed_starts()
+            klipper_queues(0.3)
+            autofeed.auto_abort()
+        lines = self.watch_lines(runs)
+        self.assertEqual(len(lines), 3, lines)
+        self.assertRegex(lines[0], r"Box feed while Klipper moves the slot: slot 1A \(Box 1\): .* 0\.400 s of Klipper's")
+        self.assertRegex(lines[1], r"Box feed after auto-feed was aborted: slot 1A \(Box 1\)")
+        self.assertRegex(lines[2], r"auto-feed aborted while Klipper moves the slot: slot 1A \(Box 1\): .* 0\.300 s")
+
+        log = temp_path("vo-box-watch-") / "klippy.log"
+        stamp = "2026-11-22 10:49:13 - "
+        log.write_text("\n".join([
+            stamp + "Start printer at Sun Nov 22 10:49:00 2026 (1795347216.0 17.3)",
+            'variable_package_version = "26.11.22.3"',
+            stamp + "vo_box_watch: watching Box 1 slots 1A, 1B",
+            *(stamp + line for line in lines),
+        ]) + "\n")
+        findings = {f["id"]: f for f in diagnostics.check([log])["findings"]}
+        self.assertEqual(sorted(findings), ["autofeed_abort_dropped_moves", "box_feed_after_abort",
+                                            "box_feed_while_klipper_moves"])
+
+    def test_motors_the_box_switches_off_under_klipper_and_clock_resets_during_feeds_are_logged(self) -> None:
+        reactor, stepper = self.printer.reactor, self.printer.steppers[SLOT_1A]
+        enable = self.printer.enables[stepper.get_name()]
+        step_timer = self.printer.reactor.timers[0]
+
+        def checked_later():
+            reactor.now += 3.
+            step_timer.callback(reactor.now)
+
+        def runs():
+            enable.motor_enable(0.)  # Klipper has 1A's motor on ...
+            reactor.now += 0.5
+            self.saved(SLOT_1A, LAST)
+            self.feed_starts()
+            stepper.note_homing_end()  # ... a Box home resets every slot's clock during 1A's feed ...
+            self.put_back(LAST)  # ... and the feed's end puts back its clock from before and switches the motor off
+            checked_later()
+            stepper.note_homing_end()  # a reset with no feed running
+            self.put_back(0)
+            enable.motor_disable(0.)  # QIDI's flow switches the motor off in Klipper too
+            checked_later()
+            enable.motor_enable(0.)
+            reactor.now += 0.5
+            self.put_back(0)
+            reactor.now += 0.5
+            enable.motor_disable(0.)
+            enable.motor_enable(0.)  # Klipper switched it on again after the Box's off
+            checked_later()
+        lines = self.watch_lines(runs)
+        self.assertEqual(len(lines), 3, lines)
+        self.assertRegex(lines[0], r"step clock reset during a feed: slot 1A \(Box 1\)")
+        self.assertRegex(lines[1], r"step clock: slot 1A \(Box 1\) is 20\.000 s ahead of Klipper's: the Box put back "
+                                   r"clock \d+ where Klipper's is 0;")
+        self.assertRegex(lines[2], r"Box switched a slot motor off that Klipper has on: slot 1A \(Box 1\)")
+
+        log = temp_path("vo-box-watch-") / "klippy.log"
+        stamp = "2026-11-22 10:49:13 - "
+        log.write_text("\n".join([
+            stamp + "Start printer at Sun Nov 22 10:49:00 2026 (1795347216.0 17.3)",
+            'variable_package_version = "26.11.22.3"',
+            stamp + "vo_box_watch: watching Box 1 slots 1A, 1B",
+            *(stamp + line for line in lines),
+        ]) + "\n")
+        findings = {f["id"]: f for f in diagnostics.check([log])["findings"]}
+        self.assertEqual(sorted(findings), ["box_motor_off_under_klipper", "box_step_clock_offset",
+                                            "step_clock_reset_during_feed"])
 
 
 if __name__ == "__main__":

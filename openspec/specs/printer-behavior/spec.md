@@ -767,7 +767,7 @@ Valve Oil's configuration SHALL let the extruder pull at most 20 mm past a vendo
 
 #### Scenario: Every unload from the toolhead is logged
 - **WHEN** a vendor unload from the toolhead ends, however it ends
-- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during the pulls, the Box buffer's feed triggers since the last unload from the toolhead and during this one, and where the toolhead sensor cleared
+- **THEN** `klippy.log` records the toolhead and hub sensors before and after it, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during the pulls, the feeds the Boxes started since the last unload from the toolhead and during this one, the buffer switch's last state, and where the toolhead sensor cleared
 
 #### Scenario: Box code with other pulls
 - **WHEN** the vendor Box code pulls past the pull-back in steps other than 10 mm, or at another speed

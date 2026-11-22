@@ -653,7 +653,7 @@ class BoxUnloadSetup:
         logging.disable(logging.CRITICAL)
         self.addCleanup(logging.disable, logging.NOTSET)
 
-    def setup(self, clears_after, print_state="standby", box=False, **stepper):
+    def setup(self, clears_after, print_state="standby", box=False, objects=None, **stepper):
         printer = Printer(260., print_state=print_state)
         reactor = self.reactor = Reactor()
         reactor.on_pause = lambda waketime: setattr(reactor, "now", max(reactor.now, waketime))
@@ -670,6 +670,7 @@ class BoxUnloadSetup:
         printer.objects["multi_color_controller"] = controller
         printer.objects[box_flow_recovery.TOOLHEAD_SENSOR] = stepper
         printer.objects["box_extras"] = types.SimpleNamespace(b_endstop_state=0)
+        printer.objects.update(objects or {})
         printer.lookup_objects = lambda prefix: [("box_stepper slot2", stepper)]
         printer.register_event_handler = lambda event, handler: None
         gcode.handlers["PAUSE"] = lambda gcmd: gcode.sent.append("PAUSED")
@@ -829,7 +830,7 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
                 self.assertEqual(autofeed.device("slot2").limit, buffer)
                 self.assertNotIn("sync_to_extruder", vars(stepper.extruder_stepper))
 
-    def test_unload_log_counts_the_box_buffer_feeds_before_and_during_it(self) -> None:
+    def test_unload_log_counts_the_box_feeds_before_and_during_it(self) -> None:
         logging.disable(logging.NOTSET)
         root = logging.getLogger()
         lines = []
@@ -839,12 +840,18 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
         self.addCleanup(root.removeHandler, capture)
         self.addCleanup(root.setLevel, root.level)
         root.setLevel(logging.INFO)
-        printer, gcode, manager, stepper = self.setup(40.)
-        feed = "[MCB] limit_a_event: raw_state=0 normalized=1"
-        for _ in range(3):
-            logging.info(feed)
-            logging.info("[MCB] limit_a_event: raw_state=1 normalized=0")
-        stepper.during_unload = lambda: logging.info(feed)
+        # vo_box_watch counts the feeds each Box starts; QIDI keeps what it last read from the buffer switch.
+        boxes = {"mcu_box1": types.SimpleNamespace(feeds=0), "mcu_box2": types.SimpleNamespace(feeds=0)}
+        autofeed = types.SimpleNamespace(limit_a_state=0)
+        printer, gcode, manager, stepper = self.setup(
+            40., objects={"vo_box_watch": types.SimpleNamespace(boxes=boxes), "box_autofeed": autofeed})
+        boxes["mcu_box1"].feeds += 2
+        boxes["mcu_box2"].feeds += 1
+
+        def during_unload():
+            boxes["mcu_box1"].feeds += 1
+            autofeed.limit_a_state = 1
+        stepper.during_unload = during_unload
         # Klipper makes the slot motor's steps, synced to the extruder, when the M400 after a pull runs.
         flushed = []
         real_run = gcode.run_script_from_command
@@ -856,8 +863,10 @@ class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
         self.unload(gcode)
         unloads = [line for line in lines if "1C unload from the toolhead" in line]
         self.assertIn("slot motor moved -85 mm during the pulls", unloads[0])
-        self.assertIn("3 feeds before it since the last unload from the toolhead, 1 during it, switch pressed", unloads[0])
-        self.assertIn("0 feeds before it since the last unload from the toolhead, 1 during it", unloads[1])
+        self.assertIn("Box auto-feed 3 feeds before it since the last unload from the toolhead, 1 during it, "
+                      "buffer switch pressed", unloads[0])
+        self.assertIn("Box auto-feed 0 feeds before it since the last unload from the toolhead, 1 during it",
+                      unloads[1])
 
     def test_box_code_with_other_pulls_stops_after_the_same_20_mm(self) -> None:
         printer, gcode, manager, stepper = self.setup(None, pull="G1 E-5 F600")

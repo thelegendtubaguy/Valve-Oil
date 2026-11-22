@@ -120,6 +120,45 @@ SIGNATURES = {
             docs="the-box-fed-a-slot-during-a-valve-oil-move",
         ),
         Signature(
+            id="box_feed_while_klipper_moves",
+            title="The Box fed a slot Klipper was moving",
+            meaning=(
+                "The Box's auto-feed started feeding a slot while Klipper still had moves queued for that slot's motor. "
+                "The feed's steps go into the same queue as Klipper's: it saved the slot's step clock from inside "
+                "Klipper's moves, and Klipper's moves queued during the feed ran in the feed's direction."
+            ),
+            action="Check the slot's filament before the next load. Report it with the support bundle so it can be fixed.",
+            docs="the-box-fed-a-slot-while-klipper-was-moving-it",
+        ),
+        Signature(
+            id="box_feed_after_abort",
+            title="The Box fed a slot after auto-feed was aborted",
+            meaning=(
+                "QIDI's code aborted the Box's auto-feed, as an unload does before it pulls the filament back, and the "
+                "Box fed the slot again anyway. The Box ignores an abort that lands in the 10 ms after a feed's steps "
+                "end, and auto-feed stays on."
+            ),
+            action=(
+                "Nothing, if the unload that followed finished. If it stopped, free the filament and unload again. "
+                "Report it with the support bundle so it can be fixed."
+            ),
+            docs="the-box-fed-a-slot-while-klipper-was-moving-it",
+        ),
+        Signature(
+            id="autofeed_abort_dropped_moves",
+            title="Aborting auto-feed dropped Klipper's slot moves",
+            meaning=(
+                "QIDI's code aborted the Box's auto-feed during a feed while Klipper still had moves queued for the "
+                "slot's motor. The Box's abort empties the motor's whole step queue, so Klipper's moves were dropped "
+                "with the feed, and the slot's step clock no longer matches Klipper's."
+            ),
+            action=(
+                "Nothing before an unload on Valve Oil 26.11.22.2 or later, which resets the slot's step clock first. "
+                "Report it with the support bundle so it can be fixed."
+            ),
+            docs="the-box-fed-a-slot-while-klipper-was-moving-it",
+        ),
+        Signature(
             id="unload_toolhead_sensor_stuck",
             title="Box unload stopped with filament at the toolhead",
             meaning=(
@@ -132,6 +171,50 @@ SIGNATURES = {
                 "clock or a cancelled part, they are the cause."
             ),
             docs="box-unload-stopped-with-filament-at-the-toolhead",
+        ),
+        Signature(
+            id="step_clock_reset_during_feed",
+            title="A slot's step clock was reset during a Box feed",
+            meaning=(
+                "Klipper reset a slot motor's step clock while the Box was feeding that slot. Every slot shares the "
+                "Box's hub and toolhead sensors, so every Box load or unload home resets every slot's clock; the feed's "
+                "end then put back a clock from before the reset, and the slot's clock is off Klipper's."
+            ),
+            action=(
+                "Nothing before an unload on Valve Oil 26.11.22.2 or later, which resets the slot's step clock first. "
+                "Report it with the support bundle so it can be fixed."
+            ),
+            docs="box-slot-step-clock",
+        ),
+        Signature(
+            id="box_motor_off_under_klipper",
+            title="The Box switched off a slot motor Klipper had on",
+            meaning=(
+                "The Box switched a slot's motor off itself, as a feed's end or arming auto-feed does, while Klipper "
+                "still had that motor on. Klipper only switches a motor on when it thinks it is off, so its next move "
+                "of that slot runs without current and the filament doesn't move."
+            ),
+            action=(
+                "If a load, unload, or jog of that slot then didn't move the filament, run it again: QIDI's flows "
+                "switch the motor off in Klipper when they end, so the next try switches it on. Report it with the "
+                "support bundle."
+            ),
+            docs="the-box-switched-off-a-slot-motor-klipper-had-on",
+        ),
+        Signature(
+            id="load_cell_reply_lost",
+            title="Toolhead load-cell readings lost",
+            meaning=(
+                "Two of QIDI's load-cell checks asked the toolhead board for a reading at the same time, and the "
+                "answers reached neither: QIDI's code then read 999.9 and discarded it. A Box load that checks the load "
+                "cell for filament reaching the nozzle can then report QDE_004_024, the filament failed to enter the "
+                "extruder, whether or not it did."
+            ),
+            action=(
+                "If a load stopped with QDE_004_024 around then, check the filament at the nozzle and run the load "
+                "again. Report it with the support bundle if it recurs."
+            ),
+            docs="toolhead-load-cell-readings-lost",
         ),
         Signature(
             id="qidi_error",
@@ -150,7 +233,7 @@ TIMESTAMP = re.compile(rb"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) - ")
 # Every line a signature reads contains one of these; everything else is skipped without decoding.
 MARKERS = re.compile(
     rb"Start printer at|MCU '[\w ]+' config:|got \{|\[MCB\] STATE|Code:QDE_|vo_box_watch: |box_flow_recovery: "
-    rb"|ENABLE delay: stepper=slot|Status changed: |^variable_package_version = "
+    rb"|ENABLE delay: stepper=slot|Status changed: |^variable_package_version = |Data error, discard the data value=999"
 )
 VERSION = re.compile(r'^variable_package_version = "([\d.]+)"')
 START = "Start printer at"
@@ -169,6 +252,9 @@ STUCK = re.compile(FLOW_RECOVERY + r"Box unload of (\S+) stopped: the toolhead f
 CANCELLED_CHANGE = re.compile(FLOW_RECOVERY + r"filament change inside cancelled part (.+?);")
 CLOCK_RESET = re.compile(FLOW_RECOVERY + r"(\S+) step clock reset before the unload")
 UNLOAD_FAILURE = "QDE_004_008"
+# A toolhead load-cell reading Klipper received with nothing waiting for it, and the value QIDI's code reads then.
+LOST_READING = re.compile(r"mcu 'THR': got \{.*'#name': 'query_cs1237_data'")
+LOST_VALUE = "Data error, discard the data value=999.9"
 # Valve Oil's Box watcher (installer/klipper/extras/box_watch.py) writes these.
 WATCHING = re.compile(WATCH + r"watching ")
 WATCH_CLOCK = re.compile(
@@ -176,6 +262,13 @@ WATCH_CLOCK = re.compile(
 )
 WATCH_REARM = re.compile(WATCH + r"auto-feed re-armed during a feed: slot (\S+) \(Box (\d+)\)")
 WATCH_MOVE = re.compile(WATCH + r"Box feed during Valve Oil's (.+?): slot (\S+) \(Box (\d+)\)")
+WATCH_QUEUED = re.compile(WATCH + r"Box feed while Klipper moves the slot: slot (\S+) \(Box (\d+)\): .*? ([\d.]+) s of")
+WATCH_AFTER_ABORT = re.compile(WATCH + r"Box feed after auto-feed was aborted: slot (\S+) \(Box (\d+)\)")
+WATCH_RESET_FEED = re.compile(WATCH + r"step clock reset during a feed: slot (\S+) \(Box (\d+)\)")
+WATCH_MOTOR_OFF = re.compile(WATCH + r"Box switched a slot motor off that Klipper has on: slot (\S+) \(Box (\d+)\)")
+WATCH_ABORT_DROPPED = re.compile(
+    WATCH + r"auto-feed aborted while Klipper moves the slot: slot (\S+) \(Box (\d+)\): .*? ([\d.]+) s of"
+)
 # Lines that put the events before a QIDI error code in context.
 CONTEXT = re.compile(r"Status changed: |vo_box_watch: |box_flow_recovery: |Start printer at")
 
@@ -228,6 +321,8 @@ class Checker:
         self._clock: dict[tuple[str, int], int] = {}  # the last clock the Box reported for each slot stepper
         self._rearmed: dict[tuple[str, int], tuple[int, str]] = {}  # the clock before a re-arm, and its time
         self._autofeed_mcu: str | None = None
+        self._lost_reading: str | None = None  # the first toolhead load-cell reading nothing waited for, until QIDI's
+        # code reads its bad value
         # Valve Oil reset a slot's step clock before an unload in this session, so the session's offsets were repaired
         # whatever release its config named (a sideloaded build keeps the version it replaced).
         self._clock_resets = False
@@ -328,7 +423,15 @@ class Checker:
             self._watched = True
             return
         if "got {" in line:
+            if LOST_READING.search(line):
+                self._lost_reading = self._lost_reading or line
+                return
             self._box_reply(line, when)
+            return
+        if LOST_VALUE in line:
+            if self._lost_reading is not None:
+                self._note("load_cell_reply_lost", when, lines=[self._lost_reading, line])
+            self._lost_reading = None
             return
         state = MCB_STATE.search(line)
         if state:
@@ -366,11 +469,36 @@ class Checker:
             move, slot, _box = match.groups()
             self._note("box_feed_during_valve_oil_move", when, lines=[line], detail=f"Slot {slot} during {move}")
             return
+        match = WATCH_QUEUED.search(line)
+        if match:
+            slot, _box, seconds = match.groups()
+            self._note("box_feed_while_klipper_moves", when, lines=[line],
+                       detail=f"Slot {slot}: {seconds} s of Klipper's moves queued")
+            return
+        match = WATCH_AFTER_ABORT.search(line)
+        if match:
+            self._note("box_feed_after_abort", when, lines=[*self._context[-3:-1], line], detail=f"Slot {match.group(1)}")
+            return
+        match = WATCH_RESET_FEED.search(line)
+        if match:
+            self._note("step_clock_reset_during_feed", when, lines=[line], detail=f"Slot {match.group(1)}")
+            return
+        match = WATCH_MOTOR_OFF.search(line)
+        if match:
+            self._note("box_motor_off_under_klipper", when, lines=[*self._context[-3:-1], line],
+                       detail=f"Slot {match.group(1)}")
+            return
+        match = WATCH_ABORT_DROPPED.search(line)
+        if match:
+            slot, _box, seconds = match.groups()
+            self._note("autofeed_abort_dropped_moves", when, lines=[line],
+                       detail=f"Slot {slot}: {seconds} s of Klipper's moves dropped")
+            return
         match = UNLOAD.search(line)
         if match:
             slot, pulled, moved = match.group(1), float(match.group(2)), match.group(3)
             if moved and moved != "unknown" and pulled > 0 and float(moved.split()[0]) < pulled * MOVED_SHARE:
-                self._note("cancelled_part_dropped_moves", when, lines=[*self._context[-2:], line],
+                self._note("cancelled_part_dropped_moves", when, lines=[*self._context[-3:-1], line],
                            detail=f"Slot {slot}: pulled back {match.group(2)} mm, moved {moved}")
             return
         match = DROPPED.search(line)
@@ -379,7 +507,7 @@ class Checker:
             return
         match = STUCK.search(line)
         if match:
-            self._note("unload_toolhead_sensor_stuck", when, lines=[*self._context[-3:], line],
+            self._note("unload_toolhead_sensor_stuck", when, lines=[*self._context[-4:-1], line],
                        detail=f"Slot {match.group(1)}")
             return
         match = CANCELLED_CHANGE.search(line)

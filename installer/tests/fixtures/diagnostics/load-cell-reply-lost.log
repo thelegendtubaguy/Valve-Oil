@@ -1,0 +1,12 @@
+# Operator klippy.log, Max 4 01.01.07.01, Valve Oil 26.11.22.1, 2026-11-22, trimmed to the lines the checker reads.
+# Toolhead load-cell readings nothing waited for, QIDI's discarded 999.9 after each burst, and the Box load failure that
+# followed.
+2026-11-22 12:52:09 - mcu 'THR': got {'oid': 6, 'data': b'\xef{\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99431.556710162, '#receive_time': 99431.557332287}
+2026-11-22 12:52:09 - mcu 'THR': got {'oid': 6, 'data': b'e}\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99431.577500454, '#receive_time': 99431.578196079}
+2026-11-22 12:52:09 - Data error, discard the data value=999.9
+2026-11-22 12:52:14 - mcu 'THR': got {'oid': 6, 'data': b'ox\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99436.52217795601, '#receive_time': 99436.522662998}
+2026-11-22 12:52:14 - Data error, discard the data value=999.9
+2026-11-22 12:52:14 - mcu 'THR': got {'oid': 6, 'data': b'ow\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99437.336725082, '#receive_time': 99437.33738716501}
+2026-11-22 12:52:14 - mcu 'THR': got {'oid': 6, 'data': b'\x0ev\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99437.36488229, '#receive_time': 99437.36543441501}
+2026-11-22 12:52:14 - mcu 'THR': got {'oid': 6, 'data': b'\x0ev\xe6\x00', '#name': 'query_cs1237_data', '#sent_time': 99437.415007248, '#receive_time': 99437.41547070701}
+2026-11-22 12:52:22 - Code:QDE_004_024; Message:The filament failed to enter the extruder.

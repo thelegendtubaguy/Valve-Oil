@@ -7,7 +7,6 @@ QIDI's code changes printer state behind Klipper's back, and nothing notices unt
 - Valve Oil UI gets a **Diagnostics** button. It checks the printer's logs for every known fault signature and shows what it found in plain language, with what to do and a link to the docs, plus a report to attach to an issue. The same checker runs on a log someone sends in.
 - Valve Oil's Klipper modules watch for the faults themselves and write a `vo_` line in `klippy.log` the moment one happens, with a printer warning when the operator has to act. The first watchers cover the Box slot step clocks, auto-feed re-armed during a feed, the Box switching a slot motor during Valve Oil's own slot moves, extruder pulls Klipper didn't move, and Box replies nothing on the host handles.
 - A standing audit of QIDI's firmware and host modules, one shared resource at a time, records in `openspec/observations/` every way QIDI changes that resource and every place that assumes it hasn't. Each fault it finds gets a watcher and a signature.
-- A Max 4 soak run with randomized timing checks the same invariants after every step, not only whether loads and unloads finish.
 
 ## Capabilities
 
@@ -24,6 +23,6 @@ None. Fixes for the faults the program finds change `printer-behavior` in their 
 - `installer/runtime/`: the signature catalog and the log checker, shared by the `vo-status` service and a developer script.
 - `installer/klipper/extras/`: fault watchers in the Box modules, beside the unload logging in `box_flow_recovery.py`.
 - `ui/`: the Diagnostics screen, in English, Spanish, and Russian.
-- `scripts/`: the log checker for attached logs and the soak runner.
+- `scripts/`: the log checker for attached logs.
 - `openspec/observations/`: one audit section per shared resource.
 - `docs/troubleshooting.md`, `docs/valve-oil-ui.md`, `docs/under-the-hood.md`, and `CHANGELOG.md` when each part ships.

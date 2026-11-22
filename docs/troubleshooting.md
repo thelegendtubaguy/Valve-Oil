@@ -201,11 +201,31 @@ A filament change ran while the print was inside a part you'd cancelled, and Kli
 
 While printing, the Box feeds filament on its own whenever its buffer asks, timing the slot motor itself. When print start, or `MCB_AUTO_START`, turns that feeding back on while the Box is feeding, the Box keeps the slot motor's timing off from Klipper's, by up to 51 seconds, for the rest of the print. An unload's pull-back then runs that slot's motor late or in bursts, and the toolhead sensor never clears. Diagnostics names the slot and how many seconds it's off.
 
+The same happens when a Box load or unload homes another slot while the Box is feeding: every slot shares the Box's hub and toolhead sensors, so the home resets every slot's timing, and the feed's end puts back the timing from before it. Diagnostics shows that as **A slot's step clock was reset during a Box feed**.
+
 Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. Valve Oil now also stops a running feed, and lets the Box put the slot motor's timing back, before QIDI's code turns feeding back on, so the timing no longer goes off at print start. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
+
+### The Box switched off a slot motor Klipper had on
+
+The Box switches a slot's motor on and off itself when it feeds, and switches it off when auto-feed is set up for that slot. Klipper only switches a motor on when it thinks it's off, so when the Box switched off a motor Klipper still had on, Klipper's next move of that slot runs without current and the filament doesn't move. If a load, unload, or jog of that slot didn't move the filament then, run it again: QIDI's flows switch the motor off in Klipper when they end, so the next try switches it on. [Report it](#reporting-a-problem) with the support bundle.
 
 ### The Box fed a slot during a Valve Oil move
 
 The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed. Valve Oil now stops the Box's feeding on a slot before it jogs, turns, or reads that slot, so this shouldn't happen on those moves any more.
+
+### The Box fed a slot while Klipper was moving it
+
+The Box's auto-feed drives a slot's motor itself, through the same step queue Klipper uses, and doesn't check whether Klipper is moving that slot. Diagnostics shows one of these:
+
+- **The Box fed a slot Klipper was moving.** A feed started while Klipper still had moves queued for that slot's motor. The feed saved the slot's [step clock](#box-slot-step-clock) from inside Klipper's moves, and Klipper's moves queued during the feed ran in the feed's direction.
+- **The Box fed a slot after auto-feed was aborted.** QIDI's code aborted auto-feed, as an unload does before it pulls the filament back, and the Box fed again anyway: it ignores an abort that lands in the 10 ms after a feed ends. Valve Oil's unloads make sure auto-feed is off before the pull-back, so this comes from QIDI's other flows.
+- **Aborting auto-feed dropped Klipper's slot moves.** The Box's abort empties the slot motor's whole step queue, so Klipper's moves still waiting in it were dropped with the feed.
+
+Check the slot's filament before its next load. If an unload or load stopped around that time, free the filament and run it again. [Report it](#reporting-a-problem) with the support bundle so it can be fixed.
+
+### Toolhead load-cell readings lost
+
+QIDI's Box load checks for filament reaching the nozzle with the toolhead's load cell, and other QIDI code reads the same load cell. When two of them ask for a reading at the same moment, the answers reach neither, and QIDI's code reads `999.9` and discards it (`Data error, discard the data value=999.9` in `klippy.log`). A load around that time can stop with `QDE_004_024`, the filament failed to enter the extruder, whether or not it did. Check the filament at the nozzle and run the load again. [Report it](#reporting-a-problem) if it recurs.
 
 ### Box unload stopped with filament at the toolhead
 

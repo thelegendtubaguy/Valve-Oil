@@ -32,7 +32,7 @@ Each watcher runs in the Valve Oil Klipper module that owns the subsystem and wr
 
 Klipper's serial reader gives each reply to the handler registered for its name and oid, and every other reply to its default handler, which logs it as `got {...}`. QIDI's code leaves `last_step_clk`, `STEP-set_last_step`, and `MCB_CONFIG_STEPPER` unhandled, so `vo_box_watch` wraps each Box MCU's default handler: it reads those three, counts every unhandled reply by name, and passes each on, so the raw lines stay in the log. It registers no handler of its own, so it never takes a message from QIDI's code; if QIDI's code starts handling one, the reply stops reaching the default handler and the watcher stands down for it without a check at start-up. The serial reader runs handlers in its own thread, so the wrapper only hands each reply to Klipper's reactor.
 
-Where QIDI does handle a message, such as `MCB_STATE` (`_on_state`), the watcher wraps the handler QIDI registered on the serial reader, which still runs. The Box buffer counter shipped in 26.11.22.2 parses QIDI's log line instead. It moves to the `MCB_STATE` wrapper once that is proven on the printer.
+Where QIDI does handle a message, such as `MCB_STATE` (`_on_state`), the watcher wraps the handler QIDI registered on the serial reader, which still runs. The wrapper also counts the feeds each Box starts (`MCB_STATE` 2), which Valve Oil's line for each unload from the toolhead reports; the counter shipped in 26.11.22.2 parsed QIDI's log line for the buffer switch instead, which counts requests the Box ignores while its auto-feed is off.
 
 A slot's clock changed behind Klipper when the Box reports a clock for it that differs from the one it last reported while Klipper's position of the slot, the clock of Klipper's newest step of it, and its homing ends are unchanged. Klipper's own step history holds only about 30 s, so the watcher keeps the newest step's clock rather than asking whether any step is recent: a re-arm in the seconds after a load's purge is still caught.
 
@@ -63,10 +63,6 @@ Each audit pass takes one resource QIDI's code and Valve Oil both touch:
 - Box replies nothing on the host handles.
 
 A pass works from the Box, toolhead-board, and mainboard firmware images, and QIDI's `.so` files under the harness. It records each finding in `openspec/observations/` with its evidence qualifier. A finding becomes a requirement only once it's confirmed on a printer.
-
-### The soak checks invariants
-
-The soak runner drives a Max 4 through Box cycles: print starts whose purge pulls the buffer, pauses, cancelled parts, restarts, and power cuts as in the Max 4 stranding campaign. After every step it checks the watchers' lines and the signatures, as well as whether the step finished. It runs unattended over SSH.
 
 ## Risks / Trade-offs
 

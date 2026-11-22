@@ -285,7 +285,7 @@ The slot can be [jogged](#moving-a-slot-by-hand) while the print or the failed u
 
 When Klipper didn't move the extruder for those pulls at all, the message says so instead, for example `Box unload of 1D stopped: Klipper didn't move the extruder for the 105 mm of pull-back QIDI's unload asked for, ...`, and names the [cancelled part](#filament-changes-inside-a-cancelled-part) the print is inside when that's why.
 
-`klippy.log` gets a line for every unload from the toolhead, starting `vo_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, and how many times the Box's buffer switch made the Box feed filament forward since the last unload and during this one. Attach it when you report an unload that stopped.
+`klippy.log` gets a line for every unload from the toolhead, starting `vo_box_flow_recovery: 1D unload from the toolhead:`. It has both sensors before and after, how far the extruder was asked to pull and how far it moved, how far Klipper moved the slot's motor during those pulls, where the toolhead sensor cleared, how many feeds the Box started on its own since the last unload and during this one, and whether its buffer switch was asking for more. Attach it when you report an unload that stopped.
 
 ### Filament changes inside a cancelled part
 
