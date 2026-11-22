@@ -665,8 +665,37 @@ def _restart_klipper_later() -> None:
     except (OSError, ValueError) as exc:
         _klipper_restart["error"] = "Moonraker didn't restart Klipper; restart Klipper to finish switching"
         log(f"Klipper restart failed: {exc}")
+        return
     finally:
         _klipper_restart["restarting"] = False
+    try:
+        firmware_restart_if_board_shut_down()
+    except (OSError, ValueError) as exc:
+        log(f"Klipper firmware restart after the switch failed: {exc}")
+
+
+def firmware_restart_if_board_shut_down(wait: float = 60.0) -> None:
+    """A board left shut down by the Klipper before the switch stays so across a service restart (the Smart 5's
+    mainboard does), and the new Klipper stops with "Can not update MCU ... as it is shutdown" until a firmware
+    restart. Give it that one."""
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        time.sleep(2.0)
+        try:
+            with urllib.request.urlopen(f"{MOONRAKER}/printer/info", timeout=5.0) as response:
+                info = json.loads(response.read().decode("utf-8")).get("result") or {}
+        except (OSError, ValueError):
+            continue
+        state, message = info.get("state"), str(info.get("state_message") or "")
+        if state == "ready" or state == "shutdown":
+            return
+        if state == "error":
+            if "as it is shutdown" in message:
+                log("Klipper: a board is still shut down; firmware restart")
+                request = urllib.request.Request(f"{MOONRAKER}/printer/firmware_restart", data=b"", method="POST")
+                with urllib.request.urlopen(request, timeout=30.0) as response:
+                    response.read()
+            return
 
 
 def restart_klipper() -> None:

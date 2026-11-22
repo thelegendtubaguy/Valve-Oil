@@ -41,6 +41,7 @@ CHOICE = ".vo_klipper.json"
 STATUS = ".vo_klipper_status.json"
 READY = ".vo_klipper_ready.json"
 FIRMWARE_UPDATE = ".tltg_firmware_update_pending.json"
+INSTALLER_HOLD = ".vo_klipper_hold.json"
 DROPIN_COMMAND = "/usr/local/lib/vo_klipper_launch.py $KLIPPER_ARGS"
 LAUNCH_ENV = "VO_KLIPPER_LAUNCH_ID"
 MAX_UNACKNOWLEDGED = 3
@@ -116,6 +117,7 @@ REASONS = {
     "not_selected": "QIDI's Klipper is selected.",
     "choice_unreadable": "The Klipper choice couldn't be read, so QIDI's Klipper runs.",
     "firmware_update_pending": "A QIDI firmware update is in progress.",
+    "installer_hold": "Valve Oil is installing, so QIDI's Klipper runs until it finishes.",
     "not_installed": "Valve Oil's Klipper isn't installed on this printer.",
     "firmware_changed": "QIDI's firmware changed since Valve Oil's Klipper was installed.",
     "qidi_modules_changed": "QIDI's Klipper modules changed since Valve Oil's Klipper was installed.",
@@ -135,6 +137,7 @@ def _unavailable(paths, marker, soc):
     """Why Valve Oil's Klipper can't run on this printer now, or None when it can."""
     for code, failed in (
         ("firmware_update_pending", lambda: os.path.lexists(os.path.join(paths["printer_data"], FIRMWARE_UPDATE))),
+        ("installer_hold", lambda: os.path.lexists(os.path.join(paths["printer_data"], INSTALLER_HOLD))),
         ("not_installed", lambda: marker is None),
         ("firmware_changed", lambda: soc is None or marker.get("soc") != soc),
         ("qidi_modules_changed", lambda: not _qidi_modules_match(paths["qidi_klippy"], marker.get("qidi_modules"))),

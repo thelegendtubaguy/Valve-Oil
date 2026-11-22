@@ -86,7 +86,10 @@ UNIT_UNRECOGNIZED = ("QIDI's klipper.service is not the unit Valve Oil's Klipper
 CHOICE_FILE = ".vo_klipper.json"
 STATUS_FILE = ".vo_klipper_status.json"
 READY_FILE = ".vo_klipper_ready.json"
-STATE_FILES = (CHOICE_FILE, STATUS_FILE, READY_FILE)
+# While it exists, the launcher starts QIDI's Klipper: an installer run holds it when Valve Oil's Klipper is running
+# but not ready, since the run needs a ready Klipper for saved variables, and the run may be what repairs it.
+HOLD_FILE = ".vo_klipper_hold.json"
+STATE_FILES = (CHOICE_FILE, STATUS_FILE, READY_FILE, HOLD_FILE)
 
 ABSENT = "absent"
 CURRENT = "current"
@@ -338,6 +341,32 @@ def choice(printer_data_root: Path) -> str:
     except (OSError, ValueError):
         return "qidi"
     return "valve_oil" if isinstance(value, dict) and value.get("use") == "valve_oil" else "qidi"
+
+
+def running_tree(printer_data_root: Path) -> str | None:
+    """Which tree the launcher last started: "valve_oil", "qidi", or None when it hasn't run."""
+    try:
+        value = json.loads((printer_data_root / STATUS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    running = value.get("running") if isinstance(value, dict) else None
+    return running if running in {"valve_oil", "qidi"} else None
+
+
+def hold(printer_data_root: Path) -> None:
+    path = printer_data_root / HOLD_FILE
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps({"reason": "installer"}) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def release_hold(printer_data_root: Path) -> bool:
+    """Drop the installer's hold; True when there was one."""
+    try:
+        (printer_data_root / HOLD_FILE).unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def remove_state_files(printer_data_root: Path) -> None:

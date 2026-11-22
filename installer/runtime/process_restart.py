@@ -45,6 +45,12 @@ def service_restart_url(moonraker_url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"{prefix}/machine/services/restart", "", ""))
 
 
+def firmware_restart_url(moonraker_url: str) -> str:
+    parts = urllib.parse.urlsplit(moonraker_url)
+    prefix = parts.path.removesuffix("/printer/objects/query")
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"{prefix}/printer/firmware_restart", "", ""))
+
+
 def restart_entries(manifest) -> dict[str, str]:
     """Every Klipper source a restart marker may name: patched QIDI sources and the package's own modules."""
     install = manifest.install

@@ -833,7 +833,7 @@ class KlipperSwitchTest(unittest.TestCase):
     """VO_KLIPPER never switches during a print, hands the switch to the status service without holding up Klipper,
     and says what came of it; a Klipper the launcher started tells it once it is ready."""
 
-    def start(self, *, tree="qidi", launch_id=None, state="standby"):
+    def start(self, *, tree="qidi", launch_id=None, state="standby", stays_ready=True):
         data = temp_path("vo-klipper-")
         (data / "config").mkdir()
         vo_tree = data / "vo-klipper"
@@ -860,10 +860,16 @@ class KlipperSwitchTest(unittest.TestCase):
             get_reactor=lambda: sim.reactor,
             get_start_args=lambda: {"config_file": str(data / "config/printer.cfg"), "software_version": "v0.14.0-vo1"},
             register_event_handler=sim.handlers.__setitem__,
+            get_state_message=lambda: ("Printer is ready", "ready") if stays_ready else ("Internal error", "shutdown"),
             lookup_object=lambda name, default=None: objects.get(name, default))
         sim.switch = klipper_switch.load_config(types.SimpleNamespace(get_printer=lambda: printer))
         sim.handlers["klippy:connect"]()
         sim.handlers["klippy:ready"]()
+        # Every other module's ready handler has run by the time the reactor runs timers again.
+        sim.reactor.now += 2.
+        for timer in list(sim.reactor.timers):
+            if timer.waketime <= sim.reactor.now:
+                timer.waketime = timer.callback(sim.reactor.now)
         return sim
 
     def command(self, sim, **params):
@@ -924,6 +930,9 @@ class KlipperSwitchTest(unittest.TestCase):
         self.assertEqual(json.loads((sim.data / klipper_switch.READY_FILE).read_text()), {"launch_id": "launch-7"})
         self.assertEqual([path.name for path in sim.data.iterdir() if path.name.endswith(".tmp")], [])
         sim = self.start(tree="qidi")
+        self.assertFalse((sim.data / klipper_switch.READY_FILE).exists())
+        # A later ready handler stopped Klipper: the start doesn't count as ready.
+        sim = self.start(tree="valve_oil", launch_id="launch-9", stays_ready=False)
         self.assertFalse((sim.data / klipper_switch.READY_FILE).exists())
 
     def test_status_says_which_klipper_runs_and_why(self) -> None:

@@ -111,6 +111,21 @@ class KlipperSwitch:
     def _ready(self):
         if self.launch_id is None or self.data_dir is None:
             return
+        # Other modules' ready handlers run after this one and can still
+        # stop Klipper, so acknowledge once they have all run and Klipper
+        # is still ready.
+        reactor = self.printer.get_reactor()
+        reactor.register_timer(self._acknowledge, reactor.monotonic() + 1.)
+
+    def _acknowledge(self, eventtime):
+        if self.printer.get_state_message()[1] != "ready":
+            logging.info("vo_klipper: Klipper didn't stay ready; no ready "
+                         "acknowledgement for this start")
+            return self.printer.get_reactor().NEVER
+        self._write_ready()
+        return self.printer.get_reactor().NEVER
+
+    def _write_ready(self):
         path = self._path(READY_FILE)
         tmp = "%s.%d.tmp" % (path, os.getpid())
         try:

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
+import urllib.error
 import urllib.request
 from dataclasses import replace
 
 from .addons_cli import maybe_update_installed_addons
-from . import boot_logo, boot_path, errors, klipper_cfg, messages, patches, progress, safety, update_window
+from . import boot_logo, boot_path, errors, klipper_cfg, klipper_tree, messages, patches, progress, safety, update_window
 from .auto_update import (
     LOCK_HELD_ENV,
     adopt_legacy_enrollment,
@@ -86,6 +88,7 @@ from .source_patches import (
 )
 from .process_restart import (
     ProcessRestartError,
+    firmware_restart_url,
     read_printer_info,
     request_klipper_restart,
     restart_entries,
@@ -367,27 +370,88 @@ def run_install(
         reporter.debug(event="install.complete", dry_run=True, backup_label=plan.backup_label)
         return result
 
-    result = _execute_install(
-        paths=paths,
-        manifest=manifest,
-        reporter=reporter,
-        detected_firmware=detected_firmware,
-        prior_state=prior_state,
-        new_install=new_install,
-        started_at=started_at,
-        plan=plan,
-        backup_zip_path=backup_zip_path,
-        input_stream=input_stream,
-        urlopen=urlopen,
-        environ=env,
-        system_options=system_options,
-        source_results=source_results,
-        config_changes=config_changes,
-        block_qidi_updates=block_qidi_updates,
-        auto_updates=auto_updates,
-        run=run,
-    )
+    held = _hold_valve_oil_klipper(paths=paths, reporter=reporter, urlopen=urlopen)
+    try:
+        result = _execute_install(
+            paths=paths,
+            manifest=manifest,
+            reporter=reporter,
+            detected_firmware=detected_firmware,
+            prior_state=prior_state,
+            new_install=new_install,
+            started_at=started_at,
+            plan=plan,
+            backup_zip_path=backup_zip_path,
+            input_stream=input_stream,
+            urlopen=urlopen,
+            environ=env,
+            system_options=system_options,
+            source_results=source_results,
+            config_changes=config_changes,
+            block_qidi_updates=block_qidi_updates,
+            auto_updates=auto_updates,
+            run=run,
+        )
+    finally:
+        if held and klipper_tree.release_hold(paths.printer_data_root):
+            # The next start is Valve Oil's Klipper again, with what this run installed.
+            try:
+                request_klipper_restart(paths, urlopen=urlopen)
+            except ProcessRestartError:
+                pass
     return result
+
+
+def _hold_valve_oil_klipper(*, paths, reporter, urlopen, sleep=time.sleep, attempts: int = 60) -> bool:
+    """Start QIDI's Klipper for this run when Valve Oil's Klipper is running but not ready.
+
+    The run needs a ready Klipper for saved variables, and may be what repairs Valve Oil's Klipper. The launcher starts
+    QIDI's Klipper while the hold exists; the caller drops it when the run ends."""
+    if klipper_tree.running_tree(paths.printer_data_root) != "valve_oil":
+        return False
+    try:
+        pid, state = read_printer_info(paths.moonraker_url, urlopen=urlopen)
+    except ProcessRestartError:
+        return False
+    if state == "ready":
+        return False
+    klipper_tree.hold(paths.printer_data_root)
+    reporter.line(messages.VALVE_OIL_KLIPPER_HELD)
+
+    def wait(done) -> str | None:
+        for _ in range(attempts):
+            sleep(1)
+            try:
+                info = read_printer_info(paths.moonraker_url, urlopen=urlopen)
+            except ProcessRestartError:
+                continue
+            if done(*info):
+                return info[1]
+        return None
+
+    try:
+        request_klipper_restart(paths, urlopen=urlopen)
+    except ProcessRestartError:
+        return True
+    state = wait(lambda new_pid, new_state: new_pid != pid and new_state in {"ready", "error", "shutdown"})
+    if state in {"error", "shutdown"}:
+        # A board left shut down by the stopped Klipper stays so across a service restart (the Smart 5's mainboard
+        # does), so QIDI's Klipper comes back with an error until a firmware restart.
+        try:
+            _request_firmware_restart(paths, urlopen=urlopen)
+        except ProcessRestartError:
+            return True
+        wait(lambda _pid, new_state: new_state == "ready")
+    return True
+
+
+def _request_firmware_restart(paths, *, urlopen) -> None:
+    request = urllib.request.Request(firmware_restart_url(paths.moonraker_url), data=b"", method="POST")
+    try:
+        with urlopen(request, timeout=10) as response:
+            response.read()
+    except (OSError, urllib.error.URLError, ValueError) as exc:
+        raise ProcessRestartError("Could not request a firmware restart.") from exc
 
 
 

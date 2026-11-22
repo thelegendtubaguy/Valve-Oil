@@ -9,6 +9,7 @@ import io
 import json
 import os
 import shutil
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -101,6 +102,8 @@ class LauncherTests(unittest.TestCase):
                                             "qidi", "qidi", "choice_unreadable", True),
             "a QIDI firmware update pending": (lambda: (self.data / ".tltg_firmware_update_pending.json").write_text("{}"),
                                                "valve_oil", "qidi", "firmware_update_pending", False),
+            "an installer run holding QIDI's Klipper": (lambda: klipper_tree.hold(self.data),
+                                                        "valve_oil", "qidi", "installer_hold", False),
             "no tree": (lambda: shutil.rmtree(self.tree), "valve_oil", "qidi", "not_installed", False),
             "a tree without its marker": (lambda: (self.tree / klipper_tree.MARKER).unlink(), "valve_oil", "qidi",
                                           "not_installed", False),
@@ -201,3 +204,52 @@ class LauncherTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstallHoldTests(unittest.TestCase):
+    """An install needs a ready Klipper; when Valve Oil's isn't, QIDI's runs for the install and Valve Oil's after."""
+
+    def run_hold(self, running, states):
+        from installer.runtime import runner
+        data = temp_path("vo-klipper-hold-")
+        (data / klipper_tree.STATUS_FILE).write_text(json.dumps({"running": running}), encoding="utf-8")
+        paths = types.SimpleNamespace(printer_data_root=data, moonraker_url="http://moonraker")
+        infos = iter(states)
+        posts = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def urlopen(request, timeout=None):
+            if isinstance(request, str):
+                pid, state = next(infos)
+                return Response(json.dumps({"result": {"process_id": pid, "state": state}}).encode())
+            posts.append(request.full_url.split("moonraker", 1)[1])
+            return Response(b"{}")
+
+        lines = []
+        held = runner._hold_valve_oil_klipper(paths=paths, reporter=types.SimpleNamespace(line=lines.append),
+                                              urlopen=urlopen, sleep=lambda _s: None, attempts=5)
+        return held, posts, data
+
+    def test_a_halted_valve_oil_klipper_is_held_for_the_install(self):
+        # The Smart 5's mainboard stays shut down across the service restart, so a firmware restart follows.
+        held, posts, data = self.run_hold("valve_oil", [(10, "shutdown"), (10, "shutdown"), (11, "error"),
+                                                         (11, "startup"), (11, "ready")])
+        self.assertTrue(held)
+        self.assertTrue((data / klipper_tree.HOLD_FILE).exists())
+        self.assertEqual(posts, ["/machine/services/restart", "/printer/firmware_restart"])
+        self.assertTrue(klipper_tree.release_hold(data))
+        self.assertFalse((data / klipper_tree.HOLD_FILE).exists())
+
+    def test_nothing_is_held_when_klipper_is_ready_or_qidis_runs(self):
+        for running, states in (("valve_oil", [(10, "ready")]), ("qidi", [(10, "shutdown")])):
+            with self.subTest(running=running):
+                held, posts, data = self.run_hold(running, states)
+                self.assertFalse(held)
+                self.assertEqual(posts, [])
+                self.assertFalse((data / klipper_tree.HOLD_FILE).exists())

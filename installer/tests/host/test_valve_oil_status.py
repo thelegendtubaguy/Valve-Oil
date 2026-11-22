@@ -6,6 +6,7 @@ import os
 import shutil
 import threading
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -111,6 +112,7 @@ class StatusServiceTests(unittest.TestCase):
                 raise OSError("Moonraker went away")
 
         server.restart_klipper = restart
+        server.firmware_restart_if_board_shut_down = lambda: None
         server.MACRO_GLOBALS.write_text('[gcode_macro _vo_globals]\nvariable_package_version: "26.11.11.3"\n')
         server.FIRMWARE_MANIFEST.write_text(json.dumps({"SOC": {"version": "01.01.06.02"}}))
         server.Handler.jobs = server.Jobs()
@@ -572,3 +574,37 @@ class UpdateNowRunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchFirmwareRestartTests(unittest.TestCase):
+    """A board left shut down by the Klipper before a switch gets a firmware restart; other states don't."""
+
+    def run_followup(self, info):
+        server = _load_server()
+        posts = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def urlopen(request, timeout=None):
+            if isinstance(request, str):
+                return Response(json.dumps({"result": info}).encode())
+            posts.append(request.full_url.rsplit("/", 2)[-2:])
+            return Response(b"{}")
+
+        with mock.patch.object(server.urllib.request, "urlopen", urlopen), \
+                mock.patch.object(server.time, "sleep", lambda _s: None):
+            server.firmware_restart_if_board_shut_down(wait=10.0)
+        return posts
+
+    def test_firmware_restart_only_for_a_shut_down_board(self):
+        shut_down = {"state": "error", "state_message": "Can not update MCU 'mcu' config as it is shutdown\n..."}
+        self.assertEqual(self.run_followup(shut_down), [["printer", "firmware_restart"]])
+        for info in ({"state": "ready", "state_message": "Printer is ready"},
+                     {"state": "error", "state_message": "Option 'x' is not valid in section 'y'"}):
+            with self.subTest(state=info["state_message"]):
+                self.assertEqual(self.run_followup(info), [])
