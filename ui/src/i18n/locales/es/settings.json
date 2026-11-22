@@ -55,6 +55,10 @@
       "label": "Complementos",
       "sub": "Acceso remoto y redes"
     },
+    "klipper": {
+      "label": "Klipper",
+      "sub": "Klipper de QIDI o de Valve Oil"
+    },
     "about": {
       "label": "Acerca de",
       "sub": "Versiones"
@@ -419,5 +423,63 @@
         "id_hint": "Escribe el ID de 16 caracteres de la red a la que unirse, de my.zerotier.com."
       }
     }
+  },
+  "klipper": {
+    "title": "Klipper",
+    "loading": "Preguntando a la impresora qué Klipper se ejecuta…",
+    "unavailable": "El servicio de estado de Valve Oil no responde, así que no se sabe qué Klipper se ejecuta.",
+    "not_reported": "El Valve Oil de esta impresora no indica qué Klipper se ejecuta. Actualiza Valve Oil para elegir Klipper aquí.",
+    "name": {
+      "qidi": "Klipper de QIDI",
+      "valve_oil": "Klipper de Valve Oil"
+    },
+    "sub": {
+      "qidi": "El Klipper que QIDI incluye con la impresora. El predeterminado.",
+      "valve_oil": "Klipper original con los cambios de QIDI, de Valve Oil. Desactivado a menos que lo elijas."
+    },
+    "state": {
+      "off": "Desactivado: se está ejecutando el Klipper de QIDI.",
+      "on": "Activado: se está ejecutando el Klipper de Valve Oil.",
+      "fallback": "El Klipper de Valve Oil está elegido, pero se está ejecutando el Klipper de QIDI.",
+      "leaving": "El Klipper de QIDI está elegido. El Klipper de Valve Oil se ejecuta hasta que Klipper se reinicie.",
+      "starting_qidi": "Klipper se está reiniciando con el Klipper de QIDI…",
+      "starting_valve_oil": "Klipper se está reiniciando con el Klipper de Valve Oil…"
+    },
+    "fallback_reason": "Motivo: {{reason}}",
+    "fallback_no_reason": "La impresora no dijo por qué.",
+    "try_again": "Volver a probar el Klipper de Valve Oil",
+    "chosen": "Elegido",
+    "running": "En ejecución",
+    "version": "Versión {{version}}",
+    "not_installed": "No está instalado en esta impresora.",
+    "unavailable_reason": "No disponible: {{reason}}.",
+    "blocked": {
+      "none": "No se puede cambiar ahora mismo.",
+      "other": "No se puede cambiar ahora: {{message}}.",
+      "code": {
+        "printing": "Hay una impresión en curso o en pausa. Cambia cuando termine.",
+        "printer_state_unknown": "La impresora no dijo si hay una impresión en curso. Vuelve a intentarlo en un momento.",
+        "run_in_progress": "Hay una actualización de Valve Oil en curso. Cambia cuando termine.",
+        "installer_busy": "Valve Oil está buscando actualizaciones o instalando. Cambia cuando termine.",
+        "firmware_update_pending": "Una actualización de firmware de QIDI no ha terminado. Termínala primero desde las actualizaciones de Valve Oil."
+      }
+    },
+    "switch_failed": "No se cambió Klipper: {{error}}",
+    "confirm": {
+      "button": "Reiniciar Klipper",
+      "qidi": {
+        "title": "¿Usar el Klipper de QIDI?",
+        "body": "Klipper se reinicia con el Klipper de QIDI, así que la impresora no se puede usar durante un minuto más o menos."
+      },
+      "valve_oil": {
+        "title": "¿Usar el Klipper de Valve Oil?",
+        "body": "Klipper se reinicia con el Klipper de Valve Oil, así que la impresora no se puede usar durante un minuto más o menos. Si no arranca, se inicia el Klipper de QIDI en su lugar, y puedes volver aquí o con VO_KLIPPER USE=QIDI."
+      },
+      "retry": {
+        "title": "¿Volver a probar el Klipper de Valve Oil?",
+        "body": "Klipper se reinicia y vuelve a probar el Klipper de Valve Oil, así que la impresora no se puede usar durante un minuto más o menos."
+      }
+    },
+    "footer": "Cambiar reinicia Klipper y no es posible durante una impresión. En la consola, {{status}} dice qué Klipper se ejecuta, y {{valve_oil}} o {{qidi}} lo cambia."
   }
 }

@@ -447,6 +447,7 @@ async function gcode(script) {
 const gcodeHooks = []
 const httpRoutes = []
 const statusHooks = []
+const voStatusHooks = []
 const extraCommands = {}
 const extraSettings = {}
 const wsRoutes = new Map()
@@ -490,6 +491,10 @@ const fake = {
   websocket: (path, onConnection) => wsRoutes.set(path, { server: new WebSocketServer({ noServer: true }), onConnection }),
   /** (status, scenarioName) => void: adds Klipper objects to the status for every scenario. */
   status: (fn) => statusHooks.push(fn),
+  /** (body) => void: adds to the Valve Oil status service's GET api/status. */
+  voStatus: (fn) => voStatusHooks.push(fn),
+  /** Stops Klipper and has it ready again after `seconds`, as a service restart does. */
+  restartKlipper: (seconds) => klipperRestart(seconds),
   /** G-code commands with their help text, for gcode.commands and printer.gcode.help. */
   commands: (map) => Object.assign(extraCommands, map),
   /** configfile.settings sections. */
@@ -953,6 +958,12 @@ function voWindowBlocker() {
 }
 
 function voStatus() {
+  const body = voStatusBody()
+  for (const h of voStatusHooks) h(body)
+  return body
+}
+
+function voStatusBody() {
   const live = []
   if (voPrinterBusy()) live.push('printing')
   else if (state.status.extruder?.target > 0 || state.status.heater_bed?.target > 0 || Date.now() < vo.installerBusyUntil) live.push('heaters_on')

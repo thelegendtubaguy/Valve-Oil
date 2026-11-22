@@ -81,6 +81,36 @@ class StatusServiceTests(unittest.TestCase):
             return cls.processes[-1]
 
         server.start_update_now = start
+        # Valve Oil's Klipper: the launcher's check, the Klipper Moonraker knows of, and the restart it's asked for.
+        server.KLIPPER_CHOICE_FILE = cls.paths.printer_data_root / ".vo_klipper.json"
+        server.KLIPPER_STATUS_FILE = cls.paths.printer_data_root / ".vo_klipper_status.json"
+        server.KLIPPER_READY_FILE = cls.paths.printer_data_root / ".vo_klipper_ready.json"
+        server.KLIPPER_LAUNCHER = root / "vo_klipper_launch.py"
+        server.KLIPPER_TREE = Path("/home/qidi/vo-klipper")
+        server.KLIPPER_RESTART_DELAY = 0.0
+        cls.klipper_check: dict | None = None
+        cls.klipper_checks = 0
+
+        def check():
+            cls.klipper_checks += 1
+            return cls.klipper_check
+
+        server.run_klipper_check = check
+        cls.process = {"moonraker": True, "state": "ready", "path": "/home/qidi/klipper"}
+        server.klipper_process = lambda: dict(cls.process)
+        cls.restarts = threading.Semaphore(0)
+        cls.restart_fails = False
+
+        cls.restarted = threading.Event()
+
+        def restart():
+            # Until Klipper has restarted, the Klipper Moonraker reports is the one being replaced.
+            cls.restarts.release()
+            cls.restarted.wait(5)
+            if cls.restart_fails:
+                raise OSError("Moonraker went away")
+
+        server.restart_klipper = restart
         server.MACRO_GLOBALS.write_text('[gcode_macro _vo_globals]\nvariable_package_version: "26.11.11.3"\n')
         server.FIRMWARE_MANIFEST.write_text(json.dumps({"SOC": {"version": "01.01.06.02"}}))
         server.Handler.jobs = server.Jobs()
@@ -410,6 +440,115 @@ class StatusServiceTests(unittest.TestCase):
             self.server.SUPPORT_LOG_BYTES = 16 * 1024 * 1024
             metadata.unlink(missing_ok=True)
             shutil.rmtree(logs, ignore_errors=True)
+
+
+    def test_klipper_switch(self) -> None:
+        """Valve Oil's Klipper is off until chosen; a switch writes only the choice, drops the launcher's stale records,
+        and restarts Klipper, but never during a print or an installer run, and never to a Valve Oil Klipper that isn't
+        there. QIDI's Klipper can always be chosen back while no print runs, Klipper ready or not."""
+        server, data = self.server, self.paths.printer_data_root
+        choice, launch, ready = server.KLIPPER_CHOICE_FILE, server.KLIPPER_STATUS_FILE, server.KLIPPER_READY_FILE
+
+        def klipper() -> dict:
+            return self.request("/api/status", method="GET")[1]["klipper"]
+
+        def switch(body: dict) -> tuple[int, dict]:
+            return self.request("/api/klipper", headers=self.GOOD, body=json.dumps(body).encode())
+
+        def codes(answer: tuple[int, dict]) -> tuple[int, list[str]]:
+            return answer[0], [item["code"] for item in answer[1].get("blocked_by", [])]
+
+        try:
+            # Not installed: QIDI's runs, and Valve Oil's can't be chosen.
+            state = klipper()
+            self.assertEqual({key: state[key] for key in ("available", "unavailable_reason", "selected", "running",
+                                                          "fallback_reason")},
+                             {"available": False, "unavailable_reason": "not installed", "selected": "qidi",
+                              "running": "qidi", "fallback_reason": None})
+            self.assertEqual((state["switch"]["to"], state["switch"]["allowed"]), ("valve_oil", False))
+            self.assertEqual(codes(switch({"use": "valve_oil"})), (409, ["valve_oil_unavailable"]))
+            self.assertEqual(self.klipper_checks, 0)
+            for body in ({"use": "VALVE_OIL"}, {"use": "qidi", "now": True}, {"use": "qidi", "source": "web"}, {}):
+                with self.subTest(body=body):
+                    self.assertEqual(switch(body)[0], 400)
+            self.assertEqual(self.request("/api/klipper", method="GET")[0], 405)
+            self.assertFalse(choice.exists())
+
+            # Installed. A print, a kept firmware update, or a board's rescue waiting refuse the switch.
+            server.KLIPPER_LAUNCHER.write_text("")
+            type(self).klipper_check = {"available": True, "unavailable_reason": None, "selected": "qidi",
+                                        "would_run": "qidi", "reason": None, "version": "v0.14.0-vo1"}
+            state = klipper()
+            self.assertEqual((state["available"], state["version"], state["switch"]["allowed"]), (True, "v0.14.0-vo1", True))
+            type(self).live = ("printing",)
+            self.assertEqual(codes(switch({"use": "valve_oil"})), (409, ["printing"]))
+            type(self).live = ()
+            server.FIRMWARE_UPDATE_RECORD.write_text('{"schema": 1, "id": "kept", "state": "failed"}')
+            rescue = data / ".tltg_mainboard_firmware_pending.json"
+            rescue.write_text("")
+            self.assertEqual(codes(switch({"use": "valve_oil"})), (409, ["firmware_update_pending", "recovery_required"]))
+            server.FIRMWARE_UPDATE_RECORD.unlink()
+            rescue.unlink()
+            self.assertFalse(choice.exists())
+            self.assertFalse(self.restarts.acquire(timeout=0.05))
+
+            # Chosen: the choice is written, the launcher's records of the last start go, and Klipper restarts.
+            launch.write_text(json.dumps({"selected": "qidi", "running": "qidi", "reason": None, "launch_id": "a"}))
+            ready.write_text('{"launch_id": "a"}')
+            status, body = switch({"use": "valve_oil"})
+            self.assertEqual((status, body["klipper"]["selected"], body["klipper"]["running"]), (202, "valve_oil", None))
+            self.assertTrue(self.restarts.acquire(timeout=5))
+            self.assertIsNone(klipper()["running"])
+            self.restarted.set()
+            for _ in range(100):
+                if klipper()["running"]:
+                    break
+            self.assertEqual(klipper()["running"], "qidi")
+            self.restarted.clear()
+            saved = json.loads(choice.read_text())
+            self.assertEqual((saved["use"], saved["source"]), ("valve_oil", "ui"))
+            self.assertFalse(launch.exists() or ready.exists())
+            self.assertEqual([path.name for path in data.glob(".vo_klipper.json.*")], [])
+
+            # It fell back: QIDI's runs, and the launcher's record says why.
+            launch.write_text(json.dumps({"selected": "valve_oil", "running": "qidi", "launch_id": "b", "attempts": 2,
+                                          "reason": "Valve Oil's Klipper didn't become ready"}))
+            state = klipper()
+            self.assertEqual((state["running"], state["fallback_reason"], state["switch"]["to"]),
+                             ("qidi", "Valve Oil's Klipper didn't become ready", "qidi"))
+            self.assertIn("Klipper: QIDI's running, Valve Oil's selected; Valve Oil's Klipper v0.14.0-vo1",
+                          server.printer_details(self.request("/api/status", method="GET")[1]))
+            self.process["path"] = "/home/qidi/vo-klipper"
+            self.assertEqual((klipper()["running"], klipper()["fallback_reason"]), ("valve_oil", None))
+
+            # Back to QIDI's from the console, with Klipper halted on an error and Valve Oil's gone, and an update
+            # waiting: only a print or a running installer would stop it.
+            type(self).live = None
+            self.process.update(state="error", path=None)
+            server.KLIPPER_LAUNCHER.unlink()
+            server.FIRMWARE_UPDATE_RECORD.write_text('{"schema": 1, "id": "kept", "state": "failed"}')
+            type(self).restart_fails = True
+            status, body = switch({"use": "qidi", "source": "console"})
+            self.assertEqual((status, body["klipper"]["selected"]), (202, "qidi"))
+            self.assertTrue(self.restarts.acquire(timeout=5))
+            self.restarted.set()
+            self.assertEqual(json.loads(choice.read_text())["source"], "console")
+            for _ in range(100):
+                if klipper()["restart_error"]:
+                    break
+            self.assertIn("restart Klipper", klipper()["restart_error"])
+            # Moonraker doesn't answer: whether a print runs isn't known, so nothing switches.
+            self.process.update(moonraker=False, state=None)
+            self.assertEqual(codes(switch({"use": "qidi"})), (409, ["printer_state_unknown"]))
+        finally:
+            self.restarted.set()
+            type(self).live = ()
+            type(self).restart_fails = False
+            type(self).klipper_check = None
+            self.process.update(moonraker=True, state="ready", path="/home/qidi/klipper")
+            server._klipper_restart["error"] = None
+            for path in (choice, launch, ready, server.KLIPPER_LAUNCHER, server.FIRMWARE_UPDATE_RECORD):
+                path.unlink(missing_ok=True)
 
 
 class UpdateNowRunTests(unittest.TestCase):

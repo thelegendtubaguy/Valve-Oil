@@ -7,6 +7,7 @@
 import { createStore, useStore } from '../lib/store'
 import { client, printer } from './printer'
 import {
+  parseVoKlipperAnswer,
   parseVoStatus,
   parseVoStatusJob,
   voStatusApiBase,
@@ -18,6 +19,7 @@ import {
   voShownUpdate,
   voSupportBundle,
   VO_STATUS_RECONNECT_PATIENCE_MS,
+  type VoKlipperTree,
   type VoStatus,
   type VoStatusBlocker,
   type VoStatusView,
@@ -49,6 +51,11 @@ export type ValveOilState = {
   dismissed: string[]
   supportPending: boolean
   supportError: string
+  /** The Klipper a switch is being asked for. */
+  klipperRequest: VoKlipperTree | null
+  klipperError: string
+  /** Why the printer refused the switch, when it said. */
+  klipperBlockedBy: VoStatusBlocker[]
 }
 
 // The same keys as the Fluidd fork's section: both are served from the printer's one origin, so a result closed in
@@ -103,6 +110,9 @@ export const valveOil = createStore<ValveOilState>({
   dismissed: loadDismissed(),
   supportPending: false,
   supportError: '',
+  klipperRequest: null,
+  klipperError: '',
+  klipperBlockedBy: [],
 })
 
 const patch = (changes: Partial<ValveOilState>) => valveOil.set((s) => ({ ...s, ...changes }))
@@ -314,6 +324,32 @@ export async function reportProblem() {
     patch({ supportPending: false })
   }
 }
+
+/**
+ * Chooses which Klipper runs. The printer saves the choice and restarts Klipper a moment after answering, and reports
+ * the running Klipper as unknown until it has.
+ */
+export async function switchKlipper(use: VoKlipperTree) {
+  if (klipperSwitchDisabled(valveOil.get())) return
+  patch({ klipperRequest: use, klipperError: '', klipperBlockedBy: [] })
+  try {
+    const klipper = parseVoKlipperAnswer(await request('/klipper', 'POST', undefined, { use }))
+    const status = valveOil.get().status
+    if (klipper && status) patch({ status: { ...status, klipper } })
+  } catch (e) {
+    patch({
+      klipperError: e instanceof Error ? e.message : String(e),
+      klipperBlockedBy: e instanceof VoStatusRequestError && e.status === 409 ? e.blockedBy : [],
+    })
+    poll()
+  } finally {
+    patch({ klipperRequest: null })
+  }
+}
+
+export const clearKlipperError = () => patch({ klipperError: '', klipperBlockedBy: [] })
+
+export const klipperSwitchDisabled = (s: ValveOilState) => s.status?.klipper == null || s.klipperRequest != null || reconnecting(s)
 
 export const clearSupportError = () => patch({ supportError: '' })
 export const clearAutoUpdateError = () => patch({ autoUpdateError: '' })

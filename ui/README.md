@@ -60,6 +60,7 @@ The fake is split by feature: `dev/fake-moonraker.mjs` is the core (printer stat
 | `--gcode-kbps <n>` | Slows G-code downloads so the preview's progress shows |
 | `--addons <state>`, `VO_ADDONS NAME=<state>` | The add-ons service: `none`, `installed`, `linking`, `busy`, `foreign`, `failed`, `absent` |
 | `--lan-mode 0\|1\|none` | QIDI's LAN only mode off, on, or missing |
+| `--klipper <state>`, `VO_KLIPPER_STATE NAME=<state>` | Which Klipper runs, for **Settings → Klipper**: `off` (QIDI's, the default), `on` (Valve Oil's), `fallback` (Valve Oil's chosen, QIDI's running with the printer warning; trying again fails again), `not-installed`, `absent` (a status service without it). Switching, from the screen or with `VO_KLIPPER USE=VALVE_OIL\|QIDI`, restarts Klipper for 4 seconds and is refused during a print |
 | `--spoolman` | Loads Moonraker's `spoolman` component with made-up spools |
 | `VO_KLIPPY_SHUTDOWN [SECONDS=30]` | Shuts Klipper down for a while, for the stop screen |
 | `--install ssh\|usb\|automatic`, `VO_INSTALL ORIGIN=<origin>` | Runs an install's steps, as the installer publishes them, for the Updates screen's steps, the banner, and the installer logs |

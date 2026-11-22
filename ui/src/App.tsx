@@ -392,6 +392,15 @@ function Warnings() {
                 </a>
               </>
             )}
+            {/* QIDI's Klipper runs although Valve Oil's is chosen: the Klipper settings try again or go back. */}
+            {w.id === 'vo_klipper_fallback' && route !== 'settings' && (
+              <>
+                {' '}
+                <a href={href('settings', 'klipper')} className="font-semibold whitespace-nowrap text-accent-ink underline">
+                  {t('app.details')}
+                </a>
+              </>
+            )}
           </div>
         </div>
       ))}

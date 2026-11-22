@@ -229,6 +229,7 @@ install:
       - "bed_soak.cfg"
       - "update_lights.cfg"
       - "renamed_commands.cfg"
+      - "klipper.cfg"
 
   ensure_lines:
     - id: include_optimized_macros
@@ -336,6 +337,9 @@ install:
     - id: prime_handoff
       source: "klipper/extras/prime_handoff.py"
       destination: "klippy/extras/vo_prime_handoff.py"
+    - id: klipper_switch
+      source: "klipper/extras/klipper_switch.py"
+      destination: "klippy/extras/vo_klipper.py"
 
   source_patches:
     - id: qidi_homing

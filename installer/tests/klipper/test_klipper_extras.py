@@ -3,12 +3,16 @@ printer, the warnings it raises, and the guards on the exhaust fan, speed limits
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 import types
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
 from installer.tests.helpers import temp_path
-from installer.tests.klipper_fakes import load_extra
+from installer.tests.klipper_fakes import CommandError, Reactor, load_extra
 
 macro_status = load_extra("macro_status")
 
@@ -116,11 +120,12 @@ class PrinterWarningsTest(unittest.TestCase):
     input shaper or no saved calibration, and none once both have one, and a
     warning for each Box the installer left a firmware report for."""
 
-    def warnings(self, shaper, unshaped_accel=10000, log_dir=None, saved=None):
+    def warnings(self, shaper, unshaped_accel=10000, log_dir=None, saved=None, extra=None):
         objects = {
             "tltg_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper,
                                          saved_shaper_freq=lambda axis: (saved or {}).get(axis, 0.)),
             "gcode_macro _vo_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
+            **(extra or {}),
         }
         handlers = {}
 
@@ -273,6 +278,16 @@ class PrinterWarningsTest(unittest.TestCase):
         self.assertEqual(pending(), [])
         status_file.remove_status(paths)
         self.assertEqual(pending(), [])
+
+    def test_qidis_klipper_running_when_valve_oils_is_chosen_says_why(self) -> None:
+        calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
+        for reason in (None, ""):
+            self.assertEqual(self.warnings(calibrated, extra={"vo_klipper": _Status(fallback=lambda e: reason)}), [])
+        fell_back = _Status(fallback=lambda e: "Valve Oil's Klipper didn't become ready.")
+        warning, = self.warnings(calibrated, extra={"vo_klipper": fell_back})
+        self.assertEqual((warning["id"], warning["level"]), ("vo_klipper_fallback", "warning"))
+        self.assertTrue(warning["message"].startswith("Valve Oil's Klipper didn't become ready. Try"))
+        self.assertIn("VO_KLIPPER USE=QIDI", warning["message"])
 
     def test_input_shaper_states(self) -> None:
         self.assertEqual(self.warnings({"loaded": True, "unshaped_axes": "", "saved": True}), [])
@@ -762,3 +777,172 @@ class PrimeHandoffTest(unittest.TestCase):
         run("G1 E10 F300")
         self.assertEqual(ran, [-0.8, "G1 E10 F300"])
         self.assertIs(handlers["G1"], klipper["G1"])
+
+
+klipper_switch = load_extra("klipper_switch", "vo_klipper")
+
+
+class _SwitchService:
+    """Valve Oil's status service's POST api/klipper, answering when the test lets it."""
+
+    def __init__(self, status=202, body=None):
+        self.requests = []
+        self.release = threading.Event()
+        service = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                service.requests.append((self.path, self.headers.get("X-Valve-Oil"),
+                                         json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                service.release.wait(5)
+                data = json.dumps(body or {}).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/api/klipper"
+
+    def close(self):
+        self.release.set()
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class _Gcmd:
+    error = CommandError
+
+    def __init__(self, **params):
+        self.params = params
+        self.messages = []
+
+    def get(self, name, default=None):
+        return self.params.get(name, default)
+
+    def respond_info(self, message):
+        self.messages.append(message)
+
+
+class KlipperSwitchTest(unittest.TestCase):
+    """VO_KLIPPER never switches during a print, hands the switch to the status service without holding up Klipper,
+    and says what came of it; a Klipper the launcher started tells it once it is ready."""
+
+    def start(self, *, tree="qidi", launch_id=None, state="standby"):
+        data = temp_path("vo-klipper-")
+        (data / "config").mkdir()
+        vo_tree = data / "vo-klipper"
+        (vo_tree / "klippy").mkdir(parents=True)
+        (data / "vo_klipper_launch.py").write_text("")
+        patches = [
+            mock.patch.object(klipper_switch, "TREE_ROOT", str(vo_tree)),
+            mock.patch.object(klipper_switch, "LAUNCHER", str(data / "vo_klipper_launch.py")),
+            mock.patch.object(klipper_switch, "klipper_root",
+                              lambda: str(vo_tree) if tree == "valve_oil" else str(data / "klipper")),
+            mock.patch.dict(os.environ, {"VO_KLIPPER_LAUNCH_ID": launch_id} if launch_id else {}, clear=False),
+        ]
+        if not launch_id:
+            os.environ.pop("VO_KLIPPER_LAUNCH_ID", None)
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        sim = types.SimpleNamespace(handlers={}, commands={}, info=[], raw=[], reactor=Reactor(),
+                                    print_stats=_Status({"state": state}), data=data)
+        gcode = types.SimpleNamespace(register_command=lambda name, handler, desc=None: sim.commands.__setitem__(name, handler),
+                                      respond_info=sim.info.append, respond_raw=sim.raw.append)
+        objects = {"gcode": gcode, "print_stats": sim.print_stats}
+        printer = types.SimpleNamespace(
+            get_reactor=lambda: sim.reactor,
+            get_start_args=lambda: {"config_file": str(data / "config/printer.cfg"), "software_version": "v0.14.0-vo1"},
+            register_event_handler=sim.handlers.__setitem__,
+            lookup_object=lambda name, default=None: objects.get(name, default))
+        sim.switch = klipper_switch.load_config(types.SimpleNamespace(get_printer=lambda: printer))
+        sim.handlers["klippy:connect"]()
+        sim.handlers["klippy:ready"]()
+        return sim
+
+    def command(self, sim, **params):
+        gcmd = _Gcmd(**params)
+        sim.commands["VO_KLIPPER"](gcmd)
+        return gcmd.messages
+
+    def test_refused_during_a_print(self) -> None:
+        service = _SwitchService()
+        self.addCleanup(service.close)
+        with mock.patch.object(klipper_switch, "SWITCH_URL", service.url):
+            for state in ("printing", "paused"):
+                sim = self.start(state=state)
+                with self.assertRaises(CommandError):
+                    self.command(sim, USE="VALVE_OIL")
+            with self.assertRaises(CommandError):
+                self.command(self.start(), USE="FAST")
+        self.assertEqual(service.requests, [])
+
+    def test_the_switch_is_handed_off_and_answered_through_the_reactor(self) -> None:
+        service = _SwitchService()
+        self.addCleanup(service.close)
+        sim = self.start()
+        with mock.patch.object(klipper_switch, "SWITCH_URL", service.url):
+            # The command returns while the service is still deciding; a second one waits for the first.
+            self.assertEqual(self.command(sim, USE="valve_oil"), ["Switching to Valve Oil's Klipper..."])
+            for _ in range(500):
+                if service.requests:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(service.requests, [("/api/klipper", "status", {"use": "valve_oil", "source": "console"})])
+            with self.assertRaises(CommandError):
+                self.command(sim, USE="QIDI")
+            service.release.set()
+            for _ in range(500):
+                if sim.reactor.callbacks:
+                    break
+                time.sleep(0.01)
+            # Only the reactor says so, never the request's thread.
+            self.assertEqual((sim.info, sim.raw), ([], []))
+            sim.reactor.callbacks.pop()(sim.reactor.now)
+            self.assertEqual(sim.info, ["Valve Oil's Klipper chosen. Klipper restarts now."])
+
+        refusing = _SwitchService(409, {"error": "Klipper can't be switched now: a Valve Oil update is running."})
+        refusing.release.set()
+        self.addCleanup(refusing.close)
+        with mock.patch.object(klipper_switch, "SWITCH_URL", refusing.url), self.assertLogs(level="WARNING"):
+            self.command(sim, USE="QIDI")
+            for _ in range(500):
+                if sim.reactor.callbacks:
+                    break
+                time.sleep(0.01)
+        sim.reactor.callbacks.pop()(sim.reactor.now)
+        self.assertEqual(sim.raw, ["!! Klipper wasn't switched: Klipper can't be switched now: a Valve Oil update is running."])
+
+    def test_ready_acknowledgement_only_for_a_launcher_start(self) -> None:
+        sim = self.start(tree="valve_oil", launch_id="launch-7")
+        self.assertEqual(json.loads((sim.data / klipper_switch.READY_FILE).read_text()), {"launch_id": "launch-7"})
+        self.assertEqual([path.name for path in sim.data.iterdir() if path.name.endswith(".tmp")], [])
+        sim = self.start(tree="qidi")
+        self.assertFalse((sim.data / klipper_switch.READY_FILE).exists())
+
+    def test_status_says_which_klipper_runs_and_why(self) -> None:
+        sim = self.start(launch_id="launch-8")
+        self.assertEqual(sim.switch.get_status(), {"selected": "qidi", "running": "qidi", "reason": None,
+                                                   "available": True, "version": None})
+        self.assertIn("VO_KLIPPER USE=VALVE_OIL", self.command(sim)[0])
+        (sim.data / klipper_switch.CHOICE_FILE).write_text('{"use": "valve_oil"}')
+        launch = {"selected": "valve_oil", "running": "qidi", "launch_id": "launch-8", "version": "v0.14.0-vo1",
+                  "reason": "Valve Oil's Klipper didn't become ready"}
+        (sim.data / klipper_switch.STATUS_FILE).write_text(json.dumps(launch))
+        status = sim.switch.get_status()
+        self.assertEqual((status["reason"], status["version"]), ("Valve Oil's Klipper didn't become ready", "v0.14.0-vo1"))
+        self.assertEqual(sim.switch.fallback(), "Valve Oil's Klipper didn't become ready")
+        self.assertIn("running: Valve Oil's Klipper didn't become ready. Try again", self.command(sim)[0])
+        # Another start's record doesn't describe this one.
+        (sim.data / klipper_switch.STATUS_FILE).write_text(json.dumps({**launch, "launch_id": "launch-1"}))
+        self.assertIn("hasn't restarted", sim.switch.get_status()["reason"])
+        sim = self.start(tree="valve_oil", launch_id="launch-9")
+        (sim.data / klipper_switch.CHOICE_FILE).write_text('{"use": "valve_oil"}')
+        self.assertEqual(sim.switch.get_status()["version"], "v0.14.0-vo1")
+        self.assertIsNone(sim.switch.fallback())

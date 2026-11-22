@@ -23,6 +23,9 @@
 # changes (or every PENDING_REREAD seconds, in case two quick writes looked
 # alike), so its warnings come and go without a Klipper restart.
 #
+# Also says when Valve Oil's Klipper is chosen but QIDI's runs, and why, from
+# vo_klipper (installer/klipper/extras/klipper_switch.py).
+#
 # Also says when a USB Box connected or disconnected while the printer was
 # busy: Valve Oil's Box monitor (installer/system/vo_box_monitor.py) then
 # leaves box.cfg and Klipper as they are until the printer is idle, and says so
@@ -238,6 +241,20 @@ class PrinterWarnings:
             "message": "Its bootloader or firmware isn't supported yet, so it"
                        " keeps the firmware it has.",
         }, name, report) for number, name, report in self.box_reports]
+
+    def _klipper(self, eventtime):
+        switch = self.printer.lookup_object("vo_klipper", None)
+        reason = switch.fallback(eventtime) if switch is not None else None
+        if not reason:
+            return []
+        return [{
+            "id": "vo_klipper_fallback",
+            "level": "warning",
+            "title": "QIDI's Klipper is running instead of Valve Oil's.",
+            "message": reason.rstrip(". ") + ". Try Valve Oil's Klipper again,"
+                       " or go back to QIDI's, in Valve Oil's settings or with"
+                       " VO_KLIPPER USE=VALVE_OIL or VO_KLIPPER USE=QIDI.",
+        }]
 
     def _refresh_pending(self, eventtime):
         if self.data_dir is None:
@@ -470,7 +487,8 @@ class PrinterWarnings:
     def get_status(self, eventtime=None):
         try:
             warnings = (self._step_loss() + self._input_shaper()
-                        + self._box_firmware() + self._pending_work(eventtime))
+                        + self._box_firmware() + self._klipper(eventtime)
+                        + self._pending_work(eventtime))
         except Exception:
             if not self.failed:
                 logging.exception("tltg_printer_warnings: check failed")

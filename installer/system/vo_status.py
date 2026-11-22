@@ -15,6 +15,9 @@ API, under nginx's /tltg-status/ prefix (schema 1; see STATUS_SCHEMA):
                         is false
   GET  api/support-bundle  a zip of what a support issue needs (see support_bundle), named in Content-Disposition;
                         409 while another is being made
+  POST api/klipper      {"use": "valve_oil"|"qidi", "source": "ui"|"console" (optional, "ui")}; records which Klipper
+                        the launcher starts and restarts Klipper through Moonraker a moment after answering 202 with
+                        {"klipper": ...}, or answers 409 with {"error", "blocked_by"} when it can't switch now
 POSTs need the X-Valve-Oil: status header and a JSON body, and a same-origin Origin when a browser sends one.
 
 The status: {schema, updated_at, release: {installed, channel, commit}, printer: {id, name, firmware, target_firmware},
@@ -23,7 +26,8 @@ reinstall, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware,
 detail, checked_at, issue_url, waiting_for_firmware_update}], run: {id, kind, state, step, step_label, started_at,
 finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, state, started_at, finished_at, log,
 message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]},
-support: {issue_url}}.
+support: {issue_url}, klipper: {available, unavailable_reason, selected, running, fallback_reason, version, restart_error,
+switch: {to, allowed, blocked_by: [{code, message}]}}}.
 - release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
   release (its RELEASE_METADATA.yaml); null when the bundle in ~/valve-oil is for another version or doesn't say. A
   dev build's update check fails until a release publishes the archive it looks for, so the UIs don't report that.
@@ -52,6 +56,16 @@ support: {issue_url}}.
   form.
 - support.issue_url: this project's bug report form, with the printer, its details (printer_details), and how Valve
   Oil was installed filled in, for the support bundle to be attached to.
+- klipper: which Klipper runs, QIDI's (~/klipper) or Valve Oil's (~/vo-klipper, opt-in). selected is the operator's
+  choice (KLIPPER_CHOICE_FILE; "qidi" when there is none); running is the tree of the Klipper Moonraker is connected
+  to, or the launcher's record of its last start, or null while Klipper starts. available and unavailable_reason come
+  from the launcher's --check (cached); version is Valve Oil's Klipper's. fallback_reason says why QIDI's runs although
+  Valve Oil's is selected. running is null from a switch until Moonraker has restarted Klipper. restart_error: the
+  last switch's Klipper restart failed, until the next switch. switch:
+  whether POST api/klipper would switch to `to`, the one not selected, and if not every reason: printing,
+  printer_state_unknown (Moonraker didn't answer), run_in_progress, installer_busy, and, only towards Valve Oil's,
+  firmware_update_pending, recovery_required, and valve_oil_unavailable. Choosing QIDI's needs only no print and no
+  installer run, so it works while Klipper isn't ready.
 """
 
 from __future__ import annotations
@@ -137,6 +151,30 @@ SUPPORT_ISSUE_TEMPLATE = "bug-report.yml"
 SUPPORT_ISSUE_PRINTERS = ("QIDI Max 4", "QIDI Plus 5", "QIDI Smart 5")
 SUPPORT_ISSUE_LOGS = "Drag in the valve-oil-support zip file that Valve Oil's settings downloaded."
 INSTALL_SOURCES = {"release": "Release install command from the README", "dev": "Dev prerelease"}
+# Valve Oil's Klipper. The launcher in front of klipper.service starts the Klipper the choice file names, records each
+# start in the status file, and waits for the ready acknowledgement Valve Oil's Klipper extra (vo_klipper) writes.
+KLIPPER_CHOICE_FILE = PRINTER_DATA / ".vo_klipper.json"
+KLIPPER_STATUS_FILE = PRINTER_DATA / ".vo_klipper_status.json"
+KLIPPER_READY_FILE = PRINTER_DATA / ".vo_klipper_ready.json"
+KLIPPER_LAUNCHER = Path("/usr/local/lib/vo_klipper_launch.py")
+KLIPPER_PYTHON = HOME / "klippy-env/bin/python"
+# installer/runtime/klipper_tree.py TREE_ROOT.
+KLIPPER_TREE = HOME / "vo-klipper"
+KLIPPER_CHOICES = ("valve_oil", "qidi")
+KLIPPER_SOURCES = ("ui", "console")
+KLIPPER_CHECK_CACHE_SECONDS = 60.0
+KLIPPER_CHECK_TIMEOUT = 15.0
+# The answer to POST api/klipper goes out before Klipper restarts, so a console command that asked hears it.
+KLIPPER_RESTART_DELAY = 1.0
+KLIPPER_NOT_INSTALLED = "not installed"
+KLIPPER_SWITCH_BLOCKERS = {
+    "printing": "a print is running or paused",
+    "printer_state_unknown": "Moonraker didn't answer, so whether a print is running isn't known",
+    "run_in_progress": "a Valve Oil update is running",
+    "installer_busy": "another installer run is in progress",
+    "firmware_update_pending": "a QIDI firmware update hasn't finished; finish it with Update now or ./install.sh first",
+    "valve_oil_unavailable": "Valve Oil's Klipper isn't available",
+}
 # The support bundle: the newest part of each log, as a long-running printer's klippy.log reaches tens of megabytes.
 SUPPORT_LOG_BYTES = 16 * 1024 * 1024
 LOGS = PRINTER_DATA / "logs"
@@ -424,9 +462,219 @@ def status_body(jobs: Jobs) -> dict:
         "busy": busy,
         "printer_busy": live is not None and "printing" in live,
         "update_now": _update_now(busy, live),
+        "klipper": klipper_body(live, busy),
     }
     body["support"] = {"issue_url": support_issue_url(body)}
     return body
+
+
+# ---- which Klipper runs ------------------------------------------------------------------------------------------------
+
+
+_klipper_check = {"key": None, "until": 0.0, "value": None}
+_klipper_check_lock = threading.Lock()
+# The restart a switch asked for: running is reported as unknown until Moonraker has restarted Klipper, as the Klipper
+# it reports before then is the one being replaced.
+_klipper_restart = {"error": None, "restarting": False}
+
+
+def klipper_choice() -> str:
+    """The Klipper the operator chose; QIDI's when nothing readable says otherwise."""
+    data = _read_json(KLIPPER_CHOICE_FILE, limit=MAX_BODY)
+    return "valve_oil" if isinstance(data, dict) and data.get("use") == "valve_oil" else "qidi"
+
+
+def save_klipper_choice(use: str, source: str) -> None:
+    """Write the choice file whole, flushed, so a power cut leaves the old choice or the new one."""
+    tmp = KLIPPER_CHOICE_FILE.with_name(f".{KLIPPER_CHOICE_FILE.name}.{os.getpid()}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"use": use, "changed_at": _now(), "source": source}, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, KLIPPER_CHOICE_FILE)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def run_klipper_check() -> dict | None:
+    """The launcher's --check: what it would start, without starting anything; None when it doesn't answer."""
+    try:
+        result = subprocess.run([str(KLIPPER_PYTHON), "-I", "-S", str(KLIPPER_LAUNCHER), "--check"],
+                                capture_output=True, text=True, timeout=KLIPPER_CHECK_TIMEOUT, stdin=subprocess.DEVNULL)
+        data = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return data if result.returncode == 0 and isinstance(data, dict) else None
+
+
+def klipper_check() -> dict:
+    """{available, unavailable_reason, reason, version} from the launcher's check, kept until a file it reads changes
+    or KLIPPER_CHECK_CACHE_SECONDS pass, as each check starts a Python."""
+    if not KLIPPER_LAUNCHER.is_file():
+        return {"available": False, "unavailable_reason": KLIPPER_NOT_INSTALLED, "reason": None, "version": None}
+    key = tuple(_stat_key(path) for path in (KLIPPER_LAUNCHER, KLIPPER_CHOICE_FILE, KLIPPER_STATUS_FILE, KLIPPER_TREE))
+    with _klipper_check_lock:
+        now = time.monotonic()
+        if _klipper_check["key"] == key and now < _klipper_check["until"]:
+            return _klipper_check["value"]
+        data = run_klipper_check()
+        if data is None:
+            value = {"available": False, "unavailable_reason": "Valve Oil's Klipper launcher didn't answer its check",
+                     "reason": None, "version": None}
+        else:
+            available = data.get("available") is True
+            value = {
+                "available": available,
+                "unavailable_reason": None if available else (_text(data.get("unavailable_reason")) or "unknown"),
+                "reason": _text(data.get("reason")),
+                "version": _text(data.get("version")),
+            }
+        _klipper_check.update(key=key, until=now + KLIPPER_CHECK_CACHE_SECONDS, value=value)
+        return value
+
+
+def _stat_key(path: Path):
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return info.st_mtime_ns, info.st_size, info.st_ino
+
+
+def klipper_process() -> dict:
+    """The Klipper Moonraker knows of: {moonraker: answered, state: Klipper's state, path: its klippy folder's parent}."""
+    try:
+        info = _moonraker_get("/printer/info")
+        return {"moonraker": True, "state": _text(info.get("state")), "path": _text(info.get("klipper_path"))}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        # Moonraker answers this while Klipper isn't connected to it.
+        return {"moonraker": True, "state": _text(_moonraker_get("/server/info").get("klippy_state")), "path": None}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"moonraker": False, "state": None, "path": None}
+
+
+def _moonraker_get(path: str) -> dict:
+    with urllib.request.urlopen(f"{MOONRAKER}{path}", timeout=2.0) as response:
+        result = json.load(response)["result"]
+    if not isinstance(result, dict):
+        raise ValueError("result")
+    return result
+
+
+def _tree_of(path: str | None) -> str | None:
+    if path is None:
+        return None
+    root = str(KLIPPER_TREE)
+    return "valve_oil" if path == root or path.startswith(root + "/") else "qidi"
+
+
+def klipper_printing(live: tuple[str, ...] | None, process: dict) -> bool | None:
+    """Whether a print is running or paused; None when that isn't known. A Klipper that isn't ready isn't printing."""
+    if live is not None:
+        return "printing" in live
+    if process["moonraker"] and process["state"] != "ready":
+        return False
+    return None
+
+
+def klipper_blockers(use: str, printing: bool | None, busy: bool, check: dict) -> list[dict]:
+    """Every reason POST api/klipper wouldn't switch to `use` now. Going back to QIDI's Klipper needs only no print and
+    no installer run, as QIDI's is the way out when Valve Oil's doesn't start."""
+    codes = ["printer_state_unknown"] if printing is None else ["printing"] if printing else []
+    if busy:
+        codes.append("run_in_progress")
+    elif installer_lock_held():
+        codes.append("installer_busy")
+    blocked = [{"code": code, "message": KLIPPER_SWITCH_BLOCKERS[code]} for code in codes]
+    if use != "valve_oil":
+        return blocked
+    if FIRMWARE_UPDATE_RECORD.exists():
+        blocked.append({"code": "firmware_update_pending", "message": KLIPPER_SWITCH_BLOCKERS["firmware_update_pending"]})
+    recovery = [message for path, message in RECOVERY_FILES.items() if path.exists()]
+    if recovery:
+        blocked.append({"code": "recovery_required", "message": "; ".join(recovery)})
+    if not check["available"]:
+        reason = check["unavailable_reason"]
+        blocked.append({"code": "valve_oil_unavailable",
+                        "message": KLIPPER_SWITCH_BLOCKERS["valve_oil_unavailable"] + (f": {reason}" if reason else "")})
+    return blocked
+
+
+def klipper_body(live: tuple[str, ...] | None, busy: bool, process: dict | None = None) -> dict:
+    """The status's klipper block (see the module's docstring)."""
+    selected = klipper_choice()
+    check = klipper_check()
+    launch = _record(_read_json(KLIPPER_STATUS_FILE, limit=MAX_BODY * 4))
+    process = process or klipper_process()
+    # Moonraker's Klipper is the one running; the launcher's record stands in while Klipper isn't connected to it.
+    running = _tree_of(process["path"])
+    if running is None and launch.get("running") in KLIPPER_CHOICES:
+        running = launch["running"]
+    if _klipper_restart["restarting"]:
+        running = None
+    fallback = None
+    if selected == "valve_oil" and running == "qidi":
+        fallback = (_text(launch.get("reason")) if launch.get("running") == "qidi" else None) or check["reason"] \
+            or (None if check["available"] else check["unavailable_reason"])
+    to = "qidi" if selected == "valve_oil" else "valve_oil"
+    blocked = klipper_blockers(to, klipper_printing(live, process), busy, check)
+    return {
+        "available": check["available"],
+        "unavailable_reason": check["unavailable_reason"],
+        "selected": selected,
+        "running": running,
+        "fallback_reason": fallback,
+        "version": check["version"] or _text(launch.get("version")),
+        "restart_error": _klipper_restart["error"],
+        "switch": {"to": to, "allowed": not blocked, "blocked_by": blocked},
+    }
+
+
+def switch_klipper(use: str, source: str, jobs: Jobs) -> dict:
+    """Record `use` for the launcher and restart Klipper a moment later; Conflict when it can't switch now."""
+    data = _read_json(STATUS_FILE, limit=MAX_STATUS_BYTES)
+    run = _record(data.get("run")) if isinstance(data, dict) else {}
+    busy = jobs.busy() or _run_active(run)
+    process = klipper_process()
+    live = live_printer()
+    blocked = klipper_blockers(use, klipper_printing(live, process), busy, klipper_check())
+    if blocked:
+        raise Conflict("Klipper can't be switched now: " + "; ".join(item["message"] for item in blocked) + ".", blocked)
+    try:
+        save_klipper_choice(use, source)
+        # The launcher writes both again at the next start; a stale one would describe the Klipper before this switch.
+        KLIPPER_STATUS_FILE.unlink(missing_ok=True)
+        KLIPPER_READY_FILE.unlink(missing_ok=True)
+    except OSError as exc:
+        log(f"Klipper choice failed: {exc}")
+        raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "The Klipper choice could not be saved.") from exc
+    _klipper_restart.update(error=None, restarting=True)
+    log(f"Klipper: {use} chosen from the {source}; restarting Klipper")
+    threading.Thread(target=_restart_klipper_later, daemon=True).start()
+    return klipper_body(live, busy, process)
+
+
+def _restart_klipper_later() -> None:
+    time.sleep(KLIPPER_RESTART_DELAY)
+    try:
+        restart_klipper()
+    except (OSError, ValueError) as exc:
+        _klipper_restart["error"] = "Moonraker didn't restart Klipper; restart Klipper to finish switching"
+        log(f"Klipper restart failed: {exc}")
+    finally:
+        _klipper_restart["restarting"] = False
+
+
+def restart_klipper() -> None:
+    """Ask Moonraker to restart the Klipper service, as installer/runtime/process_restart.py does."""
+    request = urllib.request.Request(f"{MOONRAKER}/machine/services/restart", data=b'{"service": "klipper"}',
+                                     method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=30.0) as response:
+        response.read()
 
 
 # ---- support -----------------------------------------------------------------------------------------------------------
@@ -476,6 +724,16 @@ def printer_details(status: dict) -> str:
     kernel = os.uname().release
     lines.append("Kernel: " + (kernel if re.match(r"^[A-Za-z0-9._+-]{1,80}$", kernel) else "unrecognized"))
     lines.append("Auto-updates: " + ("on" if status["auto_update"]["enabled"] else "off"))
+    klipper = status.get("klipper") or {}
+    names = {"valve_oil": "Valve Oil's", "qidi": "QIDI's"}
+    line = (f"Klipper: {names.get(klipper.get('running'), 'unknown')} running,"
+            f" {names.get(klipper.get('selected'), 'unknown')} selected")
+    version = klipper.get("version")
+    if not klipper.get("available"):
+        line += "; Valve Oil's Klipper not available"
+    elif isinstance(version, str) and PLAIN.match(version):
+        line += f"; Valve Oil's Klipper {version}"
+    lines.append(line)
     try:
         lines.append("zram: " + ("on" if "zram" in Path("/proc/swaps").read_text(encoding="utf-8") else "off"))
     except OSError:
@@ -517,6 +775,8 @@ def support_files() -> list[tuple[str, Path]]:
         ("valve-oil/qidi-package.log", CACHE / "firmware-update/qidi-package.log"),
         ("valve-oil/firmware-update-result.json", FIRMWARE_UPDATE_RESULT),
         ("valve-oil/RELEASE_METADATA.yaml", RELEASE_METADATA),
+        ("valve-oil/klipper-choice.json", KLIPPER_CHOICE_FILE),
+        ("valve-oil/klipper-launch.json", KLIPPER_STATUS_FILE),
         ("firmware_manifest.json", FIRMWARE_MANIFEST),
     ]
     return [(name, path) for name, path in files if path.is_file() and not path.is_symlink()]
@@ -908,7 +1168,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, status_body(self.jobs))
         elif route == "support-bundle":
             self._send_support_bundle()
-        elif route in ("auto-update", "update-now"):
+        elif route in ("auto-update", "update-now", "klipper"):
             self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Use POST."}, allow="POST")
         else:
             self._send(HTTPStatus.NOT_FOUND, {"error": "Not found."})
@@ -929,6 +1189,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise Conflict("Update now can't start: " + "; ".join(item["message"] for item in blocked) + ".",
                                    blocked)
                 self._send(HTTPStatus.ACCEPTED, {"job": self.jobs.start(status)})
+            elif route == "klipper":
+                use, source = body.get("use"), body.get("source", "ui")
+                if not set(body) <= {"use", "source"} or use not in KLIPPER_CHOICES or source not in KLIPPER_SOURCES:
+                    raise RequestError(HTTPStatus.BAD_REQUEST,
+                                       'Expected {"use": "valve_oil"} or {"use": "qidi"}, with an optional "source" of '
+                                       '"ui" or "console".')
+                self._send(HTTPStatus.ACCEPTED, {"klipper": switch_klipper(use, source, self.jobs)})
             elif route in ("status", "support-bundle"):
                 raise RequestError(HTTPStatus.METHOD_NOT_ALLOWED, "Use GET.")
             else:
@@ -995,7 +1262,7 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self) -> str | None:
         # nginx strips its /tltg-status/ prefix; the API is exactly api/<name>.
         parts = self.path.split("?", 1)[0].split("/")
-        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle"):
+        if len(parts) == 3 and parts[0] == "" and parts[1] == "api" and parts[2] in ("status", "auto-update", "update-now", "support-bundle", "klipper"):
             return parts[2]
         return None
 
