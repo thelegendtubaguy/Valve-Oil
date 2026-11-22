@@ -141,6 +141,8 @@ Restore a specific backup:
 cd ~/valve-oil && ./restore.sh --backup /home/qidi/printer_data/<backup-name>.zip
 ```
 
+Restore refuses while a print is running or paused, or a heater is on. It stops Klipper, puts the backup's files back, and starts Klipper again, so Klipper loads the restored `saved_variables.cfg` instead of writing its own values back over it. Stopping Klipper needs `sudo`: restore uses QIDI's default password, `qiditech`, and asks for yours if it has been changed. If Klipper can't be stopped, nothing is restored.
+
 If restore completed and the recovery sentinel is still present, clear it with:
 
 ```bash

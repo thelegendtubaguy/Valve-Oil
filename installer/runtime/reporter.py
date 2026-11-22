@@ -152,6 +152,7 @@ class PlainReporter:
     def emit_restore_warning(self, *, config_path: str) -> None:
         self.line(f"Warning: restore will overwrite current config changes under {config_path}.")
         self.line("This helper restores the full archived config snapshot.")
+        self.line("Klipper is stopped while the backup is restored, then started again.")
         self.line("This helper does not clear the recovery sentinel.")
 
     def emit_restore_complete(self, *, verified_path: str) -> None:
@@ -539,6 +540,7 @@ class RichReporter:
                     (
                         f"Warning: restore will overwrite current config changes under {config_path}.",
                         "This helper restores the full archived config snapshot.",
+                        "Klipper is stopped while the backup is restored, then started again.",
                         "This helper does not clear the recovery sentinel.",
                     ),
                 ),

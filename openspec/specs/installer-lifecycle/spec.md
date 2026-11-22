@@ -108,6 +108,8 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** it validates printer idleness after confirmation and before replacing live runtime state, including for config-only archives
 - **AND** printing, paused, unknown, or unavailable printer state prevents live replacement
 - **AND** archived configuration and eligible external members are staged before replacing live runtime state
+- **AND** a running Klipper service is stopped before live runtime state is replaced and started again afterwards, also when the restore fails, so Klipper loads the restored saved variables instead of rewriting them from memory
+- **AND** a Klipper service that cannot be stopped prevents live replacement
 - **AND** partial failure restores the pre-restore state
 - **AND** every restored root is verified before success and recovery remains blocked until incomplete compensation is resolved
 

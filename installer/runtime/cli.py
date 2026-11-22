@@ -496,6 +496,7 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                     input_stream=input_stream,
                     backup_path=args.backup,
                     debug=reporter.debug,
+                    environ=env,
                 )
                 reporter.debug(event="cli.complete", mode=args.mode, return_code=rc)
                 return rc

@@ -58,7 +58,7 @@ from installer.runtime.models import (
     PatchLedgerEntry,
 )
 from installer.runtime.reporter import PlainReporter
-from installer.runtime.restore_helper import run_restore_helper
+from installer.runtime.restore_helper import RestoreHelperError, run_restore_helper
 from installer.runtime.runner import run_install
 from installer.runtime.state_file import load_installed_state, write_installed_state
 from installer.runtime.uninstall import run_uninstall
@@ -88,6 +88,26 @@ SOURCE_CASES = (
 # Restoring a source writes back the recorded preimage whatever the variant, so restore paths need one case per
 # payload family and firmware config group, not every admitted variant.
 RESTORE_CASES = (SOURCE_CASES[0], SOURCE_CASES[3])
+
+
+def _klipper_systemctl(saved_variables_path: Path, *, state: str = "active", stop_fails: bool = False):
+    """A `run` for the Klipper service: records each sudo systemctl verb with saved_variables.cfg as it was then."""
+    calls = []
+
+    def run(command, **kwargs):
+        if command[:2] == ["systemctl", "show"]:
+            return subprocess.CompletedProcess(command, 0, stdout=f"ActiveState={state}\n")
+        if command[:4] != ["sudo", "-S", "-p", ""]:
+            raise AssertionError(f"Unexpected command: {command}")
+        inner = command[4:]
+        if inner == ["-k", "-v"]:
+            return subprocess.CompletedProcess(command, 0)
+        if inner[:1] != ["systemctl"] or inner[2:] != ["klipper.service"]:
+            raise AssertionError(f"Unexpected sudo command: {command}")
+        calls.append((inner[1], saved_variables_path.read_bytes()))
+        return subprocess.CompletedProcess(command, 1 if stop_fails and inner[1] == "stop" else 0)
+
+    return calls, run
 
 
 def _section_hashes(data: bytes) -> dict[str, str]:
@@ -1815,6 +1835,47 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     )
                 self.assertEqual(printer_config.read_bytes(), before)
 
+    def test_restore_writes_saved_variables_while_klipper_is_stopped(self):
+        # Klipper rewrites the whole saved_variables.cfg from memory on its next save, so a running Klipper would
+        # undo the restored file.
+        printer_root, paths, _ = self._fixture("01.01.06.03")
+        install = self._run_install(paths)
+        assert install.backup_zip_path is not None
+        saved_variables = printer_root / "config/saved_variables.cfg"
+        archived = load_backup_snapshot(
+            backup_zip_path=install.backup_zip_path, source_directory="config"
+        )["config/saved_variables.cfg"]
+        live = saved_variables.read_bytes() + b"z_offset = -1.25\n"
+
+        for state, stop_fails in (("active", False), ("inactive", False), ("active", True)):
+            with self.subTest(state=state, stop_fails=stop_fails):
+                saved_variables.write_bytes(live)
+                calls, run = _klipper_systemctl(saved_variables, state=state, stop_fails=stop_fails)
+                restore = functools.partial(
+                    run_restore_helper,
+                    paths,
+                    self.manifest,
+                    stream=io.StringIO(),
+                    input_stream=io.StringIO("RESTORE\n"),
+                    backup_path=str(install.backup_zip_path),
+                    urlopen=moonraker_urlopen(),
+                    run=run,
+                    environ={},
+                )
+                if stop_fails:
+                    with self.assertRaisesRegex(RestoreHelperError, "Could not stop Klipper. Nothing was restored."):
+                        restore()
+                    self.assertEqual(saved_variables.read_bytes(), live)
+                    # It is started again in case the failed stop stopped it anyway.
+                    self.assertEqual(calls, [("stop", live), ("start", live)])
+                    continue
+                self.assertEqual(restore(), 0)
+                self.assertEqual(saved_variables.read_bytes(), archived)
+                if state == "active":
+                    self.assertEqual(calls, [("stop", live), ("start", archived)])
+                else:
+                    self.assertEqual(calls, [])
+
     def test_interrupt_after_configuration_write_rolls_back_and_preserves_live_saved_variables(self):
         printer_root, paths, _ = self._fixture("01.01.06.03")
         saved_variables_path = printer_root / "config/saved_variables.cfg"
@@ -1862,6 +1923,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                 (printer_root / "config/printer.cfg").write_text(
                     "[printer]\nmodified: yes\n", encoding="utf-8"
                 )
+                calls, run = _klipper_systemctl(printer_root / "config/saved_variables.cfg")
 
                 result = run_restore_helper(
                     paths,
@@ -1870,9 +1932,12 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
                     input_stream=io.StringIO("RESTORE\nY\n"),
                     backup_path=str(install.backup_zip_path),
                     urlopen=moonraker_urlopen(),
+                    run=run,
+                    environ={},
                 )
 
                 self.assertEqual(result, 0)
+                self.assertEqual([verb for verb, _ in calls], ["stop", "start"])
                 self.assertEqual(
                     snapshot_runtime_tree(
                         printer_data_root=printer_root, source_directory="config"
