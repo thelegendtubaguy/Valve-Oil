@@ -146,9 +146,9 @@ class PrinterWarnings:
                     pass
 
     def _unshaped_accel(self, macro_status):
-        optimized = self.printer.lookup_object(
+        macros = self.printer.lookup_object(
             "gcode_macro _vo_globals", None)
-        variables = getattr(optimized, "variables", {})
+        variables = getattr(macros, "variables", {})
         try:
             return min(macro_status.max_accel,
                        float(variables.get("unshaped_accel", 10000)))
@@ -327,9 +327,9 @@ class PrinterWarnings:
                 and record.get("continuable") is not False)
 
     def _installed_release(self):
-        optimized = self.printer.lookup_object(
+        macros = self.printer.lookup_object(
             "gcode_macro _vo_globals", None)
-        return getattr(optimized, "variables", {}).get("package_version")
+        return getattr(macros, "variables", {}).get("package_version")
 
     def _pending_text(self, value):
         if not isinstance(value, str):
