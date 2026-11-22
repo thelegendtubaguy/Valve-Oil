@@ -130,7 +130,8 @@ class ThrFirmwareFlowTests(unittest.TestCase):
         printer.profile = replace(profile, sha256=protocol.digest(boot))
         units = paths.printer_data_root.parent / 'systemd'
         units.mkdir()
-        for name, value in (('SYSTEMD_DIR', units), ('CATCH_SCRIPT', units / 'vo_thr_catch.py')):
+        for name, value in (('SYSTEMD_DIR', units), ('CATCH_SCRIPT', units / 'vo_thr_catch.py'),
+                            ('GENERATOR', units / 'system-generators/vo-thr-catch')):
             patcher = patch.object(thr_firmware, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -346,6 +347,12 @@ class ThrFirmwareFlowTests(unittest.TestCase):
                 self.assertIn(f'ExecStartPre=-+/usr/bin/python3 -I -S {thr_firmware.CATCH_SCRIPT}', lines)
                 self.assertEqual(thr_firmware.CATCH_SCRIPT.read_bytes(),
                                  (REPO_ROOT / 'installer/system/vo_thr_catch.py').read_bytes())
+                # The generator starts the catch earlier still, only while the record exists and once per boot.
+                generator = thr_firmware.GENERATOR.read_text()
+                self.assertTrue(thr_firmware.GENERATOR.stat().st_mode & 0o100)
+                self.assertIn(f"[ -e '{marker}' ] || exit 0", generator)
+                self.assertIn('[ -e /run/vo-thr-catch.started ] && exit 0', generator)
+                self.assertIn(f'{thr_firmware.CATCH_SCRIPT} --early', generator)
                 self.assertIn('tltg-optimized-auto-update.service',
                               next(line for line in lines if line.startswith('Before=')).split('=')[1].split())
                 self.assertIn(thr_firmware.RESCUE_UNIT, printer.enabled)

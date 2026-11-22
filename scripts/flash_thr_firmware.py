@@ -277,7 +277,8 @@ class Bootloader:
     # but the first packet sent again would be written after itself.
 
     def rescue(self, image: bytes, fallback: bytes, manifest: dict, *, resume: tuple[bytes, int] | None = None,
-               last_sent: float | None = None, caught: tuple[str, float, float] | None = None) -> dict | None:
+               last_sent: float | None = None, caught: tuple[str, float, float] | None = None,
+               erased: bool = False) -> dict | None:
         """Finish an interrupted transfer through the bootloader, if one answers. Returns the transfer result, or None
         when no bootloader takes it: the application may be running, or the board halted or locked up (see
         rescue_quiet).
@@ -285,7 +286,9 @@ class Bootloader:
         resume: the image and packet from the transfer's journal (resume_point). last_sent: when that transfer last sent
         anything, on this clock, when it ran since the last boot; the board's state then follows from the time.
         caught: the boot unit's catch (read_catch): the bootloader's identity reply, when it came (seconds since the
-        kernel started), and when the catch last sent identity, on this clock, which holds the bootloader."""
+        kernel started), and when the catch last sent identity, on this clock, which holds the bootloader.
+        erased: the journal shows the application erased and not yet whole again (journal_erased). A start then can't
+        leave the board worse off: if the bootloader isn't resident it jumps into the erased application either way."""
         image_hash = self._recovery_images(image, fallback, manifest)
         self._log("rescue-start", boot_elapsed=self.boot_clock() if self.boot_clock else None)
         ticks = self.profile.session_ticks + self.profile.exit_ticks + self.profile.startup_ticks
@@ -313,12 +316,12 @@ class Bootloader:
             # after the last of them; a held bootloader takes a start then, and answers no more identity requests.
             if self.clock() < held_since + self.profile.session_ticks / 1000 / self.MAX_CLOCK_RATE - 1:
                 self.last_sent = held_since
-                self._log("rescue-caught", boot_elapsed=reply_elapsed)
-                return self._after_identity(image, fallback, image_hash, reply_elapsed)
+                self._log("rescue-caught", boot_elapsed=reply_elapsed, erased=erased)
+                return self._after_identity(image, fallback, image_hash, reply_elapsed, erased)
         if self._identity_probe(1.0):
             elapsed = self.boot_clock() if self.boot_clock else None
-            self._log("rescue-identity", boot_elapsed=elapsed)
-            return self._after_identity(image, fallback, image_hash, elapsed)
+            self._log("rescue-identity", boot_elapsed=elapsed, erased=erased)
+            return self._after_identity(image, fallback, image_hash, elapsed, erased)
         if resume is not None:
             return self._resume(resume, fallback, image_hash)
         return None
@@ -327,7 +330,8 @@ class Bootloader:
         # A live session answers the packet it was given last, or was about to be given, without writing it twice;
         # without a session the packet is ignored.
         target, next_packet = resume
-        header_data = self._packet(target, next_packet)
+        # With every data packet acknowledged, the last one asks whether the session is still open.
+        header_data = self._packet(target, min(next_packet, (len(target) + 1023) // 1024 - 1))
         for _ in range(3):
             self._send(2, header_data)
             # A rejection can echo a damaged byte count (seen on 46358f30...), so only the index is matched.
@@ -336,16 +340,18 @@ class Bootloader:
             if got and got[1][6] == 1:
                 self._log("rescue-resumed", at=next_packet)
                 self.last_reply = self.clock()
-                return self._recover(target, fallback, image_hash, started=True, first_index=next_packet + 1)
+                return self._recover(target, fallback, image_hash, started=True,
+                                     first_index=int.from_bytes(header_data[:4], "big") + 1)
             if got:
                 # Rejected: not the session's last packet or the next one. Nothing was written.
                 self._log("rescue-resume-rejected", at=next_packet)
                 return None
         return None
 
-    def _after_identity(self, image: bytes, fallback: bytes, image_hash: str, elapsed: float | None) -> dict | None:
+    def _after_identity(self, image: bytes, fallback: bytes, image_hash: str, elapsed: float | None,
+                        erased: bool = False) -> dict | None:
         """A bootloader answered identity, elapsed seconds after the kernel started."""
-        if self.profile.after_session == WAITS and self._start_allowed(elapsed):
+        if erased or (self.profile.after_session == WAITS and self._start_allowed(elapsed)):
             self.last_reply = self.clock()
             return self._recover(image, fallback, image_hash, started=False)
         # A startup window of unknown age: a start now could erase and then jump. Once any window has ended, only a
@@ -561,6 +567,8 @@ class Bootloader:
             if got is None:
                 raise RecoveryFailed(f"No reply for {self.HOLD_SECONDS:.0f} s at packet {index}; THR state is unknown")
         last = (2, header + data, ack)
+        # Every data packet is written: the application is whole again, whether or not end arrives.
+        self._note(image, (len(image) + 1023) // 1024)
         got = self._hold(1, b"\x02\x01", lambda kind, reply: kind == 1 and reply == self.profile.end_reply,
                          2 * (self.profile.session_ticks + self.profile.exit_ticks) / 1000, "end", probe=last)
         if got in ("fresh", "ambiguous"):
@@ -744,6 +752,25 @@ def read_journal(path: Path | None, images) -> tuple[tuple[bytes, int] | None, f
     return resume_point(record, images), None if sent_at is None else sent_at + JOURNAL_SLACK
 
 
+def journal_erased(path: Path | None, images) -> bool:
+    """Whether the journal shows the application erased and not yet whole again: a start was acknowledged (the journal
+    names a data packet) and not every data packet was."""
+    try:
+        record = json.loads(path.read_text(encoding="utf-8")) if path is not None else None
+    except (OSError, ValueError):
+        return False
+    return erased_point(record, images)
+
+
+def erased_point(record, images) -> bool:
+    if not isinstance(record, dict):
+        return False
+    packet = record.get("next_packet")
+    if not isinstance(packet, int) or isinstance(packet, bool) or packet < 0:
+        return False
+    return any(record.get("image_sha256") == digest(image) and packet * 1024 < len(image) for image in images)
+
+
 def resume_point(record, images) -> tuple[bytes, int] | None:
     """The image a transfer was writing and the packet it was about to send, when a live session of it could take that
     packet again: any but the first."""
@@ -753,7 +780,8 @@ def resume_point(record, images) -> tuple[bytes, int] | None:
     if not isinstance(packet, int) or isinstance(packet, bool) or packet < 1:
         return None
     for image in images:
-        if record.get("image_sha256") == digest(image) and packet * 1024 < len(image):
+        # Up to the packet count itself: every data packet acknowledged, end not yet.
+        if record.get("image_sha256") == digest(image) and packet <= (len(image) + 1023) // 1024:
             return image, packet
     return None
 
@@ -784,6 +812,7 @@ def run_rescue(image: bytes, backup: tuple[bytes, bytes], manifest: dict, output
     if not profile.recoverable:
         raise ValueError("Rescue is not validated for this bootloader")
     resume, sent_at = read_journal(progress_path, (image, stock))
+    erased = journal_erased(progress_path, (image, stock))
     journal = Journal(progress_path) if progress_path is not None else None
     events = []
 
@@ -815,7 +844,7 @@ def run_rescue(image: bytes, backup: tuple[bytes, bytes], manifest: dict, output
     # The journal's time, on the Bootloader's clock.
     last_sent = None if sent_at is None else time.monotonic() - (boot_elapsed() - sent_at)
     result = bootloader(lambda client: client.rescue(image, stock, manifest, resume=resume, last_sent=last_sent,
-                                                     caught=caught))
+                                                     caught=caught, erased=erased))
     if result is None:
         try:
             # Nothing in a bootloader took the transfer; a running application is read as it is.

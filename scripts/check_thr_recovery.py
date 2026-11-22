@@ -32,11 +32,12 @@ TRIGGERS = ("start", 0, 1, 17, 34, "end")
 DURATIONS = (0.5, 3, 6, 9.5, 10.5, 12, 14, 15.5, 17, 25, 40)
 QUICK_DURATIONS = (3, 12)
 RESCUE_DELAYS = (0.5, 3, 12, 40)
-# Seconds from power-on to the catch's first identity request: on a Max 4 the kernel starts 1.4 s after power-on and
-# the unit 2.9 s after the kernel; and slower boots. The THR tool's rescue starts TOOL_AFTER_CATCH seconds later.
-BOOT_DELAYS = (4.8, 8.0, 20.0)
+# Seconds from power-on to the catch's first identity request, and to the THR tool's rescue: on a Max 4 the kernel
+# starts 1.4 s after power-on; the generator's catch 1.9 s after the kernel, the unit's own catch (when the generator
+# didn't run) 3.4 s after it, and the THR tool about 9.6 s after it; then slower boots.
+BOOT_DELAYS = ((3.3, 11.0), (4.8, 11.0), (8.0, 14.0), (20.0, 26.0))
 KERNEL_AFTER_POWER = 1.4
-TOOL_AFTER_CATCH = 2.9
+HOLD_INTERVAL = 2.0  # installer/system/vo_thr_catch.py
 # Seconds a rescue spends finding no application before it waits out any session.
 APPLICATION_CHECK = 7.0
 # Bootloader SysTick rates relative to the host clock; the startup oscillator is unverified.
@@ -160,22 +161,31 @@ class TimedLink:
         return chunk
 
 
-def catch(link, profile, powered):
-    """vo_thr_catch.py: identity requests for 1.5 s; what read_catch returns, on the link's clock."""
+def catch(link, profile, powered, until):
+    """vo_thr_catch.py: identity requests for 1.5 s, then one every HOLD_INTERVAL until the tool's start at `until`;
+    what read_catch returns, on the link's clock."""
     client = tool.Bootloader(link, profile, link.clock, link.sleep)
     if not client._identity_probe(1.5):
+        link.advance(max(0.0, until - link.now))
         return None
-    return profile.identity_reply.hex(), link.now - powered - KERNEL_AFTER_POWER, client.last_sent
+    reply_at = link.now - powered - KERNEL_AFTER_POWER
+    while link.now + HOLD_INTERVAL < until:
+        link.advance(HOLD_INTERVAL)
+        client._send(0, b"\x01\x00")
+    link.advance(max(0.0, until - link.now))
+    return profile.identity_reply.hex(), reply_at, client.last_sent
 
 
-def rescue(link, profile, stock, patched, manifest, journal, *, same_boot, boot_clock=None, caught=None):
+def rescue(link, profile, stock, patched, manifest, journal, *, same_boot, boot_clock=None, caught=None,
+           erased=False):
     """What run_rescue does, on the emulated board: the bootloader first, then the application, then a quiet wait."""
     record = dict(journal.record)
     resume = tool.resume_point(record, (patched, stock))
     last_sent = record["sent_at"] + tool.JOURNAL_SLACK if same_boot and "sent_at" in record else None
     client = tool.Bootloader(link, profile, link.clock, link.sleep, journal=journal, boot_clock=boot_clock)
     try:
-        result = client.rescue(patched, stock, manifest, resume=resume, last_sent=last_sent, caught=caught)
+        result = client.rescue(patched, stock, manifest, resume=resume, last_sent=last_sent, caught=caught,
+                               erased=erased)
         if result is None and link.state not in ("stock", "patched"):
             link.advance(APPLICATION_CHECK)
             heard = client.last_sent if client.last_sent is not None else last_sent
@@ -211,17 +221,16 @@ def run(recovering, boot, stock, patched, manifest, fault, rate=1.0, rescue_dela
     if killed:
         mode = fault[0]
         if mode == "power":
+            catch_at, tool_at = rescue_delay
+            whole = link.board.application(len(stock)) in (stock, patched)
             link.power_cycle()
             powered = link.now
-            link.advance(rescue_delay)
-            # Power was lost with the application erased: only a start inside the startup window saves it.
-            window = profile.startup_ticks / 1000 / rate
-            unavoidable = link.erased and not (profile.after_session == WAITS and rescue_delay <= window
-                                               and tool.Bootloader(None, profile)._start_allowed(
-                                                   rescue_delay - KERNEL_AFTER_POWER))
-            caught = catch(link, profile, powered)
-            link.advance(TOOL_AFTER_CATCH)
+            link.advance(catch_at)
+            # Power was lost with the application not whole: only a first contact inside the startup window saves it.
+            unavoidable = not whole and catch_at >= profile.startup_ticks / 1000 / rate
+            caught = catch(link, profile, powered, powered + tool_at)
             rescue(link, profile, stock, patched, manifest, journal, same_boot=False, caught=caught,
+                   erased=tool.erased_point(dict(journal.record), (patched, stock)),
                    boot_clock=lambda: link.now - powered - KERNEL_AFTER_POWER)
         else:
             link.advance(rescue_delay)

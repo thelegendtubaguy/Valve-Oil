@@ -49,7 +49,7 @@ Valve Oil finishes a THR flash that something interrupts: a moment when the THR 
 **Keep the printer powered on while the THR is flashed.** It takes a few seconds, once per printer. What a power cut in those seconds does depends on the THR's bootloader; its SHA-256 is `bootloader_sha256` in the `report.json` under `~/printer_data/.tltg_thr_firmware_backups/thr-*/before/`:
 
 - `46358f30…`, on most Max 4 and Plus 5 printers: Valve Oil finishes the flash when the printer starts again.
-- `31f8344d…` and `0302f39c…` (Max 4 and Plus 5), and `a21a3019…` (Smart 5): the bootloader listens only for its first 4 seconds after power-on (5 on the Smart 5), and the printer takes longer than that to start. A power cut after the old firmware was erased leaves a THR that needs a programmer on its SWD pins.
+- `31f8344d…` and `0302f39c…` (Max 4 and Plus 5), and `a21a3019…` (Smart 5): the bootloader listens only for its first 4 seconds after power-on (5 on the Smart 5). Valve Oil reaches it about 3.3 seconds after power-on on a Max 4, and then finishes the flash; a printer that starts more slowly leaves a THR whose old firmware was erased needing a programmer on its SWD pins.
 - `0302f39c…` also stops answering until the power is cut if the THR's link to the printer drops for 10 seconds or more during the flash, or if the THR's answer to the first block of firmware never arrives; it then needs a programmer as well.
 
 ## QIDI Box firmware

@@ -103,6 +103,9 @@ RESCUE_UNIT_MARKER = "# valve-oil:thr-firmware-rescue\n"
 SYSTEMD_DIR = Path("/etc/systemd/system")
 # The unit's first step, root-owned: it reaches the THR before the THR tool can (installer/system/vo_thr_catch.py).
 CATCH_SCRIPT = Path("/usr/local/lib/vo_thr_catch.py")
+# Starts that catch about a second after the kernel, before any unit, while a record exists.
+GENERATOR = Path("/etc/systemd/system-generators/vo-thr-catch")
+GENERATOR_MARKER = "# valve-oil:thr-catch-generator\n"
 RESCUE_WAIT_SECONDS = 30 * 60
 POWER_CYCLE = ("Turn the printer off with its power switch, wait 10 seconds, and turn it on again: Valve Oil finishes the "
                "THR firmware as the printer starts.")
@@ -502,6 +505,22 @@ def rescue_unit_text(paths, bundle: Path) -> str:
             "WantedBy=sysinit.target\n")
 
 
+def generator_text(paths) -> str:
+    record = paths.printer_data_root / THR_RECOVERY_MARKER
+    return ("#!/bin/sh\n" + GENERATOR_MARKER
+            + "# While a THR firmware flash is unfinished, reaches the THR's bootloader inside its startup window, before\n"
+            "# any unit starts: vo_thr_catch.py --early holds it until vo-thr-firmware.service joins it. Once per boot and\n"
+            "# only in its first 30 seconds, since systemd also runs generators at every daemon-reload, when Klipper may\n"
+            "# own the THR's port. Installed by Valve Oil.\n"
+            f"[ -e '{record}' ] || exit 0\n"
+            "[ -e /run/vo-thr-catch.started ] && exit 0\n"
+            "read -r up _ < /proc/uptime\n"
+            '[ "${up%%.*}" -lt 30 ] || exit 0\n'
+            ": > /run/vo-thr-catch.started\n"
+            f"setsid /usr/bin/python3 -I -S {CATCH_SCRIPT} --early < /dev/null > /dev/null 2>&1 &\n"
+            "exit 0\n")
+
+
 def install_rescue_unit(paths, *, run, password) -> None:
     from .firmware_update import _settled_bundle
     target = SYSTEMD_DIR / RESCUE_UNIT
@@ -515,6 +534,21 @@ def install_rescue_unit(paths, *, run, password) -> None:
         if run_sudo(["install", "-m", "0644", str(catch), str(CATCH_SCRIPT)], run=run, password=password,
                     timeout=60).returncode:
             raise ThrFirmwareError(f"Could not install {CATCH_SCRIPT}; THR firmware was not changed.")
+    try:
+        current_generator = GENERATOR.read_text(encoding="utf-8")
+    except OSError:
+        current_generator = None
+    if current_generator is not None and not current_generator.startswith("#!/bin/sh\n" + GENERATOR_MARKER):
+        raise ThrFirmwareError(f"Existing {GENERATOR} is unrecognized and was preserved; THR firmware was not changed.")
+    if current_generator != generator_text(paths):
+        staged = paths.printer_data_root / BACKUP_DIRECTORY / GENERATOR.name
+        atomic_write_text(staged, generator_text(paths), mode=0o644)
+        try:
+            for step in (["mkdir", "-p", str(GENERATOR.parent)], ["install", "-m", "0755", str(staged), str(GENERATOR)]):
+                if run_sudo(step, run=run, password=password, timeout=60).returncode:
+                    raise ThrFirmwareError(f"Could not install {GENERATOR}; THR firmware was not changed.")
+        finally:
+            staged.unlink(missing_ok=True)
     text = rescue_unit_text(paths, bundle)
     try:
         current = target.read_text(encoding="utf-8")
@@ -545,6 +579,6 @@ def remove_rescue_unit(*, run, password) -> None:
             return
     except OSError:
         return
-    for step in (["systemctl", "disable", RESCUE_UNIT], ["rm", "-f", str(target), str(CATCH_SCRIPT)],
+    for step in (["systemctl", "disable", RESCUE_UNIT], ["rm", "-f", str(target), str(CATCH_SCRIPT), str(GENERATOR)],
                  ["systemctl", "daemon-reload"]):
         run_sudo(step, run=run, password=password, timeout=60)

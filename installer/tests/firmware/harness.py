@@ -44,10 +44,14 @@ class Host:
             if command[2] not in self.states:
                 return result(1, "LoadState=not-found\nActiveState=inactive\n")
             return result(output="LoadState=loaded\nActiveState=" + self.states[command[2]] + "\n")
-        if command[:3] == ["install", "-m", "0644"]:
+        if command[:2] == ["install", "-m"] and command[2] in ("0644", "0755"):
             shutil.copyfile(command[3], command[4])
+            os.chmod(command[4], int(command[2], 8))
             return result()
         if command == ["systemctl", "daemon-reload"]:
+            return result()
+        if command[:2] == ["mkdir", "-p"]:
+            os.makedirs(command[2], exist_ok=True)
             return result()
         if command[:2] == ["systemctl", "enable"]:
             self.enabled.add(command[2])

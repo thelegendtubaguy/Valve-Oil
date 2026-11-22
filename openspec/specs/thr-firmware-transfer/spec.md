@@ -86,8 +86,8 @@ A recovery-mode transfer SHALL keep a journal of the image being written, the da
 - **THEN** a running application is read back as it is, and otherwise the rescue waits out any session and tries a new one, except on a bootloader that halts after a quiet session
 
 ### Requirement: A rescue sends start only into a session that must be new
-A rescue MUST NOT send start to a bootloader unless no session from the interrupted transfer can still be open and the bootloader's startup window, if it is in one, must still be open.
+A rescue MUST NOT send start to a bootloader unless no session from the interrupted transfer can still be open, and either the bootloader's startup window, if it is in one, must still be open or the transfer's journal shows the application erased and not yet whole again.
 
 #### Scenario: A bootloader answers after a restart of unknown time
 - **WHEN** a bootloader answers a rescue with no journal from this boot
-- **THEN** a bootloader that waits after a quiet session gets start only while time since boot shows its startup window must still be open, or after any window must have ended, and any other bootloader is left to jump
+- **THEN** a bootloader that waits after a quiet session gets start only while time since boot shows its startup window must still be open, or after any window must have ended, and any other bootloader is left to jump, unless the journal shows the application erased and not yet whole again, when any build that answered gets start
