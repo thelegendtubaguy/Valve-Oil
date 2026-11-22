@@ -9,6 +9,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import type { QidiBoxSlot } from '../../state/box'
+import { t } from '../../i18n'
 
 type V3 = [number, number, number]
 /** fill: 'auto' shades by the light; 'paper', 'none', or a pattern key. stroke: 'ink', 'faint', 'accent', or 'none'. */
@@ -237,22 +238,22 @@ export function BoxScene({ slots, slot, colors }: { slots: QidiBoxSlot[]; slot: 
       }) as (string[] | null)[],
     [slots, boxNo, target, spoolColors],
   )
-  const [t, setT] = useState(0)
+  const [ms, setMs] = useState(0)
   const [run, setRun] = useState(0)
   const raf = useRef(0)
   useEffect(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return void setT(END)
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return void setMs(END)
     const start = performance.now()
     const step = (now: number) => {
       const e = now - start
-      setT(Math.min(e, END))
+      setMs(Math.min(e, END))
       if (e < END) raf.current = requestAnimationFrame(step)
     }
     raf.current = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf.current)
   }, [run])
 
-  const p = pose(t)
+  const p = pose(ms)
   const drawn = render(buildScene(inBox, target, p.open), p.cam)
   const fillOf = (k: string) => (k === 'paper' ? 'var(--bs-paper)' : k === 'none' ? 'none' : `url(#${id}-${k})`)
   const strokeOf = { ink: 'var(--bs-ink)', faint: 'var(--bs-faint)', accent: 'var(--accent)', none: 'none' }
@@ -265,7 +266,7 @@ export function BoxScene({ slots, slot, colors }: { slots: QidiBoxSlot[]; slot: 
 
   return (
     <div className="bs">
-      <svg viewBox={`0 0 ${VW} ${VH}`} role="img" aria-label={`A sketch of a QIDI Box with its lid open. Slot ${slot.label}'s reader is on the divider ${target < 2 ? 'between slots A and B' : 'between slots C and D'}, and the tag goes on the side of the spool facing it.`}>
+      <svg viewBox={`0 0 ${VW} ${VH}`} role="img" aria-label={target < 2 ? t('box.scene.sketch_ab', { slot: slot.label }) : t('box.scene.sketch_cd', { slot: slot.label })}>
         <defs>
           <filter id={`${id}-pencil`} x="-5%" y="-5%" width="110%" height="110%">
             <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="noise" />
@@ -282,7 +283,7 @@ export function BoxScene({ slots, slot, colors }: { slots: QidiBoxSlot[]; slot: 
           ))}
         </g>
       </svg>
-      <button type="button" className="iconbtn bs-replay" onClick={() => setRun((r) => r + 1)} title="Play again" aria-label="Play again">
+      <button type="button" className="iconbtn bs-replay" onClick={() => setRun((r) => r + 1)} title={t('box.scene.replay')} aria-label={t('box.scene.replay')}>
         <RotateCcw size={14} />
       </button>
     </div>

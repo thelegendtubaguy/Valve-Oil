@@ -4,6 +4,7 @@ import { attempt } from '../toast'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { resetTotals, useHistoryState } from '../../state/history'
 import { fmtLength, fmtSpan, rollup, statusBreakdown, type Job, type StatusGroup } from './logic'
+import { t } from '../../i18n'
 
 const GROUP_COLOR: Record<StatusGroup, string> = { completed: 'var(--green)', cancelled: 'var(--ink-3)', failed: 'var(--red)', in_progress: 'var(--blue)' }
 
@@ -18,32 +19,32 @@ export function StatsCard() {
   const r = totals ? rollup(totals) : null
 
   const reset = async () => {
-    if (await confirm({ title: 'Reset stats?', body: 'Are you sure? This will clear all stats. The jobs stay in the history.', confirm: 'Reset stats', danger: true })) attempt(resetTotals)
+    if (await confirm({ title: t('history.stats.reset_title'), body: t('history.stats.reset_body'), confirm: t('history.stats.reset'), danger: true })) attempt(resetTotals)
   }
 
   return (
     <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
       <Card
         className="flex flex-col"
-        title="Printer stats"
+        title={t('history.stats.title')}
         icon={<ChartColumn size={14} />}
         aside={
           <MenuButton
             button={<Settings2 size={16} />}
-            label="Stats options"
+            label={t('history.stats.options')}
             items={[
-              { label: `${days ? '✓ ' : ''}Time in days`, onSelect: () => attempt(() => setDays(!days)) },
-              { label: `${km ? '✓ ' : ''}Length in kilometers`, onSelect: () => attempt(() => setKm(!km)) },
-              { label: 'Reset stats', icon: <Trash2 size={15} />, danger: true, onSelect: reset },
+              { label: `${days ? '✓ ' : ''}${t('history.stats.time_in_days')}`, onSelect: () => attempt(() => setDays(!days)) },
+              { label: `${km ? '✓ ' : ''}${t('history.stats.length_in_km')}`, onSelect: () => attempt(() => setKm(!km)) },
+              { label: t('history.stats.reset'), icon: <Trash2 size={15} />, danger: true, onSelect: reset },
             ]}
           />
         }
       >
         <div className="grid flex-1 grid-cols-2 gap-2.5 xl:grid-cols-4">
-          <Stat label="Total print jobs" value={r ? String(Math.round(r.total_jobs)) : '—'} sub="Longest job" subValue={r ? fmtSpan(r.longest_job, days) : '—'} />
-          <Stat label="Total time" value={r ? fmtSpan(r.total_time, days) : '—'} sub="Average per print" subValue={r ? fmtSpan(r.total_avg, days) : '—'} />
-          <Stat label="Total print time" value={r ? fmtSpan(r.total_print_time, days) : '—'} sub="Average per print" subValue={r ? fmtSpan(r.print_avg, days) : '—'} />
-          <Stat label="Total filament used" value={r ? fmtLength(r.total_filament_used, km) : '—'} sub="Average per print" subValue={r ? fmtLength(r.filament_avg, km) : '—'} />
+          <Stat label={t('history.stats.total_jobs')} value={r ? String(Math.round(r.total_jobs)) : '—'} sub={t('history.stats.longest_job')} subValue={r ? fmtSpan(r.longest_job, days) : '—'} />
+          <Stat label={t('history.stats.total_time')} value={r ? fmtSpan(r.total_time, days) : '—'} sub={t('history.stats.average')} subValue={r ? fmtSpan(r.total_avg, days) : '—'} />
+          <Stat label={t('history.stats.total_print_time')} value={r ? fmtSpan(r.total_print_time, days) : '—'} sub={t('history.stats.average')} subValue={r ? fmtSpan(r.print_avg, days) : '—'} />
+          <Stat label={t('history.stats.total_filament')} value={r ? fmtLength(r.total_filament_used, km) : '—'} sub={t('history.stats.average')} subValue={r ? fmtLength(r.filament_avg, km) : '—'} />
         </div>
       </Card>
       <OutcomeCard jobs={jobs} allLoaded={allLoaded} />
@@ -73,17 +74,17 @@ function OutcomeCard({ jobs, allLoaded }: { jobs: Job[]; allLoaded: boolean }) {
   const usable = W - gap * Math.max(0, shown.length - 1)
   let x = 0
   return (
-    <Card title="How jobs ended" aside={total ? `${allLoaded ? 'all' : 'last'} ${total} job${total === 1 ? '' : 's'}` : undefined}>
+    <Card title={t('history.stats.outcomes')} aside={total ? t(allLoaded ? 'history.stats.outcomes_all' : 'history.stats.outcomes_last', { count: total }) : undefined}>
       {total === 0 ? (
-        <div className="text-ink-3">No jobs yet.</div>
+        <div className="text-ink-3">{t('history.stats.no_jobs')}</div>
       ) : (
         <>
-          <svg viewBox={`0 0 ${W} 14`} className="block h-3.5 w-full" preserveAspectRatio="none" role="img" aria-label="Jobs by outcome">
+          <svg viewBox={`0 0 ${W} 14`} className="block h-3.5 w-full" preserveAspectRatio="none" role="img" aria-label={t('history.stats.outcomes_chart')}>
             {shown.map((p) => {
               const w = (p.count / total) * usable
               const rect = (
                 <rect key={p.group} x={x} y={0} width={Math.max(w, 1)} height={14} rx={4} fill={GROUP_COLOR[p.group]}>
-                  <title>{`${p.label}: ${p.count} (${Math.round((p.count / total) * 100)}%)`}</title>
+                  <title>{t('history.stats.outcome_share', { label: p.label, n: p.count, pct: Math.round((p.count / total) * 100) })}</title>
                 </rect>
               )
               x += w + gap

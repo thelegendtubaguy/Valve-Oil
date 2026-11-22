@@ -10,19 +10,22 @@ import { attempt } from '../toast'
 import { usePrinter } from '../../state/printer'
 import { applyPreset, usePresets } from '../../state/presets'
 import { navigate } from '../../lib/router'
+import { t, type MessageKey } from '../../i18n'
+import { tr } from '../../i18n/rich'
 import { FoldTitle, useFold } from './fold'
 import './deck.css'
 
 export type Mode = 'fine' | 'coarse' | 'turbo'
-export const MODES: Record<Mode, { small: number; big: number; label: string; icon: ReactNode }> = {
-  fine: { small: 0.1, big: 1, label: 'Fine', icon: <Turtle size={14} /> },
+/** Jog step sizes. `labelKey` is a message key, looked up when it's shown. */
+export const MODES: Record<Mode, { small: number; big: number; labelKey: MessageKey; icon: ReactNode }> = {
+  fine: { small: 0.1, big: 1, labelKey: 'home.deck.fine', icon: <Turtle size={14} /> },
   coarse: {
     small: 1,
     big: 10,
-    label: 'Coarse',
+    labelKey: 'home.deck.coarse',
     icon: <Footprints size={14} />,
   },
-  turbo: { small: 10, big: 50, label: 'Turbo', icon: <Rabbit size={14} /> },
+  turbo: { small: 10, big: 50, labelKey: 'home.deck.turbo', icon: <Rabbit size={14} /> },
 }
 
 export function useMode() {
@@ -98,14 +101,15 @@ export function JogWheel({ small, big, canX, canY, canHome, onJog, onHome, hotX,
     )
   }
   return (
-    <svg className="jw" viewBox={`0 0 ${S} ${S}`} role="group" aria-label="Move X and Y">
+    <svg className="jw" viewBox={`0 0 ${S} ${S}`} role="group" aria-label={t('control.toolhead.move_xy')}>
       {DIRS.map((d) => seg(d, 'outer'))}
       {DIRS.map((d) => seg(d, 'inner'))}
-      <g className={`jw-home ${canHome ? '' : 'off'}`} role="button" tabIndex={canHome ? 0 : -1} aria-label="Home X and Y" onClick={() => canHome && onHome()} onKeyDown={(e) => e.key === 'Enter' && canHome && onHome()}>
-        <title>Home X and Y</title>
+      <g className={`jw-home ${canHome ? '' : 'off'}`} role="button" tabIndex={canHome ? 0 : -1} aria-label={t('control.toolhead.home_xy')} onClick={() => canHome && onHome()} onKeyDown={(e) => e.key === 'Enter' && canHome && onHome()}>
+        <title>{t('control.toolhead.home_xy')}</title>
         <circle cx={C} cy={C} r={R0 - 5} />
         <House x={C - 11} y={C - 14} width={22} height={22} />
         <text x={C} y={C + 20} textAnchor="middle" fontSize={9} fontWeight={700} fill="currentColor">
+          {/* i18n-ignore: axis names */}
           XY
         </text>
       </g>
@@ -120,10 +124,10 @@ export function TempActions() {
     <>
       <MenuButton
         className="btn btn-sm px-2! py-0.5! text-[11.5px]"
-        label="Presets"
+        label={t('control.temps.presets')}
         button={
           <>
-            Presets <ChevronDown size={12} />
+            {t('control.temps.presets')} <ChevronDown size={12} />
           </>
         }
         items={
@@ -134,7 +138,7 @@ export function TempActions() {
               }))
             : [
                 {
-                  label: 'No presets yet. Add them in Settings.',
+                  label: t('control.temps.no_presets'),
                   onSelect: () => navigate('settings'),
                 },
               ]
@@ -146,9 +150,9 @@ export function TempActions() {
           if (
             active &&
             !(await confirm({
-              title: 'Turn off the heaters?',
-              body: 'The printer is busy. Turning off the heaters may result in a failed print.',
-              confirm: 'Cool down',
+              title: t('control.temps.cool_down_title'),
+              body: t('control.temps.cool_down_body'),
+              confirm: t('control.temps.cool_down'),
               danger: true,
             }))
           )
@@ -156,7 +160,7 @@ export function TempActions() {
           send('TURN_OFF_HEATERS')
         }}
       >
-        <Snowflake size={12} /> Cool down
+        <Snowflake size={12} /> {t('control.temps.cool_down')}
       </button>
     </>
   )
@@ -174,7 +178,7 @@ export function OutputsDeck({ className = '' }: { className?: string }) {
   return (
     <section className={`card ${className}`}>
       <h3 className="card-title">
-        <Fan size={14} /> Fans and lights
+        <Fan size={14} /> {t('control.screen.tab_outputs')}
       </h3>
       <div className="grid gap-2.5">
         {settable.map((o) => (
@@ -204,7 +208,7 @@ function AutoFan({ obj }: { obj: string }) {
   const speed = usePrinter((s) => (s.status[obj]?.speed as number | undefined) ?? 0)
   return (
     <span>
-      <span className="text-ink-3">{objectLabel(obj)}</span> <b className={`num ${speed > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{speed > 0 ? `${Math.round(speed * 100)}%` : 'off'}</b>
+      <span className="text-ink-3">{objectLabel(obj)}</span> <b className={`num ${speed > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{speed > 0 ? `${Math.round(speed * 100)}%` : t('app.temps.off')}</b>
     </span>
   )
 }
@@ -221,7 +225,7 @@ export function MacrosDeck({ className = '', grow, fold }: { className?: string;
   const folded = !!fold && !unfolded
   const title = (
     <>
-      <Zap size={14} /> Macros
+      <Zap size={14} /> {t('control.screen.tab_macros')}
     </>
   )
   return (
@@ -243,12 +247,12 @@ export function MacrosDeck({ className = '', grow, fold }: { className?: string;
           {groups.length > 1 && (
             <div className="mb-2.5 overflow-x-auto">
               <Segmented
-                label="Macro category"
+                label={t('home.deck.macro_category')}
                 value={shown?.id ?? ''}
                 onChange={setOpen}
                 options={groups.map((g) => ({
                   value: g.id,
-                  label: g.name ?? 'Uncategorized',
+                  label: g.name ?? t('control.macros.uncategorized'),
                 }))}
               />
             </div>
@@ -259,7 +263,7 @@ export function MacrosDeck({ className = '', grow, fold }: { className?: string;
             ))}
             {!shown && (
               <span className="text-ink-3">
-                {macros.length ? 'Every macro is hidden.' : 'No macros.'} <Settings2 size={12} className="inline" /> Organize picks which show here.
+                {tr(macros.length ? 'home.deck.macros_hidden' : 'home.deck.no_macros', { icon: <Settings2 size={12} className="inline" /> })}
               </span>
             )}
           </div>

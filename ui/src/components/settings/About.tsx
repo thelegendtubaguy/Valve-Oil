@@ -5,6 +5,7 @@ import { fluiddUrl } from '../../lib/links'
 import { client, usePrinter } from '../../state/printer'
 import { useValveOil, useValveOilView, watchValveOil } from '../../state/valve-oil'
 import { href } from '../../lib/router'
+import { t } from '../../i18n'
 
 type Versions = { klipper?: string; moonraker?: string; hostname?: string; fluidd?: string }
 
@@ -37,23 +38,24 @@ export function AboutSettings() {
   const s = useValveOil()
   const view = useValveOilView()
   const v = useVersions()
-  const rows: [string, string | undefined, string?][] = [
-    ['Valve Oil UI', __APP_VERSION__],
-    ['Valve Oil', view?.release ?? undefined, view && view.devBuild != null ? (view.devBuild ? `Dev build ${view.devBuild}` : 'Dev build') : undefined],
-    ['QIDI firmware', view?.firmware ?? undefined],
-    ['Fluidd', v.fluidd],
-    ['Klipper', v.klipper],
-    ['Moonraker', v.moonraker],
-    ['Host name', v.hostname],
+  // [id, label, value, note]
+  const rows: [string, string, string | undefined, string?][] = [
+    ['valve_oil_ui', 'Valve Oil UI', __APP_VERSION__],
+    ['valve_oil', 'Valve Oil', view?.release ?? undefined, view && view.devBuild != null ? (view.devBuild ? t('settings.about.dev_build_n', { n: view.devBuild }) : t('settings.about.dev_build')) : undefined],
+    ['firmware', t('settings.about.qidi_firmware'), view?.firmware ?? undefined],
+    ['fluidd', 'Fluidd', v.fluidd],
+    ['klipper', 'Klipper', v.klipper],
+    ['moonraker', 'Moonraker', v.moonraker],
+    ['hostname', t('settings.about.host_name'), v.hostname],
   ]
   return (
-    <Card title="Version information" icon={<Info size={14} />}>
+    <Card title={t('settings.about.title')} icon={<Info size={14} />}>
       <div className="grid">
-        {rows.filter(([k, value]) => k !== 'Fluidd' || value).map(([k, value, note]) => (
-          <div key={k} className="row-k">
+        {rows.filter(([id, , value]) => id !== 'fluidd' || value).map(([id, k, value, note]) => (
+          <div key={id} className="row-k">
             <span className="k">{k}</span>
             <span className="v [overflow-wrap:anywhere]">
-              {value || <span className="font-normal text-ink-3">{k === 'Valve Oil' && !s.unavailable && !s.status ? '…' : 'Unknown'}</span>}
+              {value || <span className="font-normal text-ink-3">{id === 'valve_oil' && !s.unavailable && !s.status ? '…' : t('settings.about.unknown')}</span>}
               {note && <span className="block text-[12px] font-normal text-ink-3">{note}</span>}
             </span>
           </div>
@@ -61,13 +63,13 @@ export function AboutSettings() {
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <a className="btn btn-sm" href={href('updates')}>
-          Valve Oil updates
+          {t('settings.about.updates')}
         </a>
         <a className="btn btn-sm" href="https://github.com/thelegendtubaguy/Valve-Oil" target="_blank" rel="noopener noreferrer">
-          Valve Oil on GitHub <ExternalLink size={13} />
+          {t('settings.about.github')} <ExternalLink size={13} />
         </a>
         <a className="btn btn-sm" href={fluiddUrl()} target="_blank" rel="noopener noreferrer">
-          Open Fluidd <ExternalLink size={13} />
+          {t('settings.about.open_fluidd')} <ExternalLink size={13} />
         </a>
       </div>
     </Card>

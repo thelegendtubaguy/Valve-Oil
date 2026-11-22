@@ -4,6 +4,8 @@
 // ("<vendor> <filament>"), in list order. Klipper and the touchscreen read it when they start. The installer links
 // QIDI's filament_config folder into the config root as qidi_filament_config.
 
+import { t } from '../i18n'
+
 export const QIDI_FILAMENT_CONFIG_PATH = 'qidi_filament_config'
 export const QIDI_FILAMENT_CONFIG_FILENAME = 'filament-0.4.json'
 export const QIDI_FILAMENT_CONFIG_FILE = `${QIDI_FILAMENT_CONFIG_PATH}/${QIDI_FILAMENT_CONFIG_FILENAME}`
@@ -154,16 +156,16 @@ export const setQidiFilament = (
   const key = qidiFilamentKey(draft)
   const { previousKey, baseKey } = options
 
-  if (key !== previousKey && key in config) throw new Error(`Filament already listed: ${key}`)
+  if (key !== previousKey && key in config) throw new Error(t('box.filaments.errors.already_listed', { name: key }))
 
   const idOwner = qidiFilamentIdOwner(config, draft.id, previousKey)
 
-  if (idOwner != null) throw new Error(`Filament ID ${draft.id} already used by ${idOwner}`)
+  if (idOwner != null) throw new Error(t('box.filaments.errors.id_used', { id: draft.id, name: idOwner }))
 
   if (previousKey != null) {
     const previous = config[previousKey]
 
-    if (previous == null) throw new Error(`Filament not found: ${previousKey}`)
+    if (previous == null) throw new Error(t('box.filaments.errors.not_found', { name: previousKey }))
 
     return Object.fromEntries(Object.entries(config)
       .map(([entryKey, entry]) => entryKey === previousKey
@@ -181,7 +183,7 @@ export const setQidiFilament = (
 export const removeQidiFilament = (config: QidiFilamentConfig, key: string): QidiFilamentConfig => {
   const { [key]: removed, ...rest } = config
 
-  if (removed == null) throw new Error(`Filament not found: ${key}`)
+  if (removed == null) throw new Error(t('box.filaments.errors.not_found', { name: key }))
 
   return rest
 }

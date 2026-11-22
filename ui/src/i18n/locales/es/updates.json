@@ -1,0 +1,232 @@
+{
+  "title": "Actualizaciones",
+  "refresh": "Actualizar",
+  "unavailable": "El estado de actualización de Valve Oil no está disponible en esta impresora.",
+  "loading": "Cargando el estado de Valve Oil…",
+  "reconnecting": "Esperando a que la impresora responda. Reinicia sus servicios mientras se actualiza, así que es normal. Esta página se vuelve a conectar sola.",
+  "reconnecting_long_one": "La impresora lleva {{count}} minuto sin responder. No la apagues. Mira su pantalla para ver qué está haciendo.",
+  "reconnecting_long_other": "La impresora lleva {{count}} minutos sin responder. No la apagues. Mira su pantalla para ver qué está haciendo.",
+  "dont_power_off": "No apagues la impresora hasta que termine.",
+  "card": {
+    "updating": "Actualizando",
+    "waiting": "Pendiente de instalar",
+    "up_to_date": "Al día",
+    "release": "Versión de Valve Oil",
+    "unknown": "Desconocido",
+    "dev_build": "Compilación de desarrollo",
+    "dev_build_commit": "Compilación de desarrollo {{commit}}",
+    "qidi_firmware": "Firmware de QIDI",
+    "target_firmware": "Esta versión de Valve Oil lo actualiza a {{version}}",
+    "auto": "Actualizaciones automáticas",
+    "auto_sub": "Instala por sí solas las nuevas versiones de Valve Oil, el firmware de QIDI y el firmware de las placas mientras la impresora está inactiva.",
+    "auto_error": "No se pudieron cambiar las actualizaciones automáticas: {{error}}",
+    "nothing_waiting": "No hay nada pendiente.",
+    "update_now": "Actualizar ahora",
+    "continue": "Continuar la actualización",
+    "update_now_blocked": "Actualizar ahora no pudo empezar. {{reasons}}",
+    "update_now_error": "No se pudo iniciar la actualización: {{error}}",
+    "check_failed": "La última búsqueda de actualizaciones falló.",
+    "check_failed_message": "La última búsqueda de actualizaciones falló: {{message}}",
+    "report": "Informar de un problema",
+    "report_sub": "Abre un informe de error en GitHub y descarga un paquete de soporte con los registros de Klipper, Moonraker y Valve Oil. Adjunta el paquete a la incidencia.",
+    "open_issue": "Abrir una incidencia",
+    "support_error": "No se pudo descargar el paquete de soporte: {{error}}",
+    "last_checked": "Última búsqueda de actualizaciones: {{time}}",
+    "checking": "Comprobando…"
+  },
+  "window": {
+    "title": "Franja de actualización",
+    "hours": "Las actualizaciones automáticas solo empiezan entre estas horas.",
+    "any_hour": "Las actualizaciones automáticas pueden empezar a cualquier hora.",
+    "timezone": {
+      "this_browser": "Las horas están en {{timezone}} (la zona horaria de este navegador).",
+      "utc": "Las horas están en UTC.",
+      "lookup": "Las horas están en {{timezone}} (deducida de la dirección de internet de la impresora).",
+      "operator": "Las horas están en {{timezone}} (configurada por SSH).",
+      "browser": "Las horas están en {{timezone}} (configurada desde un navegador).",
+      "other": "Las horas están en {{timezone}}."
+    },
+    "use_timezone": "Usar {{timezone}}",
+    "any_time": "Cualquier hora",
+    "set_hours": "Elegir horas",
+    "start_hour": "Hora de inicio",
+    "to": "a",
+    "end_hour": "Hora de fin",
+    "invalid": "Elige una hora de inicio y de fin distintas.",
+    "error": "No se pudo cambiar la franja de actualización: {{error}}"
+  },
+  "waiting": {
+    "reinstall": "Hay que volver a instalar Valve Oil (sus archivos en la impresora faltan o han cambiado)",
+    "release_new": "Una nueva versión de Valve Oil",
+    "release_current": "Valve Oil {{version}} (esta impresora tiene {{current}})",
+    "firmware": "Firmware de QIDI {{version}}",
+    "firmware_current": "Firmware de QIDI {{version}} (esta impresora tiene {{current}})",
+    "firmware_new": "Una actualización del firmware de QIDI",
+    "board": "Nuevo firmware para {{name}}",
+    "board_unnamed": "Nuevo firmware para una placa"
+  },
+  "notice": {
+    "auto_off": "Hay una actualización pendiente. Las actualizaciones automáticas están desactivadas, así que instálala con Actualizar ahora o ejecutando el instalador de Valve Oil.",
+    "auto_off_reinstall": "Hay que volver a instalar Valve Oil. Las actualizaciones automáticas están desactivadas, así que instálalo con Actualizar ahora o ejecutando el instalador de Valve Oil.",
+    "blocked": "Las actualizaciones automáticas están activadas, pero la actualización aún no se ha instalado: {{reasons}}.",
+    "blocked_reinstall": "Las actualizaciones automáticas están activadas, pero Valve Oil aún no se ha vuelto a instalar: {{reasons}}.",
+    "window": "Las actualizaciones automáticas están activadas, así que la actualización se instalará en la franja de actualización, {{window}}, mientras la impresora esté inactiva.",
+    "window_reinstall": "Las actualizaciones automáticas están activadas, así que Valve Oil se volverá a instalar en la franja de actualización, {{window}}, mientras la impresora esté inactiva.",
+    "next_check": "Las actualizaciones automáticas están activadas, así que la actualización se instalará en la próxima búsqueda de actualizaciones mientras la impresora esté inactiva.",
+    "next_check_at": "Las actualizaciones automáticas están activadas, así que la actualización se instalará en la próxima búsqueda de actualizaciones, hacia las {{time}}, mientras la impresora esté inactiva.",
+    "next_check_reinstall": "Las actualizaciones automáticas están activadas, así que Valve Oil se volverá a instalar en la próxima búsqueda de actualizaciones mientras la impresora esté inactiva.",
+    "next_check_reinstall_at": "Las actualizaciones automáticas están activadas, así que Valve Oil se volverá a instalar en la próxima búsqueda de actualizaciones, hacia las {{time}}, mientras la impresora esté inactiva.",
+    "firmware_busy": "La impresora no se puede usar mientras se instala."
+  },
+  "confirm": {
+    "continue": "¿Continuar la actualización del firmware de QIDI que se detuvo? La impresora no se puede usar hasta que termine la actualización, lo que puede tardar un rato, y esta página pierde el contacto con la impresora durante parte de ese tiempo. No apagues la impresora hasta que termine la actualización.",
+    "finish": "¿Terminar la actualización que se detuvo? La impresora no se puede usar hasta que termine, lo que puede tardar un rato, y esta página pierde el contacto con la impresora durante parte de ese tiempo. No apagues la impresora hasta que termine la actualización.",
+    "firmware": "¿Instalar ahora todo lo pendiente, incluido el firmware de QIDI y el de las placas? La impresora no se puede usar hasta que termine la actualización, lo que puede tardar un rato, y esta página pierde el contacto con la impresora durante parte de ese tiempo. No apagues la impresora hasta que termine la actualización.",
+    "reinstall": "¿Volver a instalar Valve Oil {{version}} ahora? Sus archivos en la impresora faltan o han cambiado. Klipper se reinicia durante la instalación, así que la impresora no se puede usar durante unos minutos.",
+    "install_version": "¿Instalar Valve Oil {{version}} ahora? Klipper se reinicia durante la instalación, así que la impresora no se puede usar durante unos minutos.",
+    "install_latest": "¿Instalar ahora la última versión de Valve Oil? Klipper se reinicia durante la instalación, así que la impresora no se puede usar durante unos minutos."
+  },
+  "blocked": {
+    "none": "No disponible ahora mismo.",
+    "other": "No disponible ahora: {{message}}.",
+    "code": {
+      "run_in_progress": "Disponible cuando termine la actualización en curso.",
+      "installer_busy": "Valve Oil está buscando actualizaciones o instalando. Disponible cuando termine.",
+      "printing": "Hay una impresión en curso o en pausa. Disponible cuando termine.",
+      "heaters_on": "Hay un calentador encendido. Disponible cuando todos los calentadores estén apagados.",
+      "printer_state_unknown": "Klipper no ha dicho si la impresora está inactiva. Disponible cuando esté lista.",
+      "installer_missing": "Falta el instalador de Valve Oil en la impresora. Vuelve a instalar Valve Oil para usar Actualizar ahora."
+    }
+  },
+  "progress": {
+    "running": {
+      "update_now": "Actualizando…",
+      "automatic": "Actualización automática en curso…",
+      "install": "El instalador de Valve Oil se está ejecutando…",
+      "other": "Actualizando…"
+    },
+    "result": {
+      "succeeded": {
+        "update_now": "La actualización terminó",
+        "automatic": "La actualización automática terminó",
+        "install": "El instalador de Valve Oil terminó",
+        "other": "La actualización terminó"
+      },
+      "failed": {
+        "update_now": "La actualización falló",
+        "automatic": "La actualización automática falló",
+        "install": "El instalador de Valve Oil falló",
+        "other": "La actualización falló"
+      },
+      "interrupted": {
+        "update_now": "La actualización se detuvo antes de terminar",
+        "automatic": "La actualización automática se detuvo antes de terminar",
+        "install": "El instalador de Valve Oil se detuvo antes de terminar",
+        "other": "La actualización se detuvo antes de terminar"
+      }
+    },
+    "starting": "Iniciando la actualización…",
+    "resumed": "Retomando donde se detuvo el último intento.",
+    "firmware_failed": "La actualización del firmware de QIDI no terminó",
+    "stopped_at": "Se detuvo en: {{step}}.",
+    "finish_hint": "Termínala con Actualizar ahora o ejecutando el instalador de Valve Oil.",
+    "continue_hint": "Continúala con Actualizar ahora o ejecutando el instalador de Valve Oil.",
+    "show_log": "Mostrar registro",
+    "hide_log": "Ocultar registro"
+  },
+  "boards": {
+    "title": "Placas",
+    "mainboard": "Placa base",
+    "closed_loop": "Drivers de lazo cerrado",
+    "firmware": "Firmware {{version}}",
+    "firmware_unread": "Firmware sin leer",
+    "build": {
+      "patched": "Compilación de Valve Oil",
+      "qidi": "Compilación de QIDI",
+      "stock": "Compilación de QIDI",
+      "superseded": "Una compilación anterior de Valve Oil"
+    },
+    "badge": {
+      "current": "Al día",
+      "needs_image": "Actualización pendiente",
+      "after_firmware": "Esperando el firmware de QIDI",
+      "unrecognized_firmware": "Firmware no reconocido",
+      "unrecognized_bootloader": "Aún no compatible",
+      "held": "Con el firmware de QIDI",
+      "touchscreen": "Actualizar desde la pantalla táctil",
+      "unknown": "Sin comprobar"
+    },
+    "note": {
+      "unrecognized_bootloader": "Valve Oil aún no reconoce el bootloader de esta placa, así que no actualiza esta placa ni el firmware de QIDI de la impresora. Abre una incidencia de soporte para que una versión futura sea compatible.",
+      "unrecognized_bootloader_box": "Valve Oil aún no reconoce el bootloader de este Box, así que deja este Box como está y sigue actualizando el resto de la impresora. Abre una incidencia de soporte para que una versión futura sea compatible.",
+      "unrecognized_firmware": "Esta placa tiene un firmware que Valve Oil no reconoce, así que Valve Oil la deja como está. Abre una incidencia de soporte para que una versión futura sea compatible.",
+      "unknown": "Valve Oil aún no ha podido leer el firmware de esta placa.",
+      "held_box": "Este Box volvió al firmware de QIDI. Valve Oil lo deja así hasta que instales la próxima versión de Valve Oil.",
+      "held_closed_loop": "Valve Oil dejó los drivers de motor de lazo cerrado con su firmware. Actualízalos desde la página de firmware de la pantalla táctil.",
+      "held": "Valve Oil deja el firmware de esta placa como está.",
+      "after_firmware": "Valve Oil actualiza esta placa en la misma actualización, justo después de instalar la actualización del firmware de QIDI.",
+      "after_firmware_version": "Valve Oil actualiza esta placa en la misma actualización, justo después de instalar el firmware de QIDI {{version}}."
+    },
+    "support": {
+      "title": "Abre una incidencia de soporte para {{name}}",
+      "step_open": "Abre la incidencia. El formulario ya incluye esta impresora, su firmware de QIDI y el informe de {{name}}.",
+      "step_origin": "Indica cómo obtuvo {{name}} su firmware: vino con la impresora, se compró por separado o lo envió QIDI como repuesto.",
+      "step_report": "Si el informe del formulario dice que era demasiado largo para el enlace, descarga el informe y adjúntalo.",
+      "open": "Abrir una incidencia de soporte",
+      "download": "Descargar el informe"
+    },
+    "report": "Informar de esta placa"
+  },
+  "install": {
+    "origin": {
+      "ssh": "Iniciado por SSH",
+      "usb": "Iniciado desde una memoria USB",
+      "automatic": "Iniciado por las actualizaciones automáticas",
+      "firmware_update": "Continúa tras la actualización del firmware de QIDI"
+    },
+    "origin_short": {
+      "ssh": "por SSH",
+      "usb": "desde una memoria USB",
+      "automatic": "por las actualizaciones automáticas",
+      "firmware_update": "tras la actualización del firmware de QIDI"
+    },
+    "installer": "Instalador de Valve Oil",
+    "updating_title": "Actualizando Valve Oil de {{from}} a {{to}}",
+    "reinstalling_title": "Volviendo a instalar Valve Oil",
+    "reinstalling_version_title": "Volviendo a instalar Valve Oil {{version}}",
+    "installing_title": "Instalando Valve Oil",
+    "installing_version_title": "Instalando Valve Oil {{version}}",
+    "step": "Paso {{n}} de {{total}}",
+    "step_named": "Paso {{n}} de {{total}}: {{step}}",
+    "checking": "Comprobando la impresora",
+    "interrupted_title": "La instalación se detuvo antes de terminar",
+    "failed_title": "La instalación no terminó",
+    "ran": "Duró {{time}}",
+    "dont_turn_off": "No apagues la impresora. Klipper y Moonraker se reinician durante la instalación, así que esta página puede perder el contacto un momento.",
+    "interrupted_body": "El instalador dejó de ejecutarse a medias, por ejemplo porque se cerró su sesión SSH. Vuelve a ejecutar el instalador para terminar.",
+    "failed_body": "Su registro dice qué salió mal y en qué estado quedó la impresora.",
+    "view_log": "Ver registro"
+  },
+  "logs": {
+    "title": "Registros del instalador",
+    "none": "Aún no hay registros del instalador. Cada instalación, actualización, desinstalación y restauración de copia de seguridad guarda uno aquí.",
+    "running": "En curso",
+    "kept": "El instalador guarda sus diez registros más recientes. Adjunta el que salió mal cuando informes de un problema.",
+    "kind": {
+      "install": "Instalación",
+      "usb": "Instalación por USB",
+      "uninstall": "Desinstalación",
+      "restore_backup": "Restauración de copia de seguridad"
+    },
+    "last_succeeded": "Última instalación: {{version}}{{how}}{{at}}.",
+    "last_handed_off": "La última instalación{{how}}{{at}} continuó en la actualización del firmware de QIDI.",
+    "last_stopped": "La última instalación{{how}}{{at}} se detuvo.",
+    "last_stopped_at": "La última instalación{{how}}{{at}} se detuvo en {{step}}."
+  },
+  "status": {
+    "run_in_progress": "otra actualización sigue en curso",
+    "printing": "hay una impresión en curso o en pausa",
+    "invalid_response": "Respuesta no válida",
+    "not_connected": "No hay conexión con esta impresora"
+  }
+}

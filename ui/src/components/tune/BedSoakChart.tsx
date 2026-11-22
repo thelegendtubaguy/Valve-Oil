@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t } from '../../i18n'
 
 export type BedSoakChartPoint = { x: number; y: number; name?: string }
 
@@ -148,7 +149,7 @@ export function BedSoakChart({ title, note, unit, series, xMin, xMax, yMin, yMax
           <line x1={LEFT} x2={LEFT + plotW} y1={top + plotH} y2={top + plotH} stroke="var(--line-strong)" />
           {xTicks.map((x) => (
             <text key={`x${x}`} x={sx(x)} y={top + plotH + 15} textAnchor="middle" fontSize={11} fill="var(--ink-3)">
-              {x === 0 ? '0 min' : fmtTick(x)}
+              {x === 0 ? t('common.time.minutes', { m: 0 }) : fmtTick(x)}
             </text>
           ))}
           {references.map((r, i) => (

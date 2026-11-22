@@ -71,12 +71,41 @@ The G-code files it serves are generated: OrcaSlicer-style `.gcode` and QIDI Stu
 
 To try a build on a printer that already serves `/valve-oil/`, run `dev/sideload.sh qidi@<printer-ip>`. It builds the UI and swaps it into `~/tltg-valve-oil-ui` without restarting anything or changing nginx. Open tabs pick it up on refresh. The next real install replaces it.
 
+## Translations
+
+Valve Oil UI is in English, Spanish, and Russian. The browser chooses: the language picked in **Settings → General**, kept in this browser as `vo-language`, or else the first of the browser's languages the UI has. The printer only sends English, and text from it (printer warnings, Valve Oil's status service, the installer's steps, QIDI's Box errors, the console) is shown as it arrives.
+
+Every message the UI writes is in `src/i18n/locales/<language>/<area>.json`, one file per area of the UI, as nested objects in i18next's JSON format. English is the source; the other languages have the same keys.
+
+```tsx
+import { t } from '../i18n'
+import { tr } from '../i18n/rich'
+
+t('files.delete_title')                          // "Delete file"
+t('files.deleted', { name })                     // "Deleted {{name}}"
+t('files.selected', { count })                   // files.selected_one / _other in English; _one, _few, _many, _other in Russian
+tr('updates.run_hint', { cmd: <code>./install.sh</code> }, { a: (c) => <a href={url}>{c}</a> })  // "Run {{cmd}}, then <a>check again</a>."
+```
+
+- `t()` is typed: a key English doesn't have doesn't compile. A key built at runtime needs `as MessageKey`, and its English messages must all start with the template's fixed part (`t(\`box.state.${state}\` as MessageKey)`), so the check counts them as used.
+- Call `t()`, `tr()`, and `locale()` while rendering or when an action runs, never at module level: modules load before the language does. A list of options becomes a function that returns it.
+- Switching language remounts the app, so every message is looked up again. Text already put in a store (a toast showing) stays in the language it was written in.
+- Write whole sentences with `{{values}}` in them, never pieces joined in code, so a translation can order the words its own way. Counts go in `count`, which picks the plural form; Russian needs `_one`, `_few`, `_many`, and `_other`.
+- Dates, times, and numbers use `locale()` (`date.toLocaleString(locale(), ...)`), the browser's own locale when it's in the language shown. Numbers keep `.` as the decimal point, as the printer and G-code do.
+- Names and units are the same in every language: Valve Oil, Fluidd, Klipper, Moonraker, QIDI, QIDI Box, Spoolman, G-code, macro and object names, `mm`, `mm/s`, and `°C`.
+- Text that isn't for reading, or reads the same in every language, takes an `i18n-ignore` comment on its line or the line before.
+- Words used across the UI (Cancel, Save, Close, times, sizes) are in `common.json`.
+
+`node scripts/check-i18n.mjs`, run by `npm run build`, fails on a message missing from a language or with other `{{values}}`, `<tags>`, or plural forms than English needs, on English written in JSX and in text props (`title`, `label`, `sub`, ...), `toast()`, `confirm()`, `prompt()`, and `new Error()`, on dates and times formatted without `locale()`, on `t()` at module level, and on English messages nothing uses.
+
+To add a language, copy `src/i18n/locales/en/` to the language's code, translate it with the terms in [`src/i18n/GLOSSARY.md`](src/i18n/GLOSSARY.md), and add it to `LANGUAGES` in `src/i18n/index.ts`. Translations and fixes to them are welcome as pull requests.
+
 ## Check
 
 ```sh
 npm run typecheck
 npm test          # the logic ported from the Fluidd fork, with its tests, and the UI's own parsing, calculations, and printer commands
-npm run build
+npm run build     # also runs scripts/check-i18n.mjs
 ```
 
 A spec ported from Fluidd or its fork keeps its `__tests__` folder and file name (`src/qidi/__tests__/qidi-box.test.ts` is the fork's `qidi-box.spec.ts`), so it can be compared with the source. The UI's own tests sit beside the file they test (`fs.test.ts` beside `fs.ts`), and a screen's small files can share one, as in `src/components/system/system.test.ts`. Every function that builds a command for the printer needs a test of the exact text it sends, so it goes in a module that doesn't import `src/state/printer.ts`, which reads the page's address when loaded: `src/state/box-model.ts`, `src/state/preset-gcode.ts`, `src/components/control/gcode.ts`. A test that needs `runGcode` stubs `location` first, as `gcode.test.ts` does.

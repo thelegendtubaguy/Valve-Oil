@@ -1,6 +1,7 @@
 import type { HistoryJob } from '../../state/files'
 import { fmtBytes, fmtDuration } from '../../lib/format'
 import { asList, columnValue, type FsEntry } from './fs'
+import { locale, t } from '../../i18n'
 
 /** Sizes up to disk sizes: B, KB, MB, GB. */
 export function fmtSize(n: number): string {
@@ -11,24 +12,24 @@ export function fmtDate(epochSeconds: number | null | undefined): string {
   if (!epochSeconds) return '—'
   const d = new Date(epochSeconds * 1000)
   const sameYear = d.getFullYear() === new Date().getFullYear()
-  return d.toLocaleString([], { year: sameYear ? undefined : 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleString(locale(), { year: sameYear ? undefined : 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 export function outcomeText(job: HistoryJob): string {
   switch (job.status) {
     case 'completed':
-      return 'Completed'
+      return t('files.outcome.completed')
     case 'cancelled':
-      return 'Cancelled'
+      return t('files.outcome.cancelled')
     case 'in_progress':
-      return 'Printing'
+      return t('files.outcome.printing')
     case 'klippy_shutdown':
     case 'klippy_disconnect':
     case 'interrupted':
     case 'server_exit':
-      return 'Interrupted'
+      return t('files.outcome.interrupted')
     default:
-      return 'Failed'
+      return t('files.outcome.failed')
   }
 }
 
@@ -73,7 +74,7 @@ export function Cell({ entry, column, job }: { entry: FsEntry; column: string; j
     case 'chamber_temp':
       return <>{n} °C</>
     case 'filament_temps':
-      return <>{asList(v).map((t) => `${t} °C`).join(', ')}</>
+      return <>{asList(v).map((x) => `${x} °C`).join(', ')}</>
     case 'filament_colors':
     case 'extruder_colors':
       return (
@@ -87,7 +88,7 @@ export function Cell({ entry, column, job }: { entry: FsEntry; column: string; j
     case 'filament_name':
       return <>{[...new Set(asList(v))].join(', ')}</>
     case 'mmu_print':
-      return <>{n ? 'Yes' : 'No'}</>
+      return <>{n ? t('common.yes') : t('common.no')}</>
   }
   if (Array.isArray(v)) return <>{v.join(', ')}</>
   if (typeof v === 'object') return <>{JSON.stringify(v)}</>

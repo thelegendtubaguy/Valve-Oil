@@ -4,6 +4,7 @@ import { getItem, postItem, FLUIDD } from '../../state/database'
 import { createStore, useStore } from '../../lib/store'
 import { createBuffer, pushSample, type SeriesBuffer } from './chart-data'
 import { referencedObjects } from './collectors'
+import { t } from '../../i18n'
 
 // Fluidd's Diagnostics charts. The cards live where Fluidd keeps them, the `fluidd` namespace's
 // layout.layouts.diagnostics (container1…container4 of DiagnosticsCardConfig), so both UIs show the same charts.
@@ -24,6 +25,7 @@ export function defaultCard(): DiagnosticsCardConfig {
   return {
     id: uuid(),
     enabled: true,
+    // i18n-ignore: Fluidd's own default card, names and all, saved to its database for both UIs
     title: 'Speeds',
     collapsed: false,
     height: 300,
@@ -137,7 +139,7 @@ export function evalCollectors(printer: unknown, collectors: string[], timeoutMs
         done(() => {
           w.terminate()
           if (worker === w) worker = null
-          reject(new Error('The collector took too long'))
+          reject(new Error(t('system.diagnostics.too_long')))
         }),
       timeoutMs,
     )

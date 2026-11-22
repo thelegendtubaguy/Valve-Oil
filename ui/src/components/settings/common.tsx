@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { CircleAlert, CircleCheck, Info, Plus, TriangleAlert, X } from 'lucide-react'
 import { Card, Toggle } from '../ui'
+import { locale, t } from '../../i18n'
 
 // Building blocks for the Settings sections and the Updates screen: a card of rows, each a title with an optional
 // explanation on the left and its control on the right, stacking on phones.
@@ -81,7 +82,7 @@ export function NumberList({ value, onChange, min = 1, max = 6, unit, label }: {
           <span key={v} className="chip num pr-1!">
             {v}
             {unit && <span className="text-ink-3">{unit}</span>}
-            <button type="button" className="iconbtn h-5! w-5!" disabled={value.length <= min} onClick={() => onChange(value.filter((x) => x !== v))} aria-label={`Remove ${v}`}>
+            <button type="button" className="iconbtn h-5! w-5!" disabled={value.length <= min} onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
               <X size={12} />
             </button>
           </span>
@@ -92,14 +93,14 @@ export function NumberList({ value, onChange, min = 1, max = 6, unit, label }: {
           <input
             className="field num h-[30px] py-1"
             inputMode="decimal"
-            placeholder="Add a value"
-            aria-label={`Add to ${label}`}
+            placeholder={t('settings.common.add_value')}
+            aria-label={t('settings.common.add_to', { label })}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
           />
           <button type="button" className="btn btn-sm" disabled={!valid} onClick={add}>
-            <Plus size={13} /> Add
+            <Plus size={13} /> {t('common.add')}
           </button>
         </div>
       )}
@@ -115,7 +116,7 @@ export function Notice({ tone, icon, onClose, children, className = '' }: { tone
       <span className="mt-0.5 flex-none">{icon ?? <Icon size={15} />}</span>
       <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{children}</div>
       {onClose && (
-        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label="Dismiss">
+        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label={t('common.dismiss')}>
           <X size={15} />
         </button>
       )}
@@ -133,5 +134,5 @@ export function KV({ k, children }: { k: ReactNode; children: ReactNode }) {
   )
 }
 
-export const fmtDateTime = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-export const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString([], { timeStyle: 'short' })
+export const fmtDateTime = (ms: number) => new Date(ms).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
+export const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { timeStyle: 'short' })

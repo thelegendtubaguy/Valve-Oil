@@ -9,14 +9,14 @@ import { usePrinter } from '../../state/printer'
 import { displayName } from '../../lib/format'
 import { fmtDateTime, fmtLength, fmtSpan, fmtWeight, moveJob, multiplyFilenames, queueTotals, type QueuedJob } from './logic'
 import { Thumb } from './bits'
+import { locale, t, type MessageKey } from '../../i18n'
 
 /** When the queue should be done: a time today, else with the day. */
 function eta(seconds: number) {
   const d = new Date(Date.now() + seconds * 1000)
-  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString(locale(), { weekday: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-const STATE_LABEL = { ready: 'Ready', loading: 'Loading', starting: 'Starting', paused: 'Paused' } as const
 const STATE_TONE = { ready: 'good', loading: 'accent', starting: 'accent', paused: 'muted' } as const
 
 /** Metadata for each queued file, fetched once per file name and refreshed when files change. */
@@ -58,7 +58,7 @@ export function QueueTab() {
   const sel = jobs.filter((j) => selected.has(j.job_id))
 
   const removeAll = async () => {
-    if (await confirm({ title: 'Clear the queue?', body: 'Are you sure? This will clear the entire printer queue.', confirm: 'Remove all', danger: true })) attempt(queueActions.clear)
+    if (await confirm({ title: t('history.queue.clear_title'), body: t('history.queue.clear_body'), confirm: t('history.queue.remove_all'), danger: true })) attempt(queueActions.clear)
   }
   const reorder = (from: number, to: number) => attempt(() => queueActions.post(moveJob(jobs, from, to), true))
   const onDrop = (e: DragEvent, to: number) => {
@@ -69,12 +69,12 @@ export function QueueTab() {
 
   return (
     <Card
-      title="Job queue"
+      title={t('history.queue.title')}
       icon={<ListOrdered size={14} />}
       aside={
         <span className="inline-flex items-center gap-1.5">
-          {state && <span className={`pill tone-${STATE_TONE[state]} px-2.5 py-0.5 text-[12px]`}>{STATE_LABEL[state]}</span>}
-          <button className="iconbtn" onClick={() => attempt(loadQueue)} title="Refresh" aria-label="Refresh">
+          {state && <span className={`pill tone-${STATE_TONE[state]} px-2.5 py-0.5 text-[12px]`}>{t(`history.queue.state.${state}` as MessageKey)}</span>}
+          <button className="iconbtn" onClick={() => attempt(loadQueue)} title={t('history.queue.refresh')} aria-label={t('history.queue.refresh')}>
             <RefreshCw size={15} />
           </button>
         </span>
@@ -83,35 +83,35 @@ export function QueueTab() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {state === 'paused' ? (
           <button className="btn btn-primary" onClick={() => attempt(queueActions.start)} disabled={!loaded}>
-            <Play size={15} /> Start queue
+            <Play size={15} /> {t('history.queue.start')}
           </button>
         ) : (
           <button className="btn" onClick={() => attempt(queueActions.pause)} disabled={!loaded || !state}>
-            <Pause size={15} /> Pause
+            <Pause size={15} /> {t('history.queue.pause')}
           </button>
         )}
         <button className="btn" onClick={() => setAdding(true)}>
-          <Plus size={15} /> Add files
+          <Plus size={15} /> {t('history.queue.add_files')}
         </button>
         <span className="flex-1" />
         {sel.length > 0 ? (
           <>
-            <span className="text-[12.5px] text-ink-3">{sel.length} selected</span>
+            <span className="text-[12.5px] text-ink-3">{t('history.queue.selected', { count: sel.length })}</span>
             <button className="btn btn-sm" onClick={() => setMultiply(sel)}>
-              <Copy size={14} /> Multiply
+              <Copy size={14} /> {t('history.queue.multiply')}
             </button>
             <button className="btn btn-sm btn-danger" onClick={() => attempt(() => queueActions.remove(sel.map((j) => j.job_id)))}>
-              <Trash2 size={14} /> Remove
+              <Trash2 size={14} /> {t('common.remove')}
             </button>
           </>
         ) : (
           <button className="btn btn-sm btn-ghost" disabled={!jobs.length} onClick={removeAll}>
-            <Trash2 size={14} /> Remove all
+            <Trash2 size={14} /> {t('history.queue.remove_all')}
           </button>
         )}
       </div>
       <div className="mb-3 text-[12.5px] text-ink-3">
-        {state === 'paused' ? 'Paused: no job starts until the queue is started.' : busy ? 'Ready: when this print finishes, the next job starts.' : 'Ready: the next job starts when the printer is free.'} Drag jobs to change the order.
+        {state === 'paused' ? t('history.queue.paused_hint') : busy ? t('history.queue.busy_hint') : t('history.queue.ready_hint')} {t('history.queue.drag_hint')}
       </div>
 
       {!loaded ? (
@@ -119,7 +119,7 @@ export function QueueTab() {
           <Spinner size={22} />
         </div>
       ) : jobs.length === 0 ? (
-        <Empty>The queue is empty. Add files to print them one after another.</Empty>
+        <Empty>{t('history.queue.empty')}</Empty>
       ) : (
         <div className="grid gap-1.5">
           {jobs.map((j, i) => {
@@ -146,7 +146,7 @@ export function QueueTab() {
                   type="checkbox"
                   className="h-4 w-4 flex-none accent-[var(--accent)]"
                   checked={on}
-                  aria-label={`Select ${displayName(j.filename)}`}
+                  aria-label={t('history.queue.select', { name: displayName(j.filename) })}
                   onChange={() => setSelected((s) => (s.has(j.job_id) ? new Set([...s].filter((x) => x !== j.job_id)) : new Set([...s, j.job_id])))}
                 />
                 <span className="num w-5 flex-none text-center text-[12px] font-bold text-ink-3">{i + 1}</span>
@@ -157,7 +157,7 @@ export function QueueTab() {
                   </span>
                   <span className="flex flex-wrap gap-x-2.5 text-[12px] text-ink-3">
                     {m === null ? (
-                      <span className="text-warn">File not found</span>
+                      <span className="text-warn">{t('history.queue.file_not_found')}</span>
                     ) : (
                       <>
                         {m?.estimated_time != null && <span className="num">{fmtSpan(m.estimated_time)}</span>}
@@ -165,17 +165,17 @@ export function QueueTab() {
                         {m?.filament_weight_total != null && <span className="num">{fmtWeight(m.filament_weight_total)}</span>}
                       </>
                     )}
-                    <span className="hidden sm:inline">Added {fmtDateTime(j.time_added)}</span>
-                    <span className="hidden num sm:inline">· in queue {fmtSpan(j.time_in_queue)}</span>
+                    <span className="hidden sm:inline">{t('history.queue.added', { time: fmtDateTime(j.time_added) })}</span>
+                    <span className="hidden num sm:inline">· {t('history.queue.in_queue', { time: fmtSpan(j.time_in_queue) })}</span>
                   </span>
                 </span>
                 <MenuButton
                   button={<Ellipsis size={16} />}
-                  label="Job actions"
+                  label={t('history.jobs.job_actions')}
                   items={[
-                    i > 0 && { label: 'Jump to front', icon: <ArrowUpToLine size={15} />, onSelect: () => attempt(() => queueActions.jump(j.job_id)) },
-                    { label: 'Multiply', icon: <Copy size={15} />, onSelect: () => setMultiply([j]) },
-                    { label: 'Remove', icon: <Trash2 size={15} />, danger: true, onSelect: () => attempt(() => queueActions.remove([j.job_id])) },
+                    i > 0 && { label: t('history.queue.jump'), icon: <ArrowUpToLine size={15} />, onSelect: () => attempt(() => queueActions.jump(j.job_id)) },
+                    { label: t('history.queue.multiply'), icon: <Copy size={15} />, onSelect: () => setMultiply([j]) },
+                    { label: t('common.remove'), icon: <Trash2 size={15} />, danger: true, onSelect: () => attempt(() => queueActions.remove([j.job_id])) },
                   ]}
                 />
               </div>
@@ -186,12 +186,10 @@ export function QueueTab() {
 
       {jobs.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {totals.withoutFile > 0 && <span className="chip tone-warn">Unknown jobs: {totals.withoutFile}</span>}
-          <span className="chip">
-            Filament: {fmtLength(totals.filamentLength)} / {fmtWeight(totals.filamentWeight)}
-          </span>
-          <span className="chip">Print time: {fmtSpan(totals.time)}</span>
-          <span className="chip">ETA: {eta(remaining + totals.time)}</span>
+          {totals.withoutFile > 0 && <span className="chip tone-warn">{t('history.queue.unknown_jobs', { n: totals.withoutFile })}</span>}
+          <span className="chip">{t('history.queue.filament', { length: fmtLength(totals.filamentLength), weight: fmtWeight(totals.filamentWeight) })}</span>
+          <span className="chip">{t('history.queue.print_time', { time: fmtSpan(totals.time) })}</span>
+          <span className="chip">{t('history.queue.eta', { time: eta(remaining + totals.time) })}</span>
         </div>
       )}
 
@@ -215,21 +213,21 @@ function MultiplyDialog({ jobs, onClose }: { jobs: QueuedJob[]; onClose: () => v
     <Dialog
       open
       onClose={onClose}
-      title={jobs.length > 1 ? 'Multiply jobs' : 'Multiply job'}
+      title={t('history.queue.multiply_title', { count: jobs.length })}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!ok} onClick={save}>
-            Add {ok ? n * jobs.length : ''} to queue
+            {ok ? t('history.queue.add_n', { n: n * jobs.length }) : t('history.job.add_to_queue')}
           </button>
         </>
       }
     >
-      <div className="mb-3 text-ink-2">{jobs.length > 1 ? `${jobs.length} jobs` : displayName(jobs[0].filename)} will be added to the end of the queue this many more times.</div>
+      <div className="mb-3 text-ink-2">{jobs.length > 1 ? t('history.queue.multiply_body', { count: jobs.length }) : t('history.queue.multiply_body_file', { name: displayName(jobs[0].filename) })}</div>
       <label className="grid gap-1.5">
-        <span className="lbl">Number of copies</span>
+        <span className="lbl">{t('history.queue.copies')}</span>
         <input className="field num" inputMode="numeric" autoFocus value={copies} onChange={(e) => setCopies(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
       </label>
     </Dialog>
@@ -249,7 +247,7 @@ function AddFilesDialog({ onClose }: { onClose: () => void }) {
   const add = async () => {
     await attempt(async () => {
       await queueActions.post(picked)
-      toast(`Added ${picked.length} ${picked.length === 1 ? 'file' : 'files'} to the job queue`)
+      toast(t('history.queue.added_files', { count: picked.length }))
       onClose()
     })
   }
@@ -258,28 +256,28 @@ function AddFilesDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       size="wide"
-      title="Add files to the queue"
+      title={t('history.queue.add_title')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!picked.length} onClick={add}>
-            <Plus size={15} /> Add {picked.length || ''} to queue
+            <Plus size={15} /> {picked.length ? t('history.queue.add_n', { n: picked.length }) : t('history.job.add_to_queue')}
           </button>
         </>
       }
     >
       <label className="relative mb-3 block">
         <Search size={15} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-        <input className="field pl-8" placeholder="Search files" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <input className="field pl-8" placeholder={t('history.queue.search_files')} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
       </label>
       {!files ? (
         <div className="grid place-items-center py-8">
           <Spinner size={20} />
         </div>
       ) : list.length === 0 ? (
-        <Empty>No G-code files{query ? ' match' : ''}.</Empty>
+        <Empty>{query ? t('history.queue.no_files_match') : t('history.queue.no_files')}</Empty>
       ) : (
         <div className="grid max-h-[52dvh] gap-1 overflow-auto">
           {list.map((f) => {

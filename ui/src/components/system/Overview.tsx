@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Cable, Cpu, Database, HardDrive, MemoryStick, RefreshCw, RotateCcw, Server, Trash2, TriangleAlert, Usb } from 'lucide-react'
+import { Cable, Cpu, Database, HardDrive, RefreshCw, RotateCcw, Server, Trash2, TriangleAlert, Usb } from 'lucide-react'
 import { Card, Dialog, Empty, Segmented, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { client, usePrinter } from '../../state/printer'
 import { Row, fmtFreq, fmtSize, mcuLabel, timestampName } from './bits'
 import { useSystemInfo, type SystemInfo } from './system-info'
 import { UsageCard } from './Usage'
+import { t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 export function Overview() {
   const { system } = useSystemInfo()
   return (
-    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
+    // Four columns on a wide screen: the usage charts across two, the host, disk, and database in the third, and the
+    // MCUs in the fourth; two columns on a laptop, with the charts across both; one on a phone.
+    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2 2xl:grid-cols-4">
+      <div className="min-w-0 lg:col-span-2">
+        <UsageCard cores={system?.cpu_info?.cpu_count || 1} />
+      </div>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
         <WarningsCard />
         <HostCard />
-        <SdCard info={system} />
         <DiskCard />
         <DatabaseCard />
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3.5">
-        <UsageCard cores={system?.cpu_info?.cpu_count || 1} />
         <McuCards />
       </div>
     </div>
@@ -35,14 +40,14 @@ function WarningsCard() {
   const missing = server?.missing_klippy_requirements ?? []
   if (!failed.length && !warnings.length && !missing.length && !klipper.length) return null
   return (
-    <Card title="Warnings" icon={<TriangleAlert size={15} />}>
+    <Card title={t('system.overview.warnings.title')} icon={<TriangleAlert size={15} />}>
       <div className="grid gap-2">
         {failed.length > 0 && (
           <div className="tone-bad rounded-lg px-3 py-2">
-            <b>Moonraker has failed plugins:</b> {failed.join(', ')}. Check moonraker.log, fix the configuration, and restart Moonraker.
+            {tr('system.overview.warnings.failed_plugins', { list: failed.join(', ') }, { b: (c) => <b>{c}</b> })}
           </div>
         )}
-        {missing.length > 0 && <div className="tone-warn rounded-lg px-3 py-2">Klipper is missing sections Moonraker needs: {missing.join(', ')}</div>}
+        {missing.length > 0 && <div className="tone-warn rounded-lg px-3 py-2">{t('system.overview.warnings.missing', { list: missing.join(', ') })}</div>}
         {warnings.map((w, i) => (
           <div key={`m${i}`} className="tone-warn rounded-lg px-3 py-2 break-words">
             <span className="font-semibold">Moonraker:</span> {w}
@@ -79,54 +84,40 @@ function HostCard() {
   const distName = distributionName(dist)
   return (
     <Card
-      title="Host"
+      title={t('system.overview.host.title')}
       icon={<Server size={15} />}
       aside={
         <span className="flex items-center gap-1">
           {loading && <Spinner size={14} />}
           <button className="btn btn-ghost btn-sm" onClick={() => setDevices(true)}>
-            <Usb size={14} /> Devices
+            <Usb size={14} /> {t('system.overview.devices.title')}
           </button>
         </span>
       }
     >
       {!system && !loading ? (
-        <Empty>Moonraker didn’t report the host’s details.</Empty>
+        <Empty>{t('system.overview.host.no_details')}</Empty>
       ) : (
         <div>
-          <Row k="Hostname">{printer?.hostname}</Row>
+          <Row k={t('system.overview.host.hostname')}>{printer?.hostname}</Row>
           <Row k="Klipper">{printer?.software_version}</Row>
           <Row k="Moonraker">{server?.moonraker_version && server.moonraker_version !== '?' ? server.moonraker_version : server?.api_version_string ? `API ${server.api_version_string}` : undefined}</Row>
-          <Row k="CPU model">{cpu?.model}</Row>
-          <Row k="CPU description">{cpu?.cpu_desc}</Row>
-          <Row k="Hardware">{cpu?.hardware_desc}</Row>
-          <Row k="Processor">{cpu?.bits && cpu.processor && cpu.cpu_count ? `${cpu.bits} ${cpu.processor} with ${cpu.cpu_count} cores` : undefined}</Row>
-          <Row k="Total memory">{cpu?.total_memory ? fmtSize(cpu.total_memory * 1024) : undefined}</Row>
-          <Row k="Operating system">{dist?.name}</Row>
-          {distName !== dist?.name && <Row k="Distribution">{distName}</Row>}
-          <Row k="Distribution like">{dist?.like}</Row>
-          <Row k="Codename">{dist?.codename}</Row>
-          <Row k="Kernel">{dist?.kernel_version}</Row>
+          <Row k={t('system.overview.host.cpu_model')}>{cpu?.model}</Row>
+          <Row k={t('system.overview.host.cpu_desc')}>{cpu?.cpu_desc}</Row>
+          <Row k={t('system.overview.host.hardware')}>{cpu?.hardware_desc}</Row>
+          <Row k={t('system.overview.host.processor')}>{cpu?.bits && cpu.processor && cpu.cpu_count ? t('system.overview.host.processor_value', { bits: cpu.bits, processor: cpu.processor, count: cpu.cpu_count }) : undefined}</Row>
+          <Row k={t('system.overview.host.total_memory')}>{cpu?.total_memory ? fmtSize(cpu.total_memory * 1024) : undefined}</Row>
+          <Row k={t('system.overview.host.os')}>{dist?.name}</Row>
+          {distName !== dist?.name && <Row k={t('system.overview.host.distribution')}>{distName}</Row>}
+          <Row k={t('system.overview.host.distribution_like')}>{dist?.like}</Row>
+          <Row k={t('system.overview.host.codename')}>{dist?.codename}</Row>
+          <Row k={t('system.overview.host.kernel')}>{dist?.kernel_version}</Row>
           <Row k="Python">{system?.python?.version_string?.split(' ')[0]}</Row>
-          <Row k="Network">{network}</Row>
-          <Row k="Virtualization">{virt?.virt_type && virt.virt_type !== 'none' ? `${virt.virt_type} (${virt.virt_identifier})` : undefined}</Row>
+          <Row k={t('system.overview.host.network')}>{network}</Row>
+          <Row k={t('system.overview.host.virtualization')}>{virt?.virt_type && virt.virt_type !== 'none' ? `${virt.virt_type} (${virt.virt_identifier})` : undefined}</Row>
         </div>
       )}
       <DevicesDialog open={devices} onClose={() => setDevices(false)} />
-    </Card>
-  )
-}
-
-function SdCard({ info }: { info: SystemInfo | null }) {
-  const sd = info?.sd_info
-  if (!sd || !Object.keys(sd).length) return null
-  return (
-    <Card title="SD card" icon={<MemoryStick size={15} />}>
-      <Row k="Manufacturer">{sd.manufacturer}</Row>
-      <Row k="Manufactured">{sd.manufacturer_date}</Row>
-      <Row k="Product name">{sd.product_name ? `${sd.product_name} ${sd.product_revision ?? ''}`.trim() : undefined}</Row>
-      <Row k="Capacity">{sd.capacity}</Row>
-      <Row k="Serial number">{sd.serial_number}</Row>
     </Card>
   )
 }
@@ -157,12 +148,12 @@ function DiskCard() {
   const low = d ? d.free / d.total < 0.1 : false
   return (
     <Card
-      title="Disk usage"
+      title={t('system.overview.disk.title')}
       icon={<HardDrive size={15} />}
       aside={
         <span className="flex items-center gap-1">
           {roots.length > 1 && (
-            <select className="field h-7 w-auto py-0 pl-2.5 text-[12.5px]" value={current} onChange={(e) => setRoot(e.target.value)} aria-label="Folder">
+            <select className="field h-7 w-auto py-0 pl-2.5 text-[12.5px]" value={current} onChange={(e) => setRoot(e.target.value)} aria-label={t('system.overview.disk.folder')}>
               {roots.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -170,7 +161,7 @@ function DiskCard() {
               ))}
             </select>
           )}
-          <button className="iconbtn h-7 w-7" onClick={() => current && load(current)} disabled={loading} aria-label="Refresh" title="Refresh">
+          <button className="iconbtn h-7 w-7" onClick={() => current && load(current)} disabled={loading} aria-label={t('system.refresh')} title={t('system.refresh')}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
           </button>
         </span>
@@ -180,13 +171,9 @@ function DiskCard() {
         <i style={{ width: `${pct}%`, ...(low ? { background: 'var(--red)' } : {}) }} />
       </div>
       <div className="mt-2 flex justify-between gap-3 text-[13px]">
-        <span>
-          <b className="num">{d ? fmtSize(d.used) : '?'}</b> <span className="text-ink-3">used</span>
-        </span>
-        <span className="text-ink-3">{d ? `${Math.round(pct)}% of ${fmtSize(d.total)}` : ''}</span>
-        <span>
-          <b className={`num ${low ? 'text-bad' : ''}`}>{d ? fmtSize(d.free) : '?'}</b> <span className="text-ink-3">free</span>
-        </span>
+        <span>{tr('system.overview.disk.used', { size: <b className="num">{d ? fmtSize(d.used) : '?'}</b> }, { m: (c) => <span className="text-ink-3">{c}</span> })}</span>
+        <span className="text-ink-3">{d ? t('system.overview.disk.of_total', { pct: Math.round(pct), total: fmtSize(d.total) }) : ''}</span>
+        <span>{tr('system.overview.disk.free', { size: <b className={`num ${low ? 'text-bad' : ''}`}>{d ? fmtSize(d.free) : '?'}</b> }, { m: (c) => <span className="text-ink-3">{c}</span> })}</span>
       </div>
     </Card>
   )
@@ -211,17 +198,17 @@ function DatabaseCard() {
     load()
   }
   const restore = async (name: string) => {
-    if (!(await confirm({ title: 'Restore this backup?', body: <>Moonraker’s database, including Fluidd’s and Valve Oil UI’s settings, history, and file details, goes back to <b>{name}</b>. Moonraker restarts to load it.</>, confirm: 'Restore', danger: true }))) return
-    run(`r:${name}`, () => client.call('server.database.restore', { filename: name }), 'Backup restored')
+    if (!(await confirm({ title: t('system.overview.database.restore_title'), body: <>{tr('system.overview.database.restore_body', { name }, { b: (c) => <b>{c}</b> })}</>, confirm: t('system.overview.database.restore'), danger: true }))) return
+    run(`r:${name}`, () => client.call('server.database.restore', { filename: name }), t('system.overview.database.restored'))
   }
   const remove = async (name: string) => {
-    if (!(await confirm({ title: 'Delete this backup?', body: name, confirm: 'Delete', danger: true }))) return
-    run(`d:${name}`, () => client.call('server.database.delete_backup', { filename: name }), 'Backup deleted')
+    if (!(await confirm({ title: t('system.overview.database.delete_title'), body: name, confirm: t('common.delete'), danger: true }))) return
+    run(`d:${name}`, () => client.call('server.database.delete_backup', { filename: name }), t('system.overview.database.deleted'))
   }
   return (
-    <Card title="Moonraker database" icon={<Database size={15} />}>
+    <Card title={t('system.overview.database.title')} icon={<Database size={15} />}>
       {list && list.namespaces.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5" title="Namespaces">
+        <div className="mb-3 flex flex-wrap gap-1.5" title={t('system.overview.database.namespaces')}>
           {list.namespaces
             .slice()
             .sort()
@@ -237,7 +224,7 @@ function DatabaseCard() {
           <table className="table">
             <thead>
               <tr>
-                <th>Backup</th>
+                <th>{t('system.overview.database.backup')}</th>
                 <th />
               </tr>
             </thead>
@@ -246,10 +233,10 @@ function DatabaseCard() {
                 <tr key={b}>
                   <td className="code break-all">{b}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-ghost btn-sm" disabled={printing || busy != null} onClick={() => restore(b)} title={printing ? 'Not while printing' : 'Restore'}>
-                      {busy === `r:${b}` ? <Spinner size={13} /> : <RotateCcw size={14} />} Restore
+                    <button className="btn btn-ghost btn-sm" disabled={printing || busy != null} onClick={() => restore(b)} title={printing ? t('system.not_while_printing') : t('system.overview.database.restore')}>
+                      {busy === `r:${b}` ? <Spinner size={13} /> : <RotateCcw size={14} />} {t('system.overview.database.restore')}
                     </button>
-                    <button className="iconbtn inline-grid h-7 w-7 align-middle" disabled={busy != null} onClick={() => remove(b)} aria-label={`Delete ${b}`} title="Delete">
+                    <button className="iconbtn inline-grid h-7 w-7 align-middle" disabled={busy != null} onClick={() => remove(b)} aria-label={t('system.overview.database.delete_named', { name: b })} title={t('common.delete')}>
                       {busy === `d:${b}` ? <Spinner size={13} /> : <Trash2 size={14} />}
                     </button>
                   </td>
@@ -259,14 +246,14 @@ function DatabaseCard() {
           </table>
         </div>
       ) : (
-        <p className="mt-0 text-ink-3">{list ? 'No database backups yet.' : 'Moonraker didn’t list its database.'}</p>
+        <p className="mt-0 text-ink-3">{list ? t('system.overview.database.none') : t('system.overview.database.not_listed')}</p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button className="btn btn-sm" disabled={printing || busy != null} onClick={() => run('compact', () => client.call('server.database.compact'), 'Database compacted')} title={printing ? 'Not while printing' : undefined}>
-          {busy === 'compact' && <Spinner size={13} />} Compact database
+        <button className="btn btn-sm" disabled={printing || busy != null} onClick={() => run('compact', () => client.call('server.database.compact'), t('system.overview.database.compacted'))} title={printing ? t('system.not_while_printing') : undefined}>
+          {busy === 'compact' && <Spinner size={13} />} {t('system.overview.database.compact')}
         </button>
-        <button className="btn btn-sm btn-primary" disabled={printing || busy != null} onClick={() => run('backup', () => client.call('server.database.post_backup', { filename: `${timestampName()}.db` }), 'Backup created')} title={printing ? 'Not while printing' : undefined}>
-          {busy === 'backup' && <Spinner size={13} />} Create backup
+        <button className="btn btn-sm btn-primary" disabled={printing || busy != null} onClick={() => run('backup', () => client.call('server.database.post_backup', { filename: `${timestampName()}.db` }), t('system.overview.database.created'))} title={printing ? t('system.not_while_printing') : undefined}>
+          {busy === 'backup' && <Spinner size={13} />} {t('system.overview.database.create_backup')}
         </button>
       </div>
     </Card>
@@ -292,25 +279,25 @@ function McuCard({ name }: { name: string }) {
   const st = mcu.last_stats ?? {}
   return (
     <Card
-      title={`${mcuLabel(name)} MCU`}
+      title={t('system.mcu.title', { name: mcuLabel(name) })}
       icon={<Cpu size={15} />}
       aside={
         <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
-          Details
+          {t('system.mcu.details')}
         </button>
       }
     >
-      <Row k="Klipper name" mono>
+      <Row k={t('system.mcu.klipper_name')} mono>
         {name}
       </Row>
-      <Row k="Micro-controller">{c.MCU}</Row>
-      <Row k="Frequency">{c.CLOCK_FREQ ? fmtFreq(+c.CLOCK_FREQ) : undefined}</Row>
-      <Row k="Version" mono>
+      <Row k={t('system.mcu.micro_controller')}>{c.MCU}</Row>
+      <Row k={t('system.mcu.frequency')}>{c.CLOCK_FREQ ? fmtFreq(+c.CLOCK_FREQ) : undefined}</Row>
+      <Row k={t('system.mcu.version')} mono>
         {mcu.mcu_version}
       </Row>
-      <Row k="Application">{mcu.app}</Row>
-      {mcu.non_critical_disconnected != null && <Row k="Non-critical connection">{mcu.non_critical_disconnected ? <span className="pill tone-bad">Disconnected</span> : <span className="pill tone-good">Connected</span>}</Row>}
-      <Row k="Awake">{typeof st.mcu_awake === 'number' ? `${((st.mcu_awake / 5) * 100).toFixed(2)} %` : undefined}</Row>
+      <Row k={t('system.mcu.application')}>{mcu.app}</Row>
+      {mcu.non_critical_disconnected != null && <Row k={t('system.mcu.non_critical')}>{mcu.non_critical_disconnected ? <span className="pill tone-bad">{t('system.mcu.disconnected')}</span> : <span className="pill tone-good">{t('system.mcu.connected')}</span>}</Row>}
+      <Row k={t('system.mcu.awake')}>{typeof st.mcu_awake === 'number' ? `${((st.mcu_awake / 5) * 100).toFixed(2)} %` : undefined}</Row>
       <McuDialog name={name} mcu={mcu} open={open} onClose={() => setOpen(false)} />
     </Card>
   )
@@ -343,26 +330,26 @@ function McuDialog({ name, mcu, open, onClose }: { name: string; mcu: McuStatus;
   )
   const kconfig = mcu.mcu_kconfig?.trim()
   return (
-    <Dialog open={open} onClose={onClose} title={`${mcuLabel(name)} MCU information`} size="wide">
+    <Dialog open={open} onClose={onClose} title={t('system.mcu.info_title', { name: mcuLabel(name) })} size="wide">
       <div className="grid gap-4">
         {mcu.mcu_version && (
           <div>
-            <div className="section-label mb-1">Version</div>
+            <div className="section-label mb-1">{t('system.mcu.version')}</div>
             <div className="code break-all">{mcu.mcu_version}</div>
             {mcu.mcu_build_versions && <div className="code mt-1 break-all text-ink-3">{mcu.mcu_build_versions}</div>}
           </div>
         )}
         <div>
-          <div className="section-label mb-1">Constants</div>
+          <div className="section-label mb-1">{t('system.mcu.constants')}</div>
           {table(mcu.mcu_constants ?? {})}
         </div>
         <div>
-          <div className="section-label mb-1">Last stats</div>
+          <div className="section-label mb-1">{t('system.mcu.last_stats')}</div>
           {table(mcu.last_stats ?? {})}
         </div>
         {kconfig && (
           <div>
-            <div className="section-label mb-1">Build configuration</div>
+            <div className="section-label mb-1">{t('system.mcu.build_config')}</div>
             <pre className="code m-0 max-h-80 overflow-auto rounded-lg bg-inset p-3">{kconfig}</pre>
           </div>
         )}
@@ -373,9 +360,9 @@ function McuDialog({ name, mcu, open, onClose }: { name: string; mcu: McuStatus;
 
 type Peripheral = Record<string, string | number | null | undefined>
 const DEVICE_TABS = [
-  { value: 'serial', label: 'Serial', method: 'machine.peripherals.serial', key: 'serial_devices' },
-  { value: 'usb', label: 'USB', method: 'machine.peripherals.usb', key: 'usb_devices' },
-  { value: 'video', label: 'Video', method: 'machine.peripherals.video', key: 'v4l2_devices' },
+  { value: 'serial', method: 'machine.peripherals.serial', key: 'serial_devices' },
+  { value: 'usb', method: 'machine.peripherals.usb', key: 'usb_devices' },
+  { value: 'video', method: 'machine.peripherals.video', key: 'v4l2_devices' },
 ] as const
 type DeviceTab = (typeof DEVICE_TABS)[number]['value']
 
@@ -384,14 +371,14 @@ function DevicesDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [tab, setTab] = useState<DeviceTab>('serial')
   const [found, setFound] = useState<Partial<Record<DeviceTab, Peripheral[] | string>>>({})
   const [loading, setLoading] = useState(false)
-  const load = useCallback(async (t: DeviceTab) => {
-    const def = DEVICE_TABS.find((d) => d.value === t)!
+  const load = useCallback(async (which: DeviceTab) => {
+    const def = DEVICE_TABS.find((d) => d.value === which)!
     setLoading(true)
     try {
       const r = await client.call<Record<string, Peripheral[]>>(def.method)
-      setFound((f) => ({ ...f, [t]: t === 'video' ? [...(r.v4l2_devices ?? []), ...(r.libcamera_devices ?? [])] : (r[def.key] ?? []) }))
+      setFound((f) => ({ ...f, [which]: which === 'video' ? [...(r.v4l2_devices ?? []), ...(r.libcamera_devices ?? [])] : (r[def.key] ?? []) }))
     } catch (e) {
-      setFound((f) => ({ ...f, [t]: e instanceof Error ? e.message : String(e) }))
+      setFound((f) => ({ ...f, [which]: e instanceof Error ? e.message : String(e) }))
     }
     setLoading(false)
   }, [])
@@ -400,10 +387,10 @@ function DevicesDialog({ open, onClose }: { open: boolean; onClose: () => void }
   }, [open, tab, found, load])
   const list = found[tab]
   return (
-    <Dialog open={open} onClose={onClose} title="Devices" size="wide">
+    <Dialog open={open} onClose={onClose} title={t('system.overview.devices.title')} size="wide">
       <div className="mb-3 flex items-center gap-2">
-        <Segmented value={tab} onChange={setTab} options={DEVICE_TABS.map((d) => ({ value: d.value, label: <>{d.label}{Array.isArray(found[d.value]) && <span className="chip px-1.5 py-0">{(found[d.value] as Peripheral[]).length}</span>}</> }))} label="Device type" />
-        <button className="iconbtn ml-auto" onClick={() => load(tab)} disabled={loading} aria-label="Refresh" title="Refresh">
+        <Segmented value={tab} onChange={setTab} options={DEVICE_TABS.map((d) => ({ value: d.value, label: <>{d.value === 'usb' ? 'USB' : t(`system.overview.devices.${d.value}`)}{Array.isArray(found[d.value]) && <span className="chip px-1.5 py-0">{(found[d.value] as Peripheral[]).length}</span>}</> }))} label={t('system.overview.devices.type')} />
+        <button className="iconbtn ml-auto" onClick={() => load(tab)} disabled={loading} aria-label={t('system.refresh')} title={t('system.refresh')}>
           <RefreshCw size={15} className={loading ? 'spin' : ''} />
         </button>
       </div>
@@ -414,14 +401,14 @@ function DevicesDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Spinner size={20} />
         </div>
       ) : list.length === 0 ? (
-        <Empty>No devices found</Empty>
+        <Empty>{t('system.overview.devices.none')}</Empty>
       ) : (
         <div className="grid gap-2.5">
           {list.map((d, i) => (
             <div key={i} className="rounded-xl bg-inset p-3" style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }}>
               <div className="mb-1 flex items-center gap-2 font-semibold">
                 <Cable size={14} className="text-accent-ink" />
-                {String(d.product ?? d.camera_name ?? d.device_name ?? d.device_path ?? 'Device')}
+                {String(d.product ?? d.camera_name ?? d.device_name ?? d.device_path ?? t('system.overview.devices.device'))}
               </div>
               {Object.entries(d)
                 .filter(([, v]) => v != null && v !== '' && typeof v !== 'object')

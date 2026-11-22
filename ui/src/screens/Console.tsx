@@ -10,6 +10,7 @@ import { useConsoleEntries, useConsoleSettings, useGcodeHelp } from '../componen
 import type { ConsoleEntry } from '../components/console/model'
 import { copyText } from '../components/console/clipboard'
 import '../components/console/console.css'
+import { locale, t } from '../i18n'
 
 /** Fluidd's console, full height: scrollback with filters and search, the command line, and every command's help. */
 export function ConsoleScreen() {
@@ -28,33 +29,33 @@ export function ConsoleScreen() {
   const input = <CommandInput autoFocus={desktop} dropUp={!settings.flip} />
   return (
     <>
-      <PageHeader title="Console">
+      <PageHeader title={t('console.title')}>
         <div className="relative min-w-[140px] flex-1 sm:max-w-[240px] sm:flex-none">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-          <input className="field py-1.5! pr-7! pl-8!" placeholder="Search output" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search output" spellCheck={false} />
+          <input className="field py-1.5! pr-7! pl-8!" placeholder={t('console.search')} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t('console.search')} spellCheck={false} />
           {search && (
-            <button className="iconbtn absolute top-1/2 right-0.5 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')} aria-label="Clear search">
+            <button className="iconbtn absolute top-1/2 right-0.5 h-7 w-7 -translate-y-1/2" onClick={() => setSearch('')} aria-label={t('console.clear_search')}>
               <X size={14} />
             </button>
           )}
         </div>
         <FilterMenu onManage={() => setManage(true)} />
-        <button className={`btn btn-sm ${settings.flip ? 'text-accent-ink' : ''}`} onClick={() => settings.setFlip(!settings.flip).catch(() => {})} title="Flip layout: newest line and the command line at the top" aria-pressed={settings.flip}>
+        <button className={`btn btn-sm ${settings.flip ? 'text-accent-ink' : ''}`} onClick={() => settings.setFlip(!settings.flip).catch(() => {})} title={t('console.flip_hint')} aria-pressed={settings.flip}>
           <ArrowDownUp size={14} />
-          <span className="max-sm:hidden">Flip layout</span>
+          <span className="max-sm:hidden">{t('console.flip')}</span>
         </button>
-        <button className="btn btn-sm" onClick={() => copyLines(shown)} disabled={!shown.length} title="Copy the lines shown">
+        <button className="btn btn-sm" onClick={() => copyLines(shown)} disabled={!shown.length} title={t('console.copy_hint')}>
           <Copy size={14} />
-          <span className="max-sm:hidden">Copy</span>
+          <span className="max-sm:hidden">{t('console.copy')}</span>
         </button>
-        <button className="btn btn-sm" onClick={() => settings.clear().catch(() => {})} title="Clear the console here and in Fluidd">
+        <button className="btn btn-sm" onClick={() => settings.clear().catch(() => {})} title={t('console.clear_hint')}>
           <Eraser size={14} />
-          <span className="max-sm:hidden">Clear</span>
+          <span className="max-sm:hidden">{t('console.clear')}</span>
         </button>
         {!wide && (
           <button className="btn btn-sm" onClick={() => setList(true)}>
             <BookOpen size={14} />
-            Commands
+            {t('console.commands')}
           </button>
         )}
       </PageHeader>
@@ -67,21 +68,21 @@ export function ConsoleScreen() {
             known={known}
             search={search}
             flip={settings.flip}
-            empty={!loaded ? 'Loading…' : search ? 'No line matches the search.' : 'Printer messages show here.'}
+            empty={!loaded ? t('common.loading') : search ? t('console.no_match') : t('console.empty')}
           />
           {!settings.flip && input}
         </section>
         {wide && (
           <section className="card flex min-h-0 flex-col">
             <h3 className="card-title">
-              <BookOpen size={14} /> Commands
+              <BookOpen size={14} /> {t('console.commands')}
             </h3>
             <CommandList className="flex-1" />
           </section>
         )}
       </div>
       <FiltersDialog open={manage} onClose={() => setManage(false)} />
-      <Dialog open={list && !wide} onClose={() => setList(false)} title="Commands" size="wide">
+      <Dialog open={list && !wide} onClose={() => setList(false)} title={t('console.commands')} size="wide">
         <CommandList className="h-[min(70dvh,640px)]" onPick={() => setList(false)} />
       </Dialog>
     </>
@@ -124,9 +125,9 @@ function useFillHeight(ref: React.RefObject<HTMLElement | null>) {
 }
 
 function copyLines(entries: ConsoleEntry[]) {
-  const text = entries.map((e) => `${e.time ? new Date(e.time * 1000).toLocaleTimeString() + ' ' : ''}${e.type === 'command' ? '$ ' : ''}${e.message}`).join('\n')
+  const text = entries.map((e) => `${e.time ? new Date(e.time * 1000).toLocaleTimeString(locale()) + ' ' : ''}${e.type === 'command' ? '$ ' : ''}${e.message}`).join('\n')
   copyText(text).then(
-    () => toast(`Copied ${entries.length} line${entries.length === 1 ? '' : 's'}.`),
-    () => toast('Couldn’t copy.', 'error'),
+    () => toast(t('console.copied', { count: entries.length })),
+    () => toast(t('console.copy_failed'), 'error'),
   )
 }

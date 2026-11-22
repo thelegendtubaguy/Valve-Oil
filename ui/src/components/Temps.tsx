@@ -5,6 +5,7 @@ import { runGcode, usePrinter } from '../state/printer'
 import { prettyName } from '../lib/format'
 import { targetError, targetRange } from './control/heaters'
 import { gcode } from './control/gcode'
+import { t, type MessageKey } from '../i18n'
 
 // m106 is the fan's M106 P index on QIDI printers, so speed changes go through the printer's own fan macro.
 export type Tile = { obj: string; label: string; kind: 'heater' | 'sensor' | 'fan'; m106?: number }
@@ -13,24 +14,24 @@ export type Tile = { obj: string; label: string; kind: 'heater' | 'sensor' | 'fa
 export function useTiles(): Tile[] {
   return usePrinter((s) => {
     const tiles: Tile[] = []
-    if (s.objects.includes('extruder')) tiles.push({ obj: 'extruder', label: 'Nozzle', kind: 'heater' })
-    if (s.objects.includes('heater_bed')) tiles.push({ obj: 'heater_bed', label: 'Bed', kind: 'heater' })
+    if (s.objects.includes('extruder')) tiles.push({ obj: 'extruder', label: t('app.heaters.nozzle'), kind: 'heater' })
+    if (s.objects.includes('heater_bed')) tiles.push({ obj: 'heater_bed', label: t('app.heaters.bed'), kind: 'heater' })
     for (const o of s.objects) if (o.startsWith('heater_generic ') && !o.startsWith('heater_generic heater_box')) tiles.push({ obj: o, label: prettyName(o), kind: 'heater' })
     if (!tiles.some((t) => /chamber/i.test(t.obj))) {
       const sensor = s.objects.find((o) => o.startsWith('temperature_sensor ') && /chamber/i.test(o))
-      if (sensor) tiles.push({ obj: sensor, label: 'Chamber', kind: 'sensor' })
+      if (sensor) tiles.push({ obj: sensor, label: t('app.heaters.chamber'), kind: 'sensor' })
     }
-    if (s.objects.includes('fan')) tiles.push({ obj: 'fan', label: 'Part fan', kind: 'fan' })
-    for (const [obj, label, m106] of QIDI_FANS) if (s.objects.includes(obj)) tiles.push({ obj, label, kind: 'fan', m106 })
+    if (s.objects.includes('fan')) tiles.push({ obj: 'fan', label: t('app.heaters.part_fan'), kind: 'fan' })
+    for (const [obj, label, m106] of QIDI_FANS) if (s.objects.includes(obj)) tiles.push({ obj, label: t(label), kind: 'fan', m106 })
     return tiles
   })
 }
 
-// QIDI's fans and their M106 P index; P2 drives both auxiliary fans together.
-const QIDI_FANS: [string, string, number][] = [
-  ['fan_generic cooling_fan', 'Part fan', 0],
-  ['fan_generic auxiliary_cooling_fan', 'Auxiliary fan', 2],
-  ['fan_generic chamber_circulation_fan', 'Chamber exhaust', 3],
+// QIDI's fans, their labels' message keys, and their M106 P index; P2 drives both auxiliary fans together.
+const QIDI_FANS: [string, MessageKey, number][] = [
+  ['fan_generic cooling_fan', 'app.heaters.part_fan', 0],
+  ['fan_generic auxiliary_cooling_fan', 'app.heaters.aux_fan', 2],
+  ['fan_generic chamber_circulation_fan', 'app.heaters.chamber_exhaust', 3],
 ]
 
 export function TempTiles({ compact = false }: { compact?: boolean }) {
@@ -60,7 +61,7 @@ function TileView({ tile, compact, onOpen }: { tile: Tile; compact: boolean; onO
           {speed}
           <small>%</small>
         </span>
-        <span className="lbl">{speed > 0 ? 'running' : 'off'}</span>
+        <span className="lbl">{speed > 0 ? t('app.temps.running') : t('app.temps.off')}</span>
       </button>
     )
   }
@@ -74,7 +75,7 @@ function TileView({ tile, compact, onOpen }: { tile: Tile; compact: boolean; onO
         {temp != null ? Math.round(temp) : '—'}
         <small>°</small>
       </span>
-      {!compact && <span className="lbl num">{tile.kind === 'sensor' ? 'sensor' : heating ? `→ ${Math.round(target!)} °C` : 'off'}</span>}
+      {!compact && <span className="lbl num">{tile.kind === 'sensor' ? t('app.temps.sensor') : heating ? `→ ${Math.round(target!)} °C` : t('app.temps.off')}</span>}
       {!compact && series && (
         <span className="absolute right-2.5 bottom-2.5">
           <Sparkline values={series.temperatures} target={heating ? target : undefined} width={70} height={24} color={heating ? 'var(--orange)' : 'var(--ink-3)'} />
@@ -102,11 +103,11 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
     const set = (pct: number) => attempt(() => runGcode(command(pct))).then(onClose)
     return (
       <Dialog open onClose={onClose} title={tile.label}>
-        <div className="mb-3 text-ink-2">Now {Math.round(((st.speed as number) ?? 0) * 100)}%. Macros and the chamber guard can change it again.</div>
+        <div className="mb-3 text-ink-2">{t('app.temps.fan_now', { pct: Math.round(((st.speed as number) ?? 0) * 100) })}</div>
         <div className="flex flex-wrap gap-2">
           {[0, 25, 50, 75, 100].map((p) => (
             <button key={p} className="btn" onClick={() => set(p)}>
-              {p === 0 ? 'Off' : `${p}%`}
+              {p === 0 ? t('common.off') : `${p}%`}
             </button>
           ))}
         </div>
@@ -120,13 +121,15 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
   const presets = (PRESETS[tile.obj] ?? [45, 55, 65]).filter((t) => t <= max && t >= range.min)
   const set = (t: number) => attempt(() => runGcode(gcode`SET_HEATER_TEMPERATURE HEATER=${heater} TARGET=${t}`)).then(onClose)
   return (
-    <Dialog open onClose={onClose} title={`${tile.label} target`}>
+    <Dialog open onClose={onClose} title={t('app.temps.target_title', { name: tile.label })}>
       <div className="mb-3 text-ink-2">
-        Now {Math.round((st.temperature as number) ?? 0)} °C{st.target ? `, heating to ${Math.round(st.target)} °C` : ''}. Up to {max} °C.
+        {st.target
+          ? t('app.temps.now_heating', { temp: Math.round((st.temperature as number) ?? 0), target: Math.round(st.target), max })
+          : t('app.temps.now', { temp: Math.round((st.temperature as number) ?? 0), max })}
       </div>
       <div className="flex flex-wrap gap-2">
         <button className="btn" onClick={() => set(0)}>
-          Off
+          {t('common.off')}
         </button>
         {presets.map((p) => (
           <button key={p} className="btn" onClick={() => set(p)}>
@@ -138,15 +141,15 @@ export function TargetDialog({ tile, onClose }: { tile: Tile; onClose: () => voi
         className="mt-3 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          const t = Math.round(Number(value))
-          const err = targetError(t, range)
+          const temp = Math.round(Number(value))
+          const err = targetError(temp, range)
           if (err) return toast(err, 'error')
-          set(t)
+          set(temp)
         }}
       >
         <input className="field w-28" inputMode="numeric" placeholder="°C" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         <button className="btn btn-primary" disabled={!value}>
-          Set
+          {t('app.temps.set')}
         </button>
       </form>
     </Dialog>

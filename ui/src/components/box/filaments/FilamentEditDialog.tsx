@@ -3,6 +3,7 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { Dialog, Toggle } from '../../ui'
 import { QIDI_FILAMENT_ID_PATTERN, qidiFilamentBaseKey, qidiFilamentIdOwner, qidiFilamentKey, type QidiFilamentConfig, type QidiFilamentDraft } from '../../../qidi/qidi-filament-config'
+import { t } from '../../../i18n'
 
 export type FilamentSave = { draft: QidiFilamentDraft; previousKey?: string; baseKey?: string }
 
@@ -16,15 +17,16 @@ export function FilamentEditDialog({ config, initial, previousKey, sourceKey, bu
   const baseKey = previousKey != null ? undefined : (sourceKey ?? qidiFilamentBaseKey(config, d.type))
 
   const owner = qidiFilamentIdOwner(config, d.id, previousKey)
+  const required = t('box.filaments.edit.required')
   const errors = {
-    vendor: !d.vendor.trim() ? 'Required' : null,
-    name: !d.name.trim() ? 'Required' : key !== previousKey && key in config ? `${key} is already in the list` : null,
-    type: !d.type.trim() ? 'Required' : null,
-    id: !d.id ? 'Required' : !QIDI_FILAMENT_ID_PATTERN.test(d.id) ? 'QF, a capital letter, and two digits, such as QFA94' : owner != null ? `Already used by ${owner}` : null,
-    nozzleMin: d.nozzleMin == null ? 'Required' : d.nozzleMin <= 0 ? 'Must be above 0' : null,
-    nozzleMax: d.nozzleMax == null ? 'Required' : d.nozzleMax < (d.nozzleMin ?? 0) ? `At least ${d.nozzleMin}` : null,
-    boxMax: d.boxMax == null ? 'Required' : d.boxMax < 0 ? 'At least 0' : null,
-    chamber: d.chamber == null ? 'Required' : d.chamber < 0 ? 'At least 0' : null,
+    vendor: !d.vendor.trim() ? required : null,
+    name: !d.name.trim() ? required : key !== previousKey && key in config ? t('box.filaments.edit.already_listed', { name: key }) : null,
+    type: !d.type.trim() ? required : null,
+    id: !d.id ? required : !QIDI_FILAMENT_ID_PATTERN.test(d.id) ? t('box.filaments.edit.id_format') : owner != null ? t('box.filaments.edit.id_used', { name: owner }) : null,
+    nozzleMin: d.nozzleMin == null ? required : d.nozzleMin <= 0 ? t('box.filaments.edit.must_be_positive') : null,
+    nozzleMax: d.nozzleMax == null ? required : d.nozzleMax < (d.nozzleMin ?? 0) ? t('box.filaments.edit.at_least', { n: String(d.nozzleMin) }) : null,
+    boxMax: d.boxMax == null ? required : d.boxMax < 0 ? t('box.filaments.edit.at_least', { n: 0 }) : null,
+    chamber: d.chamber == null ? required : d.chamber < 0 ? t('box.filaments.edit.at_least', { n: 0 }) : null,
   }
   const valid = Object.values(errors).every((e) => e == null)
   const save = () => valid && !busy && onSave({ draft: { ...d, vendor: d.vendor.trim(), name: d.name.trim(), type: d.type.trim() }, previousKey, baseKey })
@@ -34,51 +36,51 @@ export function FilamentEditDialog({ config, initial, previousKey, sourceKey, bu
     <Dialog
       open
       onClose={onClose}
-      title={previousKey != null ? 'Edit filament' : 'Add filament'}
+      title={previousKey != null ? t('box.slot.edit_filament') : t('box.filaments.edit.add_title')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!valid || busy} onClick={save}>
-            Save
+            {t('common.save')}
           </button>
         </>
       }
     >
       <form className="grid grid-cols-2 gap-x-3 gap-y-3" onSubmit={(e) => (e.preventDefault(), save())}>
-        <Field label="Vendor" error={errors.vendor} className="col-span-2 sm:col-span-1">
+        <Field label={t('box.filaments.edit.vendor')} error={errors.vendor} className="col-span-2 sm:col-span-1">
           {(id) => <ListInput id={id} value={d.vendor} options={vendors} onChange={(v) => set('vendor', v)} />}
         </Field>
-        <Field label="Filament" error={errors.name} className="col-span-2 sm:col-span-1">
+        <Field label={t('box.filaments.edit.filament')} error={errors.name} className="col-span-2 sm:col-span-1">
           {(id) => <input id={id} className="field" spellCheck={false} value={d.name} onChange={(e) => set('name', e.target.value)} />}
         </Field>
-        <Field label="Type" error={errors.type} className="col-span-2 sm:col-span-1">
+        <Field label={t('box.filaments.edit.type')} error={errors.type} className="col-span-2 sm:col-span-1">
           {(id) => <ListInput id={id} value={d.type} options={types} onChange={(v) => set('type', v)} />}
         </Field>
-        <Field label="ID" error={errors.id} hint={previousKey != null ? 'Slots refer to the filament by its ID' : undefined} className="col-span-2 sm:col-span-1">
+        <Field label="ID" error={errors.id} hint={previousKey != null ? t('box.filaments.edit.id_hint') : undefined} className="col-span-2 sm:col-span-1">
           {(id) => <input id={id} className="field code" spellCheck={false} disabled={previousKey != null} value={d.id} onChange={(e) => set('id', e.target.value.toUpperCase())} />}
         </Field>
-        <Field label="Nozzle min" error={errors.nozzleMin}>
+        <Field label={t('box.filaments.edit.nozzle_min')} error={errors.nozzleMin}>
           {(id) => <Degrees id={id} value={d.nozzleMin} onChange={(v) => set('nozzleMin', num(v))} />}
         </Field>
-        <Field label="Nozzle max" error={errors.nozzleMax}>
+        <Field label={t('box.filaments.edit.nozzle_max')} error={errors.nozzleMax}>
           {(id) => <Degrees id={id} value={d.nozzleMax} onChange={(v) => set('nozzleMax', num(v))} />}
         </Field>
-        <Field label="Box max" error={errors.boxMax} hint="The Box won't heat above this with the filament loaded; 0 means no heating">
+        <Field label={t('box.filaments.edit.box_max')} error={errors.boxMax} hint={t('box.filaments.edit.box_max_hint')}>
           {(id) => <Degrees id={id} value={d.boxMax} onChange={(v) => set('boxMax', num(v))} />}
         </Field>
-        <Field label="Chamber" error={errors.chamber}>
+        <Field label={t('box.filaments.edit.chamber')} error={errors.chamber}>
           {(id) => <Degrees id={id} value={d.chamber} onChange={(v) => set('chamber', num(v))} />}
         </Field>
         <label className="col-span-2 flex items-center gap-3">
-          <Toggle checked={d.support} onChange={(v) => set('support', v)} label="Support material" />
-          <span className="font-medium">Support material</span>
+          <Toggle checked={d.support} onChange={(v) => set('support', v)} label={t('box.filaments.edit.support')} />
+          <span className="font-medium">{t('box.filaments.edit.support')}</span>
         </label>
         <button type="submit" hidden />
       </form>
       <div className="mt-4 text-[12.5px] text-ink-3">
-        Listed as {key}.{baseKey != null && ` Drying and other settings are copied from ${baseKey}.`}
+        {baseKey != null ? t('box.filaments.edit.listed_as_copied', { name: key, base: baseKey }) : t('box.filaments.edit.listed_as', { name: key })}
       </div>
     </Dialog>
   )

@@ -11,6 +11,7 @@ import { FLUIDD, useDbItem } from '../../state/database'
 import { setActiveSpool, useSpoolman } from './store'
 import { SpoolIcon } from './SpoolIcon'
 import { CHECK_TEXT, DEFAULT_SORT, SORT_KEYS, fileFilamentTypes, fmtLength, fmtWeight, materials, selectableSpools, spoolChecks, toSpool, type SortOrder, type Spool } from './spoolman'
+import { t } from '../../i18n'
 
 export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean; onClose: () => void; target: string | null }) {
   const raw = useSpoolman((s) => s.spools)
@@ -37,12 +38,12 @@ export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean;
   const list = useMemo(() => selectableSpools(spools, search, material, order), [spools, search, material, order])
   const mats = useMemo(() => materials(spools), [spools])
   const sortKey = order.key ?? DEFAULT_SORT.key!
-  const sortOptions = SORT_KEYS.some((k) => k.key === sortKey) ? SORT_KEYS : [...SORT_KEYS, { key: sortKey, label: sortKey }]
+  const sortOptions = [...SORT_KEYS.map((k) => ({ key: k.key, label: t(k.msg) })), ...(SORT_KEYS.some((k) => k.key === sortKey) ? [] : [{ key: sortKey, label: sortKey }])]
 
   const select = async () => {
     const spool = spools.find((s) => s.id === selected)
     if (!spool) {
-      if (!(await confirm({ title: 'Confirm', body: CHECK_TEXT.no_spool, confirm: 'Continue' }))) return
+      if (!(await confirm({ title: t('spoolman.select.confirm'), body: t(CHECK_TEXT.no_spool), confirm: t('spoolman.select.continue') }))) return
     } else if (!(await checksPass(spool, { mismatch: warnMismatch, notEnough: warnNotEnough }))) return
     setBusy(true)
     const ok = await attempt(() => setActiveSpool(spool?.id ?? null).then(() => true))
@@ -55,50 +56,50 @@ export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean;
       open={open}
       onClose={onClose}
       size="wide"
-      title="Spool selection"
+      title={t('spoolman.select.title')}
       footer={
         <>
           {url && (
             <a className="btn btn-ghost mr-auto" href={url} target="_blank" rel="noopener noreferrer" title={version ? `Spoolman ${version}` : undefined}>
-              Manage spools <ExternalLink size={14} />
+              {t('spoolman.select.manage')} <ExternalLink size={14} />
             </a>
           )}
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={busy} onClick={select}>
-            Select
+            {t('spoolman.select.select')}
           </button>
         </>
       }
     >
-      {target && <p className="mt-0 mb-3 text-ink-2">The spool you select becomes {target}.</p>}
+      {target && <p className="mt-0 mb-3 text-ink-2">{target}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-[180px] flex-1">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-          <input className="field pl-8!" type="search" placeholder="Search" aria-label="Search spools" spellCheck={false} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={(e) => e.target.select()} />
+          <input className="field pl-8!" type="search" placeholder={t('spoolman.select.search')} aria-label={t('spoolman.select.search_label')} spellCheck={false} value={search} onChange={(e) => setSearch(e.target.value)} onFocus={(e) => e.target.select()} />
         </label>
         <div className="flex items-center gap-1">
-          <select className="field w-auto!" aria-label="Sort by" value={sortKey} onChange={(e) => attempt(() => setOrder({ key: e.target.value, desc: order.desc ?? false }))}>
+          <select className="field w-auto!" aria-label={t('spoolman.select.sort_by')} value={sortKey} onChange={(e) => attempt(() => setOrder({ key: e.target.value, desc: order.desc ?? false }))}>
             {sortOptions.map((o) => (
               <option key={o.key} value={o.key}>
                 {o.label}
               </option>
             ))}
           </select>
-          <button className="iconbtn" title={order.desc ? 'Descending' : 'Ascending'} aria-label={order.desc ? 'Sort ascending' : 'Sort descending'} onClick={() => attempt(() => setOrder({ key: sortKey, desc: !order.desc }))}>
+          <button className="iconbtn" title={order.desc ? t('spoolman.select.descending') : t('spoolman.select.ascending')} aria-label={order.desc ? t('spoolman.select.sort_ascending') : t('spoolman.select.sort_descending')} onClick={() => attempt(() => setOrder({ key: sortKey, desc: !order.desc }))}>
             {order.desc ? <ArrowDownWideNarrow size={17} /> : <ArrowUpNarrowWide size={17} />}
           </button>
         </div>
       </div>
       {mats.length > 1 && (
         <div className="mt-2.5">
-          <Choices<string> value={material ?? ''} onChange={(v) => setMaterial(v || null)} options={[{ value: '', label: 'All materials' }, ...mats.map((m) => ({ value: m, label: m }))]} />
+          <Choices<string> value={material ?? ''} onChange={(v) => setMaterial(v || null)} options={[{ value: '', label: t('spoolman.select.all_materials') }, ...mats.map((m) => ({ value: m, label: m }))]} />
         </div>
       )}
       <div className="mt-3 grid max-h-[min(56dvh,520px)] gap-1 overflow-auto">
         {list.length === 0 ? (
-          <Empty>No spools found</Empty>
+          <Empty>{t('spoolman.select.none')}</Empty>
         ) : (
           list.map((s) => <SpoolRow key={s.id} spool={s} unit={unit} selected={s.id === selected} active={s.id === active} onClick={() => setSelected(selected === s.id ? null : s.id)} />)
         )}
@@ -108,7 +109,7 @@ export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean;
 }
 
 function SpoolRow({ spool, unit, selected, active, onClick }: { spool: Spool; unit: 'weight' | 'length'; selected: boolean; active: boolean; onClick: () => void }) {
-  const details = [`#${spool.id}`, spool.filament.material, spool.location, spool.last_used ? `Last used ${fmtAgo(spool.last_used / 1000)}` : 'Never used'].filter(Boolean)
+  const details = [`#${spool.id}`, spool.filament.material, spool.location, spool.last_used ? t('spoolman.select.last_used', { ago: fmtAgo(spool.last_used / 1000) }) : t('spoolman.select.never_used')].filter(Boolean)
   return (
     <button
       type="button"
@@ -120,7 +121,7 @@ function SpoolRow({ spool, unit, selected, active, onClick }: { spool: Spool; un
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate font-semibold">{spool.filament_name}</span>
-          {active && <span className="pill tone-accent px-2! py-0.5! text-[11px]!">Active spool</span>}
+          {active && <span className="pill tone-accent px-2! py-0.5! text-[11px]!">{t('spoolman.active_spool')}</span>}
         </span>
         <span className="block truncate text-[12px] text-ink-3">
           {details.join(' · ')}
@@ -157,7 +158,7 @@ async function checksPass(spool: Spool, warn: { mismatch: boolean; notEnough: bo
     warn,
   )
   for (const check of checks) {
-    if (!(await confirm({ title: 'Confirm', body: CHECK_TEXT[check], confirm: 'Continue' }))) return false
+    if (!(await confirm({ title: t('spoolman.select.confirm'), body: t(CHECK_TEXT[check]), confirm: t('spoolman.select.continue') }))) return false
   }
   return true
 }

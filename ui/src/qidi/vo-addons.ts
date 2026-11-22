@@ -1,10 +1,13 @@
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/vo-addons.ts at
-// github.com/thelegendtubaguy/fluidd qidi@6405679. Unchanged from the fork; keep it in step. Valve Oil UI passes its
-// Moonraker's origin as apiUrl, and no token, as it has no Moonraker login.
+// github.com/thelegendtubaguy/fluidd qidi@6405679. Unchanged from the fork but for the one message it writes itself,
+// translated here; keep it in step. Valve Oil UI passes its Moonraker's origin as apiUrl, and no token, as it has no
+// Moonraker login.
 //
 // Client for Valve Oil's add-ons service (tltg-addons), which the nginx serving Fluidd on the printer
 // exposes at /tltg-addons/api. nginx authorizes each request through Moonraker, so requests carry
 // Fluidd's Moonraker access token when there is one.
+
+import { t } from '../i18n'
 
 export type VoAddonState = 'not_installed' | 'installed' | 'update_available' | 'foreign'
 
@@ -445,7 +448,7 @@ export const voAddonsRequest = async (base: string, path: string, options: VoAdd
   }
 
   if (body === null) {
-    throw new VoAddonsRequestError(0, 'Invalid response')
+    throw new VoAddonsRequestError(0, t('settings.addons.invalid_response'))
   }
 
   return body

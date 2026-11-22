@@ -4,6 +4,7 @@ import { Choices, confirm, Dialog, Empty, Spinner, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { client, usePrinter } from '../../state/printer'
 import { Row, SettingsCard, TextField } from './common'
+import { t } from '../../i18n'
 
 // Moonraker's webcams (server.webcams.*), the same list Fluidd and the slicers use, with Fluidd's camera form.
 export type Webcam = {
@@ -26,18 +27,19 @@ export type Webcam = {
 }
 
 // Fluidd's stream types (app.setting.camera_type_options).
-const SERVICES: { value: string; label: string }[] = [
-  { value: 'mjpegstreamer-adaptive', label: 'MJPEG Adaptive' },
-  { value: 'mjpegstreamer', label: 'MJPEG Stream' },
-  { value: 'uv4l-mjpeg', label: 'UV4L-MJPEG Stream' },
-  { value: 'hlsstream', label: 'HLS Stream' },
-  { value: 'webrtc-camerastreamer', label: 'WebRTC (camera-streamer)' },
-  { value: 'webrtc-go2rtc', label: 'WebRTC (go2rtc)' },
-  { value: 'webrtc-mediamtx', label: 'WebRTC (MediaMTX)' },
-  { value: 'ipstream', label: 'IP Camera' },
-  { value: 'iframe', label: 'HTTP page' },
+const services = (): { value: string; label: string }[] => [
+  { value: 'mjpegstreamer-adaptive', label: t('settings.cameras.service.mjpeg_adaptive') },
+  { value: 'mjpegstreamer', label: t('settings.cameras.service.mjpeg') },
+  { value: 'uv4l-mjpeg', label: t('settings.cameras.service.uv4l') },
+  { value: 'hlsstream', label: t('settings.cameras.service.hls') },
+  // Names of the streaming programs.
+  { value: 'webrtc-camerastreamer', label: 'WebRTC (camera-streamer)' }, // i18n-ignore
+  { value: 'webrtc-go2rtc', label: 'WebRTC (go2rtc)' }, // i18n-ignore
+  { value: 'webrtc-mediamtx', label: 'WebRTC (MediaMTX)' }, // i18n-ignore
+  { value: 'ipstream', label: t('settings.cameras.service.ip') },
+  { value: 'iframe', label: t('settings.cameras.service.iframe') },
 ]
-const serviceLabel = (s: string) => SERVICES.find((x) => x.value === s)?.label ?? s
+const serviceLabel = (s: string) => services().find((x) => x.value === s)?.label ?? s
 
 // Fluidd's defaults for a new camera (Globals.DEFAULTS), the stream QIDI's printers serve.
 const NEW_CAMERA: Webcam = {
@@ -89,27 +91,27 @@ export function CameraSettings() {
 
   const remove = async (cam: Webcam) => {
     if (!cam.uid) return
-    const ok = await confirm({ title: `Remove ${cam.name}`, body: `Are you sure you want to remove the camera ${cam.name}?`, confirm: 'Remove', danger: true })
+    const ok = await confirm({ title: t('settings.common.remove_named', { name: cam.name }), body: t('settings.cameras.remove_confirm', { name: cam.name }), confirm: t('common.remove'), danger: true })
     if (ok) await attempt(() => client.call('server.webcams.delete_item', { uid: cam.uid }))
   }
 
   return (
     <SettingsCard
-      title="Cameras"
+      title={t('settings.cameras.title')}
       icon={<Camera size={14} />}
       aside={
         <button className="btn btn-sm" onClick={() => setEditing({ ...NEW_CAMERA })}>
-          <Plus size={13} /> Add camera
+          <Plus size={13} /> {t('settings.cameras.add')}
         </button>
       }
-      footer="Cameras are kept in Moonraker, so Fluidd and the slicers show the same ones."
+      footer={t('settings.cameras.footer')}
     >
       {cams == null ? (
         <div className="flex justify-center py-4">
           <Spinner />
         </div>
       ) : cams.length === 0 ? (
-        <Empty>No cameras yet.</Empty>
+        <Empty>{t('settings.cameras.empty')}</Empty>
       ) : (
         cams.map((cam) => (
           <div key={cam.uid ?? cam.name} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
@@ -119,19 +121,19 @@ export function CameraSettings() {
             <div className="min-w-[160px] flex-1">
               <div className="flex flex-wrap items-center gap-2 font-medium">
                 {cam.name}
-                {!cam.enabled && <span className="pill tone-muted py-0.5!">Off</span>}
+                {!cam.enabled && <span className="pill tone-muted py-0.5!">{t('common.off')}</span>}
               </div>
               <div className="text-[12.5px] text-ink-3">
                 {serviceLabel(cam.service)} · <span className="code text-[12px]">{cam.stream_url}</span>
               </div>
-              {cam.source === 'config' && <div className="text-[12px] text-ink-3">Managed by your Moonraker configuration</div>}
+              {cam.source === 'config' && <div className="text-[12px] text-ink-3">{t('settings.common.managed_by_config')}</div>}
             </div>
             {cam.source !== 'config' && (
               <div className="ml-auto flex gap-1">
-                <button className="iconbtn" onClick={() => setEditing({ ...NEW_CAMERA, ...cam })} aria-label={`Edit ${cam.name}`} title="Edit camera">
+                <button className="iconbtn" onClick={() => setEditing({ ...NEW_CAMERA, ...cam })} aria-label={t('settings.common.edit_named', { name: cam.name })} title={t('settings.cameras.edit')}>
                   <Pencil size={16} />
                 </button>
-                <button className="iconbtn" onClick={() => remove(cam)} aria-label={`Remove ${cam.name}`} title="Remove camera">
+                <button className="iconbtn" onClick={() => remove(cam)} aria-label={t('settings.common.remove_named', { name: cam.name })} title={t('settings.cameras.remove')}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -171,14 +173,15 @@ function CameraDialog({ camera, names, onClose }: { camera: Webcam; names: strin
   const [c, setC] = useState<Webcam>(camera)
   const [saving, setSaving] = useState(false)
   const set = <K extends keyof Webcam>(k: K, v: Webcam[K]) => setC((x) => ({ ...x, [k]: v }))
+  const serviceList = services()
   const name = c.name.trim()
   const errors = [
-    !name && 'Enter a name.',
-    names.includes(name) && 'Another camera has this name.',
-    !c.stream_url.trim() && 'Enter the stream address.',
-    !c.snapshot_url.trim() && 'Enter the snapshot address.',
-    c.service === 'mjpegstreamer-adaptive' && !(c.target_fps > 0) && 'Enter an FPS target.',
-    c.service === 'iframe' && !ASPECT.test(c.aspect_ratio ?? '') && 'Enter the aspect ratio as width:height, such as 16:9.',
+    !name && t('settings.cameras.error.name_required'),
+    names.includes(name) && t('settings.cameras.error.name_taken'),
+    !c.stream_url.trim() && t('settings.cameras.error.stream_required'),
+    !c.snapshot_url.trim() && t('settings.cameras.error.snapshot_required'),
+    c.service === 'mjpegstreamer-adaptive' && !(c.target_fps > 0) && t('settings.cameras.error.fps_required'),
+    c.service === 'iframe' && !ASPECT.test(c.aspect_ratio ?? '') && t('settings.cameras.error.aspect_invalid'),
   ].filter(Boolean) as string[]
 
   const save = async () => {
@@ -194,71 +197,71 @@ function CameraDialog({ camera, names, onClose }: { camera: Webcam; names: strin
       open
       size="wide"
       onClose={onClose}
-      title={camera.uid ? 'Edit camera' : 'Add camera'}
+      title={camera.uid ? t('settings.cameras.edit') : t('settings.cameras.add')}
       footer={
         <>
           {errors.length > 0 && <span className="mr-auto text-[12.5px] text-ink-3">{errors[0]}</span>}
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={errors.length > 0 || saving} onClick={save}>
             {saving && <Spinner size={13} />}
-            {camera.uid ? 'Save' : 'Add'}
+            {camera.uid ? t('common.save') : t('common.add')}
           </button>
         </>
       }
     >
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="grid content-start divide-y divide-line">
-          <Row title="Enable">
-            <Toggle checked={c.enabled} onChange={(v) => set('enabled', v)} label="Enable" />
+          <Row title={t('settings.cameras.enable')}>
+            <Toggle checked={c.enabled} onChange={(v) => set('enabled', v)} label={t('settings.cameras.enable')} />
           </Row>
-          <Row title="Name" wide>
-            <input className="field" value={c.name} onChange={(e) => set('name', e.target.value)} aria-label="Name" autoFocus={!camera.uid} />
+          <Row title={t('settings.cameras.name')} wide>
+            <input className="field" value={c.name} onChange={(e) => set('name', e.target.value)} aria-label={t('settings.cameras.name')} autoFocus={!camera.uid} />
           </Row>
-          <Row title="Stream type" wide>
-            <select className="field" value={c.service} onChange={(e) => set('service', e.target.value)} aria-label="Stream type">
-              {SERVICES.map((s) => (
+          <Row title={t('settings.cameras.stream_type')} wide>
+            <select className="field" value={c.service} onChange={(e) => set('service', e.target.value)} aria-label={t('settings.cameras.stream_type')}>
+              {serviceList.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>
               ))}
-              {!SERVICES.some((s) => s.value === c.service) && <option value={c.service}>{c.service}</option>}
+              {!serviceList.some((s) => s.value === c.service) && <option value={c.service}>{c.service}</option>}
             </select>
           </Row>
-          <Row title="Camera URL stream" wide>
-            <input className="field code" type="url" spellCheck={false} value={c.stream_url} onChange={(e) => set('stream_url', e.target.value)} aria-label="Camera URL stream" />
+          <Row title={t('settings.cameras.stream_url')} wide>
+            <input className="field code" type="url" spellCheck={false} value={c.stream_url} onChange={(e) => set('stream_url', e.target.value)} aria-label={t('settings.cameras.stream_url')} />
           </Row>
-          <Row title="Camera URL snapshot" wide>
-            <input className="field code" type="url" spellCheck={false} value={c.snapshot_url} onChange={(e) => set('snapshot_url', e.target.value)} aria-label="Camera URL snapshot" />
+          <Row title={t('settings.cameras.snapshot_url')} wide>
+            <input className="field code" type="url" spellCheck={false} value={c.snapshot_url} onChange={(e) => set('snapshot_url', e.target.value)} aria-label={t('settings.cameras.snapshot_url')} />
           </Row>
           {c.service === 'mjpegstreamer-adaptive' && (
             <>
-              <Row title="FPS target" wide>
-                <NumberInput value={c.target_fps} onChange={(v) => set('target_fps', v)} label="FPS target" />
+              <Row title={t('settings.cameras.fps')} wide>
+                <NumberInput value={c.target_fps} onChange={(v) => set('target_fps', v)} label={t('settings.cameras.fps')} />
               </Row>
-              <Row title="FPS target when not in focus" wide>
-                <NumberInput value={c.target_fps_idle} onChange={(v) => set('target_fps_idle', v)} label="FPS target when not in focus" />
+              <Row title={t('settings.cameras.fps_idle')} wide>
+                <NumberInput value={c.target_fps_idle} onChange={(v) => set('target_fps_idle', v)} label={t('settings.cameras.fps_idle')} />
               </Row>
             </>
           )}
           {c.service === 'iframe' && (
-            <Row title="Aspect ratio" sub="[width : height]" wide>
-              <TextField value={c.aspect_ratio ?? ''} onSave={(v) => set('aspect_ratio', v)} placeholder="16:9" label="Aspect ratio" />
+            <Row title={t('settings.cameras.aspect')} sub={t('settings.cameras.aspect_sub')} wide>
+              <TextField value={c.aspect_ratio ?? ''} onSave={(v) => set('aspect_ratio', v)} placeholder="16:9" label={t('settings.cameras.aspect')} />
             </Row>
           )}
-          <Row title="Rotate by">
-            <Choices value={c.rotation} onChange={(v) => set('rotation', v)} options={[0, 90, 180, 270].map((r) => ({ value: r, label: r ? `${r}°` : 'None' }))} />
+          <Row title={t('settings.cameras.rotate')}>
+            <Choices value={c.rotation} onChange={(v) => set('rotation', v)} options={[0, 90, 180, 270].map((r) => ({ value: r, label: r ? `${r}°` : t('settings.cameras.rotate_none') }))} />
           </Row>
-          <Row title="Flip horizontally">
-            <Toggle checked={c.flip_horizontal} onChange={(v) => set('flip_horizontal', v)} label="Flip horizontally" />
+          <Row title={t('settings.cameras.flip_h')}>
+            <Toggle checked={c.flip_horizontal} onChange={(v) => set('flip_horizontal', v)} label={t('settings.cameras.flip_h')} />
           </Row>
-          <Row title="Flip vertically">
-            <Toggle checked={c.flip_vertical} onChange={(v) => set('flip_vertical', v)} label="Flip vertically" />
+          <Row title={t('settings.cameras.flip_v')}>
+            <Toggle checked={c.flip_vertical} onChange={(v) => set('flip_vertical', v)} label={t('settings.cameras.flip_v')} />
           </Row>
         </div>
         <div className="grid content-start gap-2">
-          <div className="section-label">Preview</div>
+          <div className="section-label">{t('settings.cameras.preview')}</div>
           <CameraPreview cam={c} />
         </div>
       </div>
@@ -298,12 +301,12 @@ export function CameraPreview({ cam }: { cam: Webcam }) {
   const ratio = ASPECT.test(cam.aspect_ratio ?? '') ? cam.aspect_ratio!.replace(':', ' / ') : '16 / 9'
   const style = { transform: camTransform(cam) }
   let body
-  if (failed) body = <Unavailable text="The camera didn't answer at this address." />
+  if (failed) body = <Unavailable text={t('settings.cameras.no_answer')} />
   else if (['mjpegstreamer', 'uv4l-mjpeg', 'mjpegstreamer-adaptive'].includes(cam.service))
     body = <img src={cam.service === 'mjpegstreamer-adaptive' ? withCacheBust(url, tick) : url} alt="" className="absolute inset-0 h-full w-full object-contain" style={style} onError={() => setFailed(true)} />
   else if (cam.service === 'ipstream') body = <video src={url} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-contain" style={style} onError={() => setFailed(true)} />
-  else if (cam.service === 'iframe') body = <iframe src={url} title="Camera preview" className="absolute inset-0 h-full w-full border-0" style={style} />
-  else body = <Unavailable text="Valve Oil UI can't preview this stream type. Fluidd shows it." />
+  else if (cam.service === 'iframe') body = <iframe src={url} title={t('settings.cameras.preview_title')} className="absolute inset-0 h-full w-full border-0" style={style} />
+  else body = <Unavailable text={t('settings.cameras.cant_preview')} />
   return (
     <div className="relative w-full overflow-hidden rounded-[10px] bg-[#14161b]" style={{ aspectRatio: ratio }}>
       {body}

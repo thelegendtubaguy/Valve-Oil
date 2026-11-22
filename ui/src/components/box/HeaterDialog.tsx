@@ -10,10 +10,12 @@ import { Droplet, Flame, Sun, Thermometer, TriangleAlert } from 'lucide-react'
 import { Dialog, Stepper } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, boxHeatLimiters, boxHeaterMax, dryBlocker, type BoxState } from '../../state/box'
+import { listAnd } from '../../state/box-model'
 import { runGcode, usePrinter } from '../../state/printer'
 import { startDryRun, stopDryRun, useDryLeft } from '../../state/box-dry'
 import { fmtDuration, fmtEta } from '../../lib/format'
 import { humidityLevel } from './BoxUnits'
+import { t } from '../../i18n'
 
 const TEMPS = [40, 45, 50, 55, 60, 65]
 const DRY_HOURS = [4, 8, 12, 24]
@@ -22,8 +24,6 @@ const DRY_TEMP = 45
 const DRY_TIME = 12
 
 type Mode = 'dry' | 'heat'
-
-const list = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')}${xs.length > 2 ? ',' : ''} and ${xs[xs.length - 1]}`)
 
 export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNumber: number; onClose: () => void }) {
   const c = box.climates.find((x) => x.box === boxNumber)
@@ -40,8 +40,8 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
   const run = (g: string) => attempt(() => runGcode(g))
   const blocked = dryBlocker(box, boxNumber)
   const limiters = boxHeatLimiters(box, boxNumber)
-  const types = list([...new Set(limiters.map((sl) => sl.type ?? sl.name ?? 'filament'))])
-  const where = list(limiters.map((sl) => sl.label))
+  const types = listAnd([...new Set(limiters.map((sl) => sl.type ?? sl.name ?? t('box.heater.filament')))])
+  const where = listAnd(limiters.map((sl) => sl.label))
   const heater = c.heater
   const heating = !!c.target && !c.drying
 
@@ -51,20 +51,20 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
       <Dialog
         open
         onClose={onClose}
-        title={`Box ${boxNumber} heater`}
+        title={t('box.heater.dialog_title', { n: boxNumber })}
         footer={
           c.drying ? (
             <button className="btn btn-danger" onClick={() => attempt(() => stopDryRun(boxNumber, () => runGcode(boxCommands.stopDry(boxNumber))))}>
-              Stop drying
+              {t('box.heater.stop_drying')}
             </button>
           ) : (
             <>
               <button className="btn btn-danger mr-auto" onClick={() => heater && run(boxCommands.heater(heater, 0))}>
-                Turn off
+                {t('box.heater.turn_off')}
               </button>
               {heatTo !== c.target && max > 0 && (
                 <button className="btn btn-primary" onClick={() => heater && (run(boxCommands.heater(heater, heatTo)), onClose())}>
-                  Heat to {heatTo} °C
+                  {t('box.heater.heat_to', { temp: heatTo })}
                 </button>
               )}
             </>
@@ -76,12 +76,12 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
           <div className="hd-status">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-accent-ink">
               {c.drying ? <Sun size={16} /> : <Flame size={16} />}
-              {c.drying ? `Drying at ${c.target} °C` : `Heating to ${c.target} °C`}
+              {c.drying ? t('box.units.drying', { temp: c.target }) : t('box.heater.heating_to', { temp: c.target })}
             </div>
-            <div className="text-ink-2">{c.drying ? (box.dryRolls ? 'The spools turn every 5 minutes.' : 'The spools stay still.') : 'Holds until you turn it off.'}</div>
+            <div className="text-ink-2">{c.drying ? (box.dryRolls ? t('box.heater.spools_turn') : t('box.heater.spools_still')) : t('box.heater.holds')}</div>
             {timer ? <TimeLeft left={timer.left} hours={timer.hours} temp={c.temperature} target={c.target!} /> : <Progress temp={c.temperature} target={c.target!} />}
           </div>
-          {heating && max > 0 && <Temps label="Change to" value={heatTo} onChange={setHeatTo} max={max} />}
+          {heating && max > 0 && <Temps label={t('box.heater.change_to')} value={heatTo} onChange={setHeatTo} max={max} />}
         </div>
       </Dialog>
     )
@@ -94,15 +94,15 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
     <Dialog
       open
       onClose={onClose}
-      title={`Box ${boxNumber} heater`}
+      title={t('box.heater.dialog_title', { n: boxNumber })}
       footer={
         mode === 'dry' ? (
           <button className="btn btn-primary" disabled={!dryOk} onClick={() => (attempt(() => startDryRun(boxNumber, dryTemp, dryHours, () => runGcode(boxCommands.dry(boxNumber, dryTemp, dryHours)))), onClose())}>
-            Dry {dryHours} h at {dryTemp} °C
+            {t('box.heater.dry_for', { hours: dryHours, temp: dryTemp })}
           </button>
         ) : heatLocked ? undefined : (
           <button className="btn btn-primary" disabled={!heater || heatTo <= 0} onClick={() => heater && (run(boxCommands.heater(heater, heatTo)), onClose())}>
-            Heat to {heatTo} °C
+            {t('box.heater.heat_to', { temp: heatTo })}
           </button>
         )
       }
@@ -110,12 +110,12 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
       <div className="grid gap-4">
         <Readings temp={c.temperature} humidity={c.humidity} />
         {box.canDry && (
-          <div className="hd-modes" role="radiogroup" aria-label="Heater mode">
-            <ModeCard on={mode === 'dry'} disabled={inPrint} onClick={() => setMode('dry')} icon={<Sun size={16} />} title="Dry" when="Between prints">
-              {inPrint ? 'Not during a print' : box.dryRolls ? 'Set time, turning the spools' : 'Runs for a set time'}
+          <div className="hd-modes" role="radiogroup" aria-label={t('box.heater.mode')}>
+            <ModeCard on={mode === 'dry'} disabled={inPrint} onClick={() => setMode('dry')} icon={<Sun size={16} />} title={t('box.units.dry')} when={t('box.heater.between_prints')}>
+              {inPrint ? t('box.heater.not_during_print') : box.dryRolls ? t('box.heater.dry_rolls') : t('box.heater.dry_timed')}
             </ModeCard>
-            <ModeCard on={mode === 'heat'} onClick={() => setMode('heat')} icon={<Flame size={16} />} title="Heat" when="During prints">
-              Holds until you turn it off
+            <ModeCard on={mode === 'heat'} onClick={() => setMode('heat')} icon={<Flame size={16} />} title={t('box.heater.heat')} when={t('box.heater.during_prints')}>
+              {t('box.heater.holds_card')}
             </ModeCard>
           </div>
         )}
@@ -123,31 +123,32 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
         {mode === 'dry' ? (
           <>
             {blocked && <Warn>{blocked}</Warn>}
-            <Temps label="Temperature" value={dryTemp} onChange={setDryTemp} max={cfgMax} />
+            <Temps label={t('box.heater.temperature')} value={dryTemp} onChange={setDryTemp} max={cfgMax} />
             <div className="hd-field">
-              <span className="k">Time</span>
+              <span className="k">{t('box.heater.time')}</span>
               <div className="flex flex-wrap items-center gap-1.5">
                 {DRY_HOURS.map((h) => (
                   <button key={h} type="button" className={`choice ${dryHours === h ? 'on' : ''}`} onClick={() => setDryHours(h)}>
-                    {h} h
+                    {t('box.heater.hours', { h })}
                   </button>
                 ))}
                 <div className="w-[156px]">
-                  <Stepper value={dryHours} onChange={(v) => setDryHours(Math.max(1, Math.min(24, Math.round(v))))} step={1} min={1} max={24} unit="h" label="Drying time" />
+                  <Stepper value={dryHours} onChange={(v) => setDryHours(Math.max(1, Math.min(24, Math.round(v))))} step={1} min={1} max={24} unit={t('box.heater.hours_unit')} label={t('box.heater.drying_time')} />
                 </div>
               </div>
             </div>
           </>
         ) : heatLocked ? (
           <Warn>
-            QIDI's filament settings give {types} a Box heating limit of 0 °C, so Heat stays off while it's in {where}.{box.canDry ? (inPrint ? ' To dry it, use Dry after the print.' : ' To dry it, use Dry.') : ''}
+            {t('box.heater.zero_limit', { types, where })}
+            {box.canDry && ` ${inPrint ? t('box.heater.dry_after_print') : t('box.heater.dry_instead')}`}
           </Warn>
         ) : (
           <>
-            <Temps label="Temperature" value={heatTo} onChange={setHeatTo} max={max} />
+            <Temps label={t('box.heater.temperature')} value={heatTo} onChange={setHeatTo} max={max} />
             {limiters.length > 0 && max < cfgMax && (
               <div className="text-ink-3">
-                Up to {max} °C, QIDI's limit for {types} in {where}.
+                {t('box.heater.limit', { max, types, where })}
               </div>
             )}
           </>
@@ -164,12 +165,12 @@ function Readings({ temp, humidity }: { temp: number | null; humidity: number | 
       <span>
         <Thermometer size={14} className="text-ink-3" />
         <b className="num">{temp != null ? `${Math.round(temp)} °C` : '—'}</b>
-        <span className="text-ink-3">in the Box</span>
+        <span className="text-ink-3">{t('box.heater.in_box')}</span>
       </span>
       <span title={humidity != null ? humidityLevel(humidity).label : undefined}>
         <Droplet size={14} className={humidity != null ? humidityLevel(humidity).cls : 'text-ink-3'} />
         <b className="num">{humidity != null ? `${humidity}%` : '—'}</b>
-        <span className="text-ink-3">humidity</span>
+        <span className="text-ink-3">{t('box.heater.humidity_label')}</span>
       </span>
     </div>
   )
@@ -177,15 +178,15 @@ function Readings({ temp, humidity }: { temp: number | null; humidity: number | 
 
 /** How far the Box has come from room temperature to its target; full once it's within a degree. */
 function Progress({ temp, target }: { temp: number | null; target: number }) {
-  const t = temp ?? 0
-  const there = target - t <= 1
-  const p = there ? 1 : Math.max(0, Math.min(1, (t - 25) / Math.max(1, target - 25)))
+  const now = temp ?? 0
+  const there = target - now <= 1
+  const p = there ? 1 : Math.max(0, Math.min(1, (now - 25) / Math.max(1, target - 25)))
   return (
     <div className="grid gap-1">
       <div className="hd-bar" aria-hidden>
         <span style={{ width: `${p * 100}%` }} />
       </div>
-      <div className="num text-[12px] text-ink-3">{there ? `At ${target} °C` : `${temp != null ? Math.round(temp) : '—'} of ${target} °C`}</div>
+      <div className="num text-[12px] text-ink-3">{there ? t('box.heater.at_temp', { temp: target }) : t('box.heater.temp_of', { temp: temp != null ? Math.round(temp) : '—', target })}</div>
     </div>
   )
 }
@@ -200,8 +201,8 @@ function TimeLeft({ left, hours, temp, target }: { left: number; hours: number; 
         <span style={{ width: `${Math.max(0, Math.min(1, 1 - left / total)) * 100}%` }} />
       </div>
       <div className="num text-[12px] text-ink-3">
-        <b className="font-semibold text-ink">{left > 0 ? `${fmtDuration(left)} left` : 'Ending'}</b>
-        {[left > 0 && `ends ${fmtEta(left)}`, warming && `${Math.round(temp)} of ${target} °C`].filter(Boolean).map((x) => ` · ${x}`)}
+        <b className="font-semibold text-ink">{left > 0 ? t('box.heater.time_left', { time: fmtDuration(left) }) : t('box.heater.ending')}</b>
+        {[left > 0 && t('box.heater.ends', { time: fmtEta(left) }), warming && t('box.heater.temp_of', { temp: Math.round(temp), target })].filter(Boolean).map((x) => ` · ${x}`)}
       </div>
     </div>
   )
@@ -224,9 +225,9 @@ function Temps({ label, value, onChange, max }: { label: string; value: number; 
     <div className="hd-field">
       <span className="k">{label}</span>
       <div className="flex flex-wrap gap-1.5">
-        {TEMPS.filter((t) => t <= max).map((t) => (
-          <button key={t} type="button" className={`choice ${value === t ? 'on' : ''}`} onClick={() => onChange(t)}>
-            {t} °C
+        {TEMPS.filter((x) => x <= max).map((x) => (
+          <button key={x} type="button" className={`choice ${value === x ? 'on' : ''}`} onClick={() => onChange(x)}>
+            {x} °C
           </button>
         ))}
       </div>

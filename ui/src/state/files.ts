@@ -3,6 +3,7 @@ import { client, usePrinter } from './printer'
 import { createStore, useStore } from '../lib/store'
 import { toast } from '../components/toast'
 import { baseName, extOf, isLocked, joinPath, parentOf, rootProps, type FsEntry } from '../components/files/fs'
+import { t } from '../i18n'
 
 export type Thumbnail = { width: number; height: number; size: number; relative_path: string }
 
@@ -205,7 +206,7 @@ export function useRootFiles(root: string, enabled = true) {
 
 /** Refuses writes over files Valve Oil UI must leave alone (config/fluidd.cfg). */
 function guard(root: string, path: string) {
-  if (isLocked(root, path)) throw new Error('fluidd.cfg is read-only. Valve Oil leaves it as QIDI ships it.')
+  if (isLocked(root, path)) throw new Error(t('files.ops.locked'))
 }
 
 export async function moveItem(root: string, from: string, to: string) {
@@ -243,7 +244,7 @@ export async function enqueueJobs(filenames: string[]) {
 /** A file's contents as text, never cached, for the editor. */
 export async function readText(root: string, path: string): Promise<string> {
   const r = await fetch(client.fileUrl(root, path), { cache: 'no-store' })
-  if (!r.ok) throw new Error(`Couldn’t open ${path} (${r.status})`)
+  if (!r.ok) throw new Error(t('files.ops.open_failed', { path, status: r.status }))
   return r.text()
 }
 
@@ -291,7 +292,7 @@ export async function downloadZip(root: string, dir: string, items: FsEntry[]) {
   await createZip(root, dest, items)
   try {
     const r = await fetch(client.fileUrl(root, dest), { cache: 'no-store' })
-    if (!r.ok) throw new Error(`Couldn’t download ${name} (${r.status})`)
+    if (!r.ok) throw new Error(t('files.ops.download_failed', { name, status: r.status }))
     saveBlob(await r.blob(), name)
   } finally {
     await client.call('server.files.delete_file', { path: rooted(root, dest) }).catch(() => {})
@@ -342,13 +343,13 @@ function uploadOne(file: File, root: string, dir: string, print: boolean, id?: n
     }
     xhr.onload = () => {
       if (xhr.status < 300) return resolve()
-      let msg = `Upload failed (${xhr.status})`
+      let msg = t('files.ops.upload_failed_status', { status: xhr.status })
       try {
         msg = JSON.parse(xhr.responseText)?.error?.message ?? msg
       } catch {}
       reject(new Error(msg))
     }
-    xhr.onerror = () => reject(new Error('Upload failed'))
+    xhr.onerror = () => reject(new Error(t('files.ops.upload_failed')))
     xhr.onabort = () => reject(new DOMException('Cancelled', 'AbortError'))
     xhr.send(form)
   })
@@ -363,11 +364,11 @@ export async function uploadFiles(root: string, dir: string, items: (File | File
   const { accepts } = rootProps(root)
   if (root === 'gcodes') {
     const skipped = list.filter((x) => !accepts.includes(extOf(x.file.name)))
-    if (skipped.length) toast(skipped.length === 1 ? `${skipped[0].file.name} isn't G-code or a sliced .gcode.3mf.` : `Skipped ${skipped.length} files that aren't G-code or sliced .gcode.3mf.`, 'error')
+    if (skipped.length) toast(skipped.length === 1 ? t('files.ops.not_gcode_named', { name: skipped[0].file.name }) : t('files.ops.not_gcode_files', { count: skipped.length }), 'error')
     list = list.filter((x) => accepts.includes(extOf(x.file.name)))
   }
   const locked = list.filter((x) => isLocked(root, joinPath(dir, x.path, x.file.name)))
-  if (locked.length) toast('fluidd.cfg is read-only, so it wasn’t uploaded.', 'error')
+  if (locked.length) toast(t('files.ops.upload_locked'), 'error')
   list = list.filter((x) => !locked.includes(x))
   if (list.length !== 1) print = false
   const queued = list.map((x) => ({ ...x, id: ++uploadId }))

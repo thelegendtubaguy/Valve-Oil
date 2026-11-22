@@ -3,6 +3,8 @@
 // share `uiSettings.tableHeaders.*` in the `fluidd` database namespace.
 import type { FileMeta, HistoryJob } from '../../state/files'
 import { fmtDuration } from '../../lib/format'
+import { locale, t, type MessageKey, type Messages } from '../../i18n'
+import { en } from '../../i18n/en'
 
 export type AuxData = { provider: string; name: string; value: unknown; description: string; units: string | null }
 export type Job = Omit<HistoryJob, 'metadata'> & { user?: string; auxiliary_data?: AuxData[]; metadata?: FileMeta | Record<string, never> }
@@ -11,12 +13,9 @@ export type Job = Omit<HistoryJob, 'metadata'> & { user?: string; auxiliary_data
 // Status
 
 export type StatusGroup = 'completed' | 'cancelled' | 'failed' | 'in_progress'
-export const STATUS_GROUPS: { value: StatusGroup; label: string }[] = [
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'in_progress', label: 'In progress' },
-]
+export const STATUS_GROUPS: StatusGroup[] = ['completed', 'cancelled', 'failed', 'in_progress']
+
+export const groupLabel = (g: StatusGroup) => t(`history.status.${g}` as MessageKey)
 
 export function statusGroup(status: string): StatusGroup {
   if (status === 'completed') return 'completed'
@@ -44,8 +43,12 @@ export function statusTone(status: string): 'good' | 'info' | 'muted' | 'warn' |
   }
 }
 
+// Moonraker's job statuses; any other comes from the printer and is shown as it arrives.
+const KNOWN_STATUSES = new Set(['completed', 'cancelled', 'error', 'interrupted', 'klippy_shutdown', 'klippy_disconnect', 'server_exit'])
+
 export function statusLabel(status: string): string {
-  if (status === 'in_progress' || status === 'printing') return 'In progress'
+  if (status === 'in_progress' || status === 'printing') return t('history.status.in_progress')
+  if (KNOWN_STATUSES.has(status)) return t(`history.status.${status}` as MessageKey)
   const s = status.replace(/_/g, ' ')
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
@@ -94,7 +97,7 @@ export function jobColors(meta: Record<string, unknown> | undefined): string[] {
   return (used ? used.map((i) => preset[i]) : preset).filter((c): c is string => typeof c === 'string' && c !== '')
 }
 
-export const fmtDateTime = (epochSeconds: number) => new Date(epochSeconds * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+export const fmtDateTime = (epochSeconds: number) => new Date(epochSeconds * 1000).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
 
 /** A duration; with days, totals over a day read as "11 d 10 h 55 m" rather than "274 h 55 m". */
 export function fmtSpan(seconds: number | null | undefined, days = false): string {
@@ -104,7 +107,7 @@ export function fmtSpan(seconds: number | null | undefined, days = false): strin
   const d = Math.floor(s / 86400)
   const h = Math.floor((s % 86400) / 3600)
   const m = Math.floor((s % 3600) / 60)
-  return `${d} d ${h} h ${String(m).padStart(2, '0')} m`
+  return t('history.format.days_hours_minutes', { d, h, mm: String(m).padStart(2, '0') })
 }
 
 const trim = (n: number, digits: number) => String(Number(n.toFixed(digits)))
@@ -131,8 +134,8 @@ export function fmtSize(bytes: number): string {
 }
 
 const pretty = (s: string) => {
-  const t = s.replace(/_/g, ' ')
-  return t.charAt(0).toUpperCase() + t.slice(1)
+  const text = s.replace(/_/g, ' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 function withUnits(value: unknown, units: string | null | undefined): string {
@@ -146,48 +149,69 @@ function withUnits(value: unknown, units: string | null | undefined): string {
 // Columns
 
 export type ColumnKind = 'status' | 'time' | 'duration' | 'length' | 'weight' | 'weights' | 'mm' | 'temp' | 'temps' | 'size' | 'colors' | 'list' | 'pretty-list' | 'text' | 'aux'
-export type Column = { key: string; label: string; kind: ColumnKind; visible?: boolean }
+type ColumnName = keyof Messages['history']['columns']
+export type Column = { key: string; label: string; kind: ColumnKind; visible?: boolean; name?: ColumnName }
+
+/**
+ * A built-in column. Its label is looked up each time it's read, so it's in the language shown; `name` finds its English
+ * label for the CSV export's header.
+ */
+function col(key: string, kind: ColumnKind, visible?: boolean): Column {
+  const name = key.replace(/^metadata\./, '') as ColumnName
+  return {
+    key,
+    kind,
+    name,
+    ...(visible === undefined ? {} : { visible }),
+    get label() {
+      return t(`history.columns.${name}` as MessageKey)
+    },
+  }
+}
 
 /** Fluidd's configurable history columns, in its order. Valve Oil shows print duration and filament by default. */
 export const HISTORY_COLUMNS: Column[] = [
-  { key: 'status', label: 'Status', kind: 'status' },
-  { key: 'start_time', label: 'Started', kind: 'time' },
-  { key: 'end_time', label: 'Ended', kind: 'time' },
-  { key: 'print_duration', label: 'Print duration', kind: 'duration' },
-  { key: 'total_duration', label: 'Total duration', kind: 'duration' },
-  { key: 'filament_used', label: 'Used filament', kind: 'length' },
-  { key: 'user', label: 'User', kind: 'text', visible: false },
-  { key: 'metadata.object_height', label: 'Height', kind: 'length', visible: false },
-  { key: 'metadata.first_layer_height', label: 'First layer height', kind: 'mm', visible: false },
-  { key: 'metadata.layer_height', label: 'Layer height', kind: 'mm', visible: false },
-  { key: 'metadata.filament_name', label: 'Filament name', kind: 'list', visible: false },
-  { key: 'metadata.filament_colors', label: 'Filament colors', kind: 'colors', visible: false },
-  { key: 'metadata.extruder_colors', label: 'Extruder colors', kind: 'colors', visible: false },
-  { key: 'metadata.filament_temps', label: 'Filament temps', kind: 'temps', visible: false },
-  { key: 'metadata.filament_type', label: 'Filament type', kind: 'list', visible: false },
-  { key: 'metadata.filament_total', label: 'Filament', kind: 'length', visible: false },
-  { key: 'metadata.filament_change_count', label: 'Filament changes', kind: 'text', visible: false },
-  { key: 'metadata.filament_weight_total', label: 'Filament weight', kind: 'weight', visible: false },
-  { key: 'metadata.filament_weights', label: 'Filament weights', kind: 'weights', visible: false },
-  { key: 'metadata.mmu_print', label: 'MMU print', kind: 'text', visible: false },
-  { key: 'metadata.referenced_tools', label: 'Referenced tools', kind: 'pretty-list', visible: false },
-  { key: 'metadata.nozzle_diameter', label: 'Nozzle diameter', kind: 'mm', visible: false },
-  { key: 'metadata.slicer', label: 'Slicer', kind: 'text', visible: false },
-  { key: 'metadata.slicer_version', label: 'Slicer version', kind: 'text', visible: false },
-  { key: 'metadata.printer_vendor', label: 'Printer vendor', kind: 'text', visible: false },
-  { key: 'metadata.printer_model', label: 'Printer model', kind: 'text', visible: false },
-  { key: 'metadata.printer_variant', label: 'Printer variant', kind: 'text', visible: false },
-  { key: 'metadata.profile_version', label: 'Profile version', kind: 'text', visible: false },
-  { key: 'metadata.estimated_time', label: 'Estimated time', kind: 'duration', visible: false },
-  { key: 'metadata.first_layer_bed_temp', label: 'First layer bed temp', kind: 'temp', visible: false },
-  { key: 'metadata.first_layer_extr_temp', label: 'First layer extruder temp', kind: 'temp', visible: false },
-  { key: 'metadata.chamber_temp', label: 'Chamber temp', kind: 'temp', visible: false },
-  { key: 'metadata.file_processors', label: 'File processors', kind: 'pretty-list', visible: false },
+  col('status', 'status'),
+  col('start_time', 'time'),
+  col('end_time', 'time'),
+  col('print_duration', 'duration'),
+  col('total_duration', 'duration'),
+  col('filament_used', 'length'),
+  col('user', 'text', false),
+  col('metadata.object_height', 'length', false),
+  col('metadata.first_layer_height', 'mm', false),
+  col('metadata.layer_height', 'mm', false),
+  col('metadata.filament_name', 'list', false),
+  col('metadata.filament_colors', 'colors', false),
+  col('metadata.extruder_colors', 'colors', false),
+  col('metadata.filament_temps', 'temps', false),
+  col('metadata.filament_type', 'list', false),
+  col('metadata.filament_total', 'length', false),
+  col('metadata.filament_change_count', 'text', false),
+  col('metadata.filament_weight_total', 'weight', false),
+  col('metadata.filament_weights', 'weights', false),
+  col('metadata.mmu_print', 'text', false),
+  col('metadata.referenced_tools', 'pretty-list', false),
+  col('metadata.nozzle_diameter', 'mm', false),
+  col('metadata.slicer', 'text', false),
+  col('metadata.slicer_version', 'text', false),
+  col('metadata.printer_vendor', 'text', false),
+  col('metadata.printer_model', 'text', false),
+  col('metadata.printer_variant', 'text', false),
+  col('metadata.profile_version', 'text', false),
+  col('metadata.estimated_time', 'duration', false),
+  col('metadata.first_layer_bed_temp', 'temp', false),
+  col('metadata.first_layer_extr_temp', 'temp', false),
+  col('metadata.chamber_temp', 'temp', false),
+  col('metadata.file_processors', 'pretty-list', false),
 ]
 const TAIL_COLUMNS: Column[] = [
-  { key: 'metadata.modified', label: 'Modified', kind: 'time', visible: false },
-  { key: 'metadata.size', label: 'Size', kind: 'size', visible: false },
+  col('metadata.modified', 'time', false),
+  col('metadata.size', 'size', false),
 ]
+
+/** A column's CSV header: in English whatever the language shown, as the export is read by programs. */
+export const csvHeader = (c: Pick<Column, 'label' | 'name'>) => (c.name ? en.history.columns[c.name] : c.label)
 
 /** Every history column: Fluidd's, then one per auxiliary data field the loaded jobs carry, then modified and size. */
 export function historyColumns(jobs: Job[]): Column[] {
@@ -263,7 +287,7 @@ export function cellText(job: Job, col: Column): string | string[] | null {
     return v.map((x) => String(x))
   }
   if (col.kind === 'status') return statusLabel(String(v))
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'boolean') return v ? t('common.yes') : t('common.no')
   return typeof v === 'object' ? JSON.stringify(v) : String(v)
 }
 
@@ -304,7 +328,7 @@ export function sortJobs(jobs: Job[], key: string, desc: boolean): Job[] {
     const x = val(a)
     const y = val(b)
     if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1
-    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), locale(), { numeric: true })
     return desc ? -c : c
   })
 }
@@ -326,7 +350,7 @@ export function rollup(t: Totals) {
 
 /** How many of the given jobs ended each way, with their print time. */
 export function statusBreakdown(jobs: Job[]): { group: StatusGroup; label: string; count: number; printTime: number }[] {
-  const out = STATUS_GROUPS.map((g) => ({ group: g.value, label: g.label, count: 0, printTime: 0 }))
+  const out = STATUS_GROUPS.map((g) => ({ group: g, label: groupLabel(g), count: 0, printTime: 0 }))
   for (const j of jobs) {
     const e = out.find((x) => x.group === statusGroup(j.status))!
     e.count++
@@ -468,7 +492,8 @@ export function renderLength(frames: number, s: Pick<TimelapseSettings, 'variabl
   const fps = s.variable_fps ? Math.min(s.variable_fps_max, Math.max(s.variable_fps_min, total / s.targetlength)) : s.output_framerate
   const seconds = (total || 0) / fps
   const minutes = Math.floor(seconds / 60)
-  return `${minutes ? minutes + 'm' : ''} ${Math.floor(seconds % 60)}s`.trim()
+  const secs = Math.floor(seconds % 60)
+  return minutes ? t('history.format.render_minutes_seconds', { m: minutes, s: secs }) : t('history.format.render_seconds', { s: secs })
 }
 
 export type TimelapseFile = { path: string; modified: number; size: number }

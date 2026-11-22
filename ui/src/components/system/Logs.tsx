@@ -7,6 +7,8 @@ import { href } from '../../lib/router'
 import { fmtAgo } from '../../lib/format'
 import { fmtSize } from './bits'
 import { tailText, type LogTail } from './log-tail'
+import { locale, t } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 export type LogFile = { filename: string; size: number; modified: number; permissions?: string }
 
@@ -33,18 +35,18 @@ export function Logs() {
   }, [load])
   // Current logs first (klippy.log before klippy.log.2026-11-15), then by name.
   const sorted = useMemo(() => (files ?? []).slice().sort((a, b) => rank(a.filename) - rank(b.filename) || a.filename.localeCompare(b.filename, undefined, { numeric: true })), [files])
-  if (!has) return <Empty>Moonraker has no logs folder.</Empty>
+  if (!has) return <Empty>{t('system.logs.no_folder')}</Empty>
   return (
     <div className="grid grid-cols-1 gap-3.5">
       <Card
-        title="Logs"
+        title={t('system.logs.title')}
         icon={<ScrollText size={15} />}
         aside={
           <span className="flex items-center gap-1">
-            <button className="btn btn-ghost btn-sm" onClick={() => setRollover(true)} title="Start new klippy.log and moonraker.log files">
-              Rollover logs
+            <button className="btn btn-ghost btn-sm" onClick={() => setRollover(true)} title={t('system.logs.rollover_hint')}>
+              {t('system.logs.rollover_logs')}
             </button>
-            <button className="iconbtn h-7 w-7" onClick={load} disabled={loading} aria-label="Refresh" title="Refresh">
+            <button className="iconbtn h-7 w-7" onClick={load} disabled={loading} aria-label={t('system.refresh')} title={t('system.refresh')}>
               <RefreshCw size={14} className={loading ? 'spin' : ''} />
             </button>
           </span>
@@ -53,7 +55,7 @@ export function Logs() {
         <a href={href('updates')} className="tone-info mb-3 flex items-start gap-2.5 rounded-xl px-3 py-2.5">
           <LifeBuoy size={16} className="mt-0.5 flex-none" />
           <span className="text-ink">
-            Reporting a problem? Use <b>Report a problem</b> on the Updates screen. It downloads a support bundle with these logs to attach to the report.
+            {tr('system.logs.report_hint', {}, { b: (c) => <b>{c}</b> })}
           </span>
         </a>
         {error ? (
@@ -63,15 +65,15 @@ export function Logs() {
             <Spinner size={20} />
           </div>
         ) : sorted.length === 0 ? (
-          <Empty>No logs.</Empty>
+          <Empty>{t('system.logs.none')}</Empty>
         ) : (
           <div className="-mx-1 overflow-x-auto">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th className="hidden text-right sm:table-cell">Size</th>
-                  <th className="hidden sm:table-cell">Modified</th>
+                  <th>{t('system.logs.name')}</th>
+                  <th className="hidden text-right sm:table-cell">{t('system.logs.size')}</th>
+                  <th className="hidden sm:table-cell">{t('system.logs.modified')}</th>
                   <th />
                 </tr>
               </thead>
@@ -88,14 +90,14 @@ export function Logs() {
                       </div>
                     </td>
                     <td className="num hidden text-right whitespace-nowrap text-ink-2 sm:table-cell">{fmtSize(f.size)}</td>
-                    <td className="hidden whitespace-nowrap text-ink-2 sm:table-cell" title={new Date(f.modified * 1000).toLocaleString()}>
+                    <td className="hidden whitespace-nowrap text-ink-2 sm:table-cell" title={new Date(f.modified * 1000).toLocaleString(locale())}>
                       {fmtAgo(f.modified)}
                     </td>
                     <td className="text-right whitespace-nowrap">
-                      <button className="iconbtn inline-grid h-8 w-8 align-middle" onClick={() => setViewing(f)} aria-label={`View ${f.filename}`} title="View">
+                      <button className="iconbtn inline-grid h-8 w-8 align-middle" onClick={() => setViewing(f)} aria-label={t('system.logs.view_named', { name: f.filename })} title={t('system.logs.view')}>
                         <Eye size={15} />
                       </button>
-                      <a className="iconbtn inline-grid h-8 w-8 align-middle" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={`Download ${f.filename}`} title="Download">
+                      <a className="iconbtn inline-grid h-8 w-8 align-middle" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={t('system.logs.download_named', { name: f.filename })} title={t('system.logs.download')}>
                         <Download size={15} />
                       </a>
                     </td>
@@ -142,8 +144,8 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
   }, [load])
   useEffect(() => {
     if (!follow) return
-    const t = setInterval(load, 3000)
-    return () => clearInterval(t)
+    const timer = setInterval(load, 3000)
+    return () => clearInterval(timer)
   }, [follow, load])
   // Stay at the end as the log grows, unless the reader has scrolled up.
   useEffect(() => {
@@ -173,15 +175,15 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
       footer={
         <>
           <span className="mr-auto text-[12.5px] text-ink-3">
-            {tail ? (tail.truncated ? `Showing the last ${fmtSize(tail.shown)} of ${fmtSize(tail.total)}.` : `${fmtSize(tail.total)}, all shown.`) : ''}
+            {tail ? (tail.truncated ? t('system.logs.showing_last', { shown: fmtSize(tail.shown), total: fmtSize(tail.total) }) : t('system.logs.all_shown', { total: fmtSize(tail.total) })) : ''}
           </span>
           {tail?.truncated && (
             <button className="btn btn-sm" disabled={loading} onClick={() => setBytes((b) => b * 4)}>
-              Show more
+              {t('system.logs.show_more')}
             </button>
           )}
           <a className="btn btn-sm" href={client.fileUrl('logs', file.filename)} download={file.filename}>
-            <Download size={14} /> Download
+            <Download size={14} /> {t('system.logs.download')}
           </a>
         </>
       }
@@ -190,17 +192,17 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label className="relative min-w-0 flex-1 basis-56">
             <Search size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-            <input className="field pl-8" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the log" />
+            <input className="field pl-8" placeholder={t('system.logs.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('system.logs.search_log')} />
           </label>
-          {q && <span className="num text-[12.5px] text-ink-3">{matches} matching lines</span>}
+          {q && <span className="num text-[12.5px] text-ink-3">{t('system.logs.matching', { count: matches })}</span>}
           <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <Toggle checked={onlyMatches} onChange={setOnlyMatches} label="Only matching lines" /> Only matching lines
+            <Toggle checked={onlyMatches} onChange={setOnlyMatches} label={t('system.logs.only_matching')} /> {t('system.logs.only_matching')}
           </label>
-          <label className="flex items-center gap-2 text-[13px] text-ink-2" title="Refresh every 3 seconds">
-            <Toggle checked={follow} onChange={setFollow} label="Follow" /> Follow
+          <label className="flex items-center gap-2 text-[13px] text-ink-2" title={t('system.logs.follow_hint')}>
+            <Toggle checked={follow} onChange={setFollow} label={t('system.logs.follow')} /> {t('system.logs.follow')}
           </label>
           <button className="btn btn-sm" onClick={load} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> {t('system.refresh')}
           </button>
         </div>
         <div
@@ -217,7 +219,7 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
           ) : !tail ? (
             <Spinner size={18} />
           ) : lines.length === 0 ? (
-            <div className="text-ink-3">{q ? 'No lines match.' : 'This log is empty.'}</div>
+            <div className="text-ink-3">{q ? t('system.logs.no_match') : t('system.logs.empty')}</div>
           ) : (
             lines.map((l) => (
               <div key={l.n} className={`break-all whitespace-pre-wrap ${/^(!!|Traceback|.*\bERROR\b|.*\bError\b:)/.test(l.text) ? 'text-bad' : ''}`}>
@@ -251,7 +253,7 @@ async function fetchTail(url: string, size: number, bytes: number): Promise<LogT
   const start = Math.max(0, size - bytes)
   let res = await fetch(url, start > 0 ? { headers: { Range: `bytes=${start}-` }, cache: 'no-store' } : { cache: 'no-store' })
   if (res.status === 416) res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Couldn’t read the log (${res.status})`)
+  if (!res.ok) throw new Error(t('system.logs.read_failed', { status: res.status }))
   const text = await res.text()
   const from = res.status === 206 ? start : 0
   return tailText(text, from, Math.max(size, from + text.length))
@@ -269,7 +271,7 @@ function RolloverDialog({ open, onClose, onDone }: { open: boolean; onClose: () 
     const ok = await attempt(async () => (await client.call('server.logs.rollover', app ? { application: app } : {}), true))
     setBusy(false)
     if (ok) {
-      toast('Logs rolled over')
+      toast(t('system.logs.rolled_over'))
       onClose()
       onDone()
     }
@@ -284,24 +286,25 @@ function RolloverDialog({ open, onClose, onDone }: { open: boolean; onClose: () 
     <Dialog
       open={open}
       onClose={onClose}
-      title="Rollover logs"
+      title={t('system.logs.rollover_logs')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" onClick={go} disabled={busy}>
-            {busy && <Spinner size={14} />} Rollover
+            {busy && <Spinner size={14} />} {t('system.logs.rollover')}
           </button>
         </>
       }
     >
-      <p className="mt-0 text-ink-2">Starts a new log file and keeps the old one beside it, dated.{busyPrinting ? ' Klipper’s log can’t be rolled over during a print.' : ''}</p>
+      <p className="mt-0 text-ink-2">{busyPrinting ? t('system.logs.rollover_about_printing') : t('system.logs.rollover_about')}</p>
       <div className="grid gap-0.5">
-        {opt('', 'All', busyPrinting)}
+        {opt('', t('system.logs.all'), busyPrinting)}
         {opt(
           'klipper',
           <>
+            {/* i18n-ignore: a file name */}
             Klipper <span className="code text-ink-3">(klippy.log)</span>
           </>,
           busyPrinting,
@@ -309,6 +312,7 @@ function RolloverDialog({ open, onClose, onDone }: { open: boolean; onClose: () 
         {opt(
           'moonraker',
           <>
+            {/* i18n-ignore: a file name */}
             Moonraker <span className="code text-ink-3">(moonraker.log)</span>
           </>,
         )}

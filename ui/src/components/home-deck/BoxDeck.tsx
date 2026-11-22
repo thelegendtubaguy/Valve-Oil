@@ -12,6 +12,7 @@ import { FilamentRail } from '../box/FilamentRail'
 import { Operation } from '../box/Operation'
 import { slotByIndex, useBox, QIDI_BOX_EXTERNAL_SLOT } from '../../state/box'
 import { href } from '../../lib/router'
+import { t } from '../../i18n'
 
 export function BoxDeck({ className = '' }: { className?: string }) {
   const box = useBox()
@@ -32,13 +33,13 @@ export function BoxDeck({ className = '' }: { className?: string }) {
         <BoxIcon size={14} />
         QIDI Box
         <span className="aside flex items-center gap-0.5">
-          <button className="iconbtn h-7 w-7" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? 'Tool mapping can be changed while the printer is idle' : 'Tool mapping'} aria-label="Tool mapping">
+          <button className="iconbtn h-7 w-7" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? t('home.box.tools_locked') : t('box.screen.tool_mapping')} aria-label={t('box.screen.tool_mapping')}>
             <Pencil size={14} />
           </button>
-          <button className="iconbtn h-7 w-7" onClick={() => setSettingsOpen(true)} title="Box settings" aria-label="Box settings">
+          <button className="iconbtn h-7 w-7" onClick={() => setSettingsOpen(true)} title={t('box.screen.settings')} aria-label={t('box.screen.settings')}>
             <Settings2 size={15} />
           </button>
-          <a href={href('filaments')} className="iconbtn h-7 w-7" title="Filament library" aria-label="Filament library">
+          <a href={href('filaments')} className="iconbtn h-7 w-7" title={t('home.box.filament_library')} aria-label={t('home.box.filament_library')}>
             <Disc3 size={15} />
           </a>
         </span>

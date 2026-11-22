@@ -1,0 +1,207 @@
+{
+  "details": "Detalles",
+  "nav": {
+    "home": "Inicio",
+    "files": "Archivos",
+    "control": "Control",
+    "console": "Consola",
+    "tune": "Afinar",
+    "history": "Historial",
+    "system": "Sistema",
+    "settings": "Ajustes",
+    "updates": "Actualizar",
+    "more": "Más",
+    "open_fluidd": "Abrir Fluidd",
+    "updating": "Actualizando"
+  },
+  "conn": {
+    "connecting": "Conectando con la impresora…",
+    "unreachable": "No se puede conectar con la impresora",
+    "trying": "Reintentando {{url}}."
+  },
+  "update_banner": {
+    "updating": "Valve Oil está actualizando la impresora."
+  },
+  "status": {
+    "offline": "Sin conexión",
+    "klipper_startup": "Klipper iniciando",
+    "klipper_error": "Error de Klipper",
+    "klipper_shutdown": "Klipper apagado",
+    "klipper_disconnected": "Klipper desconectado",
+    "klipper_unknown": "Klipper: estado desconocido",
+    "klipper_state": "Klipper: {{state}}",
+    "printing": "Imprimiendo · {{pct}}%",
+    "paused": "En pausa",
+    "box_busy": "Box ocupado",
+    "busy": "Ocupada"
+  },
+  "heaters": {
+    "nozzle": "Boquilla",
+    "bed": "Cama",
+    "chamber": "Recinto",
+    "box": "Box {{n}}",
+    "part_fan": "Ventilador de pieza",
+    "aux_fan": "Ventilador auxiliar",
+    "chamber_exhaust": "Extracción del recinto"
+  },
+  "save_config": {
+    "waits": "Guardar la configuración reinicia Klipper, así que espera a que termine la impresión.",
+    "confirm_title": "¿Guardar la configuración y reiniciar Klipper?",
+    "confirm_body": "SAVE_CONFIG escribe los cambios pendientes de Klipper en printer.cfg y reinicia Klipper.",
+    "changed": "Cambios: {{sections}}",
+    "confirm": "Guardar y reiniciar",
+    "button": "Guardar configuración"
+  },
+  "topbar": {
+    "switch_theme": "Cambiar tema",
+    "estop": "Parada de emergencia",
+    "estop_short": "Parar",
+    "estop_title": "Parada de emergencia: detiene la impresora al instante. Después hay que reiniciar Klipper.",
+    "estop_confirm_title": "¿Parada de emergencia?",
+    "estop_confirm_body": "Klipper detiene la impresora al instante y después hay que reiniciarlo."
+  },
+  "warnings": {
+    "support_issue": "Abrir una incidencia de soporte"
+  },
+  "klippy": {
+    "starting": "Klipper se está iniciando…",
+    "stopped": "Klipper se detuvo",
+    "error": "Klipper informó de un error",
+    "not_running": "Klipper no está en marcha",
+    "firmware_restart": "Reiniciar firmware",
+    "restart": "Reiniciar Klipper",
+    "edit_config": "Editar configuración",
+    "logs": "Registros"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "title_count": "Notificaciones, {{n}}",
+    "clear_all": "Borrar todas",
+    "none": "No hay notificaciones",
+    "klipper_warnings": "Avisos de Klipper",
+    "moonraker_warnings": "Avisos de Moonraker",
+    "announcements": "Anuncios",
+    "more_info": "Más información",
+    "snooze": "Posponer",
+    "snooze_hour": "1 hora",
+    "snooze_day": "1 día",
+    "snooze_week": "7 días"
+  },
+  "thermals": {
+    "title": "Calentadores y ventiladores",
+    "speed": "Velocidad",
+    "heater_power": "Potencia del calentador"
+  },
+  "job": {
+    "title": "Esta impresión",
+    "speed": "Velocidad",
+    "flow": "Flujo",
+    "filament": "Filamento",
+    "layer": "Capa",
+    "left_by_file": "Restante según archivo",
+    "left_by_slicer": "Restante según slicer",
+    "against_slicer": "Frente al slicer",
+    "on_time": "a tiempo",
+    "slower": "{{pct}}% más lenta",
+    "faster": "{{pct}}% más rápida",
+    "slicer_estimate": "Estimación del slicer",
+    "layer_height": "Altura de capa",
+    "of": "{{value}} de {{total}}",
+    "tall": "{{n}} mm de alto"
+  },
+  "units": {
+    "m": "{{n}} m",
+    "g": "{{n}} g",
+    "gb": "{{n}} GB"
+  },
+  "health": {
+    "title": "Estado de la impresora",
+    "timers": "Temporizadores",
+    "host_cpu": "CPU del host",
+    "memory": "Memoria",
+    "host_temp": "Temp. del host",
+    "free_space": "Espacio libre",
+    "up_for": "En marcha",
+    "mcu_load": "Carga de MCU",
+    "mcu_load_hint": "Lo ocupado que está cada microcontrolador",
+    "mainboard": "Placa base",
+    "warn": "Estado de la impresora: una lectura está alta",
+    "bad": "Estado de la impresora: una lectura está demasiado alta"
+  },
+  "temps": {
+    "off": "apagado",
+    "running": "en marcha",
+    "sensor": "sensor",
+    "fan_now": "Ahora al {{pct}}%. Las macros y la protección del recinto pueden volver a cambiarlo.",
+    "target_title": "Objetivo: {{name}}",
+    "now": "Ahora {{temp}} °C. Hasta {{max}} °C.",
+    "now_heating": "Ahora {{temp}} °C, calentando a {{target}} °C. Hasta {{max}} °C.",
+    "set": "Fijar"
+  },
+  "chart": {
+    "title": "Temperaturas",
+    "show": "Mostrar {{name}}",
+    "hide": "Ocultar {{name}}",
+    "now": "ahora",
+    "minutes_back": "−{{m}} min",
+    "seconds_ago": "hace {{s}} s",
+    "aria": "Historial de temperaturas",
+    "window_short": "{{m}} min"
+  },
+  "mini_console": {
+    "title": "Consola",
+    "open": "Abrir la consola",
+    "macros": "Macros",
+    "macros_hint": "haz clic para ponerla en la línea de comandos",
+    "filter": "Filtrar",
+    "filter_macros": "Filtrar macros"
+  },
+  "file": {
+    "new": "Nuevo",
+    "printed": "Impreso",
+    "printed_times": "Impreso {{n}}×",
+    "cancelled": "Cancelado",
+    "printing": "Imprimiendo",
+    "failed": "Falló",
+    "select": "Seleccionar {{name}}",
+    "more_for": "Más opciones de {{name}}"
+  },
+  "print": {
+    "started": "Imprimiendo {{name}}",
+    "hold_delete": "Mantén para eliminar",
+    "start": "Imprimir",
+    "layers": "Capas de {{n}} mm",
+    "modified": "modificado {{ago}}",
+    "busy": "Hay una impresión en curso. Inicia esta cuando termine.",
+    "use_box": "Usar QIDI Box",
+    "use_box_on": "Cada filamento se imprime desde la ranura del Box elegida abajo.",
+    "use_box_off": "Imprime desde la bobina externa.",
+    "choose_slots": "Elige la ranura del Box para cada filamento del archivo. Solo aparecen las ranuras cargadas con el mismo tipo de filamento; se emparejan por el color más parecido.",
+    "unnamed": "Este archivo no indica qué filamentos usa, así que aparecen todos los filamentos de su proyecto del slicer. Los que queden sin ranura mantienen la última ranura asignada.",
+    "external_spool": "Bobina externa",
+    "none_of_type": "No hay filamento {{type}} cargado en el Box.",
+    "none_matching": "No hay filamento compatible cargado en el Box.",
+    "map_all": "Elige una ranura del Box para cada filamento, o desactiva el QIDI Box para imprimir desde la bobina externa.",
+    "no_toolhead_filament": "No se detecta filamento en el cabezal. Carga la bobina externa antes de imprimir.",
+    "no_slots": "Ninguna ranura del Box tiene filamento cargado."
+  },
+  "upload": {
+    "progress": "Subiendo {{pct}}%",
+    "drop": "Suelta G-code o .gcode.3mf",
+    "click": "o haz clic para subir",
+    "uploading_one": "Subiendo {{count}} archivo",
+    "uploading_other": "Subiendo {{count}} archivos",
+    "title": "Subidas",
+    "cancelled": "Cancelada",
+    "failed": "Falló",
+    "cancel_named": "Cancelar {{name}}"
+  },
+  "moonraker": {
+    "connection_closed": "Conexión cerrada",
+    "not_connected": "Sin conexión con Moonraker",
+    "timed_out": "{{method}} agotó el tiempo de espera",
+    "upload_failed_status": "Falló la subida ({{status}})",
+    "upload_failed": "Falló la subida",
+    "misread": "No enviado: Klipper leería mal el número en {{command}}"
+  }
+}

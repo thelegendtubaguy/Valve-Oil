@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { Dialog } from '../../ui'
 import type { QidiFilamentImportItem } from '../../../qidi/qidi-filament-config'
+import { t } from '../../../i18n'
 
 const statusText = (item: QidiFilamentImportItem) =>
-  item.status === 'new' ? 'Not in the current list' : item.status === 'changed' ? 'Differs from the current list' : `Its ID ${item.id} is already used by ${item.conflictKey}`
+  item.status === 'new' ? t('box.filaments.import.new') : item.status === 'changed' ? t('box.filaments.import.changed') : t('box.filaments.import.conflict', { id: item.id, name: item.conflictKey })
 
 export function FilamentImportDialog({ items, busy, onImport, onClose }: { items: QidiFilamentImportItem[]; busy: boolean; onImport: (keys: string[]) => void; onClose: () => void }) {
   const [selected, setSelected] = useState(() => items.filter((i) => i.status === 'new').map((i) => i.key))
@@ -14,21 +15,21 @@ export function FilamentImportDialog({ items, busy, onImport, onClose }: { items
     <Dialog
       open
       onClose={onClose}
-      title="Import filaments"
+      title={t('box.filaments.import.title')}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={selected.length === 0 || busy} onClick={() => onImport(selected)}>
-            Import
+            {t('box.filaments.import_button')}
           </button>
         </>
       }
     >
       {items.length ? (
         <>
-          <p className="mt-0 mb-3 text-ink-2">Choose the filaments to add or replace.</p>
+          <p className="mt-0 mb-3 text-ink-2">{t('box.filaments.import.intro')}</p>
           <div className="grid gap-1">
             {items.map((item) => (
               <label key={item.key} className={`flex items-start gap-2.5 rounded-lg px-2 py-1.5 ${item.status === 'conflict' ? 'opacity-60' : 'hover:bg-hover'}`}>
@@ -42,7 +43,7 @@ export function FilamentImportDialog({ items, busy, onImport, onClose }: { items
           </div>
         </>
       ) : (
-        <p className="m-0 text-ink-2">Every filament in this file is already in the list.</p>
+        <p className="m-0 text-ink-2">{t('box.filaments.import.none')}</p>
       )}
     </Dialog>
   )

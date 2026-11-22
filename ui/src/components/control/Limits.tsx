@@ -4,6 +4,7 @@ import { Card, Empty, Stepper, Toggle } from '../ui'
 import { Note, objectLabel, send } from './common'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 /** The Limits tab: printer limits, runout sensors, and firmware retraction where the printer has it. */
 export function LimitsTab() {
@@ -26,11 +27,11 @@ function Limit({ label, value, reset, unit, step, min, max, digits = 0, onSet }:
       <span className="section-label flex justify-between gap-2">
         {label}
         {changed ? (
-          <button type="button" className="border-0 bg-transparent p-0 text-[11px] font-semibold text-accent-ink normal-case" onClick={() => onSet(reset)} title={`Back to the configured ${reset.toFixed(digits)} ${unit}`}>
-            Reset to {reset.toFixed(digits)}
+          <button type="button" className="border-0 bg-transparent p-0 text-[11px] font-semibold text-accent-ink normal-case" onClick={() => onSet(reset)} title={t('control.limits.back_to_configured', { value: reset.toFixed(digits), unit })}>
+            {t('control.limits.reset_to', { value: reset.toFixed(digits) })}
           </button>
         ) : (
-          <span className="font-semibold normal-case">as configured</span>
+          <span className="font-semibold normal-case">{t('control.limits.as_configured')}</span>
         )}
       </span>
       <Stepper label={typeof label === 'string' ? label : undefined} value={value} step={step} min={min} max={max} digits={digits} unit={unit} onChange={onSet} />
@@ -48,20 +49,20 @@ export function LimitsCard() {
   const a2d = (cfg.max_accel_to_decel as number | undefined) ?? accel / 2
   const set = (arg: string, v: number) => send(gcode`SET_VELOCITY_LIMIT ${arg}=${v}`)
   return (
-    <Card title="Printer limits" icon={<Gauge size={14} />}>
+    <Card title={t('control.limits.printer_limits')} icon={<Gauge size={14} />}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Limit label="Velocity" unit="mm/s" value={(th.max_velocity as number | undefined) ?? velocity} reset={velocity} step={10} min={1} max={velocity} onSet={(v) => set('VELOCITY', v)} />
-        <Limit label="Acceleration" unit="mm/s²" value={(th.max_accel as number | undefined) ?? accel} reset={accel} step={500} min={1} max={accel} onSet={(v) => set('ACCEL', v)} />
-        <Limit label="Square corner velocity" unit="mm/s" value={(th.square_corner_velocity as number | undefined) ?? scv} reset={scv} step={0.5} min={0} max={scv} digits={1} onSet={(v) => set('SQUARE_CORNER_VELOCITY', v)} />
+        <Limit label={t('control.limits.velocity')} unit="mm/s" value={(th.max_velocity as number | undefined) ?? velocity} reset={velocity} step={10} min={1} max={velocity} onSet={(v) => set('VELOCITY', v)} />
+        <Limit label={t('control.limits.acceleration')} unit="mm/s²" value={(th.max_accel as number | undefined) ?? accel} reset={accel} step={500} min={1} max={accel} onSet={(v) => set('ACCEL', v)} />
+        <Limit label={t('control.limits.square_corner_velocity')} unit="mm/s" value={(th.square_corner_velocity as number | undefined) ?? scv} reset={scv} step={0.5} min={0} max={scv} digits={1} onSet={(v) => set('SQUARE_CORNER_VELOCITY', v)} />
         {th.minimum_cruise_ratio != null && (
-          <Limit label="Minimum cruise ratio" unit="%" value={Math.round((th.minimum_cruise_ratio as number) * 100)} reset={mcr} step={5} min={0} max={99} onSet={(v) => set('MINIMUM_CRUISE_RATIO', v / 100)} />
+          <Limit label={t('control.limits.minimum_cruise_ratio')} unit="%" value={Math.round((th.minimum_cruise_ratio as number) * 100)} reset={mcr} step={5} min={0} max={99} onSet={(v) => set('MINIMUM_CRUISE_RATIO', v / 100)} />
         )}
         {th.max_accel_to_decel != null && (
-          <Limit label="Accel to decel" unit="mm/s²" value={th.max_accel_to_decel as number} reset={a2d} step={500} min={1} max={a2d} onSet={(v) => set('ACCEL_TO_DECEL', v)} />
+          <Limit label={t('control.limits.accel_to_decel')} unit="mm/s²" value={th.max_accel_to_decel as number} reset={a2d} step={500} min={1} max={a2d} onSet={(v) => set('ACCEL_TO_DECEL', v)} />
         )}
       </div>
       <div className="mt-3">
-        <Note>These last until Klipper restarts, and macros or the slicer’s G-code can change them during a print. Each is capped at its configured value.</Note>
+        <Note>{t('control.limits.note')}</Note>
       </div>
     </Card>
   )
@@ -72,7 +73,7 @@ export function RunoutCard() {
     s.objects.filter((o) => (o === 'hall_filament_width_sensor' || o.startsWith('filament_switch_sensor ') || o.startsWith('filament_motion_sensor ')) && s.status[o]?.filament_detected != null),
   )
   return (
-    <Card title="Runout sensors" icon={<ScanLine size={14} />}>
+    <Card title={t('control.limits.runout_sensors')} icon={<ScanLine size={14} />}>
       {sensors.length ? (
         <div className="grid gap-2">
           {sensors.map((o) => (
@@ -80,7 +81,7 @@ export function RunoutCard() {
           ))}
         </div>
       ) : (
-        <Empty>No runout sensors.</Empty>
+        <Empty>{t('control.limits.no_runout_sensors')}</Empty>
       )}
     </Card>
   )
@@ -101,9 +102,9 @@ function RunoutRow({ obj }: { obj: string }) {
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold">{label}</div>
-        <div className={`text-[12.5px] ${!enabled ? 'text-ink-3' : st.filament_detected ? 'text-good' : 'text-warn'}`}>{!enabled ? 'Off' : st.filament_detected ? 'Filament detected' : 'Empty'}</div>
+        <div className={`text-[12.5px] ${!enabled ? 'text-ink-3' : st.filament_detected ? 'text-good' : 'text-warn'}`}>{!enabled ? t('common.off') : st.filament_detected ? t('control.limits.filament_detected') : t('control.limits.empty')}</div>
       </div>
-      <Toggle label={`${label} enabled`} checked={enabled} onChange={set} />
+      <Toggle label={t('control.limits.sensor_enabled', { name: label })} checked={enabled} onChange={set} />
     </div>
   )
 }
@@ -115,12 +116,12 @@ export function RetractCard() {
   const max = (base: number | undefined, fallback: number, digits: number) => (base && base > 0 ? Math.round(base * 2 * 10 ** digits) / 10 ** digits : fallback)
   const set = (arg: string, v: number) => send(gcode`SET_RETRACTION ${arg}=${v}`)
   return (
-    <Card title="Firmware retraction" icon={<Undo2 size={14} />}>
+    <Card title={t('control.limits.firmware_retraction')} icon={<Undo2 size={14} />}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Limit label="Retract length" unit="mm" digits={2} step={0.05} min={0} max={max(cfg.retract_length, 15, 2)} value={st.retract_length ?? 0} reset={cfg.retract_length ?? 0} onSet={(v) => set('RETRACT_LENGTH', v)} />
-        <Limit label="Retract speed" unit="mm/s" step={5} min={0} max={max(cfg.retract_speed, 100, 0)} value={st.retract_speed ?? 0} reset={cfg.retract_speed ?? 0} onSet={(v) => set('RETRACT_SPEED', v)} />
+        <Limit label={t('control.limits.retract_length')} unit="mm" digits={2} step={0.05} min={0} max={max(cfg.retract_length, 15, 2)} value={st.retract_length ?? 0} reset={cfg.retract_length ?? 0} onSet={(v) => set('RETRACT_LENGTH', v)} />
+        <Limit label={t('control.limits.retract_speed')} unit="mm/s" step={5} min={0} max={max(cfg.retract_speed, 100, 0)} value={st.retract_speed ?? 0} reset={cfg.retract_speed ?? 0} onSet={(v) => set('RETRACT_SPEED', v)} />
         <Limit
-          label="Unretract extra length"
+          label={t('control.limits.unretract_extra_length')}
           unit="mm"
           digits={2}
           step={0.05}
@@ -130,7 +131,7 @@ export function RetractCard() {
           reset={cfg.unretract_extra_length ?? 0}
           onSet={(v) => set('UNRETRACT_EXTRA_LENGTH', v)}
         />
-        <Limit label="Unretract speed" unit="mm/s" step={5} min={0} max={max(cfg.unretract_speed, 100, 0)} value={st.unretract_speed ?? 0} reset={cfg.unretract_speed ?? 0} onSet={(v) => set('UNRETRACT_SPEED', v)} />
+        <Limit label={t('control.limits.unretract_speed')} unit="mm/s" step={5} min={0} max={max(cfg.unretract_speed, 100, 0)} value={st.unretract_speed ?? 0} reset={cfg.unretract_speed ?? 0} onSet={(v) => set('UNRETRACT_SPEED', v)} />
       </div>
     </Card>
   )

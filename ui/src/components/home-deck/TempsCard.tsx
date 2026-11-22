@@ -12,6 +12,7 @@ import { usePrinter } from '../../state/printer'
 import { boxHeaterMax, useBox } from '../../state/box'
 import { prettyName } from '../../lib/format'
 import { TempActions } from './Deck'
+import { t } from '../../i18n'
 import './deck.css'
 
 const SLOTS = 8
@@ -30,10 +31,10 @@ function useHeaters() {
 }
 
 function heaterLabel(obj: string) {
-  if (obj === 'extruder') return 'Nozzle'
-  if (obj === 'heater_bed') return 'Bed'
+  if (obj === 'extruder') return t('app.heaters.nozzle')
+  if (obj === 'heater_bed') return t('app.heaters.bed')
   const n = boxHeaterNumber(obj)
-  return n != null ? `Box ${n}` : prettyName(obj)
+  return n != null ? t('app.heaters.box', { n }) : prettyName(obj)
 }
 
 export function TempsCard({ className = '' }: { className?: string }) {
@@ -44,7 +45,7 @@ export function TempsCard({ className = '' }: { className?: string }) {
   return (
     <section className={`card tc ${className}`}>
       <h3 className="card-title">
-        <Flame size={14} /> Temperatures
+        <Flame size={14} /> {t('control.screen.tab_temps')}
         <span className="aside flex gap-1.5">
           <TempActions />
         </span>
@@ -88,12 +89,12 @@ function HeaterRow({ obj, slot, shown, onToggle }: { obj: string; slot: number |
   }
   return (
     <div className={`tc-row ${on ? 'on' : ''}`} style={{ '--c': color } as React.CSSProperties}>
-      <button type="button" className={`tc-sw ${shown ? '' : 'hid'}`} aria-pressed={shown} onClick={onToggle} title={shown ? `Hide ${label} on the chart` : `Show ${label} on the chart`} disabled={!slot}>
+      <button type="button" className={`tc-sw ${shown ? '' : 'hid'}`} aria-pressed={shown} onClick={onToggle} title={shown ? t('home.temps.hide_line', { name: label }) : t('home.temps.show_line', { name: label })} disabled={!slot}>
         <span />
       </button>
       <div className="tc-name">
         <b>{label}</b>
-        {on && <small className="num">{Math.round(power * 100)}% power</small>}
+        {on && <small className="num">{t('home.temps.power', { pct: Math.round(power * 100) })}</small>}
       </div>
       <span className="tc-now num">{temp != null ? `${temp.toFixed(1)}°` : '—'}</span>
       <TargetField label={label} value={target} disabled={range.locked} onSet={set} />
@@ -116,14 +117,14 @@ function TargetField({ label, value, disabled, onSet }: { label: string; value: 
     if (draft.trim() !== '' && Number.isFinite(v) && v !== value) onSet(v)
   }
   return (
-    <label className={`tc-tgt ${value > 0 ? 'set' : ''}`} title={disabled ? undefined : `Type a ${label.toLowerCase()} target and press Enter. 0 turns it off.`}>
+    <label className={`tc-tgt ${value > 0 ? 'set' : ''}`} title={disabled ? undefined : t('home.temps.target_hint', { name: label.toLowerCase() })}>
       <span className="arrow">→</span>
       <input
         className="num"
         inputMode="numeric"
-        aria-label={`${label} target`}
+        aria-label={t('control.target_stepper.target', { name: label })}
         disabled={disabled}
-        placeholder="off"
+        placeholder={t('app.temps.off')}
         value={draft ?? (value > 0 ? String(value) : '')}
         onFocus={(e) => (setDraft(value > 0 ? String(value) : ''), e.target.select())}
         onChange={(e) => setDraft(e.target.value)}
@@ -140,14 +141,14 @@ function TargetField({ label, value, disabled, onSet }: { label: string; value: 
 
 function SensorCell({ obj }: { obj: string }) {
   const st = usePrinter((s) => s.status[obj] ?? {})
-  const t = st.temperature as number | undefined
+  const temp = st.temperature as number | undefined
   const fan = obj.startsWith('temperature_fan ')
   const name = objectLabel(obj)
   return (
-    <div className="tc-sensor" title={fan && typeof st.target === 'number' ? `${name}: fan ${Math.round(((st.speed as number) ?? 0) * 100)}%, target ${Math.round(st.target)}°` : name}>
+    <div className="tc-sensor" title={fan && typeof st.target === 'number' ? t('home.temps.fan_title', { name, pct: Math.round(((st.speed as number) ?? 0) * 100), target: Math.round(st.target) }) : name}>
       <span className="k">{name}</span>
       <span className="num v">
-        {t != null ? `${t.toFixed(1)}°` : '—'}
+        {temp != null ? `${temp.toFixed(1)}°` : '—'}
         {fan && typeof st.speed === 'number' && <small> · {Math.round(st.speed * 100)}%</small>}
       </span>
     </div>

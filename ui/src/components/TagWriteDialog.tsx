@@ -10,6 +10,8 @@ import { boxCommands, filamentLists, type BoxState, type QidiBoxSlot } from '../
 import { runGcode, usePrinter } from '../state/printer'
 import { ColorSwatches, FilamentPicker } from './box/FilamentPicker'
 import { BoxScene } from './box/BoxScene'
+import { t } from '../i18n'
+import { tr } from '../i18n/rich'
 
 export type TagJob = {
   run: number
@@ -30,16 +32,17 @@ export type TagJob = {
 /** Why a tag wasn't written, in the operator's terms. */
 function refusal(layout: string, reason?: string) {
   const brands: Record<string, string> = { anycubic: 'Anycubic', elegoo: 'Elegoo', creality: 'Creality', tigertag: 'TigerTag', opentag3d: 'OpenTag3D' }
-  if (brands[layout]) return `It holds ${brands[layout]} data, which the Box already reads. Valve Oil writes only blank tags and tags it wrote before.`
+  if (brands[layout]) return t('box.tag.refusal_brand', { brand: brands[layout] })
   switch (layout) {
     case 'bambu':
-      return 'It’s a Bambu Lab tag, which the Box already reads. Bambu tags can’t be rewritten.'
+      return t('box.tag.refusal_bambu')
     case 'locked':
-      return 'The tag is locked against writing.'
+      return t('box.tag.refusal_locked')
     case 'unsupported':
-      return 'The Box can’t write this kind of tag. Use a MIFARE Classic 1K or NTAG213, 215, or 216 tag.'
+      return t('box.tag.refusal_unsupported')
     default:
-      return reason ? `The tag ${reason}.` : 'The tag holds data Valve Oil doesn’t write over.'
+      // The printer's reason, in English.
+      return reason ? t('box.tag.refusal_reason', { reason }) : t('box.tag.refusal_unknown')
   }
 }
 
@@ -85,11 +88,11 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
       await runGcode(boxCommands.writeTag(slot.index, filament.id, colors))
       setPhase('done')
       setMessage('')
-      if (closed.current) toast(`${slot.label}’s spool tag now holds ${filament.name}.`)
+      if (closed.current) toast(t('box.tag.written_toast', { slot: slot.label, filament: filament.name }))
     } catch (e) {
       setPhase('failed')
       setMessage(e instanceof Error ? e.message : String(e))
-      if (closed.current) toast(`${slot.label}’s spool tag wasn’t written.`, 'error')
+      if (closed.current) toast(t('box.tag.failed_toast', { slot: slot.label }), 'error')
     }
   }
   const close = () => {
@@ -98,11 +101,11 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
   }
 
   const preview = { label: slot.label, present: true, color: colors[0] ?? null, reading: phase === 'running' }
-  const title = `Write ${slot.label}’s spool tag`
+  const title = t('box.tag.title', { slot: slot.label })
 
   if (phase !== 'form') {
     const result = mine?.result
-    const failure = phase === 'failed' ? (result && !result.written ? refusal(result.layout, result.reason) : result && !result.verified ? 'The tag didn’t read back as written; it may have moved away mid-write.' : null) : null
+    const failure = phase === 'failed' ? (result && !result.written ? refusal(result.layout, result.reason) : result && !result.verified ? t('box.tag.not_verified') : null) : null
     const notFound = phase === 'failed' && !result
     return (
       <Dialog
@@ -112,19 +115,19 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         footer={
           phase === 'running' ? (
             <button className="btn" onClick={close}>
-              Hide
+              {t('box.tag.hide')}
             </button>
           ) : phase === 'done' ? (
             <button className="btn btn-primary" onClick={close}>
-              Done
+              {t('common.done')}
             </button>
           ) : (
             <>
               <button className="btn" onClick={close}>
-                Close
+                {t('common.close')}
               </button>
               <button className="btn btn-primary" onClick={() => setPhase('form')}>
-                Try again
+                {t('box.tag.try_again')}
               </button>
             </>
           )
@@ -141,9 +144,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         {phase === 'done' && (
           <div className="tone-good mt-4 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
             <CircleCheck size={17} className="mt-px flex-none" />
-            <span className="text-ink">
-              <b>Tag written and checked.</b> Whenever this spool is loaded into a Box slot, the slot is set to {filament?.name}.
-            </span>
+            <span className="text-ink">{tr('box.tag.done', { filament: filament?.name ?? '' }, { b: (x) => <b>{x}</b> })}</span>
           </div>
         )}
         {phase === 'failed' && (
@@ -151,13 +152,9 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
             <CircleAlert size={17} className="mt-px flex-none" />
             <span className="text-ink">
               {notFound ? (
-                <>
-                  <b>No tag came past the reader.</b> The Box reads a tag only on the side of the spool facing the reader. If the tag is on the other side, turn the spool over and try again.
-                </>
+                tr('box.tag.not_found', {}, { b: (x) => <b>{x}</b> })
               ) : failure ? (
-                <>
-                  <b>Tag not written.</b> {failure}
-                </>
+                tr('box.tag.not_written', { reason: failure }, { b: (x) => <b>{x}</b> })
               ) : (
                 message
               )}
@@ -176,26 +173,26 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
       footer={
         <>
           <button className="btn" onClick={close}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!filament || !box.canWriteTag} onClick={write}>
-            Write tag
+            {t('box.tag.write')}
           </button>
         </>
       }
     >
       <div className="grid gap-3.5">
         <BoxScene slots={box.slots} slot={slot} colors={colors} />
-        <div className="text-ink-2">Put what’s on this spool on its RFID tag. The Box then sets the slot from the tag whenever the spool is loaded, here or in any Box slot.</div>
+        <div className="text-ink-2">{t('box.tag.intro')}</div>
         <FilamentPicker database={database} value={filament?.id ?? null} onChange={setId} />
         <div className="grid gap-1.5">
-          <span className="section-label">Colors · up to four for a multicolor spool</span>
+          <span className="section-label">{t('box.tag.colors')}</span>
           <div className="flex flex-wrap items-center gap-1.5">
             {colors.map((c, i) => (
               <span key={i} className="relative">
                 <button
                   type="button"
-                  aria-label={`Color ${i + 1}`}
+                  aria-label={t('box.tag.color_n', { n: i + 1 })}
                   onClick={() => setPicked(i)}
                   className="h-8 w-8 rounded-full border-0"
                   style={{ background: c, boxShadow: picked === i ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'inset 0 0 0 1px oklch(0 0 0 / .25)' }}
@@ -203,7 +200,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
                 {colors.length > 1 && picked === i && (
                   <button
                     type="button"
-                    aria-label={`Remove color ${i + 1}`}
+                    aria-label={t('box.tag.remove_color', { n: i + 1 })}
                     className="absolute -top-1.5 -right-1.5 grid h-4 w-4 place-items-center rounded-full border-0 bg-surface text-ink-2"
                     style={{ boxShadow: 'var(--shadow-overlay)' }}
                     onClick={() => {
@@ -220,7 +217,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
               <button
                 type="button"
                 className="grid h-8 w-8 place-items-center rounded-full border border-dashed border-line-strong bg-transparent text-ink-3"
-                aria-label="Add a color"
+                aria-label={t('box.tag.add_color')}
                 onClick={() => {
                   setColors((cs) => [...cs, cs[cs.length - 1]])
                   setPicked(colors.length)
@@ -235,10 +232,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         <div className="tone-muted flex items-start gap-2.5 rounded-lg px-3 py-2.5">
           {turns ? <RotateCcw size={16} className="mt-0.5 flex-none" /> : <Hand size={16} className="mt-0.5 flex-none" />}
           <span className="text-ink-2">
-            {turns
-              ? 'The Box turns the spool backward until its tag comes past the reader, about one turn at most.'
-              : 'Filament is fed from this slot, so the Box can’t turn the spool. Once you start, turn it slowly backward by hand for up to a minute.'}{' '}
-            The tag must be on the side of the spool facing the reader. Only blank tags and tags Valve Oil wrote before are written.
+            {turns ? t('box.tag.turns_hint') : t('box.tag.hand_hint')}
           </span>
         </div>
       </div>
@@ -265,13 +259,13 @@ function Progress({ job, turns }: { job: TagJob | undefined; turns: boolean }) {
     <div className="mt-4 grid gap-2">
       <div className="flex items-center gap-2">
         <LoaderCircle size={15} className="spin flex-none" />
-        <span className="shimmer">{turns ? 'Turning the spool to find its tag…' : 'Turn the spool slowly backward by hand…'}</span>
-        <span className="num ml-auto text-ink-3">{turns ? `${Math.round(job?.turned ?? 0)} of ${turn || '—'} mm` : left != null ? `${left} s left` : ''}</span>
+        <span className="shimmer">{turns ? t('box.tag.turning') : t('box.tag.by_hand')}</span>
+        <span className="num ml-auto text-ink-3">{turns ? t('box.tag.turned', { turned: Math.round(job?.turned ?? 0), total: turn || '—' }) : left != null ? t('box.tag.left', { s: left }) : ''}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-inset">
         <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct * 100}%` }} />
       </div>
-      {(job?.lost ?? 0) > 0 && <div className="text-[12.5px] text-ink-3">The tag moved away before it could be written; trying again as it comes past.</div>}
+      {(job?.lost ?? 0) > 0 && <div className="text-[12.5px] text-ink-3">{t('box.tag.lost')}</div>}
     </div>
   )
 }

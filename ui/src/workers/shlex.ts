@@ -3,6 +3,8 @@
 // backslash outside quotes escaping the next character. Like shlex, an unclosed quote or a trailing backslash is an
 // error.
 
+import { PreviewError } from './preview-error'
+
 const WHITESPACE = ' \t\r\n'
 
 export function split(input: string): string[] {
@@ -28,13 +30,13 @@ export function split(input: string): string[] {
 
       if (c === "'" || c === '"') quote = c
       else if (c === '\\') {
-        if (i + 1 === input.length) throw new Error('Got EOF while in an escape sequence')
+        if (i + 1 === input.length) throw new PreviewError('eof_in_escape', 'Got EOF while in an escape sequence') // i18n-ignore: shown by code on the main thread
         word += input[++i]
       } else word += c
     }
   }
 
-  if (quote) throw new Error('Got EOF while in a quoted string')
+  if (quote) throw new PreviewError('eof_in_quote', 'Got EOF while in a quoted string') // i18n-ignore: shown by code on the main thread
   if (word !== null) words.push(word)
 
   return words

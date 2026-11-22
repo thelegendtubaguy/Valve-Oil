@@ -89,6 +89,8 @@ G1 F6000
 {endif}
 G1 X135 E0.8
 {endif}
+; Pull the filament back for the travel to the first part; Klipper puts it back when the print first extrudes.
+_VO_PRIME_RETRACT
 ; Lift off after the tapered finish.
 G1 Z1 F1200
 ; Turn the part cooling fan back off after the prime line.

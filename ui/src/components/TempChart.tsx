@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePrinter } from '../state/printer'
 import { prettyName } from '../lib/format'
+import { t } from '../i18n'
 
 // Series colors come from --series-N in fixed order; an entity keeps its slot whatever is hidden.
 const SLOTS = 8
@@ -16,15 +17,12 @@ function useSeries(): Series[] {
     if (objs.includes('heater_bed')) names.push('heater_bed')
     for (const o of objs) if (o.startsWith('heater_generic ') && !o.startsWith('heater_generic heater_box')) names.push(o)
     for (const o of objs) if (o.startsWith('heater_generic heater_box')) names.push(o)
-    return names.slice(0, SLOTS).map((obj, i) => ({ obj, slot: i + 1, label: obj === 'extruder' ? 'Nozzle' : obj === 'heater_bed' ? 'Bed' : obj.startsWith('heater_generic heater_box') ? `Box ${obj.slice(-1)}` : prettyName(obj) }))
+    return names.slice(0, SLOTS).map((obj, i) => ({ obj, slot: i + 1, label: obj === 'extruder' ? t('app.heaters.nozzle') : obj === 'heater_bed' ? t('app.heaters.bed') : obj.startsWith('heater_generic heater_box') ? t('app.heaters.box', { n: obj.slice(-1) }) : prettyName(obj) }))
   })
 }
 
-const WINDOWS = [
-  { label: '5 min', s: 300 },
-  { label: '10 min', s: 600 },
-  { label: '20 min', s: 1200 },
-]
+// Windows in seconds, labelled in minutes.
+const WINDOWS = [300, 600, 1200]
 
 /**
  * The heater history chart. `bare` drops the card, title, and legend for a card that lists the heaters itself; it then
@@ -123,13 +121,13 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
   }
 
   const minutes = win / 60
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ x: pad.l + f * iw, label: f === 1 ? 'now' : `−${Math.round(minutes * (1 - f))}m` }))
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ x: pad.l + f * iw, now: f === 1, text: f === 1 ? t('app.chart.now') : t('app.chart.minutes_back', { m: Math.round(minutes * (1 - f)) }) }))
 
   const windows = (
     <div className="ml-auto flex gap-0.5 rounded-lg bg-canvas p-0.5 shadow-[inset_0_0_0_1px_var(--line)]">
       {WINDOWS.map((w) => (
-        <button key={w.s} onClick={() => setWin(w.s)} className={`rounded-md border-0 px-2 py-0.5 text-[11.5px] font-medium ${win === w.s ? 'bg-surface text-ink shadow-[var(--shadow-btn)]' : 'bg-transparent text-ink-3'}`}>
-          {bare ? w.label.replace(' min', 'm') : w.label}
+        <button key={w} onClick={() => setWin(w)} className={`rounded-md border-0 px-2 py-0.5 text-[11.5px] font-medium ${win === w ? 'bg-surface text-ink shadow-[var(--shadow-btn)]' : 'bg-transparent text-ink-3'}`}>
+          {bare ? t('app.chart.window_short', { m: w / 60 }) : t('common.time.minutes', { m: w / 60 })}
         </button>
       ))}
     </div>
@@ -139,7 +137,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
     <Outer className={`${bare ? '' : 'card'} flex flex-col ${className}`}>
       {bare ? null : (
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h3 className="card-title m-0!">Temperatures</h3>
+          <h3 className="card-title m-0!">{t('app.chart.title')}</h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {series.map((x) => {
               const off = hidden.has(x.obj)
@@ -149,7 +147,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
                   key={x.obj}
                   type="button"
                   aria-pressed={!off}
-                  title={off ? `Show ${x.label}` : `Hide ${x.label}`}
+                  title={off ? t('app.chart.show', { name: x.label }) : t('app.chart.hide', { name: x.label })}
                   onClick={() => setHidden((h) => new Set(h.has(x.obj) ? [...h].filter((o) => o !== x.obj) : [...h, x.obj]))}
                   className={`flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-0.5 text-[12px] hover:bg-hover ${off ? 'opacity-40' : ''}`}
                 >
@@ -168,7 +166,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
       )}
       <div ref={box} className="relative min-h-[150px] flex-1">
         {bare && <div className="absolute top-0 right-0 z-[1]">{windows}</div>}
-        <svg width={W} height={H} className="absolute inset-0 block touch-none" onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img" aria-label="Temperature history">
+        <svg width={W} height={H} className="absolute inset-0 block touch-none" onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img" aria-label={t('app.chart.aria')}>
           {Array.from({ length: (top - bottom) / step + 1 }, (_, i) => bottom + i * step).map((v) => (
             <g key={v}>
               <line x1={pad.l} x2={W - pad.r} y1={yAt(v)} y2={yAt(v)} stroke="var(--line)" strokeWidth={1} />
@@ -177,9 +175,9 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
               </text>
             </g>
           ))}
-          {ticks.map((t) => (
-            <text key={t.label} x={t.x} y={H - 5} textAnchor={t.label === 'now' ? 'end' : 'middle'} fontSize={10.5} fill="var(--ink-3)">
-              {t.label}
+          {ticks.map((tick) => (
+            <text key={tick.x} x={tick.x} y={H - 5} textAnchor={tick.now ? 'end' : 'middle'} fontSize={10.5} fill="var(--ink-3)">
+              {tick.text}
             </text>
           ))}
           {shown.map((x) => (
@@ -203,7 +201,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
             className="pointer-events-none absolute top-1 z-10 grid gap-0.5 rounded-lg bg-surface px-2.5 py-2 text-[12px]"
             style={{ boxShadow: 'var(--shadow-overlay)', left: xAt(hover) > W / 2 ? xAt(hover) - 150 : xAt(hover) + 12, width: 138 }}
           >
-            <div className="mb-0.5 text-[11px] text-ink-3">{Math.round((n - 1 - hover) / 60) > 0 ? `${Math.round((n - 1 - hover) / 60)} min ago` : `${n - 1 - hover} s ago`}</div>
+            <div className="mb-0.5 text-[11px] text-ink-3">{Math.round((n - 1 - hover) / 60) > 0 ? t('common.time.minutes_ago', { m: Math.round((n - 1 - hover) / 60) }) : t('app.chart.seconds_ago', { s: n - 1 - hover })}</div>
             {shown.map((x) => {
               const v = data[x.obj].temps[hover]
               const tg = data[x.obj].targets[hover]

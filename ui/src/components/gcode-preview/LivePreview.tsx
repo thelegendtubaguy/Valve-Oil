@@ -10,6 +10,7 @@ import { usePreviewModel, usePrintFollow } from './hooks'
 import { layerByFilePosition, moveIndexByFilePosition } from './model'
 import { PreviewCanvas } from './PreviewCanvas'
 import { LoadState } from './LoadState'
+import { t } from '../../i18n'
 import './preview.css'
 
 // Files above this wait for a tap before loading, so opening Home on a tablet doesn't pull a huge file each time.
@@ -45,7 +46,7 @@ export function LivePreview({ className = 'aspect-square' }: { className?: strin
   return (
     <div className={`relative overflow-hidden rounded-xl bg-canvas ${className}`} style={{ boxShadow: 'inset 0 0 0 1px var(--line)' }}>
       {data && data.moves.length > 0 ? (
-        <a href={link} aria-label="Open the G-code preview" className="absolute inset-0 block">
+        <a href={link} aria-label={t('preview.live.open')} className="absolute inset-0 block">
           <PreviewCanvas
             className="absolute inset-0"
             data={data}
@@ -63,7 +64,7 @@ export function LivePreview({ className = 'aspect-square' }: { className?: strin
             fitPrint
           />
           <span className="gp-badge num">
-            Layer {layer + 1} of {layers.length}
+            {t('preview.layer_of', { layer: layer + 1, total: layers.length })}
           </span>
           <span className="iconbtn absolute top-2 right-2" style={{ background: 'color-mix(in srgb, var(--surface) 85%, transparent)' }}>
             <Maximize2 size={15} />
@@ -73,13 +74,13 @@ export function LivePreview({ className = 'aspect-square' }: { className?: strin
         <div className="absolute inset-0 grid place-items-center p-4 text-center">
           {big && !asked && !file ? (
             <div className="grid justify-items-center gap-2">
-              <span className="text-[12.5px] text-ink-3">The file is {fmtBytes(meta!.size!)}.</span>
+              <span className="text-[12.5px] text-ink-3">{t('preview.live.file_size', { size: fmtBytes(meta!.size!) })}</span>
               <button className="btn btn-sm" onClick={() => setAsked(true)}>
-                Load preview
+                {t('preview.load.load')}
               </button>
             </div>
           ) : data ? (
-            <span className="text-[12.5px] text-ink-3">This file has no moves to preview.</span>
+            <span className="text-[12.5px] text-ink-3">{t('preview.no_moves')}</span>
           ) : (
             <LoadState file={file} size={meta?.size} modified={meta?.modified} compact />
           )}

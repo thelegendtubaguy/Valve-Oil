@@ -1,4 +1,5 @@
 import { createStore } from '../../lib/store'
+import { t } from '../../i18n'
 
 // Klipper's bed_mesh status. Rows of a matrix run along Y from mesh_min, columns along X.
 export type BedMeshProfile = { points: number[][]; mesh_params: Record<string, number | string> }
@@ -141,10 +142,10 @@ export type BedBounds = ReturnType<typeof bedBounds>
  */
 export function bedCorners(bed: BedBounds) {
   return [
-    { x: bed.minX, y: bed.minY, label: 'Front left' },
-    { x: bed.maxX, y: bed.minY, label: 'Front right' },
-    { x: bed.maxX, y: bed.maxY, label: 'Back right' },
-    { x: bed.minX, y: bed.maxY, label: 'Back left' },
+    { x: bed.minX, y: bed.minY, label: t('tune.mesh.corner_front_left') },
+    { x: bed.maxX, y: bed.minY, label: t('tune.mesh.corner_front_right') },
+    { x: bed.maxX, y: bed.maxY, label: t('tune.mesh.corner_back_right') },
+    { x: bed.minX, y: bed.maxY, label: t('tune.mesh.corner_back_left') },
   ]
 }
 

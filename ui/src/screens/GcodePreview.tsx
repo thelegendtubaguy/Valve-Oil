@@ -9,6 +9,7 @@ import { loadGcode, useAutoLoad, usePreviewFile } from '../components/gcode-prev
 import { usePreviewSettings } from '../components/gcode-preview/settings'
 import { GcodeViewer } from '../components/gcode-preview/GcodeViewer'
 import { LoadState } from '../components/gcode-preview/LoadState'
+import { t } from '../i18n'
 import '../components/gcode-preview/preview.css'
 
 /** The G-code viewer for one file, at #/files/preview/<path>. */
@@ -37,7 +38,7 @@ export function GcodePreview({ path }: { path: string }) {
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
   const title = (
     <span className="flex min-w-0 items-center gap-2">
-      <a href={dir ? href('files', 'gcodes', ...dir.split('/')) : href('files')} className="iconbtn" aria-label="Back to files" title="Files">
+      <a href={dir ? href('files', 'gcodes', ...dir.split('/')) : href('files')} className="iconbtn" aria-label={t('preview.screen.back')} title={t('files.screen.title')}>
         <ArrowLeft size={18} />
       </a>
       <span className="truncate" title={path}>
@@ -47,8 +48,8 @@ export function GcodePreview({ path }: { path: string }) {
   )
 
   let body
-  if (meta === null) body = <Empty>Moonraker has no file at {path}.</Empty>
-  else if (data && data.moves.length === 0) body = <Empty>This file has no moves to preview.</Empty>
+  if (meta === null) body = <Empty>{t('preview.screen.no_file', { path })}</Empty>
+  else if (data && data.moves.length === 0) body = <Empty>{t('preview.no_moves')}</Empty>
   else if (data) body = <GcodeViewer path={path} meta={meta} data={data} settings={settings} set={set} />
   else
     body = (
@@ -66,15 +67,15 @@ export function GcodePreview({ path }: { path: string }) {
       <PageHeader title={title}>
         {printing && (
           <span className="pill tone-accent">
-            Printing
+            {t('preview.printing')}
           </span>
         )}
         {meta?.size != null && <span className="chip num hidden sm:inline-flex">{fmtBytes(meta.size)}</span>}
         {meta?.slicer && <span className="chip hidden sm:inline-flex">{meta.slicer}</span>}
         {data && meta?.size != null && meta.modified != null && (
-          <button className="btn btn-sm btn-ghost" onClick={() => loadGcode(path, meta.size!, meta.modified!)} title="Download and parse the file again">
+          <button className="btn btn-sm btn-ghost" onClick={() => loadGcode(path, meta.size!, meta.modified!)} title={t('preview.screen.reload_title')}>
             <RotateCw size={14} />
-            <span className="hidden sm:inline">Reload</span>
+            <span className="hidden sm:inline">{t('preview.screen.reload')}</span>
           </button>
         )}
       </PageHeader>

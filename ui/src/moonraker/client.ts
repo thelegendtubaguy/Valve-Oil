@@ -1,4 +1,5 @@
 // Minimal Moonraker JSON-RPC websocket client with reconnect.
+import { t } from '../i18n'
 
 export type ConnectionState = 'connecting' | 'open' | 'closed'
 
@@ -51,7 +52,7 @@ export class MoonrakerClient {
       this.ws = null
       for (const [, p] of this.pending) {
         clearTimeout(p.timer)
-        p.reject(new Error('Connection closed'))
+        p.reject(new Error(t('app.moonraker.connection_closed')))
       }
       this.pending.clear()
       this.setState('closed')
@@ -69,12 +70,12 @@ export class MoonrakerClient {
 
   call<T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs = 30000): Promise<T> {
     const ws = this.ws
-    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Not connected to Moonraker'))
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error(t('app.moonraker.not_connected')))
     const id = this.nextId++
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`${method} timed out`))
+        reject(new Error(t('app.moonraker.timed_out', { method })))
       }, timeoutMs)
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
       ws.send(JSON.stringify({ jsonrpc: '2.0', method, params, id }))
@@ -111,8 +112,8 @@ export class MoonrakerClient {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${this.httpBase}/server/files/upload`)
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total)
-      xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)))
-      xhr.onerror = () => reject(new Error('Upload failed'))
+      xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(t('app.moonraker.upload_failed_status', { status: xhr.status }))))
+      xhr.onerror = () => reject(new Error(t('app.moonraker.upload_failed')))
       xhr.send(form)
     })
   }

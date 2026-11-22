@@ -6,8 +6,9 @@ import { Dialog, MenuButton } from '../ui'
 import { attempt } from '../toast'
 import { boxCommands, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { runGcode } from '../../state/printer'
+import { t } from '../../i18n'
 
-const slotText = (s: QidiBoxSlot) => `${s.label} · ${s.present ? s.name || 'Unknown filament' : 'Empty'}`
+const slotText = (s: QidiBoxSlot) => `${s.label} · ${s.present ? s.name || t('box.unknown_filament') : t('box.empty')}`
 
 function Dot({ color }: { color: string | null }) {
   return <span className="inline-block h-3.5 w-3.5 flex-none rounded-full" style={{ background: color ?? 'transparent', boxShadow: 'inset 0 0 0 1px rgb(128 128 128 / 0.6)' }} />
@@ -35,42 +36,42 @@ export function ToolMapDialog({ box, open, onClose }: { box: BoxState; open: boo
     <Dialog
       open={open}
       onClose={onClose}
-      title="Tool mapping"
+      title={t('box.screen.tool_mapping')}
       footer={
         <>
           <button className="btn btn-ghost mr-auto" onClick={setDefault}>
-            Default
+            {t('box.tool_map.default')}
           </button>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={box.mappingLocked} onClick={save}>
-            Save
+            {t('common.save')}
           </button>
         </>
       }
     >
-      <p className="mt-0 mb-3.5 text-ink-2">Choose the slot each tool loads, for tool changes and prints that do not set their own mapping. The print dialog sets the mapping again for the print it starts.</p>
-      {box.mappingLocked && <div className="tone-warn mb-3 rounded-lg px-3 py-2 text-ink">Tool mapping can be changed while the printer is idle.</div>}
+      <p className="mt-0 mb-3.5 text-ink-2">{t('box.tool_map.intro')}</p>
+      {box.mappingLocked && <div className="tone-warn mb-3 rounded-lg px-3 py-2 text-ink">{t('box.tool_map.locked')}</div>}
       <div className="grid gap-2 sm:grid-cols-2">
-        {Array.from({ length: count }, (_, t) => {
-          const slot = box.slots.find((s) => s.index === draft[t])
+        {Array.from({ length: count }, (_, tool) => {
+          const slot = box.slots.find((s) => s.index === draft[tool])
           return (
-            <div key={t} className="flex items-center gap-2.5">
-              <span className="w-8 flex-none text-right font-bold">T{t}</span>
+            <div key={tool} className="flex items-center gap-2.5">
+              <span className="w-8 flex-none text-right font-bold">T{tool}</span>
               <div className="min-w-0 flex-1 [&>div]:w-full">
                 <MenuButton
                   align="left"
-                  label={`Slot for T${t}`}
+                  label={t('box.tool_map.slot_for', { tool: `T${tool}` })}
                   className="field flex items-center gap-2 text-left disabled:opacity-50"
                   button={
                     <>
                       {slot ? <Dot color={slot.present ? slot.color : null} /> : null}
-                      <span className={`min-w-0 flex-1 truncate ${slot ? '' : 'text-ink-3'}`}>{slot ? slotText(slot) : 'Not mapped'}</span>
+                      <span className={`min-w-0 flex-1 truncate ${slot ? '' : 'text-ink-3'}`}>{slot ? slotText(slot) : t('box.tool_map.not_mapped')}</span>
                       <ChevronDown size={14} className="flex-none text-ink-3" />
                     </>
                   }
-                  items={box.slots.map((s) => ({ label: slotText(s), icon: <Dot color={s.present ? s.color : null} />, onSelect: () => setDraft((d) => ({ ...d, [t]: s.index })) }))}
+                  items={box.slots.map((s) => ({ label: slotText(s), icon: <Dot color={s.present ? s.color : null} />, onSelect: () => setDraft((d) => ({ ...d, [tool]: s.index })) }))}
                 />
               </div>
             </div>

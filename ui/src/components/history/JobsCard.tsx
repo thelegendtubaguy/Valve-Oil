@@ -6,10 +6,11 @@ import { FLUIDD, useDbItem } from '../../state/database'
 import { deleteAllJobs, history, loadHistory, useHistoryState } from '../../state/history'
 import { usePrinter } from '../../state/printer'
 import { displayName } from '../../lib/format'
-import { exportValue, filterJobs, fmtDateTime, fmtLength, fmtSpan, historyColumns, isVisible, mergeColumns, sortJobs, statusGroup, STATUS_GROUPS, toggleColumn, type Column, type ConfiguredColumn, type StatusGroup } from './logic'
+import { csvHeader, exportValue, filterJobs, fmtDateTime, fmtLength, fmtSpan, groupLabel, historyColumns, isVisible, mergeColumns, sortJobs, statusGroup, STATUS_GROUPS, toggleColumn, type Column, type ConfiguredColumn, type StatusGroup } from './logic'
 import { toCsv } from './csv'
 import { Cell, StatusPill, Thumb, confirmDelete } from './bits'
 import { JobDialog } from './JobDialog'
+import { t } from '../../i18n'
 
 const PAGE = 25
 
@@ -45,7 +46,7 @@ export function JobsCard() {
   const sortBy = (key: string) => (setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'filename' })), setPage(0))
 
   const removeAll = async () => {
-    if (await confirm({ title: 'Remove all jobs?', body: 'Are you sure? This will clear all jobs. The printer stats stay.', confirm: 'Remove all', danger: true })) attempt(deleteAllJobs)
+    if (await confirm({ title: t('history.jobs.remove_all_title'), body: t('history.jobs.remove_all_body'), confirm: t('history.jobs.remove_all'), danger: true })) attempt(deleteAllJobs)
   }
 
   const exportCsv = async () => {
@@ -56,8 +57,9 @@ export function JobsCard() {
         await loadHistory(0)
         all = history.get().jobs
       }
-      const cols = [{ key: 'filename', label: 'Name' }, ...mergeColumns(historyColumns(all), configured).filter(isVisible)]
-      const csv = toCsv([cols.map((c) => c.label), ...all.map((j) => cols.map((c) => exportValue(j, c.key)))])
+      // The headers stay in English: the file is read by spreadsheets and scripts.
+      const cols = [{ key: 'filename', label: '', name: 'name' as const }, ...mergeColumns(historyColumns(all), configured).filter(isVisible)]
+      const csv = toCsv([cols.map(csvHeader), ...all.map((j) => cols.map((c) => exportValue(j, c.key)))])
       // The BOM makes Excel read the file as UTF-8.
       const url = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }))
       const a = document.createElement('a')
@@ -66,29 +68,29 @@ export function JobsCard() {
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
-      toast('Failed to export the print history', 'error')
+      toast(t('history.jobs.export_failed'), 'error')
     }
     setExporting(false)
   }
 
   return (
     <Card
-      title="History"
+      title={t('history.title')}
       icon={<HistoryIcon size={14} />}
       aside={
         <span className="inline-flex items-center gap-1">
-          <button className="iconbtn" onClick={() => setPicker(true)} title="Columns" aria-label="Columns">
+          <button className="iconbtn" onClick={() => setPicker(true)} title={t('history.jobs.columns')} aria-label={t('history.jobs.columns')}>
             <Columns3 size={16} />
           </button>
-          <button className="iconbtn" onClick={exportCsv} disabled={exporting || jobs.length === 0} title="Export CSV" aria-label="Export CSV">
+          <button className="iconbtn" onClick={exportCsv} disabled={exporting || jobs.length === 0} title={t('history.jobs.export_csv')} aria-label={t('history.jobs.export_csv')}>
             {exporting ? <Spinner size={14} /> : <FileDown size={16} />}
           </button>
           <MenuButton
             button={<Ellipsis size={16} />}
-            label="More"
+            label={t('history.jobs.more')}
             items={[
-              { label: 'Load all', icon: <Download size={15} />, disabled: allLoaded, onSelect: () => attempt(() => loadHistory(0)) },
-              { label: 'Remove all', icon: <Trash2 size={15} />, danger: true, disabled: jobs.length === 0, onSelect: removeAll },
+              { label: t('history.jobs.load_all'), icon: <Download size={15} />, disabled: allLoaded, onSelect: () => attempt(() => loadHistory(0)) },
+              { label: t('history.jobs.remove_all'), icon: <Trash2 size={15} />, danger: true, disabled: jobs.length === 0, onSelect: removeAll },
             ]}
           />
         </span>
@@ -97,13 +99,13 @@ export function JobsCard() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <label className="relative min-w-[200px] flex-1 sm:max-w-[320px]">
           <Search size={15} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-          <input className="field pl-8" placeholder="Search history" value={query} onChange={(e) => (setQuery(e.target.value), setPage(0))} spellCheck={false} />
+          <input className="field pl-8" placeholder={t('history.jobs.search')} value={query} onChange={(e) => (setQuery(e.target.value), setPage(0))} spellCheck={false} />
         </label>
         <div className="-mx-1 max-w-full overflow-x-auto px-1">
           <Choices
             value={group}
             onChange={(v) => (setGroup(v), setPage(0))}
-            options={[{ value: 'all' as const, label: 'All' }, ...STATUS_GROUPS].map((o) => ({
+            options={[{ value: 'all' as const, label: t('history.jobs.all') }, ...STATUS_GROUPS.map((g) => ({ value: g, label: groupLabel(g) }))].map((o) => ({
               value: o.value,
               label: (
                 <>
@@ -121,7 +123,7 @@ export function JobsCard() {
           <Spinner size={22} />
         </div>
       ) : list.length === 0 ? (
-        <Empty>{jobs.length === 0 ? 'No print history yet.' : 'No jobs match.'}</Empty>
+        <Empty>{jobs.length === 0 ? t('history.jobs.empty') : t('history.jobs.no_match')}</Empty>
       ) : (
         <>
           {/* Phones: one row per job with the essentials; the dialog has the rest. */}
@@ -148,7 +150,7 @@ export function JobsCard() {
               <thead>
                 <tr>
                   <th className="w-[56px] !pl-4" />
-                  <SortHeader label="Name" k="filename" sort={sort} onSort={sortBy} />
+                  <SortHeader label={t('history.columns.name')} k="filename" sort={sort} onSort={sortBy} />
                   {columns.map((c) => (
                     <SortHeader key={c.key} label={c.label} k={c.key} sort={sort} onSort={c.kind === 'colors' ? undefined : sortBy} />
                   ))}
@@ -175,10 +177,10 @@ export function JobsCard() {
                     <td className="!pr-3" onClick={(e) => e.stopPropagation()}>
                       <MenuButton
                         button={<Ellipsis size={16} />}
-                        label="Job actions"
+                        label={t('history.jobs.job_actions')}
                         items={[
-                          { label: 'Details', onSelect: () => setOpen(j.job_id) },
-                          { label: 'Delete', icon: <Trash2 size={15} />, danger: true, onSelect: () => confirmDelete(j) },
+                          { label: t('history.jobs.details'), onSelect: () => setOpen(j.job_id) },
+                          { label: t('common.delete'), icon: <Trash2 size={15} />, danger: true, onSelect: () => confirmDelete(j) },
                         ]}
                       />
                     </td>
@@ -190,22 +192,19 @@ export function JobsCard() {
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
             <span className="num">
-              {p * PAGE + 1}–{Math.min(list.length, p * PAGE + PAGE)} of {list.length}
-              {allLoaded ? '' : ' loaded'}
+              {t(allLoaded ? 'history.jobs.range' : 'history.jobs.range_loaded', { from: p * PAGE + 1, to: Math.min(list.length, p * PAGE + PAGE), total: list.length })}
             </span>
             {!allLoaded && (
-              <button className="btn btn-sm btn-ghost" disabled={loading} onClick={() => attempt(() => loadHistory(0))} title="Only the most recent jobs are loaded on connect. Use Load all to fetch the complete history.">
-                {loading ? <Spinner size={13} /> : <Download size={14} />} Load all
+              <button className="btn btn-sm btn-ghost" disabled={loading} onClick={() => attempt(() => loadHistory(0))} title={t('history.jobs.load_all_hint')}>
+                {loading ? <Spinner size={13} /> : <Download size={14} />} {t('history.jobs.load_all')}
               </button>
             )}
             <span className="flex-1" />
-            <button className="iconbtn" disabled={p === 0} onClick={() => setPage(p - 1)} aria-label="Previous page">
+            <button className="iconbtn" disabled={p === 0} onClick={() => setPage(p - 1)} aria-label={t('history.jobs.previous_page')}>
               <ChevronLeft size={17} />
             </button>
-            <span className="num">
-              Page {p + 1} of {pages}
-            </span>
-            <button className="iconbtn" disabled={p >= pages - 1} onClick={() => setPage(p + 1)} aria-label="Next page">
+            <span className="num">{t('history.jobs.page', { page: p + 1, pages })}</span>
+            <button className="iconbtn" disabled={p >= pages - 1} onClick={() => setPage(p + 1)} aria-label={t('history.jobs.next_page')}>
               <ChevronRight size={17} />
             </button>
           </div>
@@ -233,8 +232,8 @@ function SortHeader({ label, k, sort, onSort }: { label: string; k: string; sort
 
 function ColumnsDialog({ open, onClose, columns, onToggle }: { open: boolean; onClose: () => void; columns: Column[]; onToggle: (key: string, visible: boolean) => void }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Columns">
-      <div className="mb-2 text-[12.5px] text-ink-3">Fluidd’s history table uses the same choices.</div>
+    <Dialog open={open} onClose={onClose} title={t('history.jobs.columns')}>
+      <div className="mb-2 text-[12.5px] text-ink-3">{t('history.jobs.columns_hint')}</div>
       <div className="grid gap-x-6 sm:grid-cols-2">
         {columns.map((c) => (
           <label key={c.key} className="flex items-center justify-between gap-3 border-b border-line py-2">

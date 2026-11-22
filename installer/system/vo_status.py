@@ -109,7 +109,7 @@ RECOVERY_FILES = {
     PRINTER_DATA / ".tltg_box_firmware_pending.json":
         "a Box firmware write wasn't verified; run ./box-firmware.sh rescue first",
     PRINTER_DATA / ".tltg_thr_firmware_pending.json":
-        "a THR firmware operation didn't finish; recover the THR with the recovery files the installer named first",
+        "a THR firmware flash didn't finish; turn the printer off and on, or run ./install.sh, and Valve Oil finishes it",
     PRINTER_DATA / ".tltg_optimized_recovery_required":
         "an earlier install's recovery didn't complete; restore a backup with ./restore.sh first",
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { prettyName } from '../../lib/format'
+import { t } from '../../i18n'
 
 /** A label and value row; rows with no value are left out. */
 export function Row({ k, children, mono }: { k: ReactNode; children: ReactNode; mono?: boolean }) {
@@ -14,7 +15,7 @@ export function Row({ k, children, mono }: { k: ReactNode; children: ReactNode; 
 
 /** A Klipper mcu object's name for people: mcu → Mainboard, mcu THR → THR, mcu mcu_box1 → Box 1. */
 export function mcuLabel(obj: string) {
-  if (obj === 'mcu') return 'Mainboard'
+  if (obj === 'mcu') return t('system.mcu.mainboard')
   const n = obj.slice(4)
   const box = /^mcu_box(\d+)$/i.exec(n)
   if (box) return `Box ${box[1]}`

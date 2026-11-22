@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../toast'
 import { targetError, type TargetRange } from './heaters'
+import { t } from '../../i18n'
 
 /**
  * − target + for a heater. 0 is off and always allowed; other targets stay within the heater's range, so − from the
@@ -27,10 +28,10 @@ export function TargetStepper({
   disabled?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
-  const t = Math.round(target)
+  const cur = Math.round(target)
   const lowest = Math.max(range.min, 1)
-  const down = t <= lowest ? 0 : Math.max(lowest, t - step)
-  const up = t === 0 ? Math.min(range.max, Math.max(lowest, start)) : Math.min(range.max, t + step)
+  const down = cur <= lowest ? 0 : Math.max(lowest, cur - step)
+  const up = cur === 0 ? Math.min(range.max, Math.max(lowest, start)) : Math.min(range.max, cur + step)
   const locked = disabled || range.locked || range.max <= 0
   const set = (v: number) => {
     const err = targetError(v, range)
@@ -41,23 +42,23 @@ export function TargetStepper({
     if (draft == null) return
     const v = Number(draft)
     setDraft(null)
-    if (draft.trim() === '' || v === t) return
+    if (draft.trim() === '' || v === cur) return
     set(Math.round(v))
   }
   const big = size === 'lg'
   return (
     <div className="flex items-center gap-1.5">
-      <button type="button" className={`pm ${big ? 'h-11! w-11! text-[20px]' : ''}`} disabled={disabled || t === 0} onClick={() => set(down)} aria-label={`Lower ${label}`}>
+      <button type="button" className={`pm ${big ? 'h-11! w-11! text-[20px]' : ''}`} disabled={disabled || cur === 0} onClick={() => set(down)} aria-label={t('common.lower_named', { name: label })}>
         −
       </button>
       <div className="relative min-w-0 flex-1">
         <input
-          className={`field num text-center font-bold ${big ? 'h-11 text-[20px]' : 'h-[34px] text-[16px]'} ${t > 0 ? 'text-accent-ink' : ''}`}
+          className={`field num text-center font-bold ${big ? 'h-11 text-[20px]' : 'h-[34px] text-[16px]'} ${cur > 0 ? 'text-accent-ink' : ''}`}
           inputMode="numeric"
-          aria-label={`${label} target`}
-          disabled={disabled || (range.locked && t === 0)}
-          value={draft ?? (t > 0 ? String(t) : 'Off')}
-          onFocus={(e) => (setDraft(String(t)), e.target.select())}
+          aria-label={t('control.target_stepper.target', { name: label })}
+          disabled={disabled || (range.locked && cur === 0)}
+          value={draft ?? (cur > 0 ? String(cur) : t('common.off'))}
+          onFocus={(e) => (setDraft(String(cur)), e.target.select())}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
@@ -65,9 +66,9 @@ export function TargetStepper({
             if (e.key === 'Escape') (setDraft(null), (e.target as HTMLInputElement).blur())
           }}
         />
-        {t > 0 && draft == null && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] font-semibold text-ink-3">°C</span>}
+        {cur > 0 && draft == null && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] font-semibold text-ink-3">°C</span>}
       </div>
-      <button type="button" className={`pm ${big ? 'h-11! w-11! text-[20px]' : ''}`} disabled={locked || t >= range.max} onClick={() => set(up)} aria-label={`Raise ${label}`}>
+      <button type="button" className={`pm ${big ? 'h-11! w-11! text-[20px]' : ''}`} disabled={locked || cur >= range.max} onClick={() => set(up)} aria-label={t('common.raise_named', { name: label })}>
         +
       </button>
     </div>

@@ -11,7 +11,6 @@ export type NetworkInterface = { mac_address?: string; ip_addresses?: { family: 
 export type SystemInfo = {
   python?: { version_string?: string }
   cpu_info?: { cpu_count?: number; bits?: string; processor?: string; cpu_desc?: string; hardware_desc?: string; model?: string; total_memory?: number; memory_units?: string }
-  sd_info?: { manufacturer?: string; manufacturer_date?: string; product_name?: string; product_revision?: string; capacity?: string; serial_number?: string }
   distribution?: { name?: string; id?: string; version?: string; like?: string; codename?: string; release_info?: { version_id?: string }; kernel_version?: string }
   virtualization?: { virt_type?: string; virt_identifier?: string }
   network?: Record<string, NetworkInterface>

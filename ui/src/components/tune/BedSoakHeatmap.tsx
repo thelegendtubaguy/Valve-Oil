@@ -6,6 +6,7 @@ import { useTheme } from '../../lib/theme'
 import { BedSoakColors, bedSoakChangeGrid, bedSoakHeatmapColor, bedSoakPointPosition, bedSoakProblemPoints, type BedSoakMesh, type BedSoakProblemPoint, type BedSoakRun } from '../../qidi/vo-bed-soak'
 import { bedSoakClock, bedSoakMeshList, bedSoakMeshName, bedSoakPointName, formatChange } from './bed-soak-format'
 import { meshPreview, type MeshMarker } from './mesh'
+import { t } from '../../i18n'
 
 const SIZE = 260
 const PAD = 2
@@ -48,8 +49,8 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
 
   const flags = new Map<string, string[]>()
   const add = (r: number, c: number, text: string) => flags.set(`${r}:${c}`, [...(flags.get(`${r}:${c}`) ?? []), text])
-  for (const p of mesh?.retried ?? []) add(p.row, p.col, `Took ${p.tries} tries, samples up to ${Math.round(p.spread * 1000)} µm apart.`)
-  for (const p of mesh?.out_of_line ?? []) add(p.row, p.col, `Out of line with the rest of the bed by ${formatChange(p.change * 1000)}.`)
+  for (const p of mesh?.retried ?? []) add(p.row, p.col, t('tune.soak.took_tries', { count: p.tries, um: Math.round(p.spread * 1000) }))
+  for (const p of mesh?.out_of_line ?? []) add(p.row, p.col, t('tune.soak.out_of_line', { change: formatChange(p.change * 1000) }))
 
   const step = cell + PAD
   const cells = (grid ?? []).flatMap((row, r) =>
@@ -71,19 +72,19 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
   )
   const hoverCell = cells.find((c) => c.key === hover)
 
-  const meshLabel = !mesh ? '' : mesh.index === 0 ? bedSoakMeshName(0) : [bedSoakMeshName(mesh.index), bedSoakClock(mesh.time), ...(mesh.used ? [] : ['not used'])].join(' · ')
+  const meshLabel = !mesh ? '' : mesh.index === 0 ? bedSoakMeshName(0) : [bedSoakMeshName(mesh.index), bedSoakClock(mesh.time), ...(mesh.used ? [] : [t('tune.soak.not_used')])].join(' · ')
 
-  const meshes = (indices: number[]) => (indices.length <= 6 ? `in mesh${indices.length === 1 ? '' : 'es'} ${bedSoakMeshList(indices)}` : `in ${indices.length} of ${run.meshes.length} meshes`)
+  const meshes = (indices: number[]) => (indices.length <= 6 ? t('tune.soak.in_meshes', { count: indices.length, list: bedSoakMeshList(indices) }) : t('tune.soak.in_n_of', { n: indices.length, total: run.meshes.length }))
   const problemText = (p: BedSoakProblemPoint) =>
     [
-      p.retried.length ? `retried ${meshes(p.retried)}, up to ${p.maxTries} tries, ${Math.round(p.maxSpread * 1000)} µm apart` : '',
-      p.outOfLine.length ? `out of line ${meshes(p.outOfLine)}, by up to ${formatChange(p.maxChange * 1000)}` : '',
+      p.retried.length ? t('tune.soak.problem_retried', { meshes: meshes(p.retried), count: p.maxTries, um: Math.round(p.maxSpread * 1000) }) : '',
+      p.outOfLine.length ? t('tune.soak.problem_out_of_line', { meshes: meshes(p.outOfLine), change: formatChange(p.maxChange * 1000) }) : '',
     ]
       .filter(Boolean)
       .join('; ')
   const problems = [
     ...bedSoakProblemPoints(run).map((p) => ({ key: `point:${p.row}:${p.col}`, name: bedSoakPointName(p), text: problemText(p) })),
-    ...run.jumps.map((j) => ({ key: `jump:${j.mesh}`, name: bedSoakMeshName(j.mesh), text: `not used, probe readings jumped ${Math.round(j.size * 1000)} µm` })),
+    ...run.jumps.map((j) => ({ key: `jump:${j.mesh}`, name: bedSoakMeshName(j.mesh), text: t('tune.soak.problem_jump', { um: Math.round(j.size * 1000) }) })),
   ]
   const shown = showAll ? problems : problems.slice(0, 4)
 
@@ -91,7 +92,7 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
     if (!grid || !mesh) return
     const markers: MeshMarker[] = cells.filter((c) => c.flag).map((c) => ({ ...bedSoakPointPosition(run.settings, rows, cols, c.row, c.col), label: `${c.name} · ${c.flag?.join(' ')}` }))
     meshPreview.set({
-      title: `${bedSoakMeshName(mesh.index)} of the bed soak, change from the cold mesh (${withHeight ? 'shape and height' : 'shape'})`,
+      title: t(withHeight ? 'tune.soak.preview_shape_height' : 'tune.soak.preview_shape', { mesh: bedSoakMeshName(mesh.index) }),
       mesh_min: run.settings.mesh_min,
       mesh_max: run.settings.mesh_max,
       matrix: grid.map((r) => r.map((v) => v / 1000)),
@@ -103,12 +104,12 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-1.5">
-        <span className="text-[13px] font-semibold">Change from cold mesh</span>
+        <span className="text-[13px] font-semibold">{t('tune.soak.change_from_cold')}</span>
       </div>
-      <div className="text-[12px] text-ink-3">Top view, back of the bed at the top. Blue is lower than the cold mesh, red is higher.</div>
+      <div className="text-[12px] text-ink-3">{t('tune.soak.top_view')}</div>
       {grid ? (
         <div className="relative mt-2" style={{ width: SIZE }}>
-          <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE} role="img" aria-label="Change from cold mesh" className="block">
+          <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE} role="img" aria-label={t('tune.soak.change_from_cold')} className="block">
             {cells.map((c) => (
               <g key={c.key}>
                 <rect
@@ -145,9 +146,9 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
                 <b className="num">{formatChange(hoverCell.value)}</b>
                 <span className="ml-2 text-ink-2">{hoverCell.name}</span>
               </div>
-              {hoverCell.flag?.map((t) => (
-                <div key={t} className="mt-1 text-ink-2">
-                  {t}
+              {hoverCell.flag?.map((f) => (
+                <div key={f} className="mt-1 text-ink-2">
+                  {f}
                 </div>
               ))}
             </div>
@@ -155,6 +156,7 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
           <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-ink-3">
             <span className="num">−{Math.round(maxAbs)}</span>
             <div className="h-1.5 flex-1 rounded-sm" style={{ background: `linear-gradient(90deg, #3987e5, ${neutral}, #e66767)` }} />
+            {/* i18n-ignore: a unit */}
             <span className="num">+{Math.round(maxAbs)} µm</span>
           </div>
           {run.meshes.length > 1 && (
@@ -165,31 +167,31 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
               max={last}
               step={1}
               value={index}
-              aria-label="Mesh"
+              aria-label={t('tune.soak.mesh')}
               onChange={(e) => setSelected(Number(e.target.value) >= last ? null : Number(e.target.value))}
             />
           )}
           <div className="text-[12.5px] text-ink-2">{meshLabel}</div>
           <div className="mt-2 flex items-center gap-2">
             <label className="flex items-center gap-2">
-              <Toggle checked={withHeight} onChange={setWithHeight} label="Height" />
-              Height
+              <Toggle checked={withHeight} onChange={setWithHeight} label={t('tune.soak.height')} />
+              {t('tune.soak.height')}
             </label>
             <span className="flex-1" />
             <button className="btn btn-sm" onClick={viewIn3d}>
-              View in 3D
+              {t('tune.soak.view_3d')}
             </button>
           </div>
         </div>
       ) : (
-        <div className="mt-2 text-ink-3">Shows after the cold mesh.</div>
+        <div className="mt-2 text-ink-3">{t('tune.soak.shows_after_cold')}</div>
       )}
 
       {problems.length > 0 && (
         <div className="mt-3.5">
           <div className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold">
             <TriangleAlert size={14} style={{ color: BedSoakColors.warning }} />
-            {problems.length === 1 ? '1 problem' : `${problems.length} problems`}
+            {t('tune.soak.problems', { count: problems.length })}
           </div>
           {shown.map((p) => (
             <div key={p.key} className="my-0.5 ml-5 text-[12.5px]">
@@ -198,7 +200,7 @@ export function BedSoakHeatmap({ run }: { run: BedSoakRun }) {
           ))}
           {(problems.length > shown.length || showAll) && (
             <button className="btn btn-ghost btn-sm mt-1 ml-3" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Show fewer' : `Show all ${problems.length}`}
+              {showAll ? t('tune.soak.show_fewer') : t('tune.soak.show_all', { n: problems.length })}
             </button>
           )}
         </div>

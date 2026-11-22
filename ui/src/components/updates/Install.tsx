@@ -6,30 +6,22 @@ import type { LogFile } from '../system/Logs'
 import { fmtSize } from '../system/bits'
 import { client, usePrinter } from '../../state/printer'
 import { VO_RUN_LOG_NAME, type VoProgressOrigin, type VoStatusProgress } from '../../qidi/vo-status'
+import { locale, t, type MessageKey } from '../../i18n'
 
 // The System screen's log viewer, loaded when a log is opened.
 const LogViewer = lazy(() => import('../system/Logs').then((m) => ({ default: m.LogViewer })))
 
-const ORIGIN: Record<VoProgressOrigin, string> = {
-  ssh: 'Started over SSH',
-  usb: 'Started from a USB drive',
-  automatic: 'Started by automatic updates',
-  firmware_update: 'Continuing after the QIDI firmware update',
-}
-
-const ORIGIN_SHORT: Record<VoProgressOrigin, string> = {
-  ssh: 'over SSH',
-  usb: 'from a USB drive',
-  automatic: 'by automatic updates',
-  firmware_update: 'after the QIDI firmware update',
-}
+/** How an install was started: "Started over SSH". */
+const origin = (o: VoProgressOrigin) => t(`updates.install.origin.${o}`)
+/** The same, to follow "Last install": "over SSH". */
+const originShort = (o: VoProgressOrigin) => t(`updates.install.origin_short.${o}`)
 
 // A finished install that didn't succeed stays on the Updates screen this long, until it's closed.
 const SHOW_STOPPED_MS = 24 * 60 * 60 * 1000
 const DISMISSED_KEY = 'vo-install-dismissed'
 
 const parseTime = (iso: string | null) => (iso ? Date.parse(iso) : NaN)
-const fmtTime = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+const fmtTime = (ms: number) => new Date(ms).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
 
 function fmtElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000))
@@ -40,24 +32,23 @@ function fmtElapsed(ms: number) {
 }
 
 export function installTitle(p: VoStatusProgress) {
-  const to = p.to_version ? ` ${p.to_version}` : ''
-  if (p.from_version && p.to_version && p.from_version !== p.to_version) return `Updating Valve Oil from ${p.from_version} to ${p.to_version}`
-  if (p.from_version) return `Installing Valve Oil${to} again`
-  return `Installing Valve Oil${to}`
+  if (p.from_version && p.to_version && p.from_version !== p.to_version) return t('updates.install.updating_title', { from: p.from_version, to: p.to_version })
+  if (p.from_version) return p.to_version ? t('updates.install.reinstalling_version_title', { version: p.to_version }) : t('updates.install.reinstalling_title')
+  return p.to_version ? t('updates.install.installing_version_title', { version: p.to_version }) : t('updates.install.installing_title')
 }
 
 /** "Step 4 of 9: System changes", for the banner on other screens. */
 export function installStepText(p: VoStatusProgress) {
   const step = p.index > 0 ? p.steps[p.index - 1] : null
-  return step ? `Step ${p.index} of ${p.steps.length}: ${step}` : 'Checking the printer'
+  return step ? t('updates.install.step_named', { n: p.index, total: p.steps.length, step }) : t('updates.install.checking')
 }
 
 function useNow(running: boolean) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!running) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
   }, [running])
   return now
 }
@@ -100,19 +91,17 @@ export function InstallStepsCard({ progress }: { progress: VoStatusProgress | nu
     <Card className="lg:col-span-2">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
-          <div className="section-label">{progress.origin ? ORIGIN[progress.origin] : 'Valve Oil installer'}</div>
+          <div className="section-label">{progress.origin ? origin(progress.origin) : t('updates.install.installer')}</div>
           <div className="mt-1 flex items-center gap-2.5 text-[20px] font-bold tracking-[-0.01em]">
             {running ? <LoaderCircle size={20} className="spin flex-none text-accent-ink" /> : <CircleX size={20} className="flex-none text-bad" />}
-            <span className="min-w-0">{running ? installTitle(progress) : progress.state === 'interrupted' ? 'The install stopped before it finished' : "The install didn't finish"}</span>
+            <span className="min-w-0">{running ? installTitle(progress) : progress.state === 'interrupted' ? t('updates.install.interrupted_title') : t('updates.install.failed_title')}</span>
           </div>
         </div>
         <div className="grid justify-items-end gap-0.5 text-right">
           {current > 0 && (
-            <span className="num text-[13px] font-semibold text-ink-2">
-              Step {current} of {progress.steps.length}
-            </span>
+            <span className="num text-[13px] font-semibold text-ink-2">{t('updates.install.step', { n: current, total: progress.steps.length })}</span>
           )}
-          {elapsed != null && <span className="num text-[12.5px] text-ink-3">{running ? fmtElapsed(elapsed) : `Ran ${fmtElapsed(elapsed)}`}</span>}
+          {elapsed != null && <span className="num text-[12.5px] text-ink-3">{running ? fmtElapsed(elapsed) : t('updates.install.ran', { time: fmtElapsed(elapsed) })}</span>}
         </div>
       </div>
 
@@ -144,22 +133,20 @@ export function InstallStepsCard({ progress }: { progress: VoStatusProgress | nu
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         {running ? (
-          <span className="flex-1 font-medium text-warn">Don't turn the printer off. Klipper and Moonraker restart during the install, so this page may lose contact for a moment.</span>
+          <span className="flex-1 font-medium text-warn">{t('updates.install.dont_turn_off')}</span>
         ) : (
           <span className="flex-1 text-ink-2">
-            {progress.state === 'interrupted'
-              ? 'The installer stopped running partway, for example because its SSH session closed. Run the installer again to finish.'
-              : 'Its log says what went wrong and what state the printer was left in.'}
+            {progress.state === 'interrupted' ? t('updates.install.interrupted_body') : t('updates.install.failed_body')}
           </span>
         )}
         {progress.log && (
           <button className="btn btn-sm" onClick={() => setViewing(true)}>
-            <Eye size={14} /> View log
+            <Eye size={14} /> {t('updates.install.view_log')}
           </button>
         )}
         {!running && (
           <button className="btn btn-sm btn-ghost" onClick={close}>
-            Close
+            {t('common.close')}
           </button>
         )}
       </div>
@@ -172,16 +159,12 @@ export function InstallStepsCard({ progress }: { progress: VoStatusProgress | nu
   )
 }
 
-const KIND: Record<string, string> = {
-  install: 'Install',
-  usb: 'USB install',
-  uninstall: 'Uninstall',
-  'restore-backup': 'Backup restore',
-}
+// The run kinds the installer names its logs by (valve-oil-<mode>-...); another mode is shown as its name.
+const KINDS = ['install', 'usb', 'uninstall', 'restore-backup']
 
 const runKind = (name: string) => {
   const mode = name.replace(/^valve-oil-/, '').replace(/-\d{8}-\d{6}(-\d+)?\.log$/, '')
-  return KIND[mode] ?? mode.replace(/-/g, ' ')
+  return KINDS.includes(mode) ? t(`updates.logs.kind.${mode.replace(/-/g, '_')}` as MessageKey) : mode.replace(/-/g, ' ')
 }
 
 /**
@@ -213,10 +196,10 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
 
   return (
     <Card
-      title="Installer logs"
+      title={t('updates.logs.title')}
       icon={<ScrollText size={15} />}
       aside={
-        <button className="iconbtn h-7 w-7" onClick={load} disabled={loading || conn !== 'open'} aria-label="Refresh" title="Refresh">
+        <button className="iconbtn h-7 w-7" onClick={load} disabled={loading || conn !== 'open'} aria-label={t('updates.refresh')} title={t('updates.refresh')}>
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
         </button>
       }
@@ -225,9 +208,9 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
       {error ? (
         <Empty>{error}</Empty>
       ) : files == null ? (
-        <Empty>Loading…</Empty>
+        <Empty>{t('common.loading')}</Empty>
       ) : logs.length === 0 ? (
-        <Empty>No installer logs yet. Each install, update, uninstall, and backup restore saves one here.</Empty>
+        <Empty>{t('updates.logs.none')}</Empty>
       ) : (
         <div className="grid">
           {logs.map((f) => (
@@ -235,23 +218,23 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
               <div className="min-w-0 flex-1">
                 <div className="font-medium">
                   {runKind(f.filename)}
-                  {progress?.state === 'running' && progress.log === f.filename && <span className="ml-2 text-[12px] font-semibold text-accent-ink">Running</span>}
+                  {progress?.state === 'running' && progress.log === f.filename && <span className="ml-2 text-[12px] font-semibold text-accent-ink">{t('updates.logs.running')}</span>}
                 </div>
                 <div className="num text-[12.5px] text-ink-3">
                   {fmtTime(f.modified * 1000)} · {fmtSize(f.size)}
                 </div>
               </div>
-              <button className="iconbtn" onClick={() => setViewing(f)} aria-label={`View ${f.filename}`} title="View">
+              <button className="iconbtn" onClick={() => setViewing(f)} aria-label={t('system.logs.view_named', { name: f.filename })} title={t('system.logs.view')}>
                 <Eye size={15} />
               </button>
-              <a className="iconbtn" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={`Download ${f.filename}`} title="Download">
+              <a className="iconbtn" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={t('system.logs.download_named', { name: f.filename })} title={t('system.logs.download')}>
                 <Download size={15} />
               </a>
             </div>
           ))}
         </div>
       )}
-      <div className="mt-2 text-[12px] text-ink-3">The installer keeps its newest ten logs. Attach the one that went wrong when you report a problem.</div>
+      <div className="mt-2 text-[12px] text-ink-3">{t('updates.logs.kept')}</div>
       {viewing && (
         <Suspense>
           <LogViewer file={viewing} onClose={() => setViewing(null)} />
@@ -265,15 +248,16 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
 function LastInstall({ progress }: { progress: VoStatusProgress | null }) {
   if (!progress || progress.state === 'running') return null
   const when = parseTime(progress.finished_at ?? progress.started_at)
-  const how = progress.origin ? ` ${ORIGIN_SHORT[progress.origin]}` : ''
+  // How it was started, then when, follow "Last install" in each message: " over SSH", ", Nov 20, 2026, 3:04 PM".
+  const how = progress.origin ? ` ${originShort(progress.origin)}` : ''
   const at = Number.isNaN(when) ? '' : `, ${fmtTime(when)}`
   const step = progress.index > 0 ? progress.steps[progress.index - 1] : null
   const [tone, text] =
     progress.state === 'succeeded'
-      ? (['good', `Last install: ${progress.to_version ?? 'Valve Oil'}${how}${at}.`] as const)
+      ? (['good', t('updates.logs.last_succeeded', { version: progress.to_version ?? 'Valve Oil', how, at })] as const)
       : progress.state === 'handed_off'
-        ? (['info', `Last install${how}${at} went on in the QIDI firmware update.`] as const)
-        : (['warn', `The last install${how}${at} stopped${step ? ` at ${step}` : ''}.`] as const)
+        ? (['info', t('updates.logs.last_handed_off', { how, at })] as const)
+        : (['warn', step ? t('updates.logs.last_stopped_at', { how, at, step }) : t('updates.logs.last_stopped', { how, at })] as const)
   return (
     <Notice tone={tone} className="mb-2">
       {text}

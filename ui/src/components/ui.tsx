@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { t } from '../i18n'
 
 export function Card({ title, icon, aside, children, className = '' }: { title?: ReactNode; icon?: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -71,7 +72,7 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
       <div className={`dialog ${size ?? ''}`} role="dialog" aria-modal="true">
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0 flex-1 text-[15px] font-semibold">{title}</div>
-          <button className="iconbtn" onClick={onClose} aria-label="Close">
+          <button className="iconbtn" onClick={onClose} aria-label={t('common.close')}>
             <X size={17} />
           </button>
         </div>
@@ -208,7 +209,7 @@ export function Stepper({
   }
   return (
     <div className="flex items-center gap-1.5">
-      <button type="button" className="pm" disabled={disabled || value <= min} onClick={() => onChange(clamp(value - step))} aria-label={label ? `Lower ${label}` : 'Lower'}>
+      <button type="button" className="pm" disabled={disabled || value <= min} onClick={() => onChange(clamp(value - step))} aria-label={label ? t('common.lower_named', { name: label }) : t('common.lower')}>
         −
       </button>
       <div className="relative min-w-0 flex-1">
@@ -228,7 +229,7 @@ export function Stepper({
         />
         {unit && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] font-semibold text-ink-3">{unit}</span>}
       </div>
-      <button type="button" className="pm" disabled={disabled || value >= max} onClick={() => onChange(clamp(value + step))} aria-label={label ? `Raise ${label}` : 'Raise'}>
+      <button type="button" className="pm" disabled={disabled || value >= max} onClick={() => onChange(clamp(value + step))} aria-label={label ? t('common.raise_named', { name: label }) : t('common.raise')}>
         +
       </button>
     </div>
@@ -316,10 +317,10 @@ export function AskHost() {
       footer={
         <>
           <button className="btn btn-ghost" onClick={cancel}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={() => done(p.input ? text.trim() : true)}>
-            {p.confirm ?? 'OK'}
+            {p.confirm ?? t('common.ok')}
           </button>
         </>
       }

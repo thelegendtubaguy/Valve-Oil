@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import flash_thr_firmware as tool
-from thr_bootloaders import FIRST, PROFILES, identify_bootloader
+from thr_bootloaders import FIRST, HALTS, PROFILES, RESTARTS, identify_bootloader
 
 
 class NativeBoard:
@@ -34,7 +34,7 @@ class NativeBoard:
         self.uc.mem_write(0x08008000, b"\xff" * 0x18000)
         self.uc.mem_write(0x08008000, application)
         self.boot = boot
-        self.sent, self.erases, self.writes, self.jumps, self.resets = [], [], [], [], []
+        self.sent, self.erases, self.writes, self.jumps, self.resets, self.halts = [], [], [], [], [], []
         self.uc.hook_add(UC_HOOK_CODE, self.hook)
         for address in self.profile.initialize:
             self.call(address)
@@ -83,6 +83,9 @@ class NativeBoard:
         elif address in (self.profile.jump_hook, self.profile.reset_hook):
             if address == self.profile.jump_hook:
                 self.jumps.append(0x08008000)
+            elif self.profile.after_session == HALTS:
+                # This build's reset code starts with an undefined instruction: the core faults and stays there.
+                self.halts.append(address)
             else:
                 self.resets.append(address)
             self.uc.reg_write(self.pc, 0x2000fff0)
@@ -435,16 +438,23 @@ def check_interruption(stock, patched, boot, manifest, profile):
     partial = board.application(0x18000)
     board.timeout()
     assert board.application(2048) == b"\xff" * 2048
-    if profile.reset_hook is not None:
-        assert board.resets and not board.jumps
-        board = NativeBoard(boot, board.application(0x18000))
-    peer = Peer(board=board)
-    tool.Bootloader(peer, profile, peer.clock).transfer(stock, manifest)
-    assert board.application(len(stock)) == stock
+    if profile.after_session == HALTS:
+        # Nothing answers until power is lost; transfers therefore never let a session go quiet on this build.
+        assert board.halts and not board.jumps and not board.resets
+    else:
+        if profile.after_session == RESTARTS:
+            assert board.resets and not board.jumps
+            board = NativeBoard(boot, board.application(0x18000))
+        else:
+            assert not (board.resets or board.jumps or board.halts)
+        peer = Peer(board=board)
+        tool.Bootloader(peer, profile, peer.clock).transfer(stock, manifest)
+        assert board.application(len(stock)) == stock
     cold = NativeBoard(boot, partial)
     cold.timeout()
     assert cold.jumps, "Cold startup behavior changed; re-audit recovery assumptions"
-    return {"link_timeout_stock_recovery": True, "cold_start_can_jump_to_partial_application": True}
+    return {"link_timeout_stock_recovery": profile.after_session != HALTS, "after_session": profile.after_session,
+            "cold_start_can_jump_to_partial_application": True}
 
 
 def check_native_protocol(stock, patched, boot, profile):
@@ -476,9 +486,10 @@ def check_native_protocol(stock, patched, boot, profile):
         probe.advance(1)
         assert probe.jumps and not probe.erases and probe.application(len(stock)) == stock
         board.advance(10999)
-        assert not board.resets
+        assert not (board.resets or board.halts)
         board.advance(1)
-        assert board.resets and board.application(2048) == b"\xff" * 2048
+        expected = {RESTARTS: board.resets, HALTS: board.halts}.get(profile.after_session, True)
+        assert expected and not board.jumps and board.application(2048) == b"\xff" * 2048
     return {"identity_reply": profile.identity_reply.hex(), "duplicate_zero_programs_again": True,
             "later_duplicate_does_not_program": True, "startup_and_session_ticks_checked": profile.tick is not None}
 

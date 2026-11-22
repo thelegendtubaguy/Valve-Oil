@@ -7,6 +7,7 @@ import { BED_SOAK_FOLDER, BED_SOAK_PATH, BED_SOAK_ROOT, parseBedSoakFilename, pa
 import { BedSoakSetup } from './BedSoakSetup'
 import { BedSoakRunView, useChamberTemp } from './BedSoakRun'
 import { BedSoakPastRuns, type BedSoakRunEntry } from './BedSoakPastRuns'
+import { t } from '../../i18n'
 
 type CachedRun = { modified: number; run: BedSoakRun | null }
 
@@ -138,7 +139,7 @@ export function BedSoakTab() {
   const openedEntry = opened ? entries.find((e) => e.path === opened) : undefined
 
   const stop = async () => {
-    if (!(await confirm({ title: 'Stop the bed soak test', body: 'Stop the bed soak test? The heaters it turned on turn off now, and the results so far are kept.', confirm: 'Stop', danger: true }))) return
+    if (!(await confirm({ title: t('tune.soak.stop_title'), body: t('tune.soak.stop_body'), confirm: t('tune.soak.stop'), danger: true }))) return
     setStopping(true)
     await attempt(() => client.call('printer.tltg_bed_soak.stop'))
     setStopping(false)
@@ -148,15 +149,15 @@ export function BedSoakTab() {
 
   const action = running && tab === 'run' ? (
     <button className="btn btn-sm btn-danger" disabled={status.stop_requested || stopping} onClick={stop}>
-      {stopping ? <Spinner size={12} /> : <Square size={12} />} Stop
+      {stopping ? <Spinner size={12} /> : <Square size={12} />} {t('tune.soak.stop')}
     </button>
   ) : tab === 'run' && !showSetup ? (
     <button className="btn btn-sm" onClick={() => setDismissed(status.file)}>
-      New test
+      {t('tune.soak.new_test')}
     </button>
   ) : tab === 'past' && openedEntry ? (
     <button className="btn btn-sm" onClick={() => setOpened(null)}>
-      <ArrowLeft size={13} /> Back
+      <ArrowLeft size={13} /> {t('common.back')}
     </button>
   ) : null
 
@@ -165,12 +166,12 @@ export function BedSoakTab() {
       <div className="mb-3.5 flex flex-wrap items-center gap-2">
         <Flame size={15} className="text-accent-ink" />
         <Segmented
-          label="Bed soak"
+          label={t('tune.soak.title')}
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'run', label: 'Bed soak' },
-            { value: 'past', label: `Past runs (${entries.length})` },
+            { value: 'run', label: t('tune.soak.title') },
+            { value: 'past', label: t('tune.soak.past_runs', { n: entries.length }) },
           ]}
         />
         <span className="flex-1" />
@@ -179,7 +180,7 @@ export function BedSoakTab() {
       {tab === 'run' && (
         <>
           <p className="mt-0 mb-3.5 max-w-[80ch] text-[12.5px] text-ink-3">
-            Measures the bed from cold while it heats, to show how long the bed and chamber take to reach temperature and how long the bed keeps moving after that. Times count from when the heaters turn on.
+            {t('tune.soak.intro')}
           </p>
           {showSetup ? <BedSoakSetup status={status} runs={setupRuns} /> : <BedSoakRunView run={liveRun} status={status} live={running} liveTemps={liveTemps} file={status.file} />}
         </>

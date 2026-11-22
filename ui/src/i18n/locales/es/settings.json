@@ -1,0 +1,423 @@
+{
+  "general": {
+    "title": "General",
+    "printer_name": "Nombre de la impresora",
+    "printer_name_sub": "El nombre que Fluidd muestra para esta impresora.",
+    "language": "Idioma",
+    "language_sub": "Se guarda en este navegador. Los mensajes de la impresora siguen en inglés.",
+    "language_auto": "Idioma del navegador ({{name}})",
+    "theme": "Tema",
+    "theme_sub": "Se guarda en este navegador.",
+    "theme_dark": "Oscuro",
+    "theme_light": "Claro",
+    "confirm_estop": "Pedir confirmación en la parada de emergencia",
+    "warnings": "Avisos",
+    "warnings_footer": "Compartido con Fluidd, que muestra estos avisos.",
+    "warn_cpu": "Avisar si se detecta limitación de la CPU",
+    "warn_cpu_sub": "La limitación de la CPU puede hacer que fallen las impresiones.",
+    "warn_drivers": "Avisar si un driver de motor se sobrecalienta",
+    "warn_drivers_sub": "Solo drivers Trinamic.",
+    "reset": "Restablecer las preferencias de Valve Oil UI",
+    "reset_sub": "Devuelve a sus valores predeterminados las preferencias propias de esta aplicación: el tema y otras opciones guardadas en este navegador, y las guardadas en la impresora. Los ajustes, cámaras y preajustes de Fluidd no cambian.",
+    "reset_button": "Restablecer",
+    "reset_confirm": "¿Devolver las preferencias de Valve Oil UI a sus valores predeterminados, en este navegador y en la impresora? Los ajustes de Fluidd no cambian."
+  },
+  "sections": {
+    "general": {
+      "label": "General",
+      "sub": "Nombre de la impresora, tema, avisos"
+    },
+    "toolhead": {
+      "label": "Cabezal",
+      "sub": "Distancias de movimiento, velocidades, ejes"
+    },
+    "cameras": {
+      "label": "Cámaras",
+      "sub": "Añadir, editar y quitar cámaras"
+    },
+    "presets": {
+      "label": "Preajustes de temperatura",
+      "sub": "Objetivos para cada material"
+    },
+    "files": {
+      "label": "Archivos y editor",
+      "sub": "Orden, arrastrar y soltar, editor"
+    },
+    "gcode_preview": {
+      "label": "Vista previa del G-code",
+      "sub": "Grosor de líneas, volteo, carga automática"
+    },
+    "timelapse": {
+      "label": "Timelapse",
+      "sub": "Cámara, aparcado, renderizado"
+    },
+    "addons": {
+      "label": "Complementos",
+      "sub": "Acceso remoto y redes"
+    },
+    "about": {
+      "label": "Acerca de",
+      "sub": "Versiones"
+    }
+  },
+  "screen": {
+    "title": "Ajustes",
+    "back": "Volver a Ajustes",
+    "sections": "Secciones de ajustes",
+    "waiting": "Esperando a Moonraker…",
+    "valve_oil_sub": "Actualizaciones, actualizaciones automáticas, modo solo LAN",
+    "summary_release": "Valve Oil {{release}}",
+    "summary_release_auto_on": "Valve Oil {{release}}, actualizaciones automáticas activadas",
+    "summary_release_auto_off": "Valve Oil {{release}}, actualizaciones automáticas desactivadas",
+    "summary_auto_on": "actualizaciones automáticas activadas",
+    "summary_auto_off": "actualizaciones automáticas desactivadas",
+    "update_waiting": "Actualización pendiente"
+  },
+  "common": {
+    "shared_with_fluidd": "Compartido con Fluidd: un cambio aquí también se ve allí.",
+    "managed_by_config": "Lo gestiona tu configuración de Moonraker",
+    "edit_named": "Editar {{name}}",
+    "remove_named": "Quitar {{name}}",
+    "add_value": "Añade un valor",
+    "add_to": "Añadir a {{label}}"
+  },
+  "toolhead": {
+    "moves": "Movimientos",
+    "distances": "Distancias de movimiento del cabezal",
+    "distances_sub": "Los pasos de movimiento entre los que elegir, en mm. Hasta seis.",
+    "distances_label": "distancias de movimiento del cabezal",
+    "move_length": "Distancia de movimiento predeterminada del cabezal",
+    "xy_speed": "Velocidad XY predeterminada del cabezal",
+    "z_speed": "Velocidad Z predeterminada del cabezal",
+    "gcode_coords": "Usar coordenadas del G-code",
+    "gcode_coords_sub": "Muestra la posición del G-code en lugar de la del cabezal.",
+    "invert_x": "Invertir el control X",
+    "invert_y": "Invertir el control Y",
+    "invert_z": "Invertir el control Z",
+    "extruder": "Extrusor",
+    "extrude_length": "Longitud de extrusión predeterminada",
+    "extrude_speed": "Velocidad de extrusión predeterminada",
+    "z_offset": "Offset Z",
+    "z_adjust": "Valores de ajuste de Z",
+    "z_adjust_sub": "Los pasos para ajustar el offset Z, en mm. Hasta seis.",
+    "confirmations": "Confirmaciones y asistentes",
+    "force_move": "Pedir confirmación al activar FORCE_MOVE",
+    "manual_probe": "Mostrar automáticamente el diálogo de sondeo manual",
+    "manual_probe_sub": "Muestra el asistente mientras se hace un sondeo manual.",
+    "bed_screws": "Mostrar automáticamente el diálogo de ajuste de tornillos de la cama",
+    "bed_screws_sub": "Muestra el asistente mientras se ejecuta BED_SCREWS_ADJUST.",
+    "screws_tilt": "Mostrar automáticamente el diálogo de inclinación de tornillos",
+    "screws_tilt_sub": "Muestra el asistente después de SCREWS_TILT_CALCULATE."
+  },
+  "files": {
+    "browser": "Explorador de archivos",
+    "sort_order": "Orden del texto",
+    "sort_order_sub": "Cómo se ordenan los nombres de archivo: como texto, por un número inicial o como números de versión.",
+    "sort_default": "Predeterminado",
+    "sort_numeric": "Prefijo numérico",
+    "sort_version": "Versión",
+    "drag_drop": "Arrastrar y soltar archivos y carpetas",
+    "drag_drop_sub": "Mueve archivos arrastrándolos a una carpeta.",
+    "editor": "Editor de archivos",
+    "confirm_close": "Pedir confirmación al cerrar el editor con cambios sin guardar",
+    "auto_edit": "Extensiones que se abren automáticamente en modo edición",
+    "add_extension": "Añadir una extensión"
+  },
+  "gcode_preview": {
+    "extrusion_width": "Grosor de las líneas de extrusión",
+    "move_width": "Grosor de las líneas de desplazamiento",
+    "retraction_icon": "Tamaño del icono de retracción",
+    "min_layer_height": "Altura mínima de capa predeterminada",
+    "flip_h": "Voltear en horizontal",
+    "flip_v": "Voltear en vertical",
+    "draw_origin": "Dibujar el origen",
+    "draw_background": "Dibujar el fondo",
+    "show_animations": "Mostrar animaciones",
+    "auto_load": "Cargar el archivo automáticamente al iniciar la impresión",
+    "auto_load_mobile": "Cargar el archivo automáticamente en dispositivos móviles",
+    "auto_follow": "Seguir el progreso automáticamente al cargar el archivo",
+    "hide_bounding_box": "Ocultar el cuadro delimitador al imprimir una sola pieza"
+  },
+  "cameras": {
+    "title": "Cámaras",
+    "add": "Añadir cámara",
+    "edit": "Editar cámara",
+    "remove": "Quitar cámara",
+    "footer": "Las cámaras se guardan en Moonraker, así que Fluidd y los laminadores muestran las mismas.",
+    "empty": "Aún no hay cámaras.",
+    "remove_confirm": "¿Seguro que quieres quitar la cámara {{name}}?",
+    "enable": "Activar",
+    "name": "Nombre",
+    "stream_type": "Tipo de transmisión",
+    "stream_url": "URL de transmisión de la cámara",
+    "snapshot_url": "URL de captura de la cámara",
+    "fps": "FPS objetivo",
+    "fps_idle": "FPS objetivo sin foco",
+    "aspect": "Relación de aspecto",
+    "aspect_sub": "[ancho : alto]",
+    "rotate": "Girar",
+    "rotate_none": "Nada",
+    "flip_h": "Voltear en horizontal",
+    "flip_v": "Voltear en vertical",
+    "preview": "Vista previa",
+    "preview_title": "Vista previa de la cámara",
+    "no_answer": "La cámara no respondió en esta dirección.",
+    "cant_preview": "Valve Oil UI no puede mostrar este tipo de transmisión. Fluidd sí lo muestra.",
+    "error": {
+      "name_required": "Escribe un nombre.",
+      "name_taken": "Otra cámara tiene este nombre.",
+      "stream_required": "Escribe la dirección de la transmisión.",
+      "snapshot_required": "Escribe la dirección de las capturas.",
+      "fps_required": "Escribe un FPS objetivo.",
+      "aspect_invalid": "Escribe la relación de aspecto como ancho:alto, por ejemplo 16:9."
+    },
+    "service": {
+      "mjpeg_adaptive": "MJPEG adaptativo",
+      "mjpeg": "Transmisión MJPEG",
+      "uv4l": "Transmisión UV4L-MJPEG",
+      "hls": "Transmisión HLS",
+      "ip": "Cámara IP",
+      "iframe": "Página HTTP"
+    }
+  },
+  "presets": {
+    "title": "Preajustes de temperatura",
+    "nozzle": "Boquilla",
+    "bed": "Cama",
+    "box_heater": "Calentador de Box {{n}}",
+    "add": "Añadir preajuste",
+    "edit": "Editar preajuste",
+    "remove": "Quitar preajuste",
+    "footer": "Compartido con Fluidd. Los preajustes de la pantalla Control fijan estos objetivos y luego envían el G-code del preajuste.",
+    "empty": "Aún no hay preajustes. Añade uno para cada material que imprimes, como PLA o PETG.",
+    "remove_confirm": "¿Seguro que quieres quitar el preajuste {{name}}?",
+    "sets_nothing": "No fija nada",
+    "move_up": "Subir",
+    "move_down": "Bajar",
+    "move_up_named": "Subir {{name}}",
+    "move_down_named": "Bajar {{name}}",
+    "name": "Nombre del preajuste",
+    "targets": "Marca cada objetivo que fija este preajuste",
+    "not_on_printer": "No está en esta impresora",
+    "target_named": "Objetivo de {{name}}",
+    "gcode": "G-code, enviado después de los objetivos (opcional)"
+  },
+  "timelapse": {
+    "title": "Timelapse",
+    "read_failed": "No se pudieron leer los ajustes de timelapse.",
+    "footer": "Compartido con Fluidd. Los timelapses los hace moonraker-timelapse en la impresora.",
+    "enabled": "Activado",
+    "camera": "Cámara",
+    "default_camera": "Cámara predeterminada",
+    "mode": "Modo",
+    "mode_sub": "Layer Macro toma un fotograma en cada capa; Hyperlapse toma uno cada pocos segundos.",
+    "mode_layermacro": "Layer Macro",
+    "mode_hyperlapse": "Hyperlapse",
+    "hyperlapse_cycle": "Ciclo de Hyperlapse",
+    "delay_compensation": "Compensación de retardo",
+    "delay_compensation_sub": "Cuánto se retrasa la transmisión de la cámara respecto a la impresora.",
+    "verbose_gcode": "G-code detallado",
+    "parking": "Aparcado del cabezal",
+    "park_head": "Aparcar el cabezal",
+    "park_head_sub": "Aparta el cabezal en cada fotograma.",
+    "park_position": "Posición de aparcado",
+    "park_x": "Posición de aparcado X",
+    "park_y": "Posición de aparcado Y",
+    "park_z_hop": "Salto en Z al aparcar",
+    "park_speed": "Velocidad de desplazamiento al aparcar",
+    "park_time": "Tiempo de aparcado",
+    "fw_retract": "Usar la retracción del firmware",
+    "retract_distance": "Distancia de retracción al aparcar",
+    "retract_speed": "Velocidad de retracción al aparcar",
+    "extrude_distance": "Distancia de extrusión al aparcar",
+    "extrude_speed": "Velocidad de extrusión al aparcar",
+    "render": "Ajustes de renderizado",
+    "autorender": "Renderizado automático",
+    "autorender_sub": "Hace el vídeo cuando termina la impresión.",
+    "variable_fps": "FPS variables",
+    "variable_fps_sub": "Elige la tasa de fotogramas para que el vídeo dure más o menos la duración objetivo.",
+    "target_length": "Duración objetivo",
+    "min_fps": "Tasa de fotogramas mínima",
+    "max_fps": "Tasa de fotogramas máxima",
+    "output_fps": "Tasa de fotogramas de salida",
+    "crf": "Factor de tasa constante (CRF)",
+    "crf_sub": "Más bajo da mejor calidad y un archivo más grande.",
+    "duplicate_frames": "Duplicar los últimos fotogramas",
+    "thumbnail": "Generar miniatura",
+    "save_frames": "Guardar fotogramas",
+    "save_frames_sub": "Guarda los fotogramas en un zip junto al vídeo.",
+    "park": {
+      "front_left": "Delante izquierda",
+      "front_right": "Delante derecha",
+      "center": "Centro",
+      "back_left": "Detrás izquierda",
+      "back_right": "Detrás derecha",
+      "x_only": "Mover solo X",
+      "y_only": "Mover solo Y",
+      "custom": "Personalizada"
+    }
+  },
+  "lan_only": {
+    "title": "Modo solo LAN",
+    "sub": "Desactiva la conexión a la nube de QIDI y el acceso remoto, como el interruptor LAN Only de la pantalla táctil. La app Qidi Joy y el inicio de sesión con la cuenta QIDI no funcionan mientras está activado. Fluidd y los laminadores siguen funcionando en tu red.",
+    "change_failed": "No se pudo cambiar el modo solo LAN: {{error}}",
+    "unknown_answer": "Respuesta desconocida"
+  },
+  "about": {
+    "title": "Información de versiones",
+    "dev_build": "Compilación de desarrollo",
+    "dev_build_n": "Compilación de desarrollo {{n}}",
+    "qidi_firmware": "Firmware de QIDI",
+    "host_name": "Nombre del host",
+    "unknown": "Desconocido",
+    "updates": "Actualizaciones de Valve Oil",
+    "github": "Valve Oil en GitHub",
+    "open_fluidd": "Abrir Fluidd"
+  },
+  "addons": {
+    "title": "Complementos",
+    "unavailable": "Los complementos no están disponibles en esta impresora.",
+    "loading": "Cargando complementos…",
+    "none": "No se ofrecen complementos para esta impresora.",
+    "not_connected": "No hay conexión con esta impresora",
+    "invalid_response": "Respuesta no válida",
+    "state": {
+      "installed": "Instalado",
+      "update_available": "Actualización disponible",
+      "foreign": "Instalado fuera de Valve Oil",
+      "not_installed": "No instalado"
+    },
+    "button": {
+      "install": "Instalar",
+      "update": "Actualizar",
+      "remove": "Quitar",
+      "relink": "Reiniciar vinculación"
+    },
+    "job": {
+      "install": {
+        "running": "Instalando {{name}}…",
+        "succeeded": "{{name}} instalado",
+        "failed": "Falló la instalación de {{name}}"
+      },
+      "update": {
+        "running": "Actualizando {{name}}…",
+        "succeeded": "{{name}} actualizado",
+        "failed": "Falló la actualización de {{name}}"
+      },
+      "remove": {
+        "running": "Quitando {{name}}…",
+        "succeeded": "{{name}} quitado",
+        "failed": "Falló al quitar {{name}}"
+      },
+      "relink": {
+        "running": "Reiniciando {{name}} para vincular…",
+        "succeeded": "{{name}} está listo para vincular",
+        "failed": "Falló el reinicio de {{name}} para vincular"
+      }
+    },
+    "version": "Versión {{version}}",
+    "version_update": "Versión {{installed}}, {{available}} disponible",
+    "remove_confirm": "¿Quitar {{name}} de la impresora?",
+    "website": "Sitio web de {{name}}",
+    "blocked": "Quita primero {{names}}. Solo se puede instalar un complemento de acceso remoto.",
+    "printer_busy": "Disponible cuando la impresora no está imprimiendo ni calibrando",
+    "foreign_notice": "{{name}} se instaló fuera de Valve Oil, así que no se puede actualizar ni quitar aquí.",
+    "show_log": "Mostrar registro",
+    "hide_log": "Ocultar registro",
+    "panel": {
+      "service": "Servicio",
+      "service_state": {
+        "active": "En marcha",
+        "activating": "Iniciando",
+        "failed": "Falló",
+        "inactive": "Detenido",
+        "unknown": "Desconocido"
+      },
+      "linked": "Vinculado",
+      "not_linked": "No vinculado",
+      "account": "Cuenta",
+      "address": "Dirección",
+      "octo": {
+        "no_code": "OctoEverywhere no devolvió un código de vinculación.",
+        "connected": "Conectado",
+        "not_connected": "No conectado",
+        "dashboard": "Panel",
+        "link_account": "Vincular cuenta",
+        "show_code": "Mostrar código de vinculación",
+        "enter_code": "Escribe este código en {{url}}",
+        "expires": "Caduca a las {{time}}"
+      },
+      "obico": {
+        "unlink_title": "Desvincular Obico",
+        "unlink_body": "¿Desvincular esta impresora de tu cuenta de Obico? Obico se reinicia y espera a que la vuelvas a vincular.",
+        "unlink": "Desvincular",
+        "server": "Servidor",
+        "change": "Cambiar",
+        "open": "Abrir Obico",
+        "link_cloud": "Para vincular esta impresora, añade una impresora en la app de Obico o en app.obico.io.",
+        "link_self": "Para vincular esta impresora, añade una impresora en tu servidor de Obico.",
+        "step_device": "Como dispositivo, elige \"Generic Klipper - Self Installed\".",
+        "step_manual": "Elige \"Switch to Manual Linking\".",
+        "step_code": "Escribe el código de arriba.",
+        "waiting_code": "Esperando el código de vinculación de Obico…",
+        "stopped": "Obico dejó de esperar la vinculación. Reinicia la vinculación para vincularla.",
+        "server_title": "Servidor de Obico",
+        "use_server": "Usar este servidor",
+        "change_note": "Cambiar el servidor desvincula la impresora. Vuelve a vincularla cuando Obico se haya reiniciado.",
+        "own_server": "Mi propio servidor de Obico",
+        "server_invalid": "Escribe una dirección http o https, como http://192.168.1.10:3334."
+      },
+      "tailscale": {
+        "state": {
+          "running": "Conectado",
+          "starting": "Iniciando",
+          "needs_login": "Sin iniciar sesión",
+          "needs_approval": "Esperando aprobación",
+          "stopped": "Desconectado"
+        },
+        "logout_title": "Cerrar sesión de Tailscale",
+        "logout_body": "¿Cerrar la sesión de Tailscale de esta impresora? Saldrá de tu tailnet hasta que vuelvas a iniciar sesión.",
+        "logout": "Cerrar sesión",
+        "tailnet": "Tailnet",
+        "name": "Nombre",
+        "key_expiry": "La sesión caduca",
+        "reach": "Los dispositivos de tu tailnet pueden abrir Fluidd con el nombre o la dirección de arriba, y llegar a los demás servicios de la impresora, como SSH.",
+        "needs_approval": "Esta impresora espera que la apruebes en la consola de administración de tu tailnet, en login.tailscale.com.",
+        "login_url_hint": "Abre esta dirección en cualquier dispositivo e inicia sesión en Tailscale para añadir esta impresora a tu tailnet.",
+        "login_hint": "Inicia sesión para añadir esta impresora a tu tailnet.",
+        "sign_in": "Iniciar sesión en Tailscale",
+        "new_link": "Nuevo enlace",
+        "log_in": "Iniciar sesión",
+        "connect": "Conectar"
+      },
+      "zerotier": {
+        "state": {
+          "ok": "Conectado",
+          "requesting_configuration": "Uniéndose",
+          "access_denied": "Esperando aprobación",
+          "not_found": "Red no encontrada",
+          "port_error": "No pudo crear su interfaz de red",
+          "client_too_old": "ZeroTier es demasiado antiguo para esta red",
+          "authentication_required": "Necesita iniciar sesión en un navegador"
+        },
+        "message_ok": "Los dispositivos de esta red pueden abrir Fluidd en la dirección de arriba, y llegar a los demás servicios de la impresora, como SSH.",
+        "message_access_denied": "Esperando aprobación. En los miembros de la red en my.zerotier.com, autoriza el nodo {{node}}.",
+        "message_not_found": "ZeroTier no tiene ninguna red con este ID. Comprueba el ID, luego sal de esta red y únete a la correcta.",
+        "message_authentication_required": "Esta red necesita iniciar sesión en un navegador, y la impresora no puede hacerlo. Desactiva el SSO de esta red para usar la impresora en ella.",
+        "leave_title": "Salir de la red ZeroTier",
+        "leave_body": "¿Salir de {{name}}? Los dispositivos de esa red ya no podrán llegar a la impresora hasta que vuelva a unirse.",
+        "leave": "Salir",
+        "online": "En línea",
+        "offline": "Sin conexión",
+        "node_id": "ID del nodo",
+        "no_networks": "Esta impresora no está en ninguna red ZeroTier. Escribe el ID de la red a la que unirse.",
+        "network": "Red",
+        "status": "Estado",
+        "network_id": "ID de red",
+        "join": "Unirse",
+        "id_invalid": "Un ID de red tiene 16 caracteres, 0-9 y a-f.",
+        "id_hint": "Escribe el ID de 16 caracteres de la red a la que unirse, de my.zerotier.com."
+      }
+    }
+  }
+}

@@ -1,6 +1,8 @@
 // Spoolman logic ported from the Fluidd fork's Spoolman store and card (src/store/spoolman/, src/components/widgets/
 // spoolman/), plus the per-slot spools Valve Oil's tltg_spoolman Klipper module reports. Setting keys and sort keys
 // follow Fluidd's uiSettings.spoolman, so both UIs share them in the `fluidd` database namespace.
+import type { MessageKey } from '../../i18n'
+
 
 // ---- Spoolman's API shapes, as Moonraker's proxy passes them through ----
 
@@ -204,16 +206,16 @@ export type SortOrder = { key: string | null; desc: boolean | null }
 /** Fluidd's default, uiSettings.spoolman.selectionDialogSortOrder. */
 export const DEFAULT_SORT: SortOrder = { key: 'last_used', desc: false }
 
-// Fluidd's table columns, by the key its sort order stores.
-export const SORT_KEYS: { key: string; label: string }[] = [
-  { key: 'filament_name', label: 'Filament' },
-  { key: 'id', label: 'ID' },
-  { key: 'filament.material', label: 'Material' },
-  { key: 'remaining_weight', label: 'Remaining weight' },
-  { key: 'used_weight', label: 'Used weight' },
-  { key: 'location', label: 'Location' },
-  { key: 'first_used', label: 'First used' },
-  { key: 'last_used', label: 'Last used' },
+// Fluidd's table columns, by the key its sort order stores, with their label's message.
+export const SORT_KEYS: { key: string; msg: MessageKey }[] = [
+  { key: 'filament_name', msg: 'spoolman.sort.filament_name' },
+  { key: 'id', msg: 'spoolman.sort.id' },
+  { key: 'filament.material', msg: 'spoolman.sort.material' },
+  { key: 'remaining_weight', msg: 'spoolman.sort.remaining_weight' },
+  { key: 'used_weight', msg: 'spoolman.sort.used_weight' },
+  { key: 'location', msg: 'spoolman.sort.location' },
+  { key: 'first_used', msg: 'spoolman.sort.first_used' },
+  { key: 'last_used', msg: 'spoolman.sort.last_used' },
 ]
 
 function valueAt(spool: Spool, path: string): unknown {
@@ -222,6 +224,7 @@ function valueAt(spool: Spool, path: string): unknown {
   return v
 }
 
+// Names sort in the browser's own order, whatever language the UI shows. i18n-ignore
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Sorted by a Fluidd column key. Spools without the value, such as never used ones by last used, go last either way. */
@@ -287,11 +290,12 @@ export function fileFilamentTypes(value: unknown): string[] {
     .filter(Boolean)
 }
 
-export const CHECK_TEXT: Record<SpoolCheck | 'no_spool', string> = {
-  no_spool: "You haven't selected a spool. Are you sure you want to print without filament tracking?",
-  no_filament: 'The spool you selected may not have enough filament left on it to successfully finish the print job. Are you sure you want to continue?',
-  no_required_length: 'The amount of filament required to print the selected file is unknown. Do you wish to continue?',
-  mismatched_filament: 'The material of the selected filament does not match the selected material in the slicer. Are you sure you want to continue?',
+/** Each check's question, as a message key. */
+export const CHECK_TEXT: Record<SpoolCheck | 'no_spool', MessageKey> = {
+  no_spool: 'spoolman.check.no_spool',
+  no_filament: 'spoolman.check.no_filament',
+  no_required_length: 'spoolman.check.no_required_length',
+  mismatched_filament: 'spoolman.check.mismatched_filament',
 }
 
 // ---- per-slot spools from tltg_spoolman ----

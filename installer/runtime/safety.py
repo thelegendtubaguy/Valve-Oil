@@ -70,7 +70,8 @@ def ensure_no_pending_firmware(path: Path, *, allow_box: bool = False, allow_mai
                              "finish it before anything else: " + str(path.parent / FIRMWARE_UPDATE_MARKER))
     marker = path.parent / THR_RECOVERY_MARKER
     if marker.exists() or marker.is_symlink():
-        raise InstallerError("Unresolved THR firmware operation; recover and verify the board before continuing: " + str(marker))
+        raise InstallerError("A THR firmware flash didn't finish. Turn the printer off and on, or run ./install.sh, and "
+                             "Valve Oil finishes it first: " + str(marker))
     marker = path.parent / BOX_RECOVERY_MARKER
     if not allow_box and (marker.exists() or marker.is_symlink()):
         raise InstallerError("Unresolved Box firmware operation; run ./box-firmware.sh rescue before continuing: " + str(marker))

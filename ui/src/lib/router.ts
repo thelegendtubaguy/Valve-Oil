@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react'
 
 // Hash routes: #/<route>[/<sub>/<path>...]. Each segment is URI-encoded, so file paths with spaces survive.
-export type Route = 'home' | 'files' | 'filaments' | 'control' | 'console' | 'tune' | 'history' | 'system' | 'settings' | 'updates' | 'mock'
-const ROUTES: Route[] = ['home', 'files', 'filaments', 'control', 'console', 'tune', 'history', 'system', 'settings', 'updates', 'mock']
+export type Route = 'home' | 'files' | 'filaments' | 'control' | 'console' | 'tune' | 'history' | 'system' | 'settings' | 'updates'
+const ROUTES: Route[] = ['home', 'files', 'filaments', 'control', 'console', 'tune', 'history', 'system', 'settings', 'updates']
 
 function segments(): string[] {
   return location.hash

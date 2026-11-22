@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { locale } from '../../i18n'
 
 // A plain SVG time chart: thin lines, a recessive grid, gaps where a value is missing (NaN), and a crosshair with the
 // values under it on hover or touch. One y-axis per chart.
@@ -140,7 +141,7 @@ export function LineChart({
           {axis &&
             xTicks.map((t) => (
               <text key={t} x={x(t)} y={height - 4} textAnchor="middle" fontSize={10.5} fill="var(--ink-3)" className="num">
-                {new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                {new Date(t).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
               </text>
             ))}
           {paths.map(({ s, area }) => area && <path key={`a${s.key}`} d={area} fill={s.color} fillOpacity={s.fill} stroke="none" />)}
@@ -162,7 +163,7 @@ export function LineChart({
           className="pointer-events-none absolute z-10 rounded-lg bg-surface px-2.5 py-1.5 text-[12px]"
           style={{ boxShadow: 'var(--shadow-overlay)', top: 0, ...(tipLeft > width / 2 ? { right: width - tipLeft + 10 } : { left: tipLeft + 10 }) }}
         >
-          <div className="num mb-0.5 text-ink-3">{new Date(times[hv]).toLocaleTimeString()}</div>
+          <div className="num mb-0.5 text-ink-3">{new Date(times[hv]).toLocaleTimeString(locale())}</div>
           {series
             .filter((s) => !s.hidden)
             .map((s) => (

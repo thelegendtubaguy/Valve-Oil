@@ -5,6 +5,7 @@ import { Check, ChevronDown, Columns2, X } from 'lucide-react'
 import { MenuButton, Segmented } from '../ui'
 import { LivePreview } from '../gcode-preview/LivePreview'
 import { usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 import { CameraView, cameraRatio, useWebcams, type Webcam } from '../../screens/Home'
 
 const KEY = 'vo-home-cams'
@@ -48,12 +49,12 @@ export function CameraDeck() {
   const toggle = printing && cams.length > 0 && (
     <div className="absolute top-2.5 right-2.5 z-10">
       <Segmented
-        label="View"
+        label={t('home.camera.view')}
         value={layers ? 'layers' : 'camera'}
         onChange={pickView}
         options={[
-          { value: 'camera', label: 'Camera' },
-          { value: 'layers', label: 'Layers' },
+          { value: 'camera', label: t('home.camera.camera') },
+          { value: 'layers', label: t('home.camera.layers') },
         ]}
       />
     </div>
@@ -82,7 +83,7 @@ export function CameraDeck() {
       <MenuButton
         className="cam-tag"
         align="left"
-        label={`Change camera, showing ${current[i]}`}
+        label={t('home.camera.change', { name: current[i] })}
         button={
           <>
             {current[i]} <ChevronDown size={12} />
@@ -90,8 +91,8 @@ export function CameraDeck() {
         }
         items={[
           ...cams.map((c) => ({ label: c.name, icon: <Check size={14} className={c.name === current[i] ? '' : 'invisible'} />, onSelect: () => choose(i, c.name) })),
-          current.length === 1 && { label: 'Side by side', icon: <Columns2 size={14} />, onSelect: () => save([current[0], cams.find((c) => c.name !== current[0])!.name]) },
-          current.length === 2 && { label: 'Close this camera', icon: <X size={14} />, onSelect: () => save(current.filter((_, k) => k !== i)) },
+          current.length === 1 && { label: t('home.camera.side_by_side'), icon: <Columns2 size={14} />, onSelect: () => save([current[0], cams.find((c) => c.name !== current[0])!.name]) },
+          current.length === 2 && { label: t('home.camera.close_this'), icon: <X size={14} />, onSelect: () => save(current.filter((_, k) => k !== i)) },
         ]}
       />
     ) : undefined

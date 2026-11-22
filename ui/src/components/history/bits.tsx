@@ -5,6 +5,7 @@ import { confirm } from '../ui'
 import { attempt } from '../toast'
 import { deleteJob } from '../../state/history'
 import { displayName } from '../../lib/format'
+import { t } from '../../i18n'
 import { cellText, fmtDateTime, jobColors, statusLabel, statusTone, type Column, type Job } from './logic'
 
 /** A G-code file's slicer thumbnail, or a file icon (crossed out when the file is gone). */
@@ -33,7 +34,7 @@ export function Swatches({ colors }: { colors: string[] }) {
 }
 
 export async function confirmDelete(j: Job) {
-  if (await confirm({ title: 'Delete this job?', body: `${displayName(j.filename)}, started ${fmtDateTime(j.start_time)}, leaves the history. The file stays.`, confirm: 'Delete', danger: true })) await attempt(() => deleteJob(j.job_id))
+  if (await confirm({ title: t('history.job.delete_title'), body: t('history.job.delete_body', { name: displayName(j.filename), time: fmtDateTime(j.start_time) }), confirm: t('common.delete'), danger: true })) await attempt(() => deleteJob(j.job_id))
 }
 
 /** A history table cell: status as a pill, colors as swatches, the rest as text. */
@@ -43,8 +44,8 @@ export function Cell({ job, col }: { job: Job; col: Column }) {
     const v = col.key === 'metadata.filament_colors' ? jobColors(job.metadata as Record<string, unknown>) : (job.metadata as Record<string, unknown> | undefined)?.[col.key.slice(9)]
     return Array.isArray(v) && v.length ? <Swatches colors={v.filter((c): c is string => typeof c === 'string' && c !== '')} /> : <span className="text-ink-3">—</span>
   }
-  const t = cellText(job, col)
-  if (t == null) return <span className="text-ink-3">—</span>
-  return <span className="num">{Array.isArray(t) ? t.join(', ') : t}</span>
+  const text = cellText(job, col)
+  if (text == null) return <span className="text-ink-3">—</span>
+  return <span className="num">{Array.isArray(text) ? text.join(', ') : text}</span>
 }
 

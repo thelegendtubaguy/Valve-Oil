@@ -37,6 +37,7 @@ import { useStore } from './lib/store'
 import { installStepText, installTitle } from './components/updates/Install'
 import { fluiddUrl } from './lib/links'
 import { useTheme } from './lib/theme'
+import { t, type MessageKey } from './i18n'
 
 // Screens other than Home and Updates load when first opened, so the first page a tablet shows is small.
 const FilesScreen = lazy(() => import('./screens/Files').then((m) => ({ default: m.FilesScreen })))
@@ -45,29 +46,29 @@ const ConsoleScreen = lazy(() => import('./screens/Console').then((m) => ({ defa
 const TuneScreen = lazy(() => import('./screens/Tune').then((m) => ({ default: m.TuneScreen })))
 const HistoryScreen = lazy(() => import('./screens/History').then((m) => ({ default: m.HistoryScreen })))
 const SystemScreen = lazy(() => import('./screens/System').then((m) => ({ default: m.SystemScreen })))
-const MockScreen = lazy(() => import('./screens/HomeMockups').then((m) => ({ default: m.HomeMockups })))
 const FilamentsScreen = lazy(() => import('./screens/Filaments').then((m) => ({ default: m.FilamentsScreen })))
 const SettingsScreen = lazy(() => import('./screens/Settings').then((m) => ({ default: m.SettingsScreen })))
 
-type NavItem = { route: Route; label: string; icon: ReactNode; mobile?: boolean }
+// Labels are message keys, looked up while rendering.
+type NavItem = { route: Route; labelKey: MessageKey; icon: ReactNode; mobile?: boolean }
 const I = 22
 const NAV: NavItem[] = [
-  { route: 'home', label: 'Home', icon: <House size={I} />, mobile: true },
-  { route: 'files', label: 'Files', icon: <Folder size={I} />, mobile: true },
-  { route: 'control', label: 'Control', icon: <Move size={I} />, mobile: true },
-  { route: 'console', label: 'Console', icon: <SquareTerminal size={I} /> },
-  { route: 'tune', label: 'Tune', icon: <Grid3x3 size={I} /> },
-  { route: 'history', label: 'History', icon: <History size={I} /> },
-  { route: 'system', label: 'System', icon: <Cpu size={I} /> },
+  { route: 'home', labelKey: 'app.nav.home', icon: <House size={I} />, mobile: true },
+  { route: 'files', labelKey: 'app.nav.files', icon: <Folder size={I} />, mobile: true },
+  { route: 'control', labelKey: 'app.nav.control', icon: <Move size={I} />, mobile: true },
+  { route: 'console', labelKey: 'app.nav.console', icon: <SquareTerminal size={I} /> },
+  { route: 'tune', labelKey: 'app.nav.tune', icon: <Grid3x3 size={I} /> },
+  { route: 'history', labelKey: 'app.nav.history', icon: <History size={I} /> },
+  { route: 'system', labelKey: 'app.nav.system', icon: <Cpu size={I} /> },
 ]
 const NAV_END: NavItem[] = [
-  { route: 'settings', label: 'Settings', icon: <SlidersHorizontal size={I} /> },
-  { route: 'updates', label: 'Updates', icon: <RefreshCw size={I} /> },
+  { route: 'settings', labelKey: 'app.nav.settings', icon: <SlidersHorizontal size={I} /> },
+  { route: 'updates', labelKey: 'app.nav.updates', icon: <RefreshCw size={I} /> },
 ]
 
 // Screens that only make sense with Klipper running. The rest need only Moonraker, so the configuration can be fixed
 // and the logs read while Klipper is stopped, and Updates needs neither.
-const NEEDS_KLIPPER: Route[] = ['home', 'filaments', 'control', 'tune', 'mock']
+const NEEDS_KLIPPER: Route[] = ['home', 'filaments', 'control', 'tune']
 
 const SCREENS: Record<Route, () => ReactNode> = {
   home: () => <HomeScreen />,
@@ -80,7 +81,6 @@ const SCREENS: Record<Route, () => ReactNode> = {
   system: () => <SystemScreen />,
   settings: () => <SettingsScreen />,
   updates: () => <UpdatesScreen />,
-  mock: () => <MockScreen />,
 }
 
 export function App() {
@@ -93,11 +93,11 @@ export function App() {
   let body: ReactNode
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
   if (shown === 'updates') body = <UpdatesScreen />
-  else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? 'Connecting to the printer…' : 'Can’t reach the printer'} detail={`Trying ${client.wsUrl} again.`} />
+  else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
   else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
   else body = <Suspense fallback={<div className="grid place-items-center py-16"><Spinner size={24} /></div>}>{SCREENS[shown]()}</Suspense>
 
-  const cockpit = (shown === 'home' || shown === 'mock') && conn === 'open' && klippy === 'ready'
+  const cockpit = shown === 'home' && conn === 'open' && klippy === 'ready'
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">
@@ -111,7 +111,7 @@ export function App() {
         {NAV_END.map((n) => (
           <RailItem key={n.route} item={n} on={shown === n.route} />
         ))}
-        <a href={fluiddUrl()} className="rail-item" title="Open Fluidd">
+        <a href={fluiddUrl()} className="rail-item" title={t('app.nav.open_fluidd')}>
           <ExternalLink size={18} />
           Fluidd
         </a>
@@ -122,7 +122,7 @@ export function App() {
         <Warnings />
         {klippy !== 'ready' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : 'mx-auto grid max-w-[1500px] content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px]'}>{body}</div>
+          <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
         </div>
         <MobileNav nav={NAV} route={shown} />
       </main>
@@ -145,7 +145,7 @@ function RailItem({ item, on }: { item: NavItem; on: boolean }) {
   return (
     <a href={href(item.route)} className={`rail-item ${on ? 'on' : ''}`} aria-current={on ? 'page' : undefined}>
       {item.icon}
-      {item.label}
+      {t(item.labelKey)}
       {item.route === 'updates' && <UpdatingBadge />}
     </a>
   )
@@ -165,7 +165,7 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
             {rest.map((n) => (
               <a key={n.route} href={href(n.route)} className={`rail-item w-auto ${route === n.route ? 'on' : ''}`}>
                 {n.icon}
-                {n.label}
+                {t(n.labelKey)}
               </a>
             ))}
             <a href={fluiddUrl()} className="rail-item w-auto">
@@ -179,12 +179,12 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
         {main.map((n) => (
           <a key={n.route} href={href(n.route)} className={cls(route === n.route)} onClick={() => setMore(false)}>
             {n.icon}
-            {n.label}
+            {t(n.labelKey)}
           </a>
         ))}
         <button className={`border-0 bg-transparent ${cls(inRest || more)}`} onClick={() => setMore((m) => !m)} aria-expanded={more}>
           <Ellipsis size={I} />
-          More
+          {t('app.nav.more')}
         </button>
       </nav>
     </>
@@ -192,7 +192,7 @@ function MobileNav({ nav, route }: { nav: NavItem[]; route: Route }) {
 }
 
 function UpdatingBadge() {
-  return useUpdateRunning() ? <span className="badge" title="Updating" /> : null
+  return useUpdateRunning() ? <span className="badge" title={t('app.nav.updating')} /> : null
 }
 
 /** While Valve Oil updates the printer, on every screen, and through Moonraker and Klipper restarting for it. */
@@ -207,12 +207,12 @@ function UpdateBanner() {
       <div className="tone-warn flex items-start gap-2.5 rounded-xl px-3 py-2">
         <LoaderCircle size={16} className="spin mt-0.5 flex-none" />
         <div className="min-w-0 flex-1 text-ink">
-          <b>{install ? `${installTitle(install)}.` : 'Valve Oil is updating the printer.'}</b>{' '}
+          <b>{install ? `${installTitle(install)}.` : t('app.update_banner.updating')}</b>{' '}
           {install && <span className="text-ink-2">{installStepText(install)}. </span>}
           <span className="text-ink-2">{DONT_POWER_OFF}</span>
         </div>
         <a href={href('updates')} className="flex-none font-semibold text-accent-ink">
-          Details
+          {t('app.details')}
         </a>
       </div>
     </div>
@@ -225,13 +225,31 @@ function StatusPill() {
   const klippy = usePrinter((s) => s.klippy)
   const busy = useBoxBusy()
   const idle = usePrinter((s) => s.status.idle_timeout?.state as string | undefined)
-  if (conn !== 'open') return <span className="pill tone-bad">Offline</span>
-  if (klippy !== 'ready') return <span className="pill tone-bad">Klipper {klippy}</span>
-  if (job.state === 'printing') return <span className="pill tone-accent">Printing · {Math.floor(jobProgress(job) * 100)}%</span>
-  if (job.state === 'paused') return <span className="pill tone-warn">Paused</span>
-  if (busy) return <span className="pill tone-warn">Box busy</span>
-  if (idle === 'Printing') return <span className="pill tone-accent">Busy</span>
+  if (conn !== 'open') return <span className="pill tone-bad">{t('app.status.offline')}</span>
+  if (klippy !== 'ready') return <span className="pill tone-bad">{klippyPill(klippy)}</span>
+  if (job.state === 'printing') return <span className="pill tone-accent">{t('app.status.printing', { pct: Math.floor(jobProgress(job) * 100) })}</span>
+  if (job.state === 'paused') return <span className="pill tone-warn">{t('app.status.paused')}</span>
+  if (busy) return <span className="pill tone-warn">{t('app.status.box_busy')}</span>
+  if (idle === 'Printing') return <span className="pill tone-accent">{t('app.status.busy')}</span>
   return null
+}
+
+/** Klipper's state in the top bar's pill. */
+function klippyPill(klippy: string) {
+  switch (klippy) {
+    case 'startup':
+      return t('app.status.klipper_startup')
+    case 'error':
+      return t('app.status.klipper_error')
+    case 'shutdown':
+      return t('app.status.klipper_shutdown')
+    case 'disconnected':
+      return t('app.status.klipper_disconnected')
+    case 'unknown':
+      return t('app.status.klipper_unknown')
+    default:
+      return t('app.status.klipper_state', { state: klippy })
+  }
 }
 
 /** Nozzle, bed, and chamber at a glance, amber while heating, as across the top of the touchscreen. */
@@ -239,9 +257,9 @@ function MiniTemps() {
   const temps = usePrinter((s) =>
     (
       [
-        ['Nozzle', s.status.extruder],
-        ['Bed', s.status.heater_bed],
-        ['Chamber', s.status['heater_generic chamber']],
+        ['nozzle', s.status.extruder],
+        ['bed', s.status.heater_bed],
+        ['chamber', s.status['heater_generic chamber']],
       ] as const
     )
       .filter(([, o]) => o && typeof o.temperature === 'number')
@@ -251,10 +269,11 @@ function MiniTemps() {
   if (!temps) return null
   return (
     <div className="hidden items-center gap-3.5 lg:flex">
-      {temps.split('|').map((t) => {
-        const [label, v, hot] = t.split(':')
+      {temps.split('|').map((entry) => {
+        const [id, v, hot] = entry.split(':')
+        const label = t(`app.heaters.${id}` as MessageKey)
         return (
-          <span key={label} className={`num flex items-baseline gap-1 text-[13px] font-semibold ${hot === '1' ? 'text-accent-ink' : 'text-ink-2'}`} title={label}>
+          <span key={id} className={`num flex items-baseline gap-1 text-[13px] font-semibold ${hot === '1' ? 'text-accent-ink' : 'text-ink-2'}`} title={label}>
             <span className="text-[11px] font-semibold text-ink-3">{label}</span>
             {v}°
           </span>
@@ -278,22 +297,22 @@ function SaveConfigButton() {
     <button
       className="btn btn-sm btn-primary"
       disabled={printing}
-      title={printing ? 'Save config restarts Klipper, so it waits until the print ends.' : undefined}
+      title={printing ? t('app.save_config.waits') : undefined}
       onClick={async () => {
         const ok = await confirm({
-          title: 'Save config and restart Klipper?',
+          title: t('app.save_config.confirm_title'),
           body: (
             <>
-              SAVE_CONFIG writes Klipper's pending changes to printer.cfg and restarts Klipper.
-              {sections.length > 0 && <div className="mt-2">Changed: {sections.join(', ')}</div>}
+              {t('app.save_config.confirm_body')}
+              {sections.length > 0 && <div className="mt-2">{t('app.save_config.changed', { sections: sections.join(', ') })}</div>}
             </>
           ),
-          confirm: 'Save and restart',
+          confirm: t('app.save_config.confirm'),
         })
         if (ok) attempt(() => runGcode('SAVE_CONFIG'))
       }}
     >
-      Save config
+      {t('app.save_config.button')}
     </button>
   )
 }
@@ -309,6 +328,7 @@ function TopBar() {
       <a href={href('home')} className="flex items-center gap-2.5 md:hidden">
         <LogoMark height={30} />
       </a>
+      {/* i18n-ignore: the product's wordmark */}
       <span className="wordmark hidden sm:inline">VALVE OIL</span>
       {name && (
         <>
@@ -322,7 +342,7 @@ function TopBar() {
       <MiniTemps />
       <HealthButton />
       <NotificationsButton />
-      <button className="iconbtn" onClick={toggleTheme} aria-label="Switch theme" title="Switch theme">
+      <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
         {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
       </button>
       <button
@@ -330,13 +350,13 @@ function TopBar() {
         disabled={conn !== 'open'}
         onClick={async () => {
           // Fluidd's "Confirm emergency stop" setting, shared with it.
-          if (confirmEstop && !(await confirm({ title: 'Emergency stop?', body: 'Klipper halts the printer at once and has to be restarted afterward.', confirm: 'Emergency stop', danger: true }))) return
+          if (confirmEstop && !(await confirm({ title: t('app.topbar.estop_confirm_title'), body: t('app.topbar.estop_confirm_body'), confirm: t('app.topbar.estop'), danger: true }))) return
           attempt(() => client.call('printer.emergency_stop'))
         }}
-        title="Emergency stop: halts the printer immediately. Klipper must be restarted afterward."
+        title={t('app.topbar.estop_title')}
       >
-        <X size={14} /> <span className="hidden sm:inline">Emergency stop</span>
-        <span className="sm:hidden">Stop</span>
+        <X size={14} /> <span className="hidden sm:inline">{t('app.topbar.estop')}</span>
+        <span className="sm:hidden">{t('app.topbar.estop_short')}</span>
       </button>
     </div>
   )
@@ -359,7 +379,7 @@ function Warnings() {
               <>
                 {' '}
                 <a href={w.url} target="_blank" rel="noopener noreferrer" className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  Open a support issue
+                  {t('app.warnings.support_issue')}
                 </a>
               </>
             )}
@@ -368,7 +388,7 @@ function Warnings() {
               <>
                 {' '}
                 <a href={href('updates')} className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  Details
+                  {t('app.details')}
                 </a>
               </>
             )}
@@ -391,7 +411,7 @@ function NotReady({ title, detail, children }: { title: string; detail?: string;
 }
 
 function klippyTitle(klippy: string) {
-  return klippy === 'startup' ? 'Klipper is starting…' : klippy === 'shutdown' ? 'Klipper stopped' : klippy === 'error' ? 'Klipper reported an error' : 'Klipper isn’t running'
+  return klippy === 'startup' ? t('app.klippy.starting') : klippy === 'shutdown' ? t('app.klippy.stopped') : klippy === 'error' ? t('app.klippy.error') : t('app.klippy.not_running')
 }
 
 /** Klipper's own reason, in plain sight, with the one button that usually gets it back. */
@@ -412,21 +432,21 @@ function KlippyNotReady() {
         {klippy !== 'startup' && !updating && (
           <>
             <button className="btn btn-primary btn-lg" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>
-              <RefreshCw size={16} /> Firmware restart
+              <RefreshCw size={16} /> {t('app.klippy.firmware_restart')}
             </button>
             <button className="btn btn-lg" onClick={() => attempt(() => client.call('printer.restart'))}>
-              Restart Klipper
+              {t('app.klippy.restart')}
             </button>
           </>
         )}
         <a className="btn btn-lg" href={href('files', 'config')}>
-          Edit configuration
+          {t('app.klippy.edit_config')}
         </a>
         <a className="btn btn-lg" href={href('console')}>
-          Console
+          {t('app.nav.console')}
         </a>
         <a className="btn btn-lg" href={href('system', 'logs')}>
-          Logs
+          {t('app.klippy.logs')}
         </a>
       </div>
     </div>
@@ -448,10 +468,10 @@ function KlippyStrip() {
         {klippy !== 'startup' && !updating && (
           <>
             <button className="btn btn-sm" onClick={() => attempt(() => client.call('printer.restart'))}>
-              Restart Klipper
+              {t('app.klippy.restart')}
             </button>
             <button className="btn btn-sm btn-primary" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>
-              Firmware restart
+              {t('app.klippy.firmware_restart')}
             </button>
           </>
         )}

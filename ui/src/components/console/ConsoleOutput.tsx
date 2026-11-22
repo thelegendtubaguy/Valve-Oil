@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { lineTone, segments, type ConsoleEntry } from './model'
 import { fillCommand } from './store'
+import { locale, t } from '../../i18n'
 
 const TONE = {
   command: 'text-accent-ink',
@@ -10,7 +11,7 @@ const TONE = {
   plain: 'text-ink',
 } as const
 
-const time = (t: number) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const time = (t: number) => new Date(t * 1000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 /** One console entry: a sent command (click to send again), or a reply with the commands it names clickable. */
 export const ConsoleLineView = memo(function ConsoleLineView({ entry, known, search, showTime }: { entry: ConsoleEntry; known: Set<string>; search?: string; showTime?: boolean }) {
@@ -20,7 +21,7 @@ export const ConsoleLineView = memo(function ConsoleLineView({ entry, known, sea
       {showTime && entry.time > 0 && <span className="hidden flex-none text-ink-3 select-none sm:inline">{time(entry.time)}</span>}
       <div className="min-w-0 flex-1 break-words whitespace-pre-wrap">
         {entry.type === 'command' ? (
-          <button type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-accent-ink" onClick={() => fillCommand(entry.message)} title="Put in the command line">
+          <button type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-accent-ink" onClick={() => fillCommand(entry.message)} title={t('console.put_in_line')}>
             <span className="select-none">$ </span>
             {segments(entry.message, EMPTY, search).map((s, i) => (s.mark ? <mark key={i}>{s.text}</mark> : s.text))}
           </button>
@@ -30,7 +31,7 @@ export const ConsoleLineView = memo(function ConsoleLineView({ entry, known, sea
               {segments(line, known, search).map((s, j) => {
                 const text = s.mark ? <mark>{s.text}</mark> : s.text
                 return s.command ? (
-                  <button key={j} type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-accent-ink underline decoration-dotted underline-offset-2" onClick={() => fillCommand(s.command!)} title="Put in the command line">
+                  <button key={j} type="button" className="console-cmd cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-accent-ink underline decoration-dotted underline-offset-2" onClick={() => fillCommand(s.command!)} title={t('console.put_in_line')}>
                     {text}
                   </button>
                 ) : (
@@ -83,14 +84,14 @@ export function ConsoleOutput({ entries, known, search, flip = false, showTime =
   return (
     <div className={`relative min-h-0 ${className}`} style={style}>
       <div ref={box} onScroll={onScroll} className="console-out h-full overflow-auto rounded-lg bg-inset px-2 py-2 font-mono text-[12px] leading-[1.55] shadow-[inset_0_0_0_1px_var(--line)]" role="log" aria-live="off">
-        {ordered.length === 0 && <div className="px-1 text-ink-3">{empty ?? 'Printer messages show here.'}</div>}
+        {ordered.length === 0 && <div className="px-1 text-ink-3">{empty ?? t('console.empty')}</div>}
         {ordered.map((e) => (
           <ConsoleLineView key={e.id} entry={e} known={known} search={search} showTime={showTime} />
         ))}
       </div>
       {paused && (
         <button type="button" className="btn btn-sm absolute right-3 shadow-lg" style={flip ? { top: 10 } : { bottom: 10 }} onClick={toLatest}>
-          {flip ? <ArrowUp size={14} /> : <ArrowDown size={14} />} Scroll to latest
+          {flip ? <ArrowUp size={14} /> : <ArrowDown size={14} />} {t('console.scroll_latest')}
         </button>
       )}
     </div>

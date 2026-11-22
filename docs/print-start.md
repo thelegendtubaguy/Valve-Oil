@@ -14,6 +14,8 @@ Prints sliced with this project's [start G-code](install.md#slicer-start-g-code)
 
 The start also cleans the nozzle at the rear chute and scrapes it on the rear of the bed before leveling, and draws the front prime line just ahead of your print when there's room.
 
+The prime line ends with a 0.8 mm retract, so the nozzle doesn't ooze on the way to your print, which can be across the bed. Klipper puts it back right before the print first extrudes, after that travel, so the print's first line starts where it should instead of a few millimetres late. This comes with Valve Oil's start G-code for OrcaSlicer and QIDI Studio; see [Slicer start G-code](install.md#slicer-start-g-code).
+
 ### No input shaper calibration
 
 If an axis has no input shaper, for example because no calibration is saved, Klipper gives it QIDI's stock calibration for your printer; on the Max 4, that's EI at 54.4 Hz on X and MZV at 36.2 Hz on Y. It's applied at startup and after every X/Y home, before the toolhead moves to home Z. Nothing is written to `printer.cfg`, so your own calibration replaces QIDI's as soon as it runs.

@@ -8,19 +8,20 @@ import { Spool } from '../Spool'
 import { useDryLeft } from '../../state/box-dry'
 import { fmtDuration } from '../../lib/format'
 import { QIDI_BOX_EXTERNAL_SLOT, slotStatus, type BoxState, type QidiBoxSlot } from '../../state/box'
+import { t, type MessageKey } from '../../i18n'
 
 type Handlers = { selected: number | null; onSelect: (slot: number) => void; onTool?: (tool: number, slot: number) => void; onHeater?: (box: number) => void }
 
-const STATUS: Partial<Record<ReturnType<typeof slotStatus>, { text: string; cls: string }>> = {
-  hub: { text: 'At hub', cls: 'text-warn' },
-  reading: { text: 'Reading tag', cls: 'text-accent-ink' },
+const STATUS: Partial<Record<ReturnType<typeof slotStatus>, { textKey: MessageKey; cls: string }>> = {
+  hub: { textKey: 'box.units.status.hub', cls: 'text-warn' },
+  reading: { textKey: 'box.units.status.reading', cls: 'text-accent-ink' },
 }
 
 // QIDI's Box humidity guide: below 40 %RH is normal, below 60 %RH slightly high, and above that high.
 export function humidityLevel(h: number) {
-  if (h < 40) return { cls: 'text-info', label: 'Normal humidity' }
-  if (h < 60) return { cls: 'text-warn', label: 'Slightly high humidity' }
-  return { cls: 'text-bad', label: 'High humidity' }
+  if (h < 40) return { cls: 'text-info', label: t('box.units.humidity.normal') }
+  if (h < 60) return { cls: 'text-warn', label: t('box.units.humidity.slightly_high') }
+  return { cls: 'text-bad', label: t('box.units.humidity.high') }
 }
 
 export function BoxUnits({ box, stack, ...h }: { box: BoxState; stack?: boolean } & Handlers) {
@@ -59,7 +60,7 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
   const tools = box.toolsBySlot[slot.index] ?? []
   const group = box.reloadGroups[slot.index]?.letter
   const loaded = box.loadedSlot === slot.index
-  const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? 'loaded' : null].filter(Boolean).join(' · ') : `${slot.label} · Empty`
+  const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? t('box.slot.loaded') : null].filter(Boolean).join(' · ') : t('box.units.empty_title', { slot: slot.label })
   return (
     <div
       role="button"
@@ -74,22 +75,22 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
       {/* The slot, its tag mark, then its tools and auto-reload group, all on the top line. */}
       <div className="flex w-full items-center gap-0.5 pl-1">
         <span className="text-[11px] font-bold text-ink-3">{slot.label}</span>
-        {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label="Read from the spool's RFID tag" />}
+        {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label={t('box.units.from_tag')} />}
         <span className="flex-1" />
-        {tools.map((t) => (
+        {tools.map((tool) => (
           <button
-            key={t}
+            key={tool}
             type="button"
             className={`rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold ${loaded ? 'bg-accent text-on-accent' : 'tone-muted'}`}
-            title={`${t} → ${slot.label}`}
-            onClick={(e) => (e.stopPropagation(), onTool?.(Number(t.slice(1)), slot.index))}
+            title={`${tool} → ${slot.label}`}
+            onClick={(e) => (e.stopPropagation(), onTool?.(Number(tool.slice(1)), slot.index))}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            {t}
+            {tool}
           </button>
         ))}
         {group && (
-          <span className="tone-warn rounded-[5px] px-1.5 py-px text-[10.5px] font-semibold" title={`Auto-reload group ${group}`}>
+          <span className="tone-warn rounded-[5px] px-1.5 py-px text-[10.5px] font-semibold" title={t('box.units.reload_group', { group })}>
             {group}
           </span>
         )}
@@ -97,11 +98,11 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
       <Spool slot={slot} size={50} label={false} loaded={loaded} />
       {slot.present && (
         <>
-          <div className="w-full truncate px-0.5 text-[14px] leading-tight font-bold">{slot.type ?? 'Unknown'}</div>
+          <div className="w-full truncate px-0.5 text-[14px] leading-tight font-bold">{slot.type ?? t('box.units.unknown_type')}</div>
           <div className="w-full truncate px-0.5 text-[11.5px] leading-tight text-ink-2">{slot.vendor ?? '—'}</div>
         </>
       )}
-      {status && <div className={`mt-0.5 text-[10px] font-bold tracking-[0.07em] uppercase ${status.cls}`}>{status.text}</div>}
+      {status && <div className={`mt-0.5 text-[10px] font-bold tracking-[0.07em] uppercase ${status.cls}`}>{t(status.textKey)}</div>}
     </div>
   )
 }
@@ -113,10 +114,18 @@ export function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: numbe
   const rolling = box.spoolRoll?.rolling
   const rollingHere = rolling != null && rolling.startsWith(String(unit))
   const inPrint = box.printState === 'printing' || box.printState === 'paused'
-  const heaterText = !c ? '' : c.drying ? `Drying ${c.target} °C${timer && timer.left > 0 ? ` · ${fmtDuration(timer.left)}` : ''}` : c.target ? `Heating ${c.target} °C` : box.canDry && !inPrint ? 'Dry or heat' : 'Heat'
+  const heaterText = !c
+    ? ''
+    : c.drying
+      ? `${t('box.units.drying_temp', { temp: c.target })}${timer && timer.left > 0 ? ` · ${fmtDuration(timer.left)}` : ''}`
+      : c.target
+        ? t('box.units.heating_temp', { temp: c.target })
+        : box.canDry && !inPrint
+          ? t('box.units.dry_or_heat')
+          : t('box.heater.heat')
   return (
     <div className="flex min-h-[30px] flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="section-label">Box {unit}</span>
+      <span className="section-label">{t('box.box_n', { n: unit })}</span>
       {c?.temperature != null && (
         <span className="num inline-flex items-center gap-1 text-[12.5px] font-semibold">
           <Thermometer size={13} className="text-ink-3" /> {Math.round(c.temperature)} °C
@@ -128,13 +137,13 @@ export function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: numbe
         </span>
       )}
       {rollingHere && (
-        <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-2" title="Turn spools while heating">
+        <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-2" title={t('box.settings.vo_box_spool_roll')}>
           <RotateCw size={12} className="spin" /> {rolling}
         </span>
       )}
       <span className="flex-1" />
       {c && (onHeater && c.heater ? (
-        <button className={`btn btn-sm shrink-0 ${c.target ? 'tool-on' : ''}`} onClick={() => onHeater(unit)} title={c.drying ? 'Drying: change or stop' : c.target ? 'Heating: change or turn off' : 'Dry the spools, or heat the Box'}>
+        <button className={`btn btn-sm shrink-0 ${c.target ? 'tool-on' : ''}`} onClick={() => onHeater(unit)} title={c.drying ? t('box.units.heater_drying_title') : c.target ? t('box.units.heater_heating_title') : t('box.units.heater_off_title')}>
           {c.target ? <Flame size={14} /> : <Sun size={14} />} {heaterText}
         </button>
       ) : c.target ? (
@@ -162,16 +171,16 @@ function ExternalRow({ box, slot, selected, onSelect, onTool }: { box: BoxState;
     >
       <Spool slot={slot} size={30} label={false} loaded={loaded && !on} />
       <div className="min-w-0">
-        <div className="section-label">External spool</div>
-        <div className="truncate font-semibold">{slot.name || slot.type ? [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') : <span className="text-ink-3">Not set</span>}</div>
+        <div className="section-label">{t('box.external_spool')}</div>
+        <div className="truncate font-semibold">{slot.name || slot.type ? [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') : <span className="text-ink-3">{t('box.units.not_set')}</span>}</div>
       </div>
       <div className="flex items-center gap-1.5">
-        {tools.map((t) => (
-          <button key={t} type="button" className="tone-muted rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold" onClick={(e) => (e.stopPropagation(), onTool?.(Number(t.slice(1)), slot.index))}>
-            {t}
+        {tools.map((tool) => (
+          <button key={tool} type="button" className="tone-muted rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold" onClick={(e) => (e.stopPropagation(), onTool?.(Number(tool.slice(1)), slot.index))}>
+            {tool}
           </button>
         ))}
-        {loaded && <span className="text-[10px] font-bold tracking-[0.07em] text-accent-ink uppercase">Loaded</span>}
+        {loaded && <span className="text-[10px] font-bold tracking-[0.07em] text-accent-ink uppercase">{t('box.units.status.loaded')}</span>}
       </div>
     </div>
   )

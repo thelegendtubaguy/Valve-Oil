@@ -10,7 +10,7 @@ from contextlib import ExitStack, contextmanager, nullcontext, suppress
 from dataclasses import replace
 from pathlib import Path
 
-from . import addons_cli, boot_path, firmware_update, install_flow, install_screen, messages, progress, safety, update_window, valve_oil_status
+from . import addons_cli, boot_path, firmware_update, install_flow, install_screen, messages, progress, safety, thr_firmware, update_window, valve_oil_status
 from .auto_update import (
     KIND_ENV,
     LOCK_HELD_ENV,
@@ -244,6 +244,14 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
             reporter.debug(event="cli.complete", mode=args.mode, return_code=rc)
             return rc
 
+        if (not args.dry_run and not checking_only and not in_firmware_update
+                and (paths.printer_data_root / safety.THR_RECOVERY_MARKER).exists()):
+            # A THR flash an earlier run left unfinished is finished first, as vo-thr-firmware.service does at boot.
+            with acquire(paths.lock_path):
+                try:
+                    thr_firmware.finish_pending(paths=paths, reporter=reporter, environ=env, input_stream=input_stream)
+                except InstallerError as exc:
+                    reporter.line(exc.message)
         safety.ensure_no_pending_firmware(paths.recovery_sentinel_path)
 
         if args.mode == "complete-host-reboot":

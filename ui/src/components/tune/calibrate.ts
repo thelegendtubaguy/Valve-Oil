@@ -1,5 +1,6 @@
 // Results Klipper reports only in the console (probe accuracy, input shaper calibration), and screws_tilt_adjust's
 // status, read into something the Calibrate tab can draw.
+import { t } from '../../i18n'
 
 /** Console entries as lines, without Klipper's "// " prefix. An entry can hold several lines. */
 export function consoleLines(entries: { text: string; time: number }[]): { text: string; time: number }[] {
@@ -81,7 +82,7 @@ export function tiltScrews(config: Record<string, any> | undefined, status: Reco
     const [h, m] = typeof r?.adjust === 'string' ? r.adjust.split(':').map(Number) : [NaN, NaN]
     screws.push({
       key,
-      name: config[`${key}_name`] || `Screw ${i}`,
+      name: config[`${key}_name`] || t('tune.helpers.screw_n', { n: i }),
       x: config[key][0],
       y: config[key][1],
       z: typeof r?.z === 'number' ? r.z : null,

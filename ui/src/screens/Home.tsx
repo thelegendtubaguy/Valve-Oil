@@ -1,80 +1,67 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Box as BoxIcon, Camera, ChevronRight, Disc3, Folder, History, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
-import { Card, HoldButton, Segmented } from '../components/ui'
-import { LivePreview } from '../components/gcode-preview/LivePreview'
+import { Camera, ChevronRight, Folder, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { HoldButton } from '../components/ui'
 import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
-import { BoxStrip } from '../components/BoxStrip'
 import { FileRow } from '../components/FileCard'
 import { DropZone } from '../components/Upload'
 import { PrintDialog } from '../components/PrintDialog'
-import { TempChart } from '../components/TempChart'
 import { MiniConsole } from '../components/MiniConsole'
-import { Health, JobDetails, Thermals, fmtLength } from '../components/Panels'
+import { fmtLength } from '../components/Panels'
 import { TuneDialog } from '../components/printing/TunePanel'
 import { ExcludeObjectsButton } from '../components/printing/ExcludeObjects'
 import { PauseAtLayerButton } from '../components/printing/PauseAtLayer'
-import { Motion } from '../components/Motion'
-import { HeaterDialog } from '../components/box/HeaterDialog'
-import { Operation } from '../components/box/Operation'
-import { SlotActions as SlotActionButtons } from '../components/box/SlotPanel'
-import { ToolMapDialog } from '../components/box/ToolMapDialog'
-import { Spool, slotTitle } from '../components/Spool'
+import { CameraDeck } from '../components/home-deck/CameraDeck'
+import { MacrosDeck, OutputsDeck } from '../components/home-deck/Deck'
+import { BoxDeck } from '../components/home-deck/BoxDeck'
+import { ToolheadCard } from '../components/home-deck/ToolheadCard'
+import { TempsCard } from '../components/home-deck/TempsCard'
 import { attempt } from '../components/toast'
 import { client, onKlippyReady, runGcode, usePrinter } from '../state/printer'
-import { slotByIndex, useBox, useBoxPresent } from '../state/box'
+import { useBoxPresent } from '../state/box'
 import { jobProgress, remainingSeconds, useJob } from '../state/job'
-import { thumbnailUrl, useFileMeta, useFiles, useHistory, useHistoryTotals, type HistoryJob } from '../state/files'
+import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
 import { href } from '../lib/router'
+import { t } from '../i18n'
+import { tr } from '../i18n/rich'
 
 const area = (name: string): CSSProperties => ({ gridArea: name })
 
 /**
- * Home is a cockpit: on a desktop it fills the screen in three columns (the job and heaters, the camera and
- * temperatures, the Box and console), and scrolls when a window is too short for them; on a tablet it's two columns
- * and on a phone one.
+ * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
+ * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
+ * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
+ * and a phone one.
  */
 export function HomeScreen() {
   const job = useJob()
-  const meta = useFileMeta(job.filename || null)
   const showJob = !!job.filename && job.state !== 'standby'
-  const boxPresent = useBoxPresent()
-  const camera = useWebcam()
   const jobs = useHistory(500)
+  const boxPresent = useBoxPresent()
   return (
-    <div className="cockpit">
-      <div className="col">
-        {showJob ? <JobCard style={area('job')} /> : <ReadyCard style={area('job')} jobs={jobs} />}
-        <div style={area('thermals')}>
-          <Thermals className="h-full" />
-        </div>
-        <RecentFiles jobs={jobs} />
-      </div>
-      <div className="col">
-        <CameraOrLayers cam={camera} />
-        <div style={area('chart')} className={camera ? 'h-[300px] wide:h-[290px] wide:flex-none' : 'grow h-[300px]'}>
-          <TempChart className="h-full" />
-        </div>
-        <div className="strip">
-          <div style={area('motion')}>
-            <Motion className="h-full" />
+    <div className="deck deck-4">
+      <div className="half">
+        <CameraDeck />
+        <div className="half-cols">
+          <div className="col">
+            {boxPresent && <BoxDeck />}
+            <SpoolmanCard />
           </div>
-          <div style={area('details')}>{showJob ? <JobDetails job={job} meta={meta} className="h-full" /> : <HistoryCard jobs={jobs} />}</div>
+          <div className="col">
+            <OutputsDeck />
+          </div>
         </div>
       </div>
       <div className="col">
-        {/* The Box and, when Moonraker has Spoolman, the spool in use share one cell, so neither leaves a gap when absent. */}
-        <div style={area('box')} className="grid content-start gap-3.5 empty:hidden">
-          {boxPresent && <BoxCard />}
-          <SpoolmanCard />
-        </div>
-        <div style={area('health')}>
-          <Health className="h-full" />
-        </div>
-        <div style={area('console')} className="grow">
-          <MiniConsole className="h-full" />
-        </div>
+        <ToolheadCard />
+        <TempsCard />
+      </div>
+      <div className="col">
+        {showJob ? <JobCard /> : <ReadyCard jobs={jobs} />}
+        <RecentFiles jobs={jobs} className="min-h-[240px]" />
+        <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
+        <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
       </div>
     </div>
   )
@@ -91,7 +78,14 @@ export function JobCard({ style }: { style?: CSSProperties }) {
   const colors = (meta?.filament_colors ?? []).map(normalizeQidiColor)
   const types = (meta?.filament_type ?? '').split(';').map((t) => t.trim())
   const finished = job.state === 'complete' || job.state === 'cancelled' || job.state === 'error'
-  const statusText = { printing: 'Now printing', paused: 'Paused', complete: 'Finished', cancelled: 'Cancelled', error: 'Stopped with an error', standby: '' }[job.state]
+  const statusText = {
+    printing: t('home.job.now_printing'),
+    paused: t('home.job.paused'),
+    complete: t('home.job.finished'),
+    cancelled: t('home.job.cancelled'),
+    error: t('home.job.error'),
+    standby: '',
+  }[job.state]
   const fill = finished ? (job.state === 'complete' ? 1 : p) : p
 
   return (
@@ -144,33 +138,33 @@ export function JobCard({ style }: { style?: CSSProperties }) {
             <i style={{ width: `${p * 100}%` }} />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Remaining" value={fmtDuration(remaining)} />
-            <Stat label="Done at" value={fmtEta(remaining)} />
-            <Stat label="Elapsed" value={fmtDuration(job.totalDuration)} />
+            <Stat label={t('home.job.remaining')} value={fmtDuration(remaining)} />
+            <Stat label={t('home.job.done_at')} value={fmtEta(remaining)} />
+            <Stat label={t('home.job.elapsed')} value={fmtDuration(job.totalDuration)} />
           </div>
           <div className="grid grid-cols-3 gap-2">
             {job.state === 'paused' ? (
               <button className="btn btn-primary btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.resume'))}>
-                <Play size={14} /> Resume
+                <Play size={14} /> {t('home.job.resume')}
               </button>
             ) : (
               <button className="btn btn-lg px-2!" onClick={() => attempt(() => client.call('printer.print.pause'))}>
-                <Pause size={14} /> Pause
+                <Pause size={14} /> {t('home.job.pause')}
               </button>
             )}
             <button className="btn btn-lg px-2!" onClick={() => setTune(true)}>
-              <SlidersHorizontal size={14} /> Tune
+              <SlidersHorizontal size={14} /> {t('home.job.tune')}
             </button>
             <HoldButton className="btn-lg px-2!" onHold={() => attempt(() => client.call('printer.print.cancel'))}>
-              <X size={14} /> Cancel <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">hold</span>
+              <X size={14} /> {tr('home.job.cancel_hold', {}, { hint: (c) => <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">{c}</span> })}
             </HoldButton>
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              Speed {Math.round(job.speedFactor * 100)}%
+              {t('home.job.speed', { pct: Math.round(job.speedFactor * 100) })}
             </button>
             <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              Flow {Math.round(job.extrudeFactor * 100)}%
+              {t('home.job.flow', { pct: Math.round(job.extrudeFactor * 100) })}
             </button>
             <button className="chip num cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
               Z {job.zOffset >= 0 ? '+' : ''}
@@ -184,14 +178,14 @@ export function JobCard({ style }: { style?: CSSProperties }) {
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Printing" value={fmtDuration(job.printDuration)} />
-            <Stat label="Filament" value={job.filamentUsed > 0 ? fmtLength(job.filamentUsed) : meta?.filament_total ? fmtLength(meta.filament_total) : '—'} />
-            <Stat label="Slicer" value={meta?.estimated_time ? fmtDuration(meta.estimated_time) : '—'} />
+            <Stat label={t('home.job.printing')} value={fmtDuration(job.printDuration)} />
+            <Stat label={t('home.job.filament')} value={job.filamentUsed > 0 ? fmtLength(job.filamentUsed) : meta?.filament_total ? fmtLength(meta.filament_total) : '—'} />
+            <Stat label={t('home.job.slicer')} value={meta?.estimated_time ? fmtDuration(meta.estimated_time) : '—'} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <ReprintButton filename={job.filename} />
             <button className="btn" onClick={() => attempt(() => runGcode('SDCARD_RESET_FILE'))}>
-              Done
+              {t('common.done')}
             </button>
           </div>
         </>
@@ -202,12 +196,12 @@ export function JobCard({ style }: { style?: CSSProperties }) {
 }
 
 // ---- between prints ----
-export function ReadyCard({ style, jobs, noActions }: { style?: CSSProperties; jobs: HistoryJob[] | null; noActions?: boolean }) {
+export function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
   const last = jobs?.[0]
   return (
     <section className="card grid content-start gap-3" style={style}>
       <div>
-        <div className="lbl">Ready to print</div>
+        <div className="lbl">{t('home.ready.title')}</div>
         {last ? (
           <div className="mt-1 flex items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -215,17 +209,16 @@ export function ReadyCard({ style, jobs, noActions }: { style?: CSSProperties; j
                 {displayName(last.filename)}
               </div>
               <div className="text-[12.5px] text-ink-3">
-                Last print, {last.status === 'completed' ? 'finished' : last.status === 'cancelled' ? 'cancelled' : 'failed'} {last.end_time ? fmtAgo(last.end_time) : ''}
+                {t(last.status === 'completed' ? 'home.ready.last_finished' : last.status === 'cancelled' ? 'home.ready.last_cancelled' : 'home.ready.last_failed', { ago: last.end_time ? fmtAgo(last.end_time) : '' })}
               </div>
             </div>
             <ReprintButton filename={last.filename} small />
           </div>
         ) : (
-          <div className="mt-1 text-ink-2">Upload a file or send one from your slicer.</div>
+          <div className="mt-1 text-ink-2">{t('home.ready.empty')}</div>
         )}
       </div>
       <DropZone className="py-3!" />
-      {!noActions && <QuickActions bare />}
     </section>
   )
 }
@@ -250,16 +243,16 @@ export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | nul
   return (
     <section className={`card grow ${className}`} style={area('files')}>
       <h3 className="card-title">
-        <Folder size={14} /> Recent files
+        <Folder size={14} /> {t('home.recent.title')}
         <a href={href('files')} className="aside inline-flex items-center gap-1">
-          All files <ChevronRight size={13} />
+          {t('home.recent.all')} <ChevronRight size={13} />
         </a>
       </h3>
       <div className="grow-body -mx-1.5 max-wide:max-h-[340px] max-wide:overflow-auto">
         {recent.map((f) => (
           <FileRow key={f.path} path={f.path} last={byFile.get(f.path)?.last} count={byFile.get(f.path)?.count ?? 0} onOpen={() => setOpen(f.path)} />
         ))}
-        {files && files.length === 0 && <div className="px-1.5 text-ink-3">No files yet.</div>}
+        {files && files.length === 0 && <div className="px-1.5 text-ink-3">{t('home.recent.none')}</div>}
       </div>
       {open && <PrintDialog filename={open} onClose={() => setOpen(null)} />}
     </section>
@@ -280,7 +273,7 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
   return (
     <>
       <button className={`btn ${small ? 'btn-sm' : 'btn-primary'}`} onClick={() => setOpen(true)}>
-        <RotateCcw size={small ? 13 : 14} /> Print again
+        <RotateCcw size={small ? 13 : 14} /> {t('home.job.print_again')}
       </button>
       {open && <PrintDialog filename={filename} onClose={() => setOpen(false)} />}
     </>
@@ -308,53 +301,6 @@ export function useWebcams(): Webcam[] {
     }
   }, [ready])
   return cams
-}
-
-export function useWebcam(): Webcam | null {
-  return useWebcams()[0] ?? null
-}
-
-/**
- * The camera, and while a print runs, the file's current layer from the G-code preview as a second view. Without a
- * camera, the layer view takes the card on its own.
- */
-export function CameraOrLayers({ cam, fit }: { cam: Webcam | null; fit?: boolean }) {
-  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
-  const [view, setView] = useState<'camera' | 'layers'>(() => (localStorage.getItem('vo-home-view') === 'layers' ? 'layers' : 'camera'))
-  const pick = (v: 'camera' | 'layers') => {
-    setView(v)
-    try {
-      localStorage.setItem('vo-home-view', v)
-    } catch {}
-  }
-  if (!printing) return cam ? <CameraCard cam={cam} fit={fit} /> : null
-  const shown = cam ? view : 'layers'
-  const toggle = cam && (
-    <div className="absolute top-2.5 right-2.5 z-10">
-      <Segmented
-        label="View"
-        value={shown}
-        onChange={pick}
-        options={[
-          { value: 'camera', label: 'Camera' },
-          { value: 'layers', label: 'Layers' },
-        ]}
-      />
-    </div>
-  )
-  if (shown === 'camera') return <CameraCard cam={cam!} toggle={toggle} fit={fit} />
-  return (
-    <section className={`card relative p-2.5! ${fit ? '' : 'grow wide:min-h-[280px]'}`} style={area('cam')}>
-      {toggle}
-      {fit && cam ? (
-        <div style={{ aspectRatio: cameraRatio(cam) }}>
-          <LivePreview className="h-full w-full rounded-[10px]" />
-        </div>
-      ) : (
-        <LivePreview className="aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1" />
-      )}
-    </section>
-  )
 }
 
 /** Full screen for the camera: the browser's, or where a page element can't have it (iPhone), the whole page. */
@@ -387,14 +333,6 @@ export function cameraRatio(cam: Webcam, measured?: number | null) {
   const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(cam.aspect_ratio ?? '')
   const r = measured ?? (m ? Number(m[1]) / Number(m[2]) : 16 / 9)
   return cam.rotation % 180 ? 1 / r : r
-}
-
-function CameraCard({ cam, toggle, fit }: { cam: Webcam; toggle?: ReactNode; fit?: boolean }) {
-  return (
-    <section className={`card p-2.5! ${fit ? '' : 'grow wide:min-h-[280px]'}`} style={area('cam')}>
-      <CameraView key={cam.name} cam={cam} toggle={toggle} fit={fit} />
-    </section>
-  )
 }
 
 /**
@@ -430,155 +368,15 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
       ) : (
         <div className="grid h-full place-items-center text-[#9aa1ad]">
           <span className="flex items-center gap-2">
-            <Camera size={16} /> Camera unavailable
+            <Camera size={16} /> {t('home.camera.unavailable')}
           </span>
         </div>
       )}
       <div className="absolute top-2.5 left-2.5 z-10">{name ?? <span className="cam-tag">{cam.name}</span>}</div>
       <button className="absolute right-2.5 bottom-2.5 rounded-md border-0 bg-black/50 px-2 py-0.5 text-[11px] text-white" onClick={fs.toggle}>
-        {fs.full ? 'Close' : 'Full screen'}
+        {fs.full ? t('common.close') : t('home.camera.full_screen')}
       </button>
       {!fs.full && toggle}
     </div>
   )
-}
-
-export function BoxCard() {
-  const box = useBox()
-  const [selected, setSelected] = useState<number | null>(null)
-  const [heater, setHeater] = useState<number | null>(null)
-  const [mapOpen, setMapOpen] = useState(false)
-  // Filament stuck between the hub and the toolhead selects its slot.
-  useEffect(() => {
-    if (box.strandedSlot != null) setSelected(box.strandedSlot)
-  }, [box.strandedSlot])
-  const loaded = box.slots.find((s) => s.index === box.loadedSlot)
-  const slot = slotByIndex(box, selected)
-  return (
-    <section className="card">
-      <h3 className="card-title">
-        <BoxIcon size={14} />
-        QIDI Box
-        <span className="aside flex items-center gap-1.5">
-          <span className="text-ink-3">{loaded ? `${loaded.label} loaded` : 'Nothing loaded'}</span>
-          <button className="btn btn-sm px-2! py-0.5! text-[11.5px]" disabled={box.mappingLocked} onClick={() => setMapOpen(true)} title={box.mappingLocked ? 'Tool mapping can be changed while the printer is idle' : 'Change which slot each tool loads'}>
-            Tools
-          </button>
-          <a href={href('filaments')} className="iconbtn h-6 w-6" title="Filament library" aria-label="Filament library">
-            <Disc3 size={14} />
-          </a>
-        </span>
-      </h3>
-      {box.task && (
-        <div className="mb-2.5">
-          <Operation box={box} bare />
-        </div>
-      )}
-      <BoxStrip box={box} size={38} compact selected={selected} onSelect={(i) => setSelected((s) => (s === i ? null : i))} onClimate={setHeater} />
-      {slot ? (
-        <div className="mt-2.5 rounded-[10px] bg-inset p-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          <div className="mb-2 flex items-center gap-2">
-            <Spool slot={slot} size={22} label={false} />
-            <span className="min-w-0 flex-1 truncate">
-              <b>{slot.label}</b> <span className="text-ink-2">{slotTitle(slot)}</span>
-            </span>
-            <button className="iconbtn h-6 w-6" onClick={() => setSelected(null)} aria-label="Close">
-              <X size={14} />
-            </button>
-          </div>
-          <SlotActionButtons box={box} slot={slot} withTagButtons />
-        </div>
-      ) : (
-        <div className="mt-1.5 text-[12px] text-ink-3">Click a slot for its actions, or a Box’s temperature for its heater.</div>
-      )}
-      {heater != null && <HeaterDialog box={box} boxNumber={heater} onClose={() => setHeater(null)} />}
-      <ToolMapDialog box={box} open={mapOpen} onClose={() => setMapOpen(false)} />
-    </section>
-  )
-}
-
-export function HistoryCard({ jobs }: { jobs: HistoryJob[] | null }) {
-  const totals = useHistoryTotals()
-  const weeks = 20
-  const cells = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const start = new Date(today)
-    start.setDate(start.getDate() - (weeks * 7 - 1) - today.getDay())
-    const days = new Map<number, { ok: number; bad: number }>()
-    for (const j of jobs ?? []) {
-      const d = new Date(j.start_time * 1000)
-      d.setHours(0, 0, 0, 0)
-      const k = d.getTime()
-      const e = days.get(k) ?? { ok: 0, bad: 0 }
-      if (j.status === 'completed') e.ok++
-      else if (j.status !== 'cancelled' && j.status !== 'in_progress') e.bad++
-      days.set(k, e)
-    }
-    const out: { date: Date; ok: number; bad: number }[] = []
-    for (let i = 0; i < weeks * 7; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
-      out.push({ date: d, ...(days.get(d.getTime()) ?? { ok: 0, bad: 0 }) })
-    }
-    return out
-  }, [jobs])
-  const done = (jobs ?? []).filter((j) => j.status === 'completed').length
-  const failed = (jobs ?? []).filter((j) => !['completed', 'cancelled', 'in_progress'].includes(j.status)).length
-  const max = Math.max(1, ...cells.map((c) => c.ok))
-  return (
-    <Card
-      className="h-full"
-      title={`Last ${weeks} weeks`}
-      icon={<History size={14} />}
-      aside={
-        <>
-          <span className="text-good">{done} done</span> · <span className="text-bad">{failed} failed</span>
-        </>
-      }
-    >
-      <div className="grid grid-flow-col grid-rows-7 gap-[3px] overflow-hidden" style={{ gridAutoColumns: '10px' }}>
-        {cells.map((c) => (
-          <i
-            key={c.date.getTime()}
-            title={`${c.date.toLocaleDateString()}: ${c.ok} done${c.bad ? `, ${c.bad} failed` : ''}`}
-            className="h-2.5 w-2.5 rounded-[2px]"
-            style={{
-              background: c.bad ? 'var(--red)' : c.ok ? `color-mix(in srgb, var(--green) ${Math.round(35 + (c.ok / max) * 65)}%, transparent)` : 'var(--inset)',
-              boxShadow: c.ok || c.bad ? undefined : 'inset 0 0 0 1px var(--line)',
-            }}
-          />
-        ))}
-      </div>
-      {totals && (
-        <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-          <Stat label="Print time" value={`${Math.round(totals.total_print_time / 3600)} h`} />
-          <Stat label="Filament" value={`${(totals.total_filament_used / 1000).toFixed(0)} m`} />
-          <Stat label="Jobs" value={String(totals.total_jobs)} />
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function QuickActions({ bare }: { bare?: boolean }) {
-  const lights = usePrinter((s) => s.objects.filter((o) => o.startsWith('output_pin ') && /light|led/i.test(o)))
-  const lightValues = usePrinter((s) => lights.map((o) => (s.status[o]?.value as number | undefined) ?? 0))
-  const homed = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
-  const buttons = (
-      <div className="flex flex-wrap gap-1.5">
-        <button className="btn btn-sm" onClick={() => attempt(() => runGcode('G28'))}>
-          Home all{homed === 'xyz' ? ' ✓' : ''}
-        </button>
-        <button className="btn btn-sm" onClick={() => attempt(() => runGcode('M84'))}>
-          Motors off
-        </button>
-        {lights.map((o, i) => (
-          <button key={o} className="btn btn-sm" onClick={() => attempt(() => runGcode(`SET_PIN PIN=${o.slice('output_pin '.length)} VALUE=${lightValues[i] > 0 ? 0 : 1}`))}>
-            {lightValues[i] > 0 ? 'Lights off' : 'Lights on'}
-          </button>
-        ))}
-      </div>
-  )
-  return bare ? buttons : <Card title="Quick actions">{buttons}</Card>
 }

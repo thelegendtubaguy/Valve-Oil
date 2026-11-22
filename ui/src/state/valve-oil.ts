@@ -24,9 +24,12 @@ import {
   type VoUpdateView,
   type VoUpdateWindowHours,
 } from '../qidi/vo-status'
+import { t } from '../i18n'
 
 export type ValveOilState = {
   status: VoStatus | null
+  /** The status was asked for since the Updates screen opened. Until then it may be hours old, from when the page loaded. */
+  fresh: boolean
   /** The service answered that it isn't there, or with something this page doesn't understand. */
   unavailable: boolean
   failures: number
@@ -84,6 +87,7 @@ function saveUpdating(updating: boolean) {
 
 export const valveOil = createStore<ValveOilState>({
   status: null,
+  fresh: false,
   unavailable: false,
   failures: 0,
   expectUpdate: loadUpdating(),
@@ -109,7 +113,7 @@ const apiBase = () => voStatusApiBase(import.meta.env.DEV ? location.origin : cl
 
 async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>) {
   const base = apiBase()
-  if (!base) throw new VoStatusRequestError(0, 'Not connected to this printer')
+  if (!base) throw new VoStatusRequestError(0, t('updates.status.not_connected'))
   return voStatusRequest(base, path, { method, token: null, signal, body })
 }
 
@@ -140,7 +144,7 @@ function schedule() {
 }
 
 function applyStatus(status: VoStatus) {
-  patch({ status, unavailable: false, failures: 0, reconnectingSince: null, expectUpdate: status.busy })
+  patch({ status, fresh: true, unavailable: false, failures: 0, reconnectingSince: null, expectUpdate: status.busy })
   saveUpdating(status.busy)
 }
 
@@ -181,19 +185,38 @@ export function startValveOilStatus() {
   started = true
   document.addEventListener('visibilitychange', () => (document.hidden ? stop() : wanted() && poll()))
   let ready = false
+  // The hourly update check writes what's waiting to a file that both this service and Klipper's printer warnings read.
+  // The warnings reach the page at once, so when Valve Oil's warnings change, the status is asked for again, and the
+  // Updates screen agrees with the banner that led there.
+  let voWarnings: unknown = undefined
   printer.subscribe(() => {
     const s = printer.get()
     const now = s.conn === 'open' && s.klippy === 'ready'
     if (ready && !now && !timer && !abortController) poll()
     ready = now
+    const w = (s.status.tltg_printer_warnings as { warnings?: unknown } | undefined)?.warnings
+    if (w !== voWarnings) {
+      const changed = JSON.stringify(valveOilWarningIds(w)) !== JSON.stringify(valveOilWarningIds(voWarnings))
+      voWarnings = w
+      if (changed && !timer && !abortController) poll()
+    }
   })
   poll()
+}
+
+function valveOilWarningIds(warnings: unknown): string[] {
+  if (!Array.isArray(warnings)) return []
+  return warnings.map((w) => (w && typeof w === 'object' ? String((w as { id?: unknown }).id ?? '') : '')).filter((id) => id.startsWith('valve_oil_'))
 }
 
 /** Keeps the status polled while the calling screen is shown. */
 export function watchValveOil() {
   watchers++
-  if (watchers === 1) poll()
+  if (watchers === 1) {
+    // What the page already has may be from when it loaded; the screen says it's checking until this answer arrives.
+    patch({ fresh: false })
+    poll()
+  }
   return () => {
     watchers--
     if (!wanted()) stop()

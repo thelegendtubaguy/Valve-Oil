@@ -1,0 +1,207 @@
+{
+  "details": "Details",
+  "nav": {
+    "home": "Home",
+    "files": "Files",
+    "control": "Control",
+    "console": "Console",
+    "tune": "Tune",
+    "history": "History",
+    "system": "System",
+    "settings": "Settings",
+    "updates": "Updates",
+    "more": "More",
+    "open_fluidd": "Open Fluidd",
+    "updating": "Updating"
+  },
+  "conn": {
+    "connecting": "Connecting to the printer…",
+    "unreachable": "Can’t reach the printer",
+    "trying": "Trying {{url}} again."
+  },
+  "update_banner": {
+    "updating": "Valve Oil is updating the printer."
+  },
+  "status": {
+    "offline": "Offline",
+    "klipper_startup": "Klipper startup",
+    "klipper_error": "Klipper error",
+    "klipper_shutdown": "Klipper shutdown",
+    "klipper_disconnected": "Klipper disconnected",
+    "klipper_unknown": "Klipper unknown",
+    "klipper_state": "Klipper {{state}}",
+    "printing": "Printing · {{pct}}%",
+    "paused": "Paused",
+    "box_busy": "Box busy",
+    "busy": "Busy"
+  },
+  "heaters": {
+    "nozzle": "Nozzle",
+    "bed": "Bed",
+    "chamber": "Chamber",
+    "box": "Box {{n}}",
+    "part_fan": "Part fan",
+    "aux_fan": "Auxiliary fan",
+    "chamber_exhaust": "Chamber exhaust"
+  },
+  "save_config": {
+    "waits": "Save config restarts Klipper, so it waits until the print ends.",
+    "confirm_title": "Save config and restart Klipper?",
+    "confirm_body": "SAVE_CONFIG writes Klipper's pending changes to printer.cfg and restarts Klipper.",
+    "changed": "Changed: {{sections}}",
+    "confirm": "Save and restart",
+    "button": "Save config"
+  },
+  "topbar": {
+    "switch_theme": "Switch theme",
+    "estop": "Emergency stop",
+    "estop_short": "Stop",
+    "estop_title": "Emergency stop: halts the printer immediately. Klipper must be restarted afterward.",
+    "estop_confirm_title": "Emergency stop?",
+    "estop_confirm_body": "Klipper halts the printer at once and has to be restarted afterward."
+  },
+  "warnings": {
+    "support_issue": "Open a support issue"
+  },
+  "klippy": {
+    "starting": "Klipper is starting…",
+    "stopped": "Klipper stopped",
+    "error": "Klipper reported an error",
+    "not_running": "Klipper isn’t running",
+    "firmware_restart": "Firmware restart",
+    "restart": "Restart Klipper",
+    "edit_config": "Edit configuration",
+    "logs": "Logs"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "title_count": "Notifications, {{n}}",
+    "clear_all": "Clear all",
+    "none": "No notifications",
+    "klipper_warnings": "Klipper warnings",
+    "moonraker_warnings": "Moonraker warnings",
+    "announcements": "Announcements",
+    "more_info": "More information",
+    "snooze": "Snooze",
+    "snooze_hour": "in 1 hour",
+    "snooze_day": "in 1 day",
+    "snooze_week": "in 7 days"
+  },
+  "thermals": {
+    "title": "Heaters and fans",
+    "speed": "Speed",
+    "heater_power": "Heater power"
+  },
+  "job": {
+    "title": "This print",
+    "speed": "Speed",
+    "flow": "Flow",
+    "filament": "Filament",
+    "layer": "Layer",
+    "left_by_file": "Left by file",
+    "left_by_slicer": "Left by slicer",
+    "against_slicer": "Against the slicer",
+    "on_time": "on time",
+    "slower": "{{pct}}% slower",
+    "faster": "{{pct}}% faster",
+    "slicer_estimate": "Slicer estimate",
+    "layer_height": "Layer height",
+    "of": "{{value}} of {{total}}",
+    "tall": "{{n}} mm tall"
+  },
+  "units": {
+    "m": "{{n}} m",
+    "g": "{{n}} g",
+    "gb": "{{n}} GB"
+  },
+  "health": {
+    "title": "Printer health",
+    "timers": "Timers",
+    "host_cpu": "Host CPU",
+    "memory": "Memory",
+    "host_temp": "Host temp",
+    "free_space": "Free space",
+    "up_for": "Up for",
+    "mcu_load": "MCU load",
+    "mcu_load_hint": "How busy each microcontroller is",
+    "mainboard": "Mainboard",
+    "warn": "Printer health, a reading is high",
+    "bad": "Printer health, a reading is too high"
+  },
+  "temps": {
+    "off": "off",
+    "running": "running",
+    "sensor": "sensor",
+    "fan_now": "Now {{pct}}%. Macros and the chamber guard can change it again.",
+    "target_title": "{{name}} target",
+    "now": "Now {{temp}} °C. Up to {{max}} °C.",
+    "now_heating": "Now {{temp}} °C, heating to {{target}} °C. Up to {{max}} °C.",
+    "set": "Set"
+  },
+  "chart": {
+    "title": "Temperatures",
+    "show": "Show {{name}}",
+    "hide": "Hide {{name}}",
+    "now": "now",
+    "minutes_back": "−{{m}}m",
+    "seconds_ago": "{{s}} s ago",
+    "aria": "Temperature history",
+    "window_short": "{{m}}m"
+  },
+  "mini_console": {
+    "title": "Console",
+    "open": "Open the console",
+    "macros": "Macros",
+    "macros_hint": "click to put in the command line",
+    "filter": "Filter",
+    "filter_macros": "Filter macros"
+  },
+  "file": {
+    "new": "New",
+    "printed": "Printed",
+    "printed_times": "Printed {{n}}×",
+    "cancelled": "Cancelled",
+    "printing": "Printing",
+    "failed": "Failed",
+    "select": "Select {{name}}",
+    "more_for": "More for {{name}}"
+  },
+  "print": {
+    "started": "Printing {{name}}",
+    "hold_delete": "Hold to delete",
+    "start": "Start print",
+    "layers": "{{n}} mm layers",
+    "modified": "modified {{ago}}",
+    "busy": "A print is running. Start this one after it finishes.",
+    "use_box": "Use QIDI Box",
+    "use_box_on": "Each filament prints from the Box slot chosen below.",
+    "use_box_off": "Prints from the external spool.",
+    "choose_slots": "Choose the Box slot for each filament in the file. Only loaded slots of the same filament type are listed; slots are matched by nearest color.",
+    "unnamed": "This file doesn’t say which filaments it uses, so every filament in its slicer project is listed. Any left without a slot keep the slot they were last mapped to.",
+    "external_spool": "External spool",
+    "none_of_type": "No {{type}} filament is loaded in the Box.",
+    "none_matching": "No matching filament is loaded in the Box.",
+    "map_all": "Choose a Box slot for every filament, or turn off the QIDI Box to print from the external spool.",
+    "no_toolhead_filament": "No filament is detected at the toolhead. Load the external spool before printing.",
+    "no_slots": "No Box slot has filament loaded."
+  },
+  "upload": {
+    "progress": "Uploading {{pct}}%",
+    "drop": "Drop G-code or .gcode.3mf",
+    "click": "or click to upload",
+    "uploading_one": "Uploading {{count}} file",
+    "uploading_other": "Uploading {{count}} files",
+    "title": "Uploads",
+    "cancelled": "Cancelled",
+    "failed": "Failed",
+    "cancel_named": "Cancel {{name}}"
+  },
+  "moonraker": {
+    "connection_closed": "Connection closed",
+    "not_connected": "Not connected to Moonraker",
+    "timed_out": "{{method}} timed out",
+    "upload_failed_status": "Upload failed ({{status}})",
+    "upload_failed": "Upload failed",
+    "misread": "Not sent: Klipper would misread the number in {{command}}"
+  }
+}

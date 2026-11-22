@@ -4,9 +4,10 @@ import { Dialog, Spinner, prompt } from '../ui'
 import { attempt, toast } from '../toast'
 import { client } from '../../state/printer'
 import { makeDir, thumbnailUrl, useDirectory, useFileMeta, type HistoryJob } from '../../state/files'
-import { alwaysHidden, asList, joinPath, validName, type FsEntry } from './fs'
+import { alwaysHidden, asList, columnLabel, joinPath, validName, type FsEntry } from './fs'
 import { fmtDuration } from '../../lib/format'
 import { fmtDate, fmtSize, outcomeText } from './cells'
+import { t } from '../../i18n'
 
 /** Picks a folder of the same root to move items into. */
 export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { root: string; rootLabel: string; items: FsEntry[]; from: string; onMove: (dest: string) => void; onClose: () => void }) {
@@ -16,7 +17,7 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
   const dirs = (dir?.dirs ?? []).filter((d) => !alwaysHidden(d) && !moving.has(d.path))
   const parts = at ? at.split('/') : []
   const newFolder = async () => {
-    const name = await prompt({ title: 'Add directory', input: { label: 'Directory name', value: '' } })
+    const name = await prompt({ title: t('files.browser.add_dir'), input: { label: t('files.browser.dir_name'), value: '' } })
     if (!name) return
     const err = validName(name)
     if (err) return toast(err, 'error')
@@ -26,17 +27,17 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
     <Dialog
       open
       onClose={onClose}
-      title={items.length === 1 ? `Move ${items[0].name}` : `Move ${items.length} items`}
+      title={items.length === 1 ? t('files.move.title_named', { name: items[0].name }) : t('files.move.title_items', { count: items.length })}
       footer={
         <>
           <button className="btn btn-ghost mr-auto" onClick={newFolder}>
-            <FolderPlus size={15} /> New folder
+            <FolderPlus size={15} /> {t('files.move.new_folder')}
           </button>
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={at === from} onClick={() => onMove(at)}>
-            Move here
+            {t('files.move.move_here')}
           </button>
         </>
       }
@@ -60,7 +61,7 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
             <Spinner />
           </div>
         ) : dirs.length === 0 ? (
-          <div className="px-2 py-4 text-center text-ink-3">No folders here</div>
+          <div className="px-2 py-4 text-center text-ink-3">{t('files.move.no_folders')}</div>
         ) : (
           dirs.map((d) => (
             <button key={d.path} className="flex items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left text-ink hover:bg-hover" onClick={() => setAt(d.path)}>
@@ -75,23 +76,24 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
   )
 }
 
-const META_LABELS: Record<string, string> = {
-  slicer: 'Slicer',
-  slicer_version: 'Slicer version',
-  estimated_time: 'Estimated time',
-  layer_height: 'Layer height',
-  first_layer_height: 'First layer height',
-  object_height: 'Height',
-  nozzle_diameter: 'Nozzle diameter',
-  filament_total: 'Filament',
-  filament_weight_total: 'Filament weight',
-  filament_type: 'Filament type',
-  filament_name: 'Filament name',
-  first_layer_extr_temp: 'First layer extruder temp',
-  first_layer_bed_temp: 'First layer bed temp',
-  chamber_temp: 'Chamber temp',
-  filament_change_count: 'Filament changes',
-}
+// The metadata shown by name, in this order, labelled as the file table's columns.
+const META_KEYS = [
+  'slicer',
+  'slicer_version',
+  'estimated_time',
+  'layer_height',
+  'first_layer_height',
+  'object_height',
+  'nozzle_diameter',
+  'filament_total',
+  'filament_weight_total',
+  'filament_type',
+  'filament_name',
+  'first_layer_extr_temp',
+  'first_layer_bed_temp',
+  'chamber_temp',
+  'filament_change_count',
+]
 
 function metaText(key: string, v: unknown): string {
   if (v == null || v === '') return '—'
@@ -114,8 +116,8 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
   const meta = fetched ?? entry.meta ?? null
   const thumb = root === 'gcodes' ? thumbnailUrl(entry.path, meta, 300) : null
   const colors = asList(meta?.filament_colors ?? meta?.extruder_colors)
-  const known = Object.keys(META_LABELS).filter((k) => meta?.[k] != null && meta[k] !== '')
-  const rest = meta ? Object.keys(meta).filter((k) => !(k in META_LABELS) && !['filename', 'size', 'modified', 'thumbnails'].includes(k)).sort() : []
+  const known = META_KEYS.filter((k) => meta?.[k] != null && meta[k] !== '')
+  const rest = meta ? Object.keys(meta).filter((k) => !META_KEYS.includes(k) && !['filename', 'size', 'modified', 'thumbnails'].includes(k)).sort() : []
   return (
     <Dialog open onClose={onClose} title={entry.name} size="wide">
       <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
@@ -126,24 +128,24 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
         )}
         <div className={`min-w-0 ${root === 'gcodes' ? '' : 'sm:col-span-2'}`}>
           <div className="row-k">
-            <span className="k">Path</span>
+            <span className="k">{t('files.info.path')}</span>
             <span className="v code break-all">{joinPath(root, entry.path)}</span>
           </div>
           <div className="row-k">
-            <span className="k">Size</span>
+            <span className="k">{columnLabel('size')}</span>
             <span className="v">{entry.kind === 'dir' ? '—' : fmtSize(entry.size)}</span>
           </div>
           <div className="row-k">
-            <span className="k">Modified</span>
+            <span className="k">{columnLabel('modified')}</span>
             <span className="v">{fmtDate(entry.modified)}</span>
           </div>
           <div className="row-k">
-            <span className="k">Permissions</span>
-            <span className="v">{entry.permissions === 'r' ? 'Read only' : 'Read and write'}</span>
+            <span className="k">{t('files.info.permissions')}</span>
+            <span className="v">{entry.permissions === 'r' ? t('files.read_only') : t('files.info.read_write')}</span>
           </div>
           {job && (
             <div className="row-k">
-              <span className="k">Last print</span>
+              <span className="k">{t('files.info.last_print')}</span>
               <span className="v">
                 {outcomeText(job)} · {fmtDate(job.start_time)}
               </span>
@@ -151,7 +153,7 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
           )}
           {colors.length > 0 && (
             <div className="row-k">
-              <span className="k">Colors</span>
+              <span className="k">{t('files.info.colors')}</span>
               <span className="v flex justify-end gap-1">
                 {colors.map((c, i) => (
                   <i key={i} className="swatch" style={{ background: c }} title={c} />
@@ -161,7 +163,7 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
           )}
           {known.map((k) => (
             <div key={k} className="row-k">
-              <span className="k">{META_LABELS[k]}</span>
+              <span className="k">{columnLabel(k)}</span>
               <span className="v break-words">{metaText(k, meta?.[k])}</span>
             </div>
           ))}
@@ -169,7 +171,7 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
       </div>
       {rest.length > 0 && (
         <details className="mt-4">
-          <summary className="section-label cursor-pointer">All metadata</summary>
+          <summary className="section-label cursor-pointer">{t('files.info.all_metadata')}</summary>
           <div className="mt-2 rounded-xl bg-inset px-3 py-1 shadow-[inset_0_0_0_1px_var(--line)]">
             {rest.map((k) => (
               <div key={k} className="row-k">

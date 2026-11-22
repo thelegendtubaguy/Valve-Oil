@@ -4,6 +4,7 @@ import { Box as BoxIcon, CircleAlert, LoaderCircle, RefreshCw, Square } from 'lu
 import { attempt } from '../toast'
 import { boxCommands, type BoxState } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
+import { t } from '../../i18n'
 
 /** A running Box flow, or the failed step with Retry and Stop, as the fork's QIDI Box card shows them. */
 export function Operation({ box, bare = false }: { box: BoxState; bare?: boolean }) {
@@ -27,13 +28,13 @@ export function Operation({ box, bare = false }: { box: BoxState; bare?: boolean
                 {p}
               </div>
             ))}
-            <div className="mt-1 text-[12.5px] text-ink-3">Retry runs the step again; Stop ends the Box operation.</div>
+            <div className="mt-1 text-[12.5px] text-ink-3">{t('box.operation.retry_hint')}</div>
             <div className="mt-2.5 flex flex-wrap gap-2">
               <button className="btn btn-sm btn-primary" disabled={!ready || pending} onClick={() => send(boxCommands.retry())}>
-                <RefreshCw size={13} /> Retry
+                <RefreshCw size={13} /> {t('common.retry')}
               </button>
               <button className="btn btn-sm" disabled={!ready || pending} onClick={() => send(boxCommands.stop())}>
-                <Square size={12} /> Stop
+                <Square size={12} /> {t('box.operation.stop')}
               </button>
             </div>
           </div>
@@ -46,7 +47,7 @@ export function Operation({ box, bare = false }: { box: BoxState; bare?: boolean
       <div className="flex items-center gap-2.5">
         <LoaderCircle size={17} className="spin flex-none text-accent-ink" />
         <span className="min-w-0 flex-1">
-          <span className="section-label mr-2">Box is working</span>
+          <span className="section-label mr-2">{t('box.operation.working')}</span>
           <span className="shimmer font-semibold">{box.taskText}</span>
         </span>
         <BoxIcon size={16} className="flex-none text-ink-3" />

@@ -83,6 +83,14 @@ The pop-up now accepts a board version that starts with QIDI's. It still appears
 
 The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.07.01` and Plus 5 and Smart 5 firmware `01.01.02.01`. The same change [hides QIDI's online firmware updates](install.md#qidis-own-firmware-updates) on the touchscreen. It keeps QIDI's original, and uninstall puts it back. A touchscreen app the installer doesn't recognize, such as one from another QIDI firmware, is left as it is.
 
+## QIDI app connections disabled for security
+
+On a printer linked to a QIDI account, QIDI's touchscreen app runs the peer-to-peer (P2P) remote access that QIDI's phone app uses for the camera and files. Some of its connections are disabled due to security concerns: the printer no longer relays other people's sessions or sends its own through other people's devices, and it ignores requests and settings from QIDI's P2P server about them.
+
+QIDI's phone app still reaches the printer on the same network. Away from it, for example over a phone's cellular connection, the session goes through QIDI's own relay server, and on the Smart 5 test printer the camera showed a black picture there.
+
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+
 ## Fixes from newer Klipper
 
 QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:

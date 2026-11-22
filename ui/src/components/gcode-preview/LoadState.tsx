@@ -1,5 +1,6 @@
 import { fmtBytes } from '../../lib/format'
 import { cancelGcode, loadGcode, type PreviewFile } from './loader'
+import { t, type MessageKey } from '../../i18n'
 
 /** Download and parse progress with Cancel, or what went wrong with a way to try again. */
 export function LoadState({ file, size, modified, compact }: { file: PreviewFile | null; size?: number; modified?: number; compact?: boolean }) {
@@ -12,7 +13,7 @@ export function LoadState({ file, size, modified, compact }: { file: PreviewFile
     return (
       <div className={`grid w-full gap-2 ${compact ? 'max-w-[260px]' : 'max-w-[340px] rounded-xl bg-surface p-4'}`} style={compact ? undefined : { boxShadow: 'var(--shadow-overlay)' }}>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="font-semibold">{downloading ? 'Downloading' : 'Parsing file'}</span>
+          <span className="font-semibold">{downloading ? t('preview.load.downloading') : t('preview.load.parsing')}</span>
           <span className="text-[12.5px] text-ink-3 num">{pct}%</span>
         </div>
         <div className="bar live">
@@ -20,10 +21,10 @@ export function LoadState({ file, size, modified, compact }: { file: PreviewFile
         </div>
         {!compact && (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[12.5px] text-ink-3 num">{total ? `${fmtBytes(done)} of ${fmtBytes(total)}` : ''}</span>
+            <span className="text-[12.5px] text-ink-3 num">{total ? t('preview.load.progress', { done: fmtBytes(done), total: fmtBytes(total) }) : ''}</span>
             {file && (
               <button className="btn btn-sm" onClick={() => cancelGcode(file.path)}>
-                Cancel
+                {t('common.cancel')}
               </button>
             )}
           </div>
@@ -32,11 +33,13 @@ export function LoadState({ file, size, modified, compact }: { file: PreviewFile
     )
   }
   if (file.phase === 'error' || file.phase === 'cancelled') {
+    // The worker can't show text in the UI's language, so it reports what went wrong by code where it knows it.
+    const reason = file.errorCode ? t(`preview.errors.${file.errorCode}` as MessageKey, file.errorVars) : (file.error ?? '')
     return (
       <div className="grid max-w-[340px] justify-items-center gap-3 text-center">
-        <div className="text-ink-2">{file.phase === 'error' ? `Failed to preview G-code file. ${file.error ?? ''}` : 'Preview cancelled.'}</div>
+        <div className="text-ink-2">{file.phase === 'error' ? t('preview.load.failed', { reason }) : t('preview.load.cancelled')}</div>
         <button className="btn btn-sm btn-primary" onClick={load}>
-          {file.phase === 'error' ? 'Try again' : 'Load preview'}
+          {file.phase === 'error' ? t('preview.load.try_again') : t('preview.load.load')}
         </button>
       </div>
     )

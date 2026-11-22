@@ -1,0 +1,232 @@
+{
+  "title": "Updates",
+  "refresh": "Refresh",
+  "unavailable": "Valve Oil's update status isn't available on this printer.",
+  "loading": "Loading Valve Oil's status…",
+  "reconnecting": "Waiting for the printer to answer. It restarts its services while it updates, so this is expected. This page reconnects by itself.",
+  "reconnecting_long_one": "The printer hasn't answered for {{count}} minute. Don't turn it off. Check its screen to see what it's doing.",
+  "reconnecting_long_other": "The printer hasn't answered for {{count}} minutes. Don't turn it off. Check its screen to see what it's doing.",
+  "dont_power_off": "Don't turn the printer off until it finishes.",
+  "card": {
+    "updating": "Updating",
+    "waiting": "Waiting to install",
+    "up_to_date": "Up to date",
+    "release": "Valve Oil release",
+    "unknown": "Unknown",
+    "dev_build": "Dev build",
+    "dev_build_commit": "Dev build {{commit}}",
+    "qidi_firmware": "QIDI firmware",
+    "target_firmware": "This Valve Oil release updates it to {{version}}",
+    "auto": "Automatic updates",
+    "auto_sub": "Install new Valve Oil releases, QIDI firmware, and board firmware by themselves while the printer is idle.",
+    "auto_error": "Automatic updates couldn't be changed: {{error}}",
+    "nothing_waiting": "Nothing is waiting.",
+    "update_now": "Update now",
+    "continue": "Continue the update",
+    "update_now_blocked": "Update now couldn't start. {{reasons}}",
+    "update_now_error": "The update couldn't be started: {{error}}",
+    "check_failed": "The last check for updates failed.",
+    "check_failed_message": "The last check for updates failed: {{message}}",
+    "report": "Report a problem",
+    "report_sub": "Opens a bug report on GitHub and downloads a support bundle with Klipper's, Moonraker's, and Valve Oil's logs. Attach the bundle to the issue.",
+    "open_issue": "Open an issue",
+    "support_error": "The support bundle couldn't be downloaded: {{error}}",
+    "last_checked": "Last checked for updates {{time}}",
+    "checking": "Checking…"
+  },
+  "window": {
+    "title": "Update window",
+    "hours": "Automatic updates start only between these hours.",
+    "any_hour": "Automatic updates can start at any hour.",
+    "timezone": {
+      "this_browser": "Times are in {{timezone}} (this browser's timezone).",
+      "utc": "Times are in UTC.",
+      "lookup": "Times are in {{timezone}} (found from the printer's internet address).",
+      "operator": "Times are in {{timezone}} (set over SSH).",
+      "browser": "Times are in {{timezone}} (set from a browser).",
+      "other": "Times are in {{timezone}}."
+    },
+    "use_timezone": "Use {{timezone}}",
+    "any_time": "Any time",
+    "set_hours": "Set hours",
+    "start_hour": "Start hour",
+    "to": "to",
+    "end_hour": "End hour",
+    "invalid": "Pick a different start and end hour.",
+    "error": "The update window couldn't be changed: {{error}}"
+  },
+  "waiting": {
+    "reinstall": "Valve Oil needs to be installed again (its files on the printer are missing or changed)",
+    "release_new": "A new Valve Oil release",
+    "release_current": "Valve Oil {{version}} (this printer has {{current}})",
+    "firmware": "QIDI firmware {{version}}",
+    "firmware_current": "QIDI firmware {{version}} (this printer has {{current}})",
+    "firmware_new": "A QIDI firmware update",
+    "board": "New firmware for {{name}}",
+    "board_unnamed": "New firmware for a board"
+  },
+  "notice": {
+    "auto_off": "An update is waiting. Automatic updates are off, so install it with Update now or by running the Valve Oil installer.",
+    "auto_off_reinstall": "Valve Oil needs to be installed again. Automatic updates are off, so install it with Update now or by running the Valve Oil installer.",
+    "blocked": "Automatic updates are on, but the update hasn't been installed yet: {{reasons}}.",
+    "blocked_reinstall": "Automatic updates are on, but Valve Oil hasn't been installed again yet: {{reasons}}.",
+    "window": "Automatic updates are on, so the update will be installed during the update window, {{window}}, while the printer is idle.",
+    "window_reinstall": "Automatic updates are on, so Valve Oil will be installed again during the update window, {{window}}, while the printer is idle.",
+    "next_check": "Automatic updates are on, so the update will be installed at the next update check while the printer is idle.",
+    "next_check_at": "Automatic updates are on, so the update will be installed at the next update check, around {{time}}, while the printer is idle.",
+    "next_check_reinstall": "Automatic updates are on, so Valve Oil will be installed again at the next update check while the printer is idle.",
+    "next_check_reinstall_at": "Automatic updates are on, so Valve Oil will be installed again at the next update check, around {{time}}, while the printer is idle.",
+    "firmware_busy": "The printer can't be used while it installs."
+  },
+  "confirm": {
+    "continue": "Continue the QIDI firmware update that stopped? The printer can't be used until the update finishes, which can take a while, and this page loses contact with the printer for part of that time. Don't turn the printer off until the update finishes.",
+    "finish": "Finish the update that stopped? The printer can't be used until it finishes, which can take a while, and this page loses contact with the printer for part of that time. Don't turn the printer off until the update finishes.",
+    "firmware": "Install everything that's waiting now, including QIDI firmware and board firmware? The printer can't be used until the update finishes, which can take a while, and this page loses contact with the printer for part of that time. Don't turn the printer off until the update finishes.",
+    "reinstall": "Install Valve Oil {{version}} again now? Its files on the printer are missing or changed. Klipper restarts while it installs, so the printer can't be used for a few minutes.",
+    "install_version": "Install Valve Oil {{version}} now? Klipper restarts while it installs, so the printer can't be used for a few minutes.",
+    "install_latest": "Install the latest Valve Oil release now? Klipper restarts while it installs, so the printer can't be used for a few minutes."
+  },
+  "blocked": {
+    "none": "Not available right now.",
+    "other": "Not available now: {{message}}.",
+    "code": {
+      "run_in_progress": "Available once the running update finishes.",
+      "installer_busy": "Valve Oil is checking for updates or installing. Available once it finishes.",
+      "printing": "A print is running or paused. Available once it finishes.",
+      "heaters_on": "A heater is on. Available once every heater is off.",
+      "printer_state_unknown": "Klipper hasn't said whether the printer is idle. Available once it's ready.",
+      "installer_missing": "Valve Oil's installer is missing from the printer. Install Valve Oil again to use Update now."
+    }
+  },
+  "progress": {
+    "running": {
+      "update_now": "Updating…",
+      "automatic": "Automatic update running…",
+      "install": "The Valve Oil installer is running…",
+      "other": "Updating…"
+    },
+    "result": {
+      "succeeded": {
+        "update_now": "The update finished",
+        "automatic": "The automatic update finished",
+        "install": "The Valve Oil installer finished",
+        "other": "The update finished"
+      },
+      "failed": {
+        "update_now": "The update failed",
+        "automatic": "The automatic update failed",
+        "install": "The Valve Oil installer failed",
+        "other": "The update failed"
+      },
+      "interrupted": {
+        "update_now": "The update stopped before it finished",
+        "automatic": "The automatic update stopped before it finished",
+        "install": "The Valve Oil installer stopped before it finished",
+        "other": "The update stopped before it finished"
+      }
+    },
+    "starting": "Starting the update…",
+    "resumed": "Picking up where the last attempt stopped.",
+    "firmware_failed": "The QIDI firmware update didn't finish",
+    "stopped_at": "It stopped at: {{step}}.",
+    "finish_hint": "Finish it with Update now or by running the Valve Oil installer.",
+    "continue_hint": "Continue it with Update now or by running the Valve Oil installer.",
+    "show_log": "Show log",
+    "hide_log": "Hide log"
+  },
+  "boards": {
+    "title": "Boards",
+    "mainboard": "Mainboard",
+    "closed_loop": "Closed-loop drivers",
+    "firmware": "Firmware {{version}}",
+    "firmware_unread": "Firmware not read",
+    "build": {
+      "patched": "Valve Oil's build",
+      "qidi": "QIDI's build",
+      "stock": "QIDI's build",
+      "superseded": "An earlier Valve Oil build"
+    },
+    "badge": {
+      "current": "Up to date",
+      "needs_image": "Update waiting",
+      "after_firmware": "Waiting for QIDI firmware",
+      "unrecognized_firmware": "Firmware not recognized",
+      "unrecognized_bootloader": "Not supported yet",
+      "held": "Kept on QIDI's firmware",
+      "touchscreen": "Update from the touchscreen",
+      "unknown": "Not checked"
+    },
+    "note": {
+      "unrecognized_bootloader": "Valve Oil doesn't recognize this board's bootloader yet, so it doesn't update this board or the printer's QIDI firmware. Open a support issue so a later release can support it.",
+      "unrecognized_bootloader_box": "Valve Oil doesn't recognize this Box's bootloader yet, so it leaves this Box as it is and keeps updating the rest of the printer. Open a support issue so a later release can support it.",
+      "unrecognized_firmware": "This board runs firmware Valve Oil doesn't recognize, so Valve Oil leaves it as it is. Open a support issue so a later release can support it.",
+      "unknown": "Valve Oil hasn't been able to read this board's firmware yet.",
+      "held_box": "This Box was put back on QIDI's firmware. Valve Oil leaves it there until you install the next Valve Oil release.",
+      "held_closed_loop": "Valve Oil left the closed-loop motor drivers on their firmware. Update them from the touchscreen's firmware page.",
+      "held": "Valve Oil leaves this board's firmware as it is.",
+      "after_firmware": "Valve Oil updates this board in the same update, right after it installs the QIDI firmware update.",
+      "after_firmware_version": "Valve Oil updates this board in the same update, right after it installs QIDI firmware {{version}}."
+    },
+    "support": {
+      "title": "Open a support issue for {{name}}",
+      "step_open": "Open the issue. The form comes with this printer, its QIDI firmware, and {{name}}'s report filled in.",
+      "step_origin": "Say how {{name}} got its firmware: it came with the printer, you bought it on its own, or QIDI sent it as a replacement.",
+      "step_report": "If the form's report says it was too long for the link, download the report and attach it.",
+      "open": "Open a support issue",
+      "download": "Download the report"
+    },
+    "report": "Report this board"
+  },
+  "install": {
+    "origin": {
+      "ssh": "Started over SSH",
+      "usb": "Started from a USB drive",
+      "automatic": "Started by automatic updates",
+      "firmware_update": "Continuing after the QIDI firmware update"
+    },
+    "origin_short": {
+      "ssh": "over SSH",
+      "usb": "from a USB drive",
+      "automatic": "by automatic updates",
+      "firmware_update": "after the QIDI firmware update"
+    },
+    "installer": "Valve Oil installer",
+    "updating_title": "Updating Valve Oil from {{from}} to {{to}}",
+    "reinstalling_title": "Installing Valve Oil again",
+    "reinstalling_version_title": "Installing Valve Oil {{version}} again",
+    "installing_title": "Installing Valve Oil",
+    "installing_version_title": "Installing Valve Oil {{version}}",
+    "step": "Step {{n}} of {{total}}",
+    "step_named": "Step {{n}} of {{total}}: {{step}}",
+    "checking": "Checking the printer",
+    "interrupted_title": "The install stopped before it finished",
+    "failed_title": "The install didn't finish",
+    "ran": "Ran {{time}}",
+    "dont_turn_off": "Don't turn the printer off. Klipper and Moonraker restart during the install, so this page may lose contact for a moment.",
+    "interrupted_body": "The installer stopped running partway, for example because its SSH session closed. Run the installer again to finish.",
+    "failed_body": "Its log says what went wrong and what state the printer was left in.",
+    "view_log": "View log"
+  },
+  "logs": {
+    "title": "Installer logs",
+    "none": "No installer logs yet. Each install, update, uninstall, and backup restore saves one here.",
+    "running": "Running",
+    "kept": "The installer keeps its newest ten logs. Attach the one that went wrong when you report a problem.",
+    "kind": {
+      "install": "Install",
+      "usb": "USB install",
+      "uninstall": "Uninstall",
+      "restore_backup": "Backup restore"
+    },
+    "last_succeeded": "Last install: {{version}}{{how}}{{at}}.",
+    "last_handed_off": "Last install{{how}}{{at}} went on in the QIDI firmware update.",
+    "last_stopped": "The last install{{how}}{{at}} stopped.",
+    "last_stopped_at": "The last install{{how}}{{at}} stopped at {{step}}."
+  },
+  "status": {
+    "run_in_progress": "another update is still running",
+    "printing": "a print is running or paused",
+    "invalid_response": "Invalid response",
+    "not_connected": "Not connected to this printer"
+  }
+}

@@ -3,6 +3,7 @@ import { FilePen, Folder, Plus, X } from 'lucide-react'
 import { Choices } from '../ui'
 import { Row, SettingsCard, ToggleRow } from './common'
 import { useUiSetting } from './fluidd'
+import { t } from '../../i18n'
 
 export function FilesSettings() {
   const [sortOrder, setSortOrder] = useUiSetting('general.textSortOrder')
@@ -12,25 +13,25 @@ export function FilesSettings() {
 
   return (
     <>
-      <p className="m-0 text-[12.5px] text-ink-3">Shared with Fluidd: a change here shows there too.</p>
-      <SettingsCard title="File browser" icon={<Folder size={14} />}>
-        <Row title="Text sort order" sub="How file names sort: as text, by a leading number, or as version numbers.">
+      <p className="m-0 text-[12.5px] text-ink-3">{t('settings.common.shared_with_fluidd')}</p>
+      <SettingsCard title={t('settings.files.browser')} icon={<Folder size={14} />}>
+        <Row title={t('settings.files.sort_order')} sub={t('settings.files.sort_order_sub')}>
           <Choices
             value={sortOrder}
             onChange={setSortOrder}
             options={[
-              { value: 'default', label: 'Default' },
-              { value: 'numeric-prefix', label: 'Numeric prefix' },
-              { value: 'version', label: 'Version' },
+              { value: 'default', label: t('settings.files.sort_default') },
+              { value: 'numeric-prefix', label: t('settings.files.sort_numeric') },
+              { value: 'version', label: t('settings.files.sort_version') },
             ]}
           />
         </Row>
-        <ToggleRow title="Drag-and-drop for files and folders" sub="Move files by dragging them onto a folder." checked={dragDrop} onChange={setDragDrop} />
+        <ToggleRow title={t('settings.files.drag_drop')} sub={t('settings.files.drag_drop_sub')} checked={dragDrop} onChange={setDragDrop} />
       </SettingsCard>
 
-      <SettingsCard title="File editor" icon={<FilePen size={14} />}>
-        <ToggleRow title="Require confirm when closing the editor with unsaved changes" checked={confirmClose} onChange={setConfirmClose} />
-        <Row title="Extensions to automatically open in edit mode" wide>
+      <SettingsCard title={t('settings.files.editor')} icon={<FilePen size={14} />}>
+        <ToggleRow title={t('settings.files.confirm_close')} checked={confirmClose} onChange={setConfirmClose} />
+        <Row title={t('settings.files.auto_edit')} wide>
           <ExtensionList value={extensions} onChange={setExtensions} />
         </Row>
       </SettingsCard>
@@ -53,16 +54,16 @@ function ExtensionList({ value, onChange }: { value: string[]; onChange: (v: str
         {value.map((v) => (
           <span key={v} className="chip code pr-1!">
             {v}
-            <button type="button" className="iconbtn h-5! w-5!" onClick={() => onChange(value.filter((x) => x !== v))} aria-label={`Remove ${v}`}>
+            <button type="button" className="iconbtn h-5! w-5!" onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
               <X size={12} />
             </button>
           </span>
         ))}
       </div>
       <div className="flex gap-1.5">
-        <input className="field code h-[30px] py-1" placeholder=".gcode" aria-label="Add an extension" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <input className="field code h-[30px] py-1" placeholder=".gcode" aria-label={t('settings.files.add_extension')} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
         <button type="button" className="btn btn-sm" disabled={!valid} onClick={add}>
-          <Plus size={13} /> Add
+          <Plus size={13} /> {t('common.add')}
         </button>
       </div>
     </div>

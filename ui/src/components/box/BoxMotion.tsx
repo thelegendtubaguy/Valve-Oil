@@ -5,26 +5,29 @@ import { confirm, SectionLabel } from '../ui'
 import { qidiBoxSlotLabel, qidiBoxSlotNumber } from '../../qidi/qidi-box'
 import { runGcode, usePrinter } from '../../state/printer'
 import { gcode } from '../control/gcode'
+import { t, type MessageKey } from '../../i18n'
+import { tr } from '../../i18n/rich'
 
 // Fallback for module versions that don't publish their fields.
 const FIELDS = ['fast_length', 'fast_speed_1', 'fast_speed_2', 'approach_speed', 'load_accel', 'unload_speed_1', 'unload_speed_2', 'unload_accel', 'unload_extruder_length']
 // Settings that apply to every slot and have no per-slot override.
 const GLOBAL_ONLY = ['unload_extruder_length']
 
-const LABELS: Record<string, string> = {
-  approach_speed: 'Approach speed',
-  hub_speed: 'Hub push speed',
-  fast_length: 'Fast length',
-  fast_speed: 'Fast speed',
-  fast_speed_1: 'Fast speed 1',
-  fast_speed_2: 'Fast speed 2',
-  load_accel: 'Load accel',
-  park_speed: 'Park speed',
-  unload_accel: 'Unload accel',
-  unload_extruder_length: 'Extruder retract',
-  unload_speed: 'Unload speed',
-  unload_speed_1: 'Unload speed 1',
-  unload_speed_2: 'Unload speed 2',
+// The fields with a label; any other the module publishes shows its own name.
+const LABELS: Record<string, MessageKey> = {
+  approach_speed: 'box.motion.labels.approach_speed',
+  hub_speed: 'box.motion.labels.hub_speed',
+  fast_length: 'box.motion.labels.fast_length',
+  fast_speed: 'box.motion.labels.fast_speed',
+  fast_speed_1: 'box.motion.labels.fast_speed_1',
+  fast_speed_2: 'box.motion.labels.fast_speed_2',
+  load_accel: 'box.motion.labels.load_accel',
+  park_speed: 'box.motion.labels.park_speed',
+  unload_accel: 'box.motion.labels.unload_accel',
+  unload_extruder_length: 'box.motion.labels.unload_extruder_length',
+  unload_speed: 'box.motion.labels.unload_speed',
+  unload_speed_1: 'box.motion.labels.unload_speed_1',
+  unload_speed_2: 'box.motion.labels.unload_speed_2',
 }
 
 type Values = Record<string, unknown>
@@ -60,7 +63,7 @@ export function BoxMotion() {
 
   if (!motion) return null
 
-  const notes = [...(motion.problems ?? []), ...(motion.vendor_keys?.length ? [`Vendor motion keys change the baseline: ${motion.vendor_keys.join(', ')}`] : [])]
+  const notes = [...(motion.problems ?? []), ...(motion.vendor_keys?.length ? [t('box.motion.vendor_keys', { keys: motion.vendor_keys.join(', ') })] : [])]
   const slots = motion.slots ?? {}
   // A printer whose settings all apply to every slot, such as the Plus 5, publishes no slots.
   const slotKeys = Object.keys(slots)
@@ -119,7 +122,7 @@ export function BoxMotion() {
   // The refused command's reason comes back with the request, so it's shown beside the fields.
   const run = async (scope: string, script: string, ask?: string) => {
     if (locked) return
-    if (ask && !(await confirm({ title: 'Load/unload motion', body: ask, confirm: 'Reset', danger: true }))) return
+    if (ask && !(await confirm({ title: t('box.motion.title'), body: ask, confirm: t('box.motion.reset'), danger: true }))) return
     setPending(true)
     setErrors(({ [scope]: _, ...rest }) => rest)
     try {
@@ -155,7 +158,7 @@ export function BoxMotion() {
           const wrong = f in d && invalid(f, d[f])
           return (
             <label key={f} className="grid min-w-0 content-start gap-1">
-              <span className="lbl truncate">{LABELS[f] ?? f}</span>
+              <span className="lbl truncate">{LABELS[f] ? t(LABELS[f]) : f}</span>
               <input
                 className="field num"
                 style={wrong || bad ? { boxShadow: 'inset 0 0 0 1.5px var(--crimson)' } : undefined}
@@ -167,7 +170,7 @@ export function BoxMotion() {
                 onChange={(e) => setDrafts((x) => ({ ...x, [scope]: { ...x[scope], [f]: e.target.value } }))}
               />
               <span className={`text-[11px] ${wrong ? 'text-bad' : 'text-ink-3'}`}>
-                {bad ? `Saved value ${String(saved[f])} is invalid; Apply clears it` : wrong ? `Whole number ${limitText(f)}` : limitText(f)}
+                {bad ? t('box.motion.saved_invalid', { value: String(saved[f]) }) : wrong ? t('box.motion.whole_number', { range: limitText(f) }) : limitText(f)}
               </span>
             </label>
           )
@@ -181,29 +184,33 @@ export function BoxMotion() {
     const o = slot?.overrides ?? {}
     const load = slot?.load ?? {}
     const unload = slot?.unload ?? {}
-    const v = (part: unknown, setting: string) => <b className={isSet(o[setting]) ? 'text-accent-ink' : 'font-normal'} title={isSet(o[setting]) ? 'Slot override' : undefined}>{isSet(part) ? String(part) : '?'}</b>
-    return (
-      <>
-        Load {v(load.fast_length, 'fast_length')} mm @ {v(load.fast_speed_1, 'fast_speed_1')}/{v(load.fast_speed_2, 'fast_speed_2')} → {v(load.approach_speed, 'approach_speed')} mm/s, accel {v(load.accel, 'load_accel')}; Unload {v(unload.speed_1, 'unload_speed_1')}/
-        {v(unload.speed_2, 'unload_speed_2')} mm/s, accel {v(unload.accel, 'unload_accel')}
-      </>
-    )
+    const v = (part: unknown, setting: string) => <b className={isSet(o[setting]) ? 'text-accent-ink' : 'font-normal'} title={isSet(o[setting]) ? t('box.motion.slot_override') : undefined}>{isSet(part) ? String(part) : '?'}</b>
+    return tr('box.motion.summary', {
+      fast_length: v(load.fast_length, 'fast_length'),
+      fast_speed_1: v(load.fast_speed_1, 'fast_speed_1'),
+      fast_speed_2: v(load.fast_speed_2, 'fast_speed_2'),
+      approach_speed: v(load.approach_speed, 'approach_speed'),
+      load_accel: v(load.accel, 'load_accel'),
+      unload_speed_1: v(unload.speed_1, 'unload_speed_1'),
+      unload_speed_2: v(unload.speed_2, 'unload_speed_2'),
+      unload_accel: v(unload.accel, 'unload_accel'),
+    })
   }
   const slotErrors = (key: string) =>
     (
       [
-        ['Load', slots[key]?.load],
-        ['Unload', slots[key]?.unload],
+        ['box.motion.load_error', slots[key]?.load],
+        ['box.motion.unload_error', slots[key]?.unload],
       ] as const
     )
       .filter(([, p]) => p?.state === 'error' && p.error)
-      .map(([l, p]) => `${l}: ${p?.error}`)
+      .map(([k, p]) => t(k, { error: String(p?.error) }))
 
   return (
     <div className="grid gap-2.5">
-      <SectionLabel>Load/unload motion</SectionLabel>
+      <SectionLabel>{t('box.motion.title')}</SectionLabel>
       {!active ? (
-        <div className="text-ink-3">{motion.status || 'Box motion settings unavailable'}</div>
+        <div className="text-ink-3">{motion.status || t('box.motion.unavailable')}</div>
       ) : (
         <>
           {notes.map((n) => (
@@ -211,8 +218,8 @@ export function BoxMotion() {
               {n}
             </div>
           ))}
-          {locked && !pending && <div className="text-[12.5px] text-ink-3">Editing is unavailable while printing.</div>}
-          <div className="text-[12.5px] text-ink-3">All slots. Blank fields use the vendor value.</div>
+          {locked && !pending && <div className="text-[12.5px] text-ink-3">{t('box.motion.locked')}</div>}
+          <div className="text-[12.5px] text-ink-3">{t('box.motion.global_hint')}</div>
           {fields('global')}
           {errors.global && (
             <div className="tone-bad rounded-lg px-3 py-2 text-ink" role="alert">
@@ -220,11 +227,11 @@ export function BoxMotion() {
             </div>
           )}
           <div className="flex flex-wrap justify-end gap-2">
-            <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run('global', 'VO_BOX_MOTION RESET=1', 'Reset all Box motion settings and every slot override to vendor values?')}>
-              Reset
+            <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run('global', 'VO_BOX_MOTION RESET=1', t('box.motion.reset_all_confirm'))}>
+              {t('box.motion.reset')}
             </button>
             <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges('global')} onClick={() => apply('global')}>
-              Apply
+              {t('common.apply')}
             </button>
           </div>
           {slotKeys.length > 0 && (
@@ -235,7 +242,7 @@ export function BoxMotion() {
                     <b>{qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0)}</b>
                     <span className="min-w-0 flex-1 text-[12.5px] text-ink-2">{summary(key)}</span>
                     <button className="btn btn-sm btn-ghost" onClick={() => toggle(key)}>
-                      {open === key ? 'Close' : 'Edit'}
+                      {open === key ? t('common.close') : t('common.edit')}
                     </button>
                   </div>
                   {slotErrors(key).map((e) => (
@@ -245,7 +252,7 @@ export function BoxMotion() {
                   ))}
                   {open === key && (
                     <div className="mt-2.5 grid gap-2.5">
-                      <div className="text-[12.5px] text-ink-3">Blank fields follow the global setting.</div>
+                      <div className="text-[12.5px] text-ink-3">{t('box.motion.slot_hint')}</div>
                       {fields(key)}
                       {errors[key] && (
                         <div className="tone-bad rounded-lg px-3 py-2 text-ink" role="alert">
@@ -256,12 +263,12 @@ export function BoxMotion() {
                         <button
                           className="btn btn-sm btn-ghost"
                           disabled={locked}
-                          onClick={() => run(key, `VO_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, `Clear every override for slot ${qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0)}?`)}
+                          onClick={() => run(key, `VO_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, t('box.motion.reset_slot_confirm', { slot: qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0) }))}
                         >
-                          Reset slot
+                          {t('box.motion.reset_slot')}
                         </button>
                         <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges(key)} onClick={() => apply(key)}>
-                          Apply
+                          {t('common.apply')}
                         </button>
                       </div>
                     </div>

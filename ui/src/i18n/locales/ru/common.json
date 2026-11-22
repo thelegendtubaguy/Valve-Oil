@@ -1,0 +1,43 @@
+{
+  "cancel": "Отмена",
+  "ok": "ОК",
+  "save": "Сохранить",
+  "close": "Закрыть",
+  "dismiss": "Скрыть",
+  "delete": "Удалить",
+  "remove": "Убрать",
+  "edit": "Изменить",
+  "rename": "Переименовать",
+  "retry": "Повторить",
+  "apply": "Применить",
+  "add": "Добавить",
+  "back": "Назад",
+  "done": "Готово",
+  "loading": "Загрузка…",
+  "on": "Вкл.",
+  "off": "Выкл.",
+  "yes": "Да",
+  "no": "Нет",
+  "lower": "Уменьшить",
+  "raise": "Увеличить",
+  "lower_named": "Уменьшить: {{name}}",
+  "raise_named": "Увеличить: {{name}}",
+  "chamber": "Термокамера",
+  "time": {
+    "hours_minutes": "{{h}} ч {{mm}} мин",
+    "minutes": "{{m}} мин",
+    "seconds": "{{s}} с",
+    "just_now": "только что",
+    "minutes_ago": "{{m}} мин назад",
+    "hours_ago": "{{h}} ч назад",
+    "days_ago_one": "{{count}} день назад",
+    "days_ago_few": "{{count}} дня назад",
+    "days_ago_many": "{{count}} дней назад",
+    "days_ago_other": "{{count}} дня назад"
+  },
+  "bytes": {
+    "b": "{{n}} B",
+    "kb": "{{n}} KB",
+    "mb": "{{n}} MB"
+  }
+}

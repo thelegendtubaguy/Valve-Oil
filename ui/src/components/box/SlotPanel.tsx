@@ -8,6 +8,7 @@ import { TagWriteDialog, WriteTagIcon } from '../TagWriteDialog'
 import { boxCommands, reloadText, slotActions, slotOverline, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { runGcode } from '../../state/printer'
 import { FilamentDialog } from './FilamentDialog'
+import { t } from '../../i18n'
 
 const JOG = 10
 
@@ -18,17 +19,17 @@ function TagButtons({ box, slot, className = '', onEdit, onWrite, noEdit }: { bo
   return (
     <span className={`inline-flex gap-0.5 ${className}`}>
       {isBox && (
-        <button className="iconbtn" disabled={!a.rfid} title="Read RFID" aria-label="Read RFID" onClick={() => attempt(() => runGcode(boxCommands.rfid(box, slot.index)))}>
+        <button className="iconbtn" disabled={!a.rfid} title={t('box.slot.read_rfid')} aria-label={t('box.slot.read_rfid')} onClick={() => attempt(() => runGcode(boxCommands.rfid(box, slot.index)))}>
           <Nfc size={16} />
         </button>
       )}
       {box.canWriteTag && isBox && (
-        <button className="iconbtn" disabled={!a.writeTag} title="Write spool tag" aria-label="Write spool tag" onClick={onWrite}>
+        <button className="iconbtn" disabled={!a.writeTag} title={t('box.slot.write_tag')} aria-label={t('box.slot.write_tag')} onClick={onWrite}>
           <WriteTagIcon size={16} />
         </button>
       )}
       {box.canEditFilament && !noEdit && (
-        <button className="iconbtn" disabled={!a.edit} title="Edit filament" aria-label="Edit filament" onClick={onEdit}>
+        <button className="iconbtn" disabled={!a.edit} title={t('box.slot.edit_filament')} aria-label={t('box.slot.edit_filament')} onClick={onEdit}>
           <Pencil size={15} />
         </button>
       )}
@@ -63,28 +64,28 @@ export function SlotActions({ box, slot, className = '', withTagButtons = true, 
           {isBox && (
             <>
               <button className={`btn btn-sm ${a.load ? 'btn-primary' : ''}`} disabled={!a.load} onClick={() => run(boxCommands.load(box, slot.index))}>
-                Load
+                {t('box.slot.load')}
               </button>
               <button className="btn btn-sm" disabled={!a.unload} onClick={() => run(boxCommands.unload(box, slot.index))}>
-                Unload
+                {t('box.slot.unload')}
               </button>
               <button className="btn btn-sm" disabled={!a.eject} onClick={() => run(boxCommands.eject(box, slot.index))}>
-                Eject
+                {t('box.slot.eject')}
               </button>
             </>
           )}
           {showCut && (
-            <button className="btn btn-sm" disabled={!a.cut || cutting} onClick={cut} title="Cut the filament at the toolhead without heating">
-              Cut
+            <button className="btn btn-sm" disabled={!a.cut || cutting} onClick={cut} title={t('box.slot.cut_title')}>
+              {t('box.slot.cut')}
             </button>
           )}
           {box.canJog && isBox && (
             <span className="inline-flex">
-              <button className="btn btn-sm rounded-r-none! px-2!" disabled={!a.jog} onClick={() => run(boxCommands.jog(slot.index, JOG))} title={`In ${JOG} mm`} aria-label={`In ${JOG} mm`}>
-                <ArrowUp size={14} /> In
+              <button className="btn btn-sm rounded-r-none! px-2!" disabled={!a.jog} onClick={() => run(boxCommands.jog(slot.index, JOG))} title={t('box.slot.jog_in_title', { mm: JOG })} aria-label={t('box.slot.jog_in_title', { mm: JOG })}>
+                <ArrowUp size={14} /> {t('box.slot.jog_in')}
               </button>
-              <button className="btn btn-sm ml-px rounded-l-none! px-2!" disabled={!a.jog} onClick={() => run(boxCommands.jog(slot.index, -JOG))} title={`Out ${JOG} mm`} aria-label={`Out ${JOG} mm`}>
-                <ArrowDown size={14} /> Out
+              <button className="btn btn-sm ml-px rounded-l-none! px-2!" disabled={!a.jog} onClick={() => run(boxCommands.jog(slot.index, -JOG))} title={t('box.slot.jog_out_title', { mm: JOG })} aria-label={t('box.slot.jog_out_title', { mm: JOG })}>
+                <ArrowDown size={14} /> {t('box.slot.jog_out')}
               </button>
             </span>
           )}
@@ -92,9 +93,9 @@ export function SlotActions({ box, slot, className = '', withTagButtons = true, 
         </div>
       )}
       {a.hint && <div className="tone-warn mt-2.5 rounded-lg px-3 py-2 text-[12.5px] text-ink">{a.hint}</div>}
-      {box.printState === 'printing' && isBox && <div className="mt-2 text-[12.5px] text-ink-3">Loading and unloading are unavailable while printing.</div>}
+      {box.printState === 'printing' && isBox && <div className="mt-2 text-[12.5px] text-ink-3">{t('box.slot.printing_hint')}</div>}
       {!box.canEditFilament && box.filamentDatabaseInvalid && (
-        <div className="mt-2 text-[12.5px] text-bad">The filament list qidi_filament_config/filament-0.4.json lists no filaments. Check it is valid JSON, then restart the printer.</div>
+        <div className="mt-2 text-[12.5px] text-bad">{t('box.slot.database_invalid')}</div>
       )}
       {editOpen && <FilamentDialog box={box} slot={slot} onClose={() => setEditOpen(false)} />}
       {tagOpen && <TagWriteDialog box={box} slot={slot} onClose={() => setTagOpen(false)} />}
@@ -108,12 +109,12 @@ export function SlotPanel({ box, slot, bare }: { box: BoxState; slot: QidiBoxSlo
   const isBox = slot.index !== QIDI_BOX_EXTERNAL_SLOT
   // The filament as one name: the vendor, then its name, unless the name already starts with it ("QIDI PLA Basic").
   const name = slot.name ?? slot.type
-  const filament = !slot.present ? 'Empty' : name ? (slot.vendor && !name.toLowerCase().startsWith(slot.vendor.toLowerCase()) ? `${slot.vendor} ${name}` : name) : 'Unknown filament'
+  const filament = !slot.present ? t('box.empty') : name ? (slot.vendor && !name.toLowerCase().startsWith(slot.vendor.toLowerCase()) ? `${slot.vendor} ${name}` : name) : t('box.unknown_filament')
   const details: { key: string; icon?: React.ReactNode; text: string; cls?: string }[] = [
-    ...(slot.present && slot.minTemp != null && slot.maxTemp != null ? [{ key: 'nozzle', text: `Nozzle ${slot.minTemp}–${slot.maxTemp} °C` }] : []),
-    ...(slot.present && slot.boxMaxTemp != null && slot.boxMaxTemp > 0 ? [{ key: 'heat', icon: <Flame size={12} />, text: `Heat up to ${slot.boxMaxTemp} °C` }] : []),
-    ...(slot.reading ? [{ key: 'rfid', icon: <Nfc size={12} />, text: 'Reading RFID…', cls: 'text-accent-ink' }] : []),
-    ...(box.fromTag[slot.index] && !slot.reading ? [{ key: 'tag', icon: <Tag size={12} />, text: 'Set from the spool’s tag', cls: 'text-accent-ink' }] : []),
+    ...(slot.present && slot.minTemp != null && slot.maxTemp != null ? [{ key: 'nozzle', text: t('box.slot.nozzle_temps', { min: slot.minTemp, max: slot.maxTemp }) }] : []),
+    ...(slot.present && slot.boxMaxTemp != null && slot.boxMaxTemp > 0 ? [{ key: 'heat', icon: <Flame size={12} />, text: t('box.slot.heat_up_to', { temp: slot.boxMaxTemp }) }] : []),
+    ...(slot.reading ? [{ key: 'rfid', icon: <Nfc size={12} />, text: t('box.slot.reading'), cls: 'text-accent-ink' }] : []),
+    ...(box.fromTag[slot.index] && !slot.reading ? [{ key: 'tag', icon: <Tag size={12} />, text: t('box.slot.from_tag'), cls: 'text-accent-ink' }] : []),
     ...(slot.present && isBox ? [{ key: 'reload', icon: <RefreshCw size={12} />, text: reloadText(box, slot) }] : []),
   ]
   return (
@@ -124,7 +125,7 @@ export function SlotPanel({ box, slot, bare }: { box: BoxState; slot: QidiBoxSlo
           <div className="section-label truncate">{slotOverline(box, slot)}</div>
           {/* The filament's name is its edit button: material, brand, and color. */}
           {box.canEditFilament && slot.present ? (
-            <button type="button" className="sp-edit" disabled={!slotActions(box, slot).edit} onClick={() => setEditOpen(true)} title="Change the material, brand, or color">
+            <button type="button" className="sp-edit" disabled={!slotActions(box, slot).edit} onClick={() => setEditOpen(true)} title={t('box.slot.change_filament')}>
               <span className="truncate">{filament}</span>
               <Pencil size={15} />
             </button>

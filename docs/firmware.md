@@ -38,6 +38,20 @@ A board with the earlier build of the fix, which reported QIDI's `02.02.01.08`, 
 
 **To go back to stock firmware:** see [Restore the stock THR firmware from backup](../firmware/README.md#restore-the-stock-thr-firmware-from-backup). The next install, or the next update check with automatic updates on, flashes Valve Oil's THR firmware again. Details on supported bootloaders and recovery are in [THR-only operations](../firmware/FLASHING.md).
 
+### If a THR flash is interrupted
+
+Valve Oil finishes a THR flash that something interrupts: a moment when the THR doesn't answer, the installer being stopped, the SSH session closing, or the printer restarting or losing power.
+
+- While the installer is still running, it carries on with the flash, or finishes it before it goes on.
+- Otherwise, turn the printer off with its power switch, wait 10 seconds, and turn it on again. Before Klipper and the touchscreen start, Valve Oil finishes the flash and reads it back, and then the printer starts as usual. `./install.sh` and the next install or update finish it too. Until then, Klipper can't reach the THR, and the installer's other commands stop with `A THR firmware flash didn't finish`.
+- If Valve Oil's firmware can't be put on, the THR gets QIDI's firmware back, and the next install or update flashes it again. A THR that ends up with QIDI's firmware keeps your input shaper calibration; one that ends up with Valve Oil's asks for a new one, as after any THR flash.
+
+**Keep the printer powered on while the THR is flashed.** It takes a few seconds, once per printer. What a power cut in those seconds does depends on the THR's bootloader; its SHA-256 is `bootloader_sha256` in the `report.json` under `~/printer_data/.tltg_thr_firmware_backups/thr-*/before/`:
+
+- `46358f30…`, on most Max 4 and Plus 5 printers: Valve Oil finishes the flash when the printer starts again.
+- `31f8344d…` and `0302f39c…` (Max 4 and Plus 5), and `a21a3019…` (Smart 5): the bootloader listens only for its first 4 seconds after power-on (5 on the Smart 5). Valve Oil reaches it about 3.3 seconds after power-on on a Max 4 and a Smart 5, and then finishes the flash. A Plus 5 starts more slowly, and Valve Oil reaches its THR about 3.9 seconds after power-on, with almost no time to spare. If the bootloader isn't reached in time after the THR's old firmware was erased, the THR needs a programmer on its SWD pins.
+- `0302f39c…` also stops answering until the power is cut if the THR's link to the printer drops for 10 seconds or more during the flash, or if the THR's answer to the first block of firmware never arrives; it then needs a programmer as well.
+
 ## QIDI Box firmware
 
 QIDI's USB Box firmware turns every Klipper shutdown of the Box, such as an emergency stop or a heater safety limit, into a restart. Klipper then reports `Lost communication with MCU 'mcu_boxN'` instead of the reason, and every other Box drops too. The Valve Oil Box firmware keeps the Box connected, so Klipper shows what actually happened.
