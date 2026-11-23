@@ -70,8 +70,9 @@ TRANSCEIVE_CMD, MFAUTHENT_CMD = 0x0C, 0x0E
 DEFAULT_KEY = b"\xff" * 6
 TYPE2_PAGE_COUNT = 32  # pages 4..35 hold Anycubic, Elegoo, TigerTag, and OpenTag3D data
 NTAG_PAGES = {0x0F: 45, 0x11: 135, 0x13: 231}  # GET_VERSION storage size byte: NTAG213/215/216
-PUBLIC_KEYS = (("default", DEFAULT_KEY), ("mad", bytes.fromhex("a0a1a2a3a4a5")),
-               ("ndef", bytes.fromhex("d3f7d3f7d3f7")))
+NDEF_KEY = bytes.fromhex("d3f7d3f7d3f7")
+PUBLIC_KEYS = (("default", DEFAULT_KEY), ("mad", bytes.fromhex("a0a1a2a3a4a5")), ("ndef", NDEF_KEY))
+QIDI_KEYS = (DEFAULT_KEY, NDEF_KEY)  # sector 1 of blank tags, and of QIDI's spool tags
 MAX_AUTOMATIC_REPORTS = 20
 NAME_MAGIC, NAME_LENGTH = b"VO\x01", 28  # name field: magic, length, UTF-8 name, zero padding to 32 bytes
 WRITE_AREA = 48  # QIDI block and name field: MIFARE blocks 4-6, NTAG pages 4-15
@@ -299,6 +300,13 @@ def qidi_block_valid(block):
         return 1 <= block[0] <= 50
     return (0x41 <= block[0] <= 0x5A and block[1] <= 99 and block[2] & 0x0F <= 4
             and block[15] <= 127)
+
+
+def qidi_legacy_block(block):
+    """True for QIDI's original layout as QIDI's spools carry it: a material
+    code, a color code, the maker code (0 generic, 1 QIDI), then zeros."""
+    return (len(block) >= 16 and 1 <= block[0] <= 50 and 1 <= block[1] <= 24 and block[2] in (0, 1)
+            and not block[3:16].strip(b"\0"))
 
 
 def is_filament_id(value):
@@ -645,7 +653,7 @@ class TagReader:
         sak = tag_sak(ident)
         if sak & 0x08:
             block = None
-            if self._login(ident, 4, DEFAULT_KEY):
+            if self._sector_login(ident, 4, QIDI_KEYS):
                 area = self._classic_blocks((4, 5, 6))
                 if area is not None:
                     block = area[:16]
@@ -722,7 +730,7 @@ class TagReader:
         sak = tag_sak(ident)
         if sak & 0x08:
             info = {"type": "mifare_classic"}
-            if not self._login(ident, 4, DEFAULT_KEY):
+            if not self._sector_login(ident, 4, QIDI_KEYS):
                 area, ident = self._creality_area(ident)
                 if area is not None and decode_creality(area, self.owner.catalog):
                     return self._vendor(info, decode_creality(area, self.owner.catalog))
@@ -779,8 +787,12 @@ class TagReader:
         block, name = area[:16], decode_name_field(area[16:48])
         if blank:
             return dict(info, layout="blank", writable=True)
-        if (qidi_block_valid(block) and not text_block(block) and block[2] >> 4
-                and (name is not None or not area[16:48].strip(b"\0"))):
+        if name is None and area[16:48].strip(b"\0"):
+            return dict(info, layout="unknown", writable=False, reason="holds data this tool doesn't write over",
+                        data=area.hex())
+        if qidi_legacy_block(block):
+            return dict(info, layout="qidi_legacy", writable=True, material_code=block[0], color_code=block[1])
+        if qidi_block_valid(block) and not text_block(block) and block[2] >> 4:
             sets = bytes(self.owner.named(block, name))
             return dict(info, layout="qidi+name" if name else "qidi", writable=True,
                         filament_id=block_id(block), name=name, colors=block_colors(block),
@@ -794,7 +806,7 @@ class TagReader:
         if status != 1 or tag_id(ident) != tag:
             return None
         if mifare:
-            if not self._login(ident, 4, DEFAULT_KEY):
+            if not self._sector_login(ident, 4, QIDI_KEYS):
                 return None
             return self._classic_blocks((4, 5, 6))
         memory, failed = self._type2_pages(4, WRITE_AREA // 4)
@@ -815,7 +827,8 @@ class TagReader:
             return lost
         acks = []
         if mifare:
-            if not self._login(ident, 4, DEFAULT_KEY):
+            ident = self._sector_login(ident, 4, QIDI_KEYS)
+            if ident is None:
                 return lost
             for i, block in enumerate((4, 5, 6)):
                 acks.append(self._ack(bytes([0xA0, block])))

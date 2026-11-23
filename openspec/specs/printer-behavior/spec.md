@@ -1588,6 +1588,11 @@ On a USB Box running the Valve Oil Box firmware, Valve Oil configuration SHALL, 
 - **WHEN** an operator asks to write a slot's filament and a spool with a blank MIFARE Classic 1K or NTAG213/215/216 tag comes past the slot's reader
 - **THEN** the tag holds the filament and colors, the read-back confirms it, and QIDI's next read of that spool sets the slot from it
 
+#### Scenario: QIDI spool's tag is written
+- **WHEN** an operator asks to write a slot's filament to a QIDI spool's tag holding QIDI's original material, color, and maker codes, opened with the default key or QIDI's `D3F7D3F7D3F7`
+- **THEN** the tag holds the filament and colors, the read-back confirms it, and QIDI's next read of that spool sets the slot from it
+- **AND** a tag whose QIDI block sits beside other data is not written
+
 #### Scenario: Empty slot's spool is turned
 - **WHEN** the slot is empty and its spool sits on the rollers with no filament fed
 - **THEN** the slot's motor turns the spool backward until the tag is written or about one turn has passed

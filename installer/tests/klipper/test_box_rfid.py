@@ -36,6 +36,8 @@ ELEGOO = bytes.fromhex(
     "000000bd040000ff000500000000000000000000"
 )
 QIDI_BLOCK = bytes.fromhex("41001100ff000000000000000000000a")
+# A QIDI spool's own tag: QIDI's original layout (ABS, color 1, maker QIDI), sector 1 keyed D3F7D3F7D3F7.
+QIDI_SPOOL = dict(key=bytes.fromhex("d3f7d3f7d3f7"), block4=bytes.fromhex("0b0101").ljust(16, b"\0"))
 # A Creality Hyper PLA tag (orange), UID c0ffee42: sector 1's key and blocks 4-6 as OpenSSL computes them
 # with Creality's two AES keys (the record is AB124 0276 A2 101001 0FF6600 0330 000001 and 14 zeros).
 CREALITY_KEY = bytes.fromhex("019c0258bc0b")
@@ -383,7 +385,7 @@ class BoxRfidTests(unittest.TestCase):
         silk = box_rfid.CATALOG["filaments"][box_rfid.CATALOG["bambu_ids"]["GFA05"]]["entry"]["filament_id"]
         self.assertEqual(self.qidi_read()["data"][:9],
                          silk[2].encode() + bytes([int(silk[3:]), 0x12]) + bytes.fromhex("ec008cff4d0a"))
-        self.reader.lost_after = len(self.reader.log) + 4
+        self.reader.lost_after = len(self.reader.log) + 5  # past the logins with the two QIDI keys and Creality's
         self.assertEqual(self.qidi_read(), {"oid": 21, "status": 0, "data": b""})
         # A copy on a blank tag that kept the default key reads as Bambu, never as
         # a QIDI block made of its "PLA Silk" text, which QIDI's parser would accept.
@@ -401,6 +403,8 @@ class BoxRfidTests(unittest.TestCase):
     def test_qidi_tags_read_as_stock_and_unusable_tags_never_return_old_data(self):
         self.module(Tag("classic", block4=QIDI_BLOCK))
         self.assertEqual(self.qidi_read(), {"oid": 21, "status": 1, "data": QIDI_BLOCK})
+        self.module(Tag("classic", **QIDI_SPOOL))
+        self.assertEqual(self.qidi_read(), {"oid": 21, "status": 1, "data": QIDI_SPOOL["block4"]})
         self.module(Tag("classic", key=b"\x12" * 6))
         for _ in range(3):
             self.assertEqual(self.qidi_read()["data"], bytes(16))
@@ -503,9 +507,16 @@ class BoxRfidTests(unittest.TestCase):
         test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", NAME=1)
         self.assertEqual(bytes(classic.blocks[4]), box_rfid.qidi_block("QFA00", ["0000FF"]))
         self.assertEqual(self.qidi_read()["data"], bytes(classic.blocks[4]))
-        # Another brand's tag, a Bambu Lab tag, and a locked tag are never written.
+        # A QIDI spool's own tag, in QIDI's original layout and with QIDI's key, is written over.
+        spool = Tag("classic", **QIDI_SPOOL)
+        self.module(spool)
+        test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", NAME=1)
+        self.assertEqual(bytes(spool.blocks[4]), box_rfid.qidi_block("QFA00", ["0000FF"]))
+        self.assertEqual(self.qidi_read()["data"], bytes(spool.blocks[4]))
+        # Another brand's tag, a Bambu Lab tag, a locked tag, and a QIDI block beside other data are never written.
         for tag in (Tag("ntag", ELEGOO), Tag("ntag", ANYCUBIC), Tag("classic", blocks=BAMBU_BLOCKS, bambu=True),
-                    Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]), Tag("classic", key=b"\x12" * 6)):
+                    Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]), Tag("classic", key=b"\x12" * 6),
+                    Tag("classic", block4=QIDI_SPOOL["block4"], blocks={5: b"\x99" * 16})):
             before = (bytes(tag.memory), {b: bytes(v) for b, v in tag.blocks.items()})
             self.module(tag)
             with self.assertRaises(CommandError):

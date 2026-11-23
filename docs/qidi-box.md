@@ -204,7 +204,7 @@ Their IDs start with `QFX` (Anycubic), `QFY` (Elegoo), `QFZ` (Bambu Lab), and `Q
 
 ### Writing spool tags
 
-With the Valve Oil Box firmware, you can write a filament to a spool's RFID tag, so the Box sets the slot from it whenever that spool is loaded, like a QIDI spool. Use it for spools with no tag, or for blank tags you stick on yourself: MIFARE Classic 1K, NTAG213, NTAG215, or NTAG216.
+With the Valve Oil Box firmware, you can write a filament to a spool's RFID tag, so the Box sets the slot from it whenever that spool is loaded, like a QIDI spool. Use it for spools with no tag, for blank tags you stick on yourself, or to reuse an empty QIDI spool's tag: MIFARE Classic 1K, NTAG213, NTAG215, or NTAG216.
 
 On the Box card on Home in [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card in Fluidd, select the slot and use the **Write spool tag** button beside the pencil. Pick the vendor, filament, and up to four colors; they start as the slot's.
 
@@ -213,7 +213,7 @@ On the Box card on Home in [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card
 
 The tag has to be on the side of the spool facing the reader; a tag on the far side is never seen, so turn the spool over. Each write is read back from the tag before it counts. Any filament in the printer's filament list can be written, whatever its vendor, including ones you added. The tag also carries the filament's name, so a printer whose list has that name under a different ID uses its own.
 
-Only blank tags and tags Valve Oil wrote before are written. Tags holding Anycubic, Elegoo, Creality, TigerTag, or OpenTag3D data, Bambu Lab tags, and locked tags are left alone, and the dialog says why. Each reader serves two slots, but a write goes only to the tag of the spool being turned; a parked spool beside it is never written.
+Only blank tags, the tags on QIDI's own spools, and tags Valve Oil wrote before are written. A QIDI spool's tag can be rewritten with any filament, for a QIDI spool you refill or rewind with another. Tags holding Anycubic, Elegoo, Creality, TigerTag, or OpenTag3D data, Bambu Lab tags, and locked tags are left alone, and the dialog says why. Each reader serves two slots, but a write goes only to the tag of the spool being turned; a parked spool beside it is never written.
 
 The commands behind it, for macros:
 
