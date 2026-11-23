@@ -61,6 +61,12 @@ Moonraker now waits for the server's answer in the background, for at most 10 se
 
 This doesn't change whether QIDI's cloud accepts your printer. For the `MQTT Connection Failed: Not authorized` warning, see the next section.
 
+## Moonraker not starting after a restart
+
+As QIDI's Moonraker starts, it checks over D-Bus, the system's message bus, that the touchscreen app and Klipper answer, and only writes what they say to `moonraker.log`. QIDI's code waits for those answers with no time limit. On a Max 4 whose Klipper held its D-Bus name and didn't answer, Moonraker restarted by an update waited until the printer was switched off and on again: Fluidd and the touchscreen couldn't reach the printer, and the update stopped with `Moonraker did not answer after its restart.` (issue #390). `moonraker.log` then ends at `qidi-client service test response` with no `klipper service test response` after it.
+
+Now each of those checks waits at most 5 seconds. One that gets no answer is logged as `vo_moonraker_fixes: org.qidi.klipper did not answer Moonraker's D-Bus check within 5 s; Moonraker starts without its answer`, and Moonraker starts. The checks only log their answers, so nothing else changes. Moonraker's other D-Bus calls wait as long as QIDI's code does.
+
 ## `Not authorized` from QIDI's cloud after the printer starts
 
 QIDI's Moonraker reads the printer's QIDI account through the touchscreen app. At power-on it connected to QIDI's cloud before the touchscreen app had started, so it connected without the account to QIDI's fallback server, which refused it. Fluidd then showed **Moonraker has failed plugins** with `mqtt`, and `MQTT Connection Failed: Not authorized`, even when the printer connected with its account seconds later. QIDI's code also reads the account through whichever program registered with Moonraker first as an agent, so when OrcaSlicer connected to the printer before the touchscreen app did, the account couldn't be read at all.

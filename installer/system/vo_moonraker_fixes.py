@@ -37,21 +37,33 @@
 # the MQTT warning and failed component are cleared, then cleared again once
 # an attempt already under way has had its answer.
 #
+# QIDI's Moonraker checks over D-Bus, as it starts, that the touchscreen app
+# and Klipper answer, and only logs what they say. Neither call has a time
+# limit, so a Klipper that holds its D-Bus name and doesn't answer keeps
+# Moonraker from starting at all: no API, no Fluidd, no touchscreen, until the
+# printer restarts (issue #390). Here each D-Bus call made while QIDI's D-Bus
+# component starts waits at most DBUS_STARTUP_CALL_TIMEOUT, and one that
+# doesn't answer by then gets an error in the form QIDI's code returns for a
+# failed call. Its calls once Moonraker has started are left as they are.
+#
 # The .pth file imports this module in every Python started from Moonraker's
 # virtualenv, so importing it only registers import hooks for
-# moonraker.components.mqtt and moonraker.components.database, and the
-# modules the fixes use are imported when Moonraker loads those components.
+# moonraker.components.mqtt, moonraker.components.database, and
+# moonraker.components.dbus_manager, and the modules the fixes use are
+# imported when Moonraker loads those components.
 
 import sys
 
 MQTT_MODULE = "moonraker.components.mqtt"
 DATABASE_MODULE = "moonraker.components.database"
+DBUS_MODULE = "moonraker.components.dbus_manager"
 LAN_MODE = ("general", "lan_mode")
 MQTT_WARNING = "mqtt_disconnect_reson"
 LAN_MODE_SETTLE = 5.
 HANDSHAKE_TIMEOUT = 10.
 APP_WAIT_TIMEOUT = 120.
 APP_POLL_INTERVAL = 0.5
+DBUS_STARTUP_CALL_TIMEOUT = 5.
 
 
 class _HandshakenContext:
@@ -359,6 +371,59 @@ def apply_database(module):
     return False
 
 
+def _dbus_startup_bounded(component_init):
+    async def component_init_(self, *args, **kwargs):
+        self.__dict__["_vo_dbus_starting"] = True
+        try:
+            return await component_init(self, *args, **kwargs)
+        finally:
+            self.__dict__["_vo_dbus_starting"] = False
+    component_init_._vo_dbus_startup = component_init
+    return component_init_
+
+
+def _dbus_call_bounded(send_request):
+    async def send_request_(self, service, *args, **kwargs):
+        call = send_request(self, service, *args, **kwargs)
+        if not self.__dict__.get("_vo_dbus_starting"):
+            return await call
+        try:
+            return await asyncio.wait_for(call, DBUS_STARTUP_CALL_TIMEOUT)
+        except asyncio.TimeoutError:
+            logging.info("vo_moonraker_fixes: %s did not answer Moonraker's "
+                         "D-Bus check within %.0f s; Moonraker starts "
+                         "without its answer", service,
+                         DBUS_STARTUP_CALL_TIMEOUT)
+            # As QIDI's send_request returns a call that failed.
+            return {"error": "Low-level DBus call failed",
+                    "details": "No answer within %.0f s"
+                    % DBUS_STARTUP_CALL_TIMEOUT}
+    send_request_._vo_dbus_call = send_request
+    return send_request_
+
+
+def apply_dbus(module):
+    """Patch QIDI's moonraker.components.dbus_manager after it is
+    imported."""
+    _imports()
+    component_class = getattr(module, "DbusManager", None)
+    members = vars(component_class) \
+        if isinstance(component_class, type) else {}
+    component_init = members.get("component_init")
+    send_request = members.get("send_request")
+    if callable(getattr(send_request, "_vo_dbus_call", None)):
+        return True
+    if not inspect.iscoroutinefunction(component_init) \
+            or not inspect.iscoroutinefunction(send_request):
+        logging.info("vo_moonraker_fixes: D-Bus startup checks left "
+                     "without a time limit; Moonraker's D-Bus code differs "
+                     "from the version this fix is for")
+        return False
+    component_class.component_init = _dbus_startup_bounded(component_init)
+    component_class.send_request = _dbus_call_bounded(send_request)
+    return True
+
+
 def apply(module):
     """Patch QIDI's moonraker.components.mqtt after it is imported."""
     _imports()
@@ -416,7 +481,8 @@ def install():
     installed = {finder.module_name for finder in sys.meta_path
                  if isinstance(finder, _Finder)}
     for module_name, patch in ((MQTT_MODULE, apply),
-                               (DATABASE_MODULE, apply_database)):
+                               (DATABASE_MODULE, apply_database),
+                               (DBUS_MODULE, apply_dbus)):
         if module_name not in installed:
             sys.meta_path.insert(0, _Finder(module_name, patch))
 

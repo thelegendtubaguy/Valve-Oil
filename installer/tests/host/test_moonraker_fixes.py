@@ -327,3 +327,68 @@ class MoonrakerLanModeTests(unittest.TestCase):
         handler = self.database_class._handle_config_update_request
         self.assertTrue(self.fixes.apply_database(types.SimpleNamespace(MoonrakerDatabase=self.database_class)))
         self.assertIs(self.database_class._handle_config_update_request, handler)
+
+
+def dbus_manager_class(answers):
+    """QIDI's DbusManager: its startup asks the touchscreen app and then Klipper over D-Bus, with no time limit, and
+    only logs their answers. `answers` maps a service to how long it takes to answer, None for never."""
+    class DbusManager:
+        def __init__(self):
+            self.startup_answers = None
+
+        async def component_init(self):
+            qidi_client = await self.send_to_qidi_client("query_methods_list", {})
+            klipper = await self.send_to_klipper("query_methods_list", {})
+            self.startup_answers = (qidi_client, klipper)
+
+        async def send_request(self, service, obj_path, interface, method_name, payload):
+            try:
+                delay = answers[service]
+                await asyncio.sleep(delay) if delay is not None else await asyncio.Event().wait()
+                return {"methods": ["ping", method_name]}
+            except Exception as e:
+                return {"error": "Low-level DBus call failed", "details": str(e)}
+
+        async def send_to_klipper(self, method, payload):
+            return await self.send_request("org.qidi.klipper", "/org/qidi/klipper", "org.qidi.klipper", method, payload)
+
+        async def send_to_qidi_client(self, method, payload):
+            return await self.send_request("org.qidi.qidi-client", "/org/qidi/qidi_client", "org.qidi.qidi_client", method, payload)
+    return DbusManager
+
+
+class MoonrakerDbusStartupTests(unittest.TestCase):
+    def setUp(self):
+        self.fixes = load_payload()
+        self.fixes.DBUS_STARTUP_CALL_TIMEOUT = 0.1
+
+    def manager(self, answers):
+        manager_class = dbus_manager_class(answers)
+        self.assertTrue(self.fixes.apply_dbus(types.SimpleNamespace(DbusManager=manager_class)))
+        return manager_class()
+
+    def test_a_klipper_that_does_not_answer_no_longer_stops_moonraker_starting(self):
+        manager = self.manager({"org.qidi.qidi-client": 0, "org.qidi.klipper": None})
+        asyncio.run(asyncio.wait_for(manager.component_init(), 1))
+        qidi_client, klipper = manager.startup_answers
+        self.assertEqual(qidi_client, {"methods": ["ping", "query_methods_list"]})
+        self.assertEqual(klipper["error"], "Low-level DBus call failed")
+
+    def test_calls_after_startup_keep_qidi_s_wait(self):
+        manager = self.manager({"org.qidi.qidi-client": 0, "org.qidi.klipper": 0.3})
+
+        async def run():
+            await manager.component_init()
+            return await manager.send_to_klipper("ping", {})
+        self.assertEqual(asyncio.run(run()), {"methods": ["ping", "ping"]})
+        # The same answer came too late for the startup check.
+        self.assertEqual(manager.startup_answers[1]["error"], "Low-level DBus call failed")
+
+    def test_unrecognized_dbus_code_is_left_alone(self):
+        self.assertFalse(self.fixes.apply_dbus(types.SimpleNamespace()))
+        # Patching twice wraps QIDI's methods once.
+        manager_class = dbus_manager_class({})
+        self.assertTrue(self.fixes.apply_dbus(types.SimpleNamespace(DbusManager=manager_class)))
+        send_request = manager_class.send_request
+        self.assertTrue(self.fixes.apply_dbus(types.SimpleNamespace(DbusManager=manager_class)))
+        self.assertIs(manager_class.send_request, send_request)
