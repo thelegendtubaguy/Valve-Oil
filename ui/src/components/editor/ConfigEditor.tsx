@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, BookOpen, Download, Lock, RotateCw, Save, Search } from 'lucide-react'
-import { Spinner, confirm } from '../ui'
+import { Loading, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { client } from '../../state/printer'
 import { downloadFile, readText, useDirectory, writeText } from '../../state/files'
 import { baseName, configService, isLocked, parentOf, rootProps } from '../files/fs'
-import { useJob, isActive } from '../../state/job'
+import { useJobActive } from '../../state/job'
 import { useTheme } from '../../lib/theme'
+import { errorText } from '../../lib/browser'
 import type { EditorHandle } from './codemirror'
 import { t } from '../../i18n'
 
@@ -101,8 +102,7 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
   const readOnly = rootProps(root).readonly || locked || entry?.permissions === 'r'
   const service = configService(name)
   const supported = useServices()
-  const job = useJob()
-  const printing = isActive(job.state)
+  const printing = useJobActive()
   const [dark] = useTheme()
 
   const host = useRef<HTMLDivElement>(null)
@@ -152,7 +152,7 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
       })
       .catch((e) => {
         if (!live) return
-        setError(e instanceof Error ? e.message : String(e))
+        setError(errorText(e))
         setState('error')
       })
     return () => {
@@ -254,11 +254,7 @@ function EditorBody({ root, path, onClose, route }: Props & { route?: boolean })
       {locked && <div className="flex-none border-b border-line bg-inset px-4 py-2 text-[12.5px] text-ink-2">{t('editor.locked')}</div>}
       <div className="relative min-h-0 flex-1">
         <div ref={host} className="absolute inset-0" />
-        {state === 'loading' && (
-          <div className="absolute inset-0 grid place-items-center">
-            <Spinner size={22} />
-          </div>
-        )}
+        {state === 'loading' && <Loading className="absolute inset-0" size={22} />}
         {state === 'error' && <div className="absolute inset-0 grid place-items-center p-6 text-center text-ink-2">{error}</div>}
       </div>
     </>

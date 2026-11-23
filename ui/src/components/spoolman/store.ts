@@ -2,6 +2,8 @@
 // Moonraker's Spoolman proxy, and live spool changes from Spoolman's own websocket, with why that websocket failed.
 import { createStore, useStore } from '../../lib/store'
 import { client, printer } from '../../state/printer'
+import { isActive } from '../../state/job'
+import { errorText } from '../../lib/browser'
 import { applySocketMessage, spoolmanSocketUrl, spoolmanUrl, unwrapProxy, type RawSpool, type SocketMessage, type SpoolmanInfo } from './spoolman'
 
 /** Why Spoolman's websocket failed, as Fluidd's diagnoseHttpEndpoint finds it. */
@@ -45,7 +47,7 @@ async function loadSpools() {
   try {
     r = await proxyGet<RawSpool[]>('/v1/spool')
   } catch (e) {
-    r = { response: null, error: e instanceof Error ? e.message : String(e) }
+    r = { response: null, error: errorText(e) }
   }
   if (r.error != null || !Array.isArray(r.response)) {
     patch({ connected: false, error: r.error })
@@ -206,6 +208,6 @@ export function startSpoolman() {
   setInterval(() => {
     const s = store.get()
     const state = printer.get().status.print_stats?.state
-    if (s.connected && !s.socketOpen && s.activeSpool != null && (state === 'printing' || state === 'paused')) refreshSpool(s.activeSpool)
+    if (s.connected && !s.socketOpen && s.activeSpool != null && isActive(state)) refreshSpool(s.activeSpool)
   }, PRINT_POLL_MS)
 }

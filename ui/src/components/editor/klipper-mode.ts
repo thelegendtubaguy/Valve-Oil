@@ -23,6 +23,7 @@ type State = {
 
 const JINJA_KEYWORDS = new Set(['if', 'elif', 'else', 'endif', 'for', 'endfor', 'in', 'not', 'and', 'or', 'is', 'set', 'macro', 'endmacro', 'call', 'endcall', 'filter', 'endfilter', 'raw', 'endraw', 'break', 'continue', 'with', 'endwith', 'do'])
 const JINJA_ATOMS = new Set(['true', 'false', 'none', 'True', 'False', 'None'])
+const JINJA_SPECIAL = new Set(['printer', 'params', 'rawparams', 'action_respond_info', 'action_raise_error', 'action_emergency_stop', 'action_call_remote_method'])
 
 const commentStart = (stream: StringStream) => {
   const ch = stream.peek()
@@ -55,7 +56,7 @@ function jinja(stream: StringStream, state: State): string | null {
   if (word) {
     if (JINJA_KEYWORDS.has(word[0])) return 'controlKeyword'
     if (JINJA_ATOMS.has(word[0])) return 'bool'
-    if (word[0] === 'printer' || word[0] === 'params' || word[0] === 'rawparams' || word[0] === 'action_respond_info' || word[0] === 'action_raise_error' || word[0] === 'action_emergency_stop' || word[0] === 'action_call_remote_method') return 'variableName.special'
+    if (JINJA_SPECIAL.has(word[0])) return 'variableName.special'
     return stream.peek() === '(' ? 'function(variableName)' : 'variableName'
   }
   if (stream.match(/^[|.,:()[\]]/)) return 'punctuation'
@@ -148,9 +149,6 @@ export const gcodeFile: StreamParser<State> = {
   name: 'gcode',
   startState: startState(true),
   copyState,
-  token: (stream, state) => {
-    if (stream.sol()) state.command = false
-    return config(stream, state)
-  },
+  token: config,
   languageData: { commentTokens: { line: ';' } },
 }

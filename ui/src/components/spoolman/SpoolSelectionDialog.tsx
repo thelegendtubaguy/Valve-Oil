@@ -2,7 +2,7 @@
 // Valve Oil's Moonraker patch the active spool also becomes the loaded Box slot's spool.
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, ExternalLink, Search } from 'lucide-react'
-import { Choices, Dialog, Empty, confirm } from '../ui'
+import { CancelButton, Choices, Dialog, Empty, confirm } from '../ui'
 import { attempt } from '../toast'
 import { fmtAgo } from '../../lib/format'
 import { printer } from '../../state/printer'
@@ -64,9 +64,7 @@ export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean;
               {t('spoolman.select.manage')} <ExternalLink size={14} />
             </a>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={busy} onClick={select}>
             {t('spoolman.select.select')}
           </button>
@@ -109,6 +107,7 @@ export function SpoolSelectionDialog({ open, onClose, target }: { open: boolean;
 }
 
 function SpoolRow({ spool, unit, selected, active, onClick }: { spool: Spool; unit: 'weight' | 'length'; selected: boolean; active: boolean; onClick: () => void }) {
+  const [left, total, fmt] = unit === 'length' ? [spool.remaining_length, spool.initial_length, fmtLength] : [spool.remaining_weight, spool.initial_weight, fmtWeight]
   const details = [`#${spool.id}`, spool.filament.material, spool.location, spool.last_used ? t('spoolman.select.last_used', { ago: fmtAgo(spool.last_used / 1000) }) : t('spoolman.select.never_used')].filter(Boolean)
   return (
     <button
@@ -129,17 +128,8 @@ function SpoolRow({ spool, unit, selected, active, onClick }: { spool: Spool; un
         </span>
       </span>
       <span className="num flex-none text-right text-[12.5px] text-ink-3">
-        {unit === 'length' ? (
-          <>
-            <b className="font-semibold text-ink">{fmtLength(spool.remaining_length)}</b>
-            <span className="block">/ {fmtLength(spool.initial_length)}</span>
-          </>
-        ) : (
-          <>
-            <b className="font-semibold text-ink">{fmtWeight(spool.remaining_weight)}</b>
-            <span className="block">/ {fmtWeight(spool.initial_weight)}</span>
-          </>
-        )}
+        <b className="font-semibold text-ink">{fmt(left)}</b>
+        <span className="block">/ {fmt(total)}</span>
       </span>
     </button>
   )

@@ -27,7 +27,7 @@ export type EditorHandle = {
 
 function languageFor(name: string): Extension {
   const n = name.toLowerCase()
-  if (/\.(cfg|conf|ini|bkp|bak)$/.test(n) || n.endsWith('.cfg.bak')) return StreamLanguage.define(klipperConfig)
+  if (/\.(cfg|conf|ini|bkp|bak)$/.test(n)) return StreamLanguage.define(klipperConfig)
   if (/\.(gcode|g|gco|gc|nc)$/.test(n)) return StreamLanguage.define(gcodeFile)
   if (n.endsWith('.json')) return StreamLanguage.define(json)
   if (/\.ya?ml$/.test(n)) return StreamLanguage.define(yaml)

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { mergePreviewSettings, type PreviewSettings } from './preview-settings'
 
-export { mergePreviewSettings, PREVIEW_DEFAULTS, type PreviewSettings } from './preview-settings'
+export type { PreviewSettings } from './preview-settings'
 
 const NONE: Record<string, unknown> = {}
 let unsaved: Record<string, unknown> | null = null

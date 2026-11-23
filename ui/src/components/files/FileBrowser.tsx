@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowUp,
@@ -36,12 +36,12 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { Card, Empty, Segmented, Spinner, confirm, prompt } from '../ui'
+import { Card, Empty, Segmented, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { FileCard } from '../FileCard'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { Check, Popover } from './Popover'
-import { InfoDialog, MoveDialog, ViewDialog } from './dialogs'
+import { InfoDialog, MoveDialog, ViewDialog, promptName } from './dialogs'
 import { Cell } from './cells'
 import { filesFromDrop, filesWithPath, hasFiles } from './drop'
 import {
@@ -64,7 +64,6 @@ import {
   parentOf,
   rootProps,
   sortEntries,
-  validName,
   type Column,
   type ConfiguredHeader,
   type FilterType,
@@ -87,11 +86,12 @@ import {
   useHistory,
   useRootFiles,
   writeText,
+  zipName,
   type HistoryJob,
 } from '../../state/files'
 import { client, runGcode, usePrinter } from '../../state/printer'
 import { FLUIDD, VALVE_OIL_UI, useDbItem } from '../../state/database'
-import { useJob, isActive } from '../../state/job'
+import { useJobActive } from '../../state/job'
 import { displayName, fmtDuration } from '../../lib/format'
 import { fmtDate, fmtSize } from './cells'
 import { gcode } from '../control/gcode'
@@ -133,8 +133,8 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   const { dir, error, loading } = useDirectory(root, path)
   const components = usePrinter((s) => s.server?.components ?? [])
   const klippyReady = usePrinter((s) => s.klippy === 'ready')
-  const job = useJob()
-  const busy = isActive(job.state)
+  // Printing and preheating wait for Klipper and for any print to end.
+  const cantStart = useJobActive() || !klippyReady
   const hasQueue = components.includes('job_queue')
 
   // Fluidd's own settings, so a sort, filter, or column choice made in either UI shows in both.
@@ -163,6 +163,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
   const all = useRootFiles(root, !!q)
+  const listed = useMemo(() => [...(dir?.dirs ?? []), ...(dir?.files ?? [])], [dir])
 
   const entries = useMemo(() => {
     let list: FsEntry[]
@@ -171,11 +172,11 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
         .filter((f) => f.path.toLowerCase().includes(q) && !f.path.split('/').some((seg) => seg === '.thumbs' || seg === '.git'))
         .slice(0, 300)
         .map((f) => ({ kind: 'file', name: baseName(f.path), path: f.path, modified: f.modified, size: f.size, permissions: f.permissions ?? 'rw' }))
-    } else list = [...(dir?.dirs ?? []), ...(dir?.files ?? [])]
+    } else list = listed
     list = list.filter((e) => !alwaysHidden(e) && !isFiltered(e, filters))
     return sortEntries(list, sortBy, sortDesc, jobOf)
-  }, [q, all, dir, filters, sortBy, sortDesc, jobOf])
-  const names = useMemo(() => new Set([...(dir?.dirs ?? []), ...(dir?.files ?? [])].map((e) => e.name)), [dir])
+  }, [q, all, listed, filters, sortBy, sortDesc, jobOf])
+  const names = useMemo(() => new Set(listed.map((e) => e.name)), [listed])
 
   // ---- selection ----
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -212,7 +213,13 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
     if (ok.length < list.length) toast(list.length === 1 ? t('files.browser.read_only_named', { name: list[0].name }) : t('files.browser.skipped_read_only', { count: list.length - ok.length }), 'error')
     return ok
   }
-  const exists = (name: string) => names.has(name) && (toast(t('files.browser.exists', { name }), 'error'), true)
+  const nameLabel = (e: FsEntry) => (e.kind === 'dir' ? t('files.browser.dir_name') : t('files.browser.file_name'))
+  // A new name in this folder, or nothing when it's cancelled, unchanged from `same`, invalid, or taken.
+  const askName = async (title: string, label: string, value = '', same?: string, placeholder?: string) => {
+    const name = await promptName(title, label, value, same, placeholder)
+    if (name && names.has(name)) return void toast(t('files.browser.exists', { name }), 'error')
+    return name
+  }
 
   const edit = async (e: FsEntry) => {
     if (e.size > 5 * 1024 * 1024 && !(await confirm({ title: t('files.browser.open_large_title', { name: e.name }), body: t('files.browser.open_large_body', { size: fmtSize(e.size) }), confirm: t('files.browser.open') }))) return
@@ -227,20 +234,12 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
     setMenu({ x, y, items: [e] })
   }
   const rename = async (e: FsEntry) => {
-    const name = await prompt({ title: e.kind === 'dir' ? t('files.browser.rename_dir') : t('files.browser.rename_file'), input: { label: e.kind === 'dir' ? t('files.browser.dir_name') : t('files.browser.file_name'), value: e.name } })
-    if (!name || name === e.name) return
-    const err = validName(name)
-    if (err) return toast(err, 'error')
-    if (exists(name)) return
-    await attempt(() => moveItem(root, e.path, joinPath(parentOf(e.path), name)))
+    const name = await askName(e.kind === 'dir' ? t('files.browser.rename_dir') : t('files.browser.rename_file'), nameLabel(e), e.name, e.name)
+    if (name) await attempt(() => moveItem(root, e.path, joinPath(parentOf(e.path), name)))
   }
   const duplicate = async (e: FsEntry) => {
-    const name = await prompt({ title: e.kind === 'dir' ? t('files.browser.duplicate_dir') : t('files.browser.duplicate_file'), input: { label: e.kind === 'dir' ? t('files.browser.dir_name') : t('files.browser.file_name'), value: copyName(e.name, names) } })
-    if (!name) return
-    const err = validName(name)
-    if (err) return toast(err, 'error')
-    if (exists(name)) return
-    await attempt(() => copyItem(root, e.path, joinPath(parentOf(e.path), name)))
+    const name = await askName(e.kind === 'dir' ? t('files.browser.duplicate_dir') : t('files.browser.duplicate_file'), nameLabel(e), copyName(e.name, names))
+    if (name) await attempt(() => copyItem(root, e.path, joinPath(parentOf(e.path), name)))
   }
   const remove = async (list: FsEntry[]) => {
     list = writable(list)
@@ -267,19 +266,19 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
     attempt(() => downloadZip(root, path, list))
   }
   const zip = (list: FsEntry[]) => {
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').slice(0, 15)
-    const name = list.length === 1 ? `${list[0].name}-${stamp}.zip` : `${stamp}.zip`
+    const name = zipName(list, '')
     attempt(async () => (await createZip(root, joinPath(path, name), list), toast(t('files.browser.created', { name }))))
   }
+  const printables = (list: FsEntry[]) => list.filter((e) => e.kind === 'file' && isPrintable(e.name))
   const enqueue = (list: FsEntry[]) => {
-    const files = list.filter((e) => e.kind === 'file' && isPrintable(e.name)).map((e) => e.path)
+    const files = printables(list).map((e) => e.path)
     if (files.length) attempt(async () => (await enqueueJobs(files), toast(files.length === 1 ? t('files.browser.queued_named', { name: displayName(files[0]) }) : t('files.browser.queued_files', { count: files.length }))))
   }
   const rescan = (list: FsEntry[]) => {
-    const files = list.filter((e) => e.kind === 'file' && isPrintable(e.name))
+    const files = printables(list)
     attempt(async () => {
       for (const f of files) await rescanMeta(f.path)
-      toast(files.length === 1 ? t('files.browser.refreshed_named', { name: f0(files) }) : t('files.browser.refreshed_files', { count: files.length }))
+      toast(files.length === 1 ? t('files.browser.refreshed_named', { name: displayName(files[0].name) }) : t('files.browser.refreshed_files', { count: files.length }))
     })
   }
   const preheat = (e: FsEntry) => {
@@ -294,34 +293,26 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   }
   const newFile = async () => {
     // i18n-ignore: the placeholder is an example file name
-    const name = await prompt({ title: t('files.browser.add_file'), input: { label: t('files.browser.file_name'), value: '', placeholder: root === 'config' ? 'my_macros.cfg' : '' } })
-    if (!name) return
-    const err = validName(name)
-    if (err) return toast(err, 'error')
-    if (exists(name)) return
-    if (!(await attempt(async () => (await writeText(root, joinPath(path, name), ''), true)))) return
+    const name = await askName(t('files.browser.add_file'), t('files.browser.file_name'), '', undefined, root === 'config' ? 'my_macros.cfg' : '')
+    if (!name || !(await attempt(async () => (await writeText(root, joinPath(path, name), ''), true)))) return
     if (editsOnClick(name)) edit({ kind: 'file', name, path: joinPath(path, name), modified: Date.now() / 1000, size: 0, permissions: 'rw' })
   }
   const newFolder = async () => {
-    const name = await prompt({ title: t('files.browser.add_dir'), input: { label: t('files.browser.dir_name'), value: '' } })
-    if (!name) return
-    const err = validName(name)
-    if (err) return toast(err, 'error')
-    if (exists(name)) return
-    await attempt(() => makeDir(root, joinPath(path, name)))
+    const name = await askName(t('files.browser.add_dir'), t('files.browser.dir_name'))
+    if (name) await attempt(() => makeDir(root, joinPath(path, name)))
   }
 
   const menuFor = (list: FsEntry[]): MenuItem[] => {
     const one = list.length === 1 ? list[0] : null
     const file = one?.kind === 'file' ? one : null
-    const printable = list.some((e) => e.kind === 'file' && isPrintable(e.name))
+    const printable = printables(list).length > 0
     const ro = props.readonly || list.every((e) => !canWrite(e))
     const I = 15
     return [
       one?.kind === 'dir' && { label: t('files.browser.open'), icon: <Folder size={I} />, onSelect: () => go(one.path) },
-      gcodes && file && isPrintable(file.name) && !!onPrint && { label: t('files.menu.print'), icon: <Play size={I} />, onSelect: () => onPrint(file.path), disabled: busy || !klippyReady },
+      gcodes && file && isPrintable(file.name) && !!onPrint && { label: t('files.menu.print'), icon: <Play size={I} />, onSelect: () => onPrint(file.path), disabled: cantStart },
       gcodes && printable && hasQueue && { label: t('files.browser.add_to_queue'), icon: <ListPlus size={I} />, onSelect: () => enqueue(list) },
-      gcodes && file && file.meta?.first_layer_extr_temp != null && file.meta?.first_layer_bed_temp != null && { label: t('files.menu.preheat'), icon: <Flame size={I} />, onSelect: () => preheat(file), disabled: busy || !klippyReady },
+      gcodes && file && file.meta?.first_layer_extr_temp != null && file.meta?.first_layer_bed_temp != null && { label: t('files.menu.preheat'), icon: <Flame size={I} />, onSelect: () => preheat(file), disabled: cantStart },
       gcodes && file && canPreview(file.name) && !!previewHref && { label: t('files.menu.preview'), icon: <Box size={I} />, onSelect: () => void (location.hash = previewHref(file.path)) },
       file && (isImage(file.name) || isVideo(file.name)) && { label: t('files.menu.view'), icon: <Image size={I} />, onSelect: () => setViewing(file) },
       file && file.permissions.includes('r') && !isBinary(file.name) && { label: canWrite(file) ? t('common.edit') : t('files.menu.open_read_only'), icon: canWrite(file) ? <SquarePen size={I} /> : <Eye size={I} />, onSelect: () => edit(file) },
@@ -339,6 +330,12 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
     ]
   }
   const openMenu = (e: FsEntry, x: number, y: number) => setMenu({ x, y, items: selected.has(e.path) && selected.size > 1 ? picked : [e] })
+  const onMenu = (e: FsEntry) => (ev: ReactMouseEvent) => (ev.preventDefault(), openMenu(e, ev.clientX, ev.clientY))
+  const more = (e: FsEntry, className: string, size = 16) => (
+    <button className={className} aria-label={t('files.browser.more_for', { name: e.name })} onClick={(ev) => openMenu(e, ev.clientX, ev.clientY)}>
+      <Ellipsis size={size} />
+    </button>
+  )
 
   // ---- drag and drop: files from the desktop upload here; rows dragged onto a folder move into it ----
   const [dropping, setDropping] = useState(false)
@@ -371,7 +368,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
       ev.preventDefault()
       ev.stopPropagation()
       const paths: string[] = JSON.parse(raw)
-      const list = [...(dir?.dirs ?? []), ...(dir?.files ?? []), ...entries].filter((x, i, a) => paths.includes(x.path) && a.findIndex((y) => y.path === x.path) === i)
+      const list = [...listed, ...entries].filter((x, i, a) => paths.includes(x.path) && a.findIndex((y) => y.path === x.path) === i)
       moveTo(list, dest)
     },
   })
@@ -380,6 +377,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   const filesInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement>(null)
   const printInput = useRef<HTMLInputElement>(null)
+  const uploadPicked = (e: ChangeEvent<HTMLInputElement>) => (e.target.files && uploadFiles(root, path, filesWithPath(e.target.files)), (e.target.value = ''))
   const parts = path ? path.split('/') : []
   const crumbs = (
     <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" aria-label={t('files.browser.folder')}>
@@ -493,22 +491,20 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
         ) : (
           <>
             <Popover label={t('common.add')} button={<Plus size={17} />} className="iconbtn">
-              <MenuLine icon={<FilePlus size={15} />} onClick={newFile}>
-                {t('files.browser.add_file')}
-              </MenuLine>
-              <MenuLine icon={<FolderPlus size={15} />} onClick={newFolder}>
-                {t('files.browser.add_dir')}
-              </MenuLine>
-              <MenuLine icon={<Upload size={15} />} onClick={() => filesInput.current?.click()}>
-                {t('files.browser.upload_files')}
-              </MenuLine>
-              <MenuLine icon={<FolderUp size={15} />} onClick={() => folderInput.current?.click()}>
-                {t('files.browser.upload_folder')}
-              </MenuLine>
-              {gcodes && (
-                <MenuLine icon={<Play size={15} />} onClick={() => printInput.current?.click()} disabled={busy || !klippyReady}>
-                  {t('files.browser.upload_and_print')}
-                </MenuLine>
+              {[
+                { Icon: FilePlus, label: t('files.browser.add_file'), onClick: newFile },
+                { Icon: FolderPlus, label: t('files.browser.add_dir'), onClick: newFolder },
+                { Icon: Upload, label: t('files.browser.upload_files'), onClick: () => filesInput.current?.click() },
+                { Icon: FolderUp, label: t('files.browser.upload_folder'), onClick: () => folderInput.current?.click() },
+                gcodes && { Icon: Play, label: t('files.browser.upload_and_print'), onClick: () => printInput.current?.click(), disabled: cantStart },
+              ].map(
+                (it) =>
+                  it && (
+                    <button key={it.label} type="button" disabled={it.disabled} onClick={it.onClick}>
+                      <it.Icon size={15} />
+                      {it.label}
+                    </button>
+                  ),
               )}
             </Popover>
             <button className="btn btn-primary btn-sm h-[30px]" onClick={() => filesInput.current?.click()} aria-label={t('files.browser.upload_files')}>
@@ -517,8 +513,8 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
           </>
         )}
       </div>
-      <input ref={filesInput} type="file" multiple hidden accept={gcodes ? props.accepts.join(',') : undefined} onChange={(e) => (e.target.files && uploadFiles(root, path, filesWithPath(e.target.files)), (e.target.value = ''))} />
-      <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={(e) => (e.target.files && uploadFiles(root, path, filesWithPath(e.target.files)), (e.target.value = ''))} />
+      <input ref={filesInput} type="file" multiple hidden accept={gcodes ? props.accepts.join(',') : undefined} onChange={uploadPicked} />
+      <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={uploadPicked} />
       <input ref={printInput} type="file" hidden accept={props.accepts.join(',')} onChange={(e) => (e.target.files?.[0] && uploadFiles(root, path, [e.target.files[0]], true), (e.target.value = ''))} />
     </div>
   )
@@ -534,8 +530,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
               <th className="w-8 pr-0!">
                 <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" aria-label={t('files.browser.select_all')} checked={entries.length > 0 && picked.length === entries.length} onChange={(e) => setSelected(new Set(e.target.checked ? entries.map((x) => x.path) : []))} />
               </th>
-              <SortHead value="name" label={t('files.browser.name')} sortBy={sortBy} desc={sortDesc} onSort={(by, desc) => (setSortBy(by), setSortDesc(desc))} />
-              {shownColumns.map((c) => (
+              {[{ value: 'name', label: t('files.browser.name') }, ...shownColumns].map((c: Pick<Column, 'value' | 'label' | 'numeric'>) => (
                 <SortHead key={c.value} value={c.value} label={c.label} numeric={c.numeric} sortBy={sortBy} desc={sortDesc} onSort={(by, desc) => (setSortBy(by), setSortDesc(desc))} />
               ))}
               <th className="sticky right-0 w-10 bg-surface" />
@@ -549,7 +544,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
                 {...(e.kind === 'dir' ? dropOn(e.path) : {})}
                 className={`cursor-pointer ${selected.has(e.path) ? '[&>td]:bg-accent-tint!' : ''} ${dropDir === e.path ? '[&>td]:bg-accent-tint!' : ''}`}
                 onClick={(ev) => (ev.shiftKey || ev.metaKey || ev.ctrlKey ? select(e, !selected.has(e.path), ev.shiftKey) : open(e, ev.clientX, ev.clientY))}
-                onContextMenu={(ev) => (ev.preventDefault(), openMenu(e, ev.clientX, ev.clientY))}
+                onContextMenu={onMenu(e)}
               >
                 <td className="pr-0!" onClick={(ev) => ev.stopPropagation()}>
                   <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" aria-label={t('files.browser.select', { name: e.name })} checked={selected.has(e.path)} onChange={(ev) => select(e, ev.target.checked, (ev.nativeEvent as MouseEvent).shiftKey)} />
@@ -563,9 +558,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
                   </td>
                 ))}
                 <td className="sticky right-0 bg-surface" onClick={(ev) => ev.stopPropagation()}>
-                  <button className="iconbtn h-7 w-7" aria-label={t('files.browser.more_for', { name: e.name })} onClick={(ev) => openMenu(e, ev.clientX, ev.clientY)}>
-                    <Ellipsis size={16} />
-                  </button>
+                  {more(e, 'iconbtn h-7 w-7')}
                 </td>
               </tr>
             ))}
@@ -574,14 +567,12 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
       </div>
       <div className="grid gap-0.5 md:hidden">
         {entries.map((e) => (
-          <div key={e.path} className={`flex items-center gap-2 rounded-lg px-1 ${selected.has(e.path) ? 'bg-accent-tint' : ''}`} onContextMenu={(ev) => (ev.preventDefault(), openMenu(e, ev.clientX, ev.clientY))}>
+          <div key={e.path} className={`flex items-center gap-2 rounded-lg px-1 ${selected.has(e.path) ? 'bg-accent-tint' : ''}`} onContextMenu={onMenu(e)}>
             <input type="checkbox" className="h-4 w-4 flex-none accent-[var(--accent)]" aria-label={t('files.browser.select', { name: e.name })} checked={selected.has(e.path)} onChange={(ev) => select(e, ev.target.checked, false)} />
             <button className="flex min-w-0 flex-1 items-center gap-2.5 border-0 bg-transparent py-2 text-left text-inherit" onClick={(ev) => open(e, ev.clientX, ev.clientY)}>
               <NameCell root={root} entry={e} searching={!!q} sub={<SubLine root={root} entry={e} job={jobOf(e)} />} />
             </button>
-            <button className="iconbtn flex-none" aria-label={t('files.browser.more_for', { name: e.name })} onClick={(ev) => openMenu(e, ev.clientX, ev.clientY)}>
-              <Ellipsis size={16} />
-            </button>
+            {more(e, 'iconbtn flex-none')}
           </div>
         ))}
       </div>
@@ -604,16 +595,14 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
               {...dragRow(e)}
               {...dropOn(e.path)}
               className={`group flex items-center gap-2.5 rounded-xl bg-surface py-1 pr-1 pl-3 shadow-[var(--shadow-card)] ${selected.has(e.path) || dropDir === e.path ? 'shadow-[0_0_0_2px_var(--accent)]!' : ''}`}
-              onContextMenu={(ev) => (ev.preventDefault(), openMenu(e, ev.clientX, ev.clientY))}
+              onContextMenu={onMenu(e)}
             >
               {check(e)}
               <button className="flex min-w-0 flex-1 items-center gap-2.5 border-0 bg-transparent py-2 text-left text-inherit" onClick={() => go(e.path)}>
                 <Folder size={18} className="flex-none text-accent-ink" />
                 <b className="truncate text-[13px]">{e.name}</b>
               </button>
-              <button className="iconbtn h-8 w-8" aria-label={t('files.browser.more_for', { name: e.name })} onClick={(ev) => openMenu(e, ev.clientX, ev.clientY)}>
-                <Ellipsis size={15} />
-              </button>
+              {more(e, 'iconbtn h-8 w-8', 15)}
             </div>
           ))}
         </div>
@@ -635,7 +624,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
                 />
               </div>
             ) : (
-              <div key={e.path} {...dragRow(e)} className={`group relative rounded-xl ${selected.has(e.path) ? 'shadow-[0_0_0_2px_var(--accent)]' : ''}`} onContextMenu={(ev) => (ev.preventDefault(), openMenu(e, ev.clientX, ev.clientY))}>
+              <div key={e.path} {...dragRow(e)} className={`group relative rounded-xl ${selected.has(e.path) ? 'shadow-[0_0_0_2px_var(--accent)]' : ''}`} onContextMenu={onMenu(e)}>
                 <button className="flex h-full w-full flex-col items-stretch overflow-hidden rounded-xl border-0 bg-surface p-0 text-left text-inherit shadow-[var(--shadow-card)] hover:shadow-[0_0_0_1px_var(--line-strong)]" onClick={(ev) => open(e, ev.clientX, ev.clientY)}>
                   <div className="grid aspect-[4/3] place-items-center overflow-hidden border-b border-line bg-inset">{isImage(e.name) ? <img src={client.fileUrl(root, e.path)} alt="" loading="lazy" className="max-h-[85%] max-w-[85%] object-contain" /> : <EntryIcon entry={e} size={34} />}</div>
                   <div className="grid gap-0.5 px-3 py-2.5">
@@ -648,9 +637,7 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
                   </div>
                 </button>
                 <label className={`absolute top-1.5 left-1.5 grid h-7 w-7 cursor-pointer place-items-center rounded-lg bg-surface/90 shadow-[0_0_0_1px_var(--line)] ${selected.has(e.path) ? '' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100'}`}>{check(e)}</label>
-                <button className="iconbtn absolute top-1.5 right-1.5 h-7 w-7 bg-surface/90 shadow-[0_0_0_1px_var(--line)]" aria-label={t('files.browser.more_for', { name: e.name })} onClick={(ev) => openMenu(e, ev.clientX, ev.clientY)}>
-                  <Ellipsis size={15} />
-                </button>
+                {more(e, 'iconbtn absolute top-1.5 right-1.5 h-7 w-7 bg-surface/90 shadow-[0_0_0_1px_var(--line)]', 15)}
               </div>
             ),
           )}
@@ -720,17 +707,6 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
 
 // Archives, images, and video aren't text; the editor would show noise.
 const isBinary = (name: string) => /\.(3mf|zip|gz|tgz|tar|ufp|png|jpe?g|gif|bmp|webp|mp4|webm|mkv|mov|bin|elf)$/i.test(name)
-
-const f0 = (files: FsEntry[]) => displayName(files[0]?.name ?? '')
-
-function MenuLine({ icon, children, onClick, disabled }: { icon: ReactNode; children: ReactNode; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" disabled={disabled} onClick={onClick}>
-      {icon}
-      {children}
-    </button>
-  )
-}
 
 function SortHead({ value, label, numeric, sortBy, desc, onSort }: { value: string; label: string; numeric?: boolean; sortBy: string; desc: boolean; onSort: (by: string, desc: boolean) => void }) {
   const on = sortBy === value

@@ -117,7 +117,7 @@ export const isVideo = (name: string) => ['.mp4', '.webm', '.mkv', '.mov'].inclu
 
 /** Files a click opens in the editor, as Fluidd's default autoEditExtensions, plus the text files Valve Oil keeps. */
 const EDIT_ON_CLICK = ['.cfg', '.conf', '.ini', '.log', '.sh', '.txt', '.json', '.yaml', '.yml', '.md', '.py', '.bak', '.bkp', '.css']
-export const editsOnClick = (name: string) => EDIT_ON_CLICK.includes(extOf(name)) || /\.cfg\.bak$/.test(name) || name === '.moonraker.conf.bkp'
+export const editsOnClick = (name: string) => EDIT_ON_CLICK.includes(extOf(name))
 
 /**
  * Files Valve Oil UI never changes. QIDI's config/fluidd.cfg is read-only on the printer; the project's rule is to
@@ -255,7 +255,7 @@ function sortKey(v: unknown): number | string | null {
 }
 
 // Names sort in the browser's own order, whatever language the UI shows. i18n-ignore
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /** Folders first, then by the column; empty values last either way, names to break ties. */
 export function sortEntries(entries: FsEntry[], by: string, desc: boolean, jobOf?: (e: FsEntry) => HistoryJob | undefined): FsEntry[] {

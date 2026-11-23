@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { PageHeader, Segmented, Spinner } from '../components/ui'
+import { Loading, PageHeader, Segmented } from '../components/ui'
 import { FileBrowser, rootLabel } from '../components/files/FileBrowser'
 import { PrintDialog } from '../components/PrintDialog'
 import { parentOf } from '../components/files/fs'
@@ -27,11 +27,7 @@ export function FilesScreen() {
   const roots = (registered.length ? ROOTS.filter((r) => r === 'gcodes' || registered.includes(r)) : ROOTS).map(rootTab)
   const [printing, setPrinting] = useState<string | null>(null)
 
-  const loading = (
-    <div className="grid place-items-center py-16">
-      <Spinner size={22} />
-    </div>
-  )
+  const loading = <Loading className="py-16" size={22} />
 
   if (sub[0] === 'preview')
     return (

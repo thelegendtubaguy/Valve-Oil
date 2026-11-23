@@ -4,7 +4,9 @@ import { Empty, PageHeader } from '../components/ui'
 import { href } from '../lib/router'
 import { displayName, fmtBytes } from '../lib/format'
 import { fetchMeta, type FileMeta } from '../state/files'
-import { usePrinter } from '../state/printer'
+import { useConnected, usePrinter } from '../state/printer'
+import { isActive } from '../state/job'
+import { parentOf } from '../components/files/fs'
 import { loadGcode, useAutoLoad, usePreviewFile } from '../components/gcode-preview/loader'
 import { usePreviewSettings } from '../components/gcode-preview/settings'
 import { GcodeViewer } from '../components/gcode-preview/GcodeViewer'
@@ -15,8 +17,8 @@ import '../components/gcode-preview/preview.css'
 /** The G-code viewer for one file, at #/files/preview/<path>. */
 export function GcodePreview({ path }: { path: string }) {
   const filesRev = usePrinter((s) => s.filesRev)
-  const open = usePrinter((s) => s.conn === 'open')
-  const printing = usePrinter((s) => s.status.print_stats?.filename === path && ['printing', 'paused'].includes(s.status.print_stats?.state))
+  const open = useConnected()
+  const printing = usePrinter((s) => s.status.print_stats?.filename === path && isActive(s.status.print_stats?.state))
   // undefined while loading, null when Moonraker doesn't know the file.
   const [meta, setMeta] = useState<FileMeta | null | undefined>(undefined)
   useEffect(() => {
@@ -35,7 +37,7 @@ export function GcodePreview({ path }: { path: string }) {
   const data = file?.phase === 'ready' ? file.data : null
 
   // Back to the file's folder.
-  const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+  const dir = parentOf(path)
   const title = (
     <span className="flex min-w-0 items-center gap-2">
       <a href={dir ? href('files', 'gcodes', ...dir.split('/')) : href('files')} className="iconbtn" aria-label={t('preview.screen.back')} title={t('files.screen.title')}>
@@ -65,11 +67,7 @@ export function GcodePreview({ path }: { path: string }) {
   return (
     <>
       <PageHeader title={title}>
-        {printing && (
-          <span className="pill tone-accent">
-            {t('preview.printing')}
-          </span>
-        )}
+        {printing && <span className="pill tone-accent">{t('preview.printing')}</span>}
         {meta?.size != null && <span className="chip num hidden sm:inline-flex">{fmtBytes(meta.size)}</span>}
         {meta?.slicer && <span className="chip hidden sm:inline-flex">{meta.slicer}</span>}
         {data && meta?.size != null && meta.modified != null && (

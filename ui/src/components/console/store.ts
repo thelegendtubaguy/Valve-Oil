@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { createStore, useStore } from '../../lib/store'
-import { client, printer, runGcode, usePrinter, type ConsoleLine } from '../../state/printer'
+import { client, printer, runGcode, useConnected, usePrinter, type ConsoleLine } from '../../state/printer'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { CONSOLE_RETENTION, EXTRA_KNOWN, addToHistory, fromStore, normalizeFilter, visibleEntries, type ConsoleEntry, type ConsoleFilter } from './model'
 
@@ -67,19 +67,13 @@ function mirrorPrinterConsole(prev: { klippy: string; lines: ConsoleLine[] }) {
   append(add)
 }
 
-let started = false
-/** Starts following the printer's console. Safe to call more than once. */
-export function startConsole() {
-  if (started) return
-  started = true
-  client.on('notify_gcode_response', onResponse)
-  client.onState((c) => c === 'open' && loadStore())
-  if (client.state === 'open') loadStore()
-  const prev: { klippy: string; lines: ConsoleLine[] } = { klippy: printer.get().klippy, lines: printer.get().console }
-  lastSeen = prev.lines.length ? prev.lines[prev.lines.length - 1].id : 0
-  printer.subscribe(() => mirrorPrinterConsole(prev))
-}
-startConsole()
+// The console follows the printer from the moment this module loads.
+client.on('notify_gcode_response', onResponse)
+client.onState((c) => c === 'open' && loadStore())
+if (client.state === 'open') loadStore()
+const mirrored = { klippy: printer.get().klippy, lines: printer.get().console }
+lastSeen = mirrored.lines.length ? mirrored.lines[mirrored.lines.length - 1].id : 0
+printer.subscribe(() => mirrorPrinterConsole(mirrored))
 
 // ---- G-code help: every command Klipper knows, with its help text ----
 const helpStore = createStore<Record<string, string>>({})
@@ -95,10 +89,10 @@ async function loadHelp() {
 /** Every command Klipper knows, upper case, with help; reloaded each time Klipper becomes ready. */
 export function useGcodeHelp() {
   const klippy = usePrinter((s) => s.klippy)
-  const conn = usePrinter((s) => s.conn)
+  const connected = useConnected()
   useEffect(() => {
-    if (conn === 'open') loadHelp()
-  }, [klippy, conn])
+    if (connected) loadHelp()
+  }, [klippy, connected])
   const help = useStore(helpStore, (h) => h)
   const commands = usePrinter((s) => s.commands)
   return useMemo(() => {
@@ -127,7 +121,7 @@ export function useConsoleEntries(search?: string) {
   const loaded = useStore(consoleStore, (s) => s.loaded)
   const { hideTempWaits, filters, lastCleared } = useConsoleSettings()
   const shown = useMemo(() => visibleEntries(entries, { hideTempWaits, filters, lastCleared, search }), [entries, hideTempWaits, filters, lastCleared, search])
-  return { shown, total: entries.length, loaded }
+  return { shown, loaded }
 }
 
 /** Command history, newest first, shared with Fluidd. */

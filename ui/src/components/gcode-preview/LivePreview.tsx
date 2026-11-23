@@ -4,6 +4,7 @@ import { href } from '../../lib/router'
 import { fmtBytes } from '../../lib/format'
 import { useFileMeta } from '../../state/files'
 import { usePrinter } from '../../state/printer'
+import { isActive } from '../../state/job'
 import { useAutoLoad, usePreviewFile } from './loader'
 import { usePreviewSettings } from './settings'
 import { usePreviewModel, usePrintFollow } from './hooks'
@@ -23,7 +24,7 @@ const AUTO_LOAD_BYTES = 25 * 1024 * 1024
 export function LivePreview({ className = 'aspect-square' }: { className?: string }) {
   const filename = usePrinter((s) => s.status.print_stats?.filename ?? '')
   const state = usePrinter((s) => s.status.print_stats?.state ?? 'standby')
-  const active = !!filename && (state === 'printing' || state === 'paused')
+  const active = !!filename && isActive(state)
   const path = active ? filename : null
   const meta = useFileMeta(path)
   const [asked, setAsked] = useState(false)
@@ -63,9 +64,7 @@ export function LivePreview({ className = 'aspect-square' }: { className?: strin
             interactive={false}
             fitPrint
           />
-          <span className="gp-badge num">
-            {t('preview.layer_of', { layer: layer + 1, total: layers.length })}
-          </span>
+          <span className="gp-badge num">{t('preview.layer_of', { layer: layer + 1, total: layers.length })}</span>
           <span className="iconbtn absolute top-2 right-2" style={{ background: 'color-mix(in srgb, var(--surface) 85%, transparent)' }}>
             <Maximize2 size={15} />
           </span>

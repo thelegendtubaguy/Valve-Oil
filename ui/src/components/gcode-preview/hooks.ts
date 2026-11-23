@@ -1,22 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { usePrinter } from '../../state/printer'
+import { useTheme } from '../../lib/theme'
+import { isActive, type JobState } from '../../state/job'
 import type { FileMeta } from '../../state/files'
 import { getBounds, getExtrusionColors, getLayers, getToolColors } from './model'
 import type { BBox, Layer, ParsedGcode } from './types'
 import type { PreviewSettings } from './settings'
 import type { ExcludeObject } from './PreviewCanvas'
-
-/** Follows the app's dark class, which the theme toggle sets. */
-export function useIsDark() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
-  useEffect(() => {
-    const el = document.documentElement
-    const mo = new MutationObserver(() => setDark(el.classList.contains('dark')))
-    mo.observe(el, { attributes: true, attributeFilter: ['class'] })
-    return () => mo.disconnect()
-  }, [])
-  return dark
-}
 
 /** The bed from the X and Y steppers' position_min and position_max, or the print's bounds when they're missing. */
 export function useBed(bounds: BBox): BBox {
@@ -41,7 +31,7 @@ const NO_BOUNDS: BBox = { x: { min: 0, max: 0 }, y: { min: 0, max: 0 } }
 
 /** Layers, bounds, and colours for a parsed file. */
 export function usePreviewModel(meta: FileMeta | null | undefined, data: ParsedGcode | null, settings: PreviewSettings) {
-  const isDark = useIsDark()
+  const isDark = useTheme()[0] === 'dark'
   const layers = useMemo(() => (data ? getLayers(data, settings.minLayerHeight) : NO_LAYERS), [data, settings.minLayerHeight])
   const bounds = useMemo(() => (data ? getBounds(data, layers) : NO_BOUNDS), [data, layers])
   const fileColors = (Array.isArray(meta?.extruder_colors) ? meta.extruder_colors : Array.isArray(meta?.filament_colors) ? meta.filament_colors : null) ?? []
@@ -61,7 +51,7 @@ export function usePrintFollow(path: string | null) {
     const ps = s.status.print_stats ?? {}
     return {
       filename: (ps.filename ?? '') as string,
-      state: (ps.state ?? 'standby') as string,
+      state: (ps.state ?? 'standby') as JobState,
       currentLayer: (ps.info?.current_layer ?? null) as number | null,
       filePosition: (s.status.virtual_sdcard?.file_position ?? 0) as number,
       x: s.status.toolhead?.position?.[0] as number | undefined,
@@ -70,7 +60,7 @@ export function usePrintFollow(path: string | null) {
   })
   const exclude = usePrinter((s) => s.status.exclude_object)
   const klippyReady = usePrinter((s) => s.klippy === 'ready')
-  const active = job.state === 'printing' || job.state === 'paused'
+  const active = isActive(job.state)
   const isPrinterFile = !!path && active && job.filename === path
   const objects = useMemo<ExcludeObject[] | null>(() => {
     // As in Fluidd: Klipper's objects replace the file's parts only while this file is the one printing.

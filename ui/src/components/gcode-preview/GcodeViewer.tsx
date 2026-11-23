@@ -8,7 +8,7 @@ import { PreviewCanvas, type PreviewCanvasHandle } from './PreviewCanvas'
 import { usePreviewModel, usePrintFollow } from './hooks'
 import { fanStops, layerByFilePosition, moveIndexByFilePosition, roleName, speedStops } from './model'
 import { ExtrusionRole, type ColorMode, type ParsedGcode } from './types'
-import type { PreviewSettings } from './settings'
+import { COLOR_MODES, type PreviewSettings } from './preview-settings'
 import type { FileMeta } from '../../state/files'
 import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
@@ -22,11 +22,20 @@ type Props = {
   set: <K extends keyof PreviewSettings>(key: K, value: PreviewSettings[K]) => void
 }
 
-const COLOR_MODES: ColorMode[] = ['tool', 'role', 'speed', 'fan']
+// The Show card's toggles: the setting and its label under preview.viewer.
+const SHOWN = [
+  ['showPreviousLayer', 'previous_layer'],
+  ['showCurrentLayer', 'current_layer'],
+  ['showNextLayer', 'next_layer'],
+  ['showExtrusions', 'extrusions'],
+  ['showMoves', 'moves'],
+  ['showRetractions', 'retractions'],
+  ['showParts', 'parts'],
+] as const
 const colorModes = () => COLOR_MODES.map((value) => ({ value, label: t(`preview.color_modes.${value}`) }))
 
 /** A slider with − and + steppers either side, named by `label`, `previous`, and `next`. */
-export function RangeStepper({ value, min, max, onChange, label, previous, next, disabled }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string; previous: string; next: string; disabled?: boolean }) {
+function RangeStepper({ value, min, max, onChange, label, previous, next, disabled }: { value: number; min: number; max: number; onChange: (v: number) => void; label: string; previous: string; next: string; disabled?: boolean }) {
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
   return (
@@ -144,24 +153,20 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
           fitPrint={settings.autoZoom}
         />
         <div className="gp-tools">
-          <button className="iconbtn" title={settings.autoZoom ? t('preview.viewer.fit_bed') : t('preview.viewer.fit_print')} aria-label={settings.autoZoom ? t('preview.viewer.fit_bed') : t('preview.viewer.fit_print')} onClick={() => set('autoZoom', !settings.autoZoom)}>
-            {settings.autoZoom ? <Scan size={18} /> : <ScanSearch size={18} />}
-          </button>
-          <button className="iconbtn" title={t('preview.viewer.zoom_in')} aria-label={t('preview.viewer.zoom_in')} onClick={() => view.current?.zoom(1.5)}>
-            <Plus size={18} />
-          </button>
-          <button className="iconbtn" title={t('preview.viewer.zoom_out')} aria-label={t('preview.viewer.zoom_out')} onClick={() => view.current?.zoom(1 / 1.5)}>
-            <Minus size={18} />
-          </button>
+          {tool(settings.autoZoom ? t('preview.viewer.fit_bed') : t('preview.viewer.fit_print'), () => set('autoZoom', !settings.autoZoom), settings.autoZoom ? <Scan size={18} /> : <ScanSearch size={18} />)}
+          {tool(t('preview.viewer.zoom_in'), () => view.current?.zoom(1.5), <Plus size={18} />)}
+          {tool(t('preview.viewer.zoom_out'), () => view.current?.zoom(1 / 1.5), <Minus size={18} />)}
           <MenuButton
             label={t('preview.viewer.view_options')}
             button={<Settings2 size={18} />}
-            items={[
-              { label: t('preview.viewer.flip_horizontal'), icon: <Mark on={settings.flip.horizontal} />, onSelect: () => set('flip', { ...settings.flip, horizontal: !settings.flip.horizontal }) },
-              { label: t('preview.viewer.flip_vertical'), icon: <Mark on={settings.flip.vertical} />, onSelect: () => set('flip', { ...settings.flip, vertical: !settings.flip.vertical }) },
-              { label: t('preview.viewer.draw_origin'), icon: <Mark on={settings.drawOrigin} />, onSelect: () => set('drawOrigin', !settings.drawOrigin) },
-              { label: t('preview.viewer.draw_background'), icon: <Mark on={settings.drawBackground} />, onSelect: () => set('drawBackground', !settings.drawBackground) },
-            ]}
+            items={(
+              [
+                ['flip_horizontal', settings.flip.horizontal, () => set('flip', { ...settings.flip, horizontal: !settings.flip.horizontal })],
+                ['flip_vertical', settings.flip.vertical, () => set('flip', { ...settings.flip, vertical: !settings.flip.vertical })],
+                ['draw_origin', settings.drawOrigin, () => set('drawOrigin', !settings.drawOrigin)],
+                ['draw_background', settings.drawBackground, () => set('drawBackground', !settings.drawBackground)],
+              ] as const
+            ).map(([key, on, onSelect]) => ({ label: t(`preview.viewer.${key}`), icon: <Check size={15} className={on ? 'text-accent-ink' : 'opacity-0'} />, onSelect }))}
           />
         </div>
         {layers.length > 0 && (
@@ -209,27 +214,11 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
 
         <Card title={t('preview.viewer.show')}>
           <div className="flex flex-wrap gap-1.5">
-            <Pill on={settings.showPreviousLayer} onClick={() => set('showPreviousLayer', !settings.showPreviousLayer)}>
-              {t('preview.viewer.previous_layer')}
-            </Pill>
-            <Pill on={settings.showCurrentLayer} onClick={() => set('showCurrentLayer', !settings.showCurrentLayer)}>
-              {t('preview.viewer.current_layer')}
-            </Pill>
-            <Pill on={settings.showNextLayer} onClick={() => set('showNextLayer', !settings.showNextLayer)}>
-              {t('preview.viewer.next_layer')}
-            </Pill>
-            <Pill on={settings.showExtrusions} onClick={() => set('showExtrusions', !settings.showExtrusions)}>
-              {t('preview.viewer.extrusions')}
-            </Pill>
-            <Pill on={settings.showMoves} onClick={() => set('showMoves', !settings.showMoves)}>
-              {t('preview.viewer.moves')}
-            </Pill>
-            <Pill on={settings.showRetractions} onClick={() => set('showRetractions', !settings.showRetractions)}>
-              {t('preview.viewer.retractions')}
-            </Pill>
-            <Pill on={settings.showParts} onClick={() => set('showParts', !settings.showParts)}>
-              {t('preview.viewer.parts')}
-            </Pill>
+            {SHOWN.map(([key, label]) => (
+              <button key={key} type="button" className={`choice ${settings[key] ? 'on' : ''}`} aria-pressed={settings[key]} onClick={() => set(key, !settings[key])}>
+                {t(`preview.viewer.${label}`)}
+              </button>
+            ))}
           </div>
         </Card>
 
@@ -265,14 +254,10 @@ export function GcodeViewer({ path, meta, data, settings, set }: Props) {
   )
 }
 
-function Mark({ on }: { on: boolean }) {
-  return <Check size={15} className={on ? 'text-accent-ink' : 'opacity-0'} />
-}
-
-function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+function tool(label: string, onClick: () => void, icon: ReactNode) {
   return (
-    <button type="button" className={`choice ${on ? 'on' : ''}`} aria-pressed={on} onClick={onClick}>
-      {children}
+    <button className="iconbtn" title={label} aria-label={label} onClick={onClick}>
+      {icon}
     </button>
   )
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, Filter, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Dialog, Toggle, confirm } from '../ui'
+import { CancelButton, Choices, Dialog, Field, Toggle, confirm } from '../ui'
 import { attempt } from '../toast'
+import { usePopup, uuid } from '../../lib/browser'
 import { validExpression, type ConsoleFilter, type ConsoleFilterType } from './model'
 import { useConsoleSettings } from './store'
 import { t, type MessageKey } from '../../i18n'
@@ -9,28 +10,10 @@ import { t, type MessageKey } from '../../i18n'
 // Fluidd's console filters: "Hide temp waits" and named filters that hide matching lines, stored in its namespace
 // (`uiSettings.general.hideTempWaits`, `console.consoleFilters`), so a filter set up in either UI works in both.
 
-function newId() {
-  // crypto.randomUUID needs a secure context, which a printer on plain http isn't.
-  const b = crypto.getRandomValues(new Uint8Array(16))
-  b[6] = (b[6] & 0x0f) | 0x40
-  b[8] = (b[8] & 0x3f) | 0x80
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
-}
-
 /** The toolbar's filter button: Hide temp waits and each saved filter, on or off. */
 export function FilterMenu({ onManage }: { onManage: () => void }) {
   const s = useConsoleSettings()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('keydown', esc)
-    return () => (window.removeEventListener('pointerdown', close), window.removeEventListener('keydown', esc))
-  }, [open])
+  const { open, setOpen, ref } = usePopup()
   const active = (s.hideTempWaits ? 1 : 0) + s.filters.filter((f) => f.enabled).length
   const toggle = (f: ConsoleFilter) => attempt(() => s.setFilters(s.filters.map((x) => (x.id === f.id ? { ...x, enabled: !x.enabled } : x))))
   const Row = ({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) => (
@@ -63,12 +46,12 @@ export function FilterMenu({ onManage }: { onManage: () => void }) {
   )
 }
 
-const TYPES: ConsoleFilterType[] = ['contains', 'starts-with', 'expression']
 const TYPE_LABEL: Record<ConsoleFilterType, MessageKey> = {
   contains: 'console.filters.contains',
   'starts-with': 'console.filters.starts_with',
   expression: 'console.filters.expression',
 }
+const TYPES = Object.keys(TYPE_LABEL) as ConsoleFilterType[]
 
 /** Add, edit, and remove console filters, as in Fluidd's console settings. */
 export function FiltersDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -84,7 +67,7 @@ export function FiltersDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
   const save = (f: ConsoleFilter) =>
     attempt(async () => {
-      await s.setFilters(f.id ? s.filters.map((x) => (x.id === f.id ? f : x)) : [...s.filters, { ...f, id: newId() }])
+      await s.setFilters(f.id ? s.filters.map((x) => (x.id === f.id ? f : x)) : [...s.filters, { ...f, id: uuid() }])
       setEdit(null)
     })
 
@@ -138,7 +121,6 @@ function FilterEditor({ filter, others, onCancel, onSave }: { filter: ConsoleFil
   const nameTaken = others.some((o) => o.id !== f.id && o.name.toLowerCase() === f.name.trim().toLowerCase())
   const badExpr = f.type === 'expression' && f.value !== '' && !validExpression(f.value)
   const ok = f.name.trim() !== '' && f.value !== '' && !nameTaken && !badExpr
-  const typeLabel = t(TYPE_LABEL[f.type])
   return (
     <Dialog
       open
@@ -146,9 +128,7 @@ function FilterEditor({ filter, others, onCancel, onSave }: { filter: ConsoleFil
       title={f.id ? t('console.filters.edit') : t('console.filters.add')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onCancel}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onCancel} />
           <button className="btn btn-primary" disabled={!ok} onClick={() => onSave({ ...f, name: f.name.trim() })}>
             {t('common.save')}
           </button>
@@ -160,23 +140,15 @@ function FilterEditor({ filter, others, onCancel, onSave }: { filter: ConsoleFil
           <span className="font-semibold">{t('console.filters.enable')}</span>
           <Toggle checked={f.enabled} onChange={(enabled) => setF({ ...f, enabled })} label={t('console.filters.enable')} />
         </label>
-        <label className="grid gap-1.5">
-          <span className="lbl">{t('console.filters.name')}</span>
+        <Field label={t('console.filters.name')}>
           <input className="field" autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           {nameTaken && <span className="text-[12px] text-bad">{t('console.filters.name_taken')}</span>}
-        </label>
+        </Field>
         <div className="grid gap-1.5">
           <span className="lbl">{t('console.filters.type')}</span>
-          <div className="flex flex-wrap gap-1.5">
-            {TYPES.map((type) => (
-              <button key={type} type="button" className={`choice ${f.type === type ? 'on' : ''}`} onClick={() => setF({ ...f, type })}>
-                {t(TYPE_LABEL[type])}
-              </button>
-            ))}
-          </div>
+          <Choices value={f.type} options={TYPES.map((type) => ({ value: type, label: t(TYPE_LABEL[type]) }))} onChange={(type) => setF({ ...f, type })} />
         </div>
-        <label className="grid gap-1.5">
-          <span className="lbl">{typeLabel}</span>
+        <Field label={t(TYPE_LABEL[f.type])}>
           {/* i18n-ignore: example console lines, which Klipper writes in English */}
           <input className="field font-mono" spellCheck={false} autoCapitalize="off" value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} placeholder={f.type === 'expression' ? '^// pressure_advance' : 'pressure_advance'} />
           {badExpr ? (
@@ -184,7 +156,7 @@ function FilterEditor({ filter, others, onCancel, onSave }: { filter: ConsoleFil
           ) : (
             <span className="text-[12px] text-ink-3">{f.type === 'expression' ? t('console.filters.expression_hint') : t('console.filters.case_hint')}</span>
           )}
-        </label>
+        </Field>
       </div>
     </Dialog>
   )

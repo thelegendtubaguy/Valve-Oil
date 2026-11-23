@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { CircleAlert, CircleCheck, Upload as UploadIcon, X } from 'lucide-react'
-import { cancelUpload, clearUploads, uploadFiles, useUploads, type FileWithPath } from '../state/files'
+import { cancelUpload, clearUploads, isPending, uploadFiles, useUploads, type FileWithPath } from '../state/files'
 import { filesFromDrop, filesWithPath, hasFiles } from './files/drop'
 import { GCODE_EXTENSIONS } from './files/fs'
 import { fmtBytes } from '../lib/format'
@@ -12,7 +12,7 @@ const ACCEPT = GCODE_EXTENSIONS.join(',')
 /** Uploads into a root's folder, with progress shown by <UploadsPanel>. */
 export function useUploader(root = 'gcodes', dir = '') {
   const list = useUploads()
-  const mine = list.filter((u) => u.root === root && (u.state === 'waiting' || u.state === 'sending'))
+  const mine = list.filter((u) => u.root === root && isPending(u))
   const total = mine.reduce((a, u) => a + u.size, 0)
   const progress = mine.length ? mine.reduce((a, u) => a + u.loaded, 0) / Math.max(1, total) : null
   const upload = (files: FileList | File[] | FileWithPath[], print = false) => uploadFiles(root, dir, [...files], print)
@@ -59,7 +59,7 @@ export function DropZone({ children, className = '' }: { children?: ReactNode; c
 export function UploadsPanel() {
   const list = useUploads()
   if (!list.length) return null
-  const active = list.filter((u) => u.state === 'waiting' || u.state === 'sending').length
+  const active = list.filter(isPending).length
   return (
     <div className="fixed right-3 bottom-20 z-50 w-[min(360px,calc(100vw-24px))] rounded-xl bg-surface p-3 md:right-5 md:bottom-5" style={{ boxShadow: 'var(--shadow-overlay)' }}>
       <div className="mb-2 flex items-center gap-2">
@@ -80,7 +80,7 @@ export function UploadsPanel() {
                 {u.name}
               </span>
               <span className="num flex-none text-ink-3">{u.state === 'sending' ? `${Math.round((u.loaded / Math.max(1, u.size)) * 100)}%` : u.state === 'waiting' ? fmtBytes(u.size) : u.state === 'cancelled' ? t('app.upload.cancelled') : u.state === 'failed' ? t('app.upload.failed') : ''}</span>
-              {(u.state === 'waiting' || u.state === 'sending') && (
+              {isPending(u) && (
                 <button className="iconbtn h-6 w-6" onClick={() => cancelUpload(u.id)} aria-label={t('app.upload.cancel_named', { name: u.name })}>
                   <X size={13} />
                 </button>

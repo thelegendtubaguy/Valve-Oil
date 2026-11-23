@@ -1,17 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { usePopup } from '../../lib/browser'
 
 /** A button with a small panel under it that stays open while you tick things in it. */
 export function Popover({ button, label, children, align = 'right', className = 'btn btn-sm' }: { button: ReactNode; label: string; children: ReactNode; align?: 'left' | 'right'; className?: string }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('keydown', esc)
-    return () => (window.removeEventListener('pointerdown', close), window.removeEventListener('keydown', esc))
-  }, [open])
+  const { open, setOpen, ref } = usePopup()
   return (
     <div className="relative inline-flex" ref={ref}>
       <button type="button" className={`${className} ${open ? 'on' : ''}`} aria-haspopup="true" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen((o) => !o)}>

@@ -2,7 +2,8 @@
 // spoolman/), plus the per-slot spools Valve Oil's vo_spoolman Klipper module reports. Setting keys and sort keys
 // follow Fluidd's uiSettings.spoolman, so both UIs share them in the `fluidd` database namespace.
 import type { MessageKey } from '../../i18n'
-
+import { collator } from '../files/fs'
+import { QIDI_BOX_EXTERNAL_SLOT } from '../../qidi/qidi-box'
 
 // ---- Spoolman's API shapes, as Moonraker's proxy passes them through ----
 
@@ -224,9 +225,6 @@ function valueAt(spool: Spool, path: string): unknown {
   return v
 }
 
-// Names sort in the browser's own order, whatever language the UI shows. i18n-ignore
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
-
 /** Sorted by a Fluidd column key. Spools without the value, such as never used ones by last used, go last either way. */
 export function sortSpools(spools: Spool[], order: SortOrder): Spool[] {
   const key = order.key
@@ -300,8 +298,6 @@ export const CHECK_TEXT: Record<SpoolCheck | 'no_spool', MessageKey> = {
 
 // ---- per-slot spools from vo_spoolman ----
 
-export const EXTERNAL_SLOT = 16
-
 export type SlotSpools = { loadedSlot: number | null; spools: Map<number, number> }
 
 const slotNumber = (v: unknown) => {
@@ -309,7 +305,7 @@ const slotNumber = (v: unknown) => {
   const m = /^slot(\d+)$/.exec(v)
   if (!m) return null
   const n = Number(m[1])
-  return n >= 0 && n <= EXTERNAL_SLOT ? n : null
+  return n >= 0 && n <= QIDI_BOX_EXTERNAL_SLOT ? n : null
 }
 
 /** vo_spoolman's status: `spools` maps 'slotN' to a spool ID, `loaded_slot` is 'slotN' or null. */

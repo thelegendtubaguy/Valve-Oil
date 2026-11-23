@@ -1,13 +1,22 @@
 import { useState } from 'react'
 import { ChevronRight, Folder, FolderPlus, House } from 'lucide-react'
-import { Dialog, Spinner, prompt } from '../ui'
+import { CancelButton, Dialog, KV, Loading, prompt } from '../ui'
 import { attempt, toast } from '../toast'
 import { client } from '../../state/printer'
 import { makeDir, thumbnailUrl, useDirectory, useFileMeta, type HistoryJob } from '../../state/files'
-import { alwaysHidden, asList, columnLabel, joinPath, validName, type FsEntry } from './fs'
+import { alwaysHidden, asList, columnLabel, isVideo, joinPath, validName, type FsEntry } from './fs'
 import { fmtDuration } from '../../lib/format'
 import { fmtDate, fmtSize, outcomeText } from './cells'
 import { t } from '../../i18n'
+
+/** Asks for a file or folder name; nothing when it's cancelled or left as `same`, or (with a toast) when it's invalid. */
+export async function promptName(title: string, label: string, value = '', same?: string, placeholder?: string) {
+  const name = await prompt({ title, input: { label, value, placeholder } })
+  if (!name || name === same) return
+  const err = validName(name)
+  if (err) return void toast(err, 'error')
+  return name
+}
 
 /** Picks a folder of the same root to move items into. */
 export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { root: string; rootLabel: string; items: FsEntry[]; from: string; onMove: (dest: string) => void; onClose: () => void }) {
@@ -17,11 +26,8 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
   const dirs = (dir?.dirs ?? []).filter((d) => !alwaysHidden(d) && !moving.has(d.path))
   const parts = at ? at.split('/') : []
   const newFolder = async () => {
-    const name = await prompt({ title: t('files.browser.add_dir'), input: { label: t('files.browser.dir_name'), value: '' } })
-    if (!name) return
-    const err = validName(name)
-    if (err) return toast(err, 'error')
-    if (await attempt(async () => (await makeDir(root, joinPath(at, name)), true))) setAt(joinPath(at, name))
+    const name = await promptName(t('files.browser.add_dir'), t('files.browser.dir_name'))
+    if (name && (await attempt(async () => (await makeDir(root, joinPath(at, name)), true)))) setAt(joinPath(at, name))
   }
   return (
     <Dialog
@@ -33,9 +39,7 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
           <button className="btn btn-ghost mr-auto" onClick={newFolder}>
             <FolderPlus size={15} /> {t('files.move.new_folder')}
           </button>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={at === from} onClick={() => onMove(at)}>
             {t('files.move.move_here')}
           </button>
@@ -57,9 +61,7 @@ export function MoveDialog({ root, rootLabel, items, from, onMove, onClose }: { 
       </nav>
       <div className="grid max-h-[50dvh] min-h-[160px] content-start gap-0.5 overflow-auto rounded-xl bg-inset p-1.5 shadow-[inset_0_0_0_1px_var(--line)]">
         {loading && !dir ? (
-          <div className="grid place-items-center py-6">
-            <Spinner />
-          </div>
+          <Loading className="py-6" size={16} />
         ) : dirs.length === 0 ? (
           <div className="px-2 py-4 text-center text-ink-3">{t('files.move.no_folders')}</div>
         ) : (
@@ -127,45 +129,28 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
           </div>
         )}
         <div className={`min-w-0 ${root === 'gcodes' ? '' : 'sm:col-span-2'}`}>
-          <div className="row-k">
-            <span className="k">{t('files.info.path')}</span>
-            <span className="v code break-all">{joinPath(root, entry.path)}</span>
-          </div>
-          <div className="row-k">
-            <span className="k">{columnLabel('size')}</span>
-            <span className="v">{entry.kind === 'dir' ? '—' : fmtSize(entry.size)}</span>
-          </div>
-          <div className="row-k">
-            <span className="k">{columnLabel('modified')}</span>
-            <span className="v">{fmtDate(entry.modified)}</span>
-          </div>
-          <div className="row-k">
-            <span className="k">{t('files.info.permissions')}</span>
-            <span className="v">{entry.permissions === 'r' ? t('files.read_only') : t('files.info.read_write')}</span>
-          </div>
+          <KV k={t('files.info.path')} vClassName="code break-all">
+            {joinPath(root, entry.path)}
+          </KV>
+          <KV k={columnLabel('size')}>{entry.kind === 'dir' ? '—' : fmtSize(entry.size)}</KV>
+          <KV k={columnLabel('modified')}>{fmtDate(entry.modified)}</KV>
+          <KV k={t('files.info.permissions')}>{entry.permissions === 'r' ? t('files.read_only') : t('files.info.read_write')}</KV>
           {job && (
-            <div className="row-k">
-              <span className="k">{t('files.info.last_print')}</span>
-              <span className="v">
-                {outcomeText(job)} · {fmtDate(job.start_time)}
-              </span>
-            </div>
+            <KV k={t('files.info.last_print')}>
+              {outcomeText(job)} · {fmtDate(job.start_time)}
+            </KV>
           )}
           {colors.length > 0 && (
-            <div className="row-k">
-              <span className="k">{t('files.info.colors')}</span>
-              <span className="v flex justify-end gap-1">
-                {colors.map((c, i) => (
-                  <i key={i} className="swatch" style={{ background: c }} title={c} />
-                ))}
-              </span>
-            </div>
+            <KV k={t('files.info.colors')} vClassName="flex justify-end gap-1">
+              {colors.map((c, i) => (
+                <i key={i} className="swatch" style={{ background: c }} title={c} />
+              ))}
+            </KV>
           )}
           {known.map((k) => (
-            <div key={k} className="row-k">
-              <span className="k">{columnLabel(k)}</span>
-              <span className="v break-words">{metaText(k, meta?.[k])}</span>
-            </div>
+            <KV key={k} k={columnLabel(k)} vClassName="break-words">
+              {metaText(k, meta?.[k])}
+            </KV>
           ))}
         </div>
       </div>
@@ -189,10 +174,9 @@ export function InfoDialog({ root, entry, job, onClose }: { root: string; entry:
 /** Shows an image or video from any root. */
 export function ViewDialog({ root, entry, onClose }: { root: string; entry: FsEntry; onClose: () => void }) {
   const url = client.fileUrl(root, entry.path)
-  const video = /\.(mp4|webm|mkv|mov)$/i.test(entry.name)
   return (
     <Dialog open onClose={onClose} title={entry.name} size="wide">
-      <div className="grid place-items-center rounded-xl bg-inset p-2">{video ? <video src={url} controls className="max-h-[70dvh] max-w-full" /> : <img src={url} alt={entry.name} className="max-h-[70dvh] max-w-full object-contain" />}</div>
+      <div className="grid place-items-center rounded-xl bg-inset p-2">{isVideo(entry.name) ? <video src={url} controls className="max-h-[70dvh] max-w-full" /> : <img src={url} alt={entry.name} className="max-h-[70dvh] max-w-full object-contain" />}</div>
     </Dialog>
   )
 }

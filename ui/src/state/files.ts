@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { client, usePrinter } from './printer'
+import { client, useConnected, usePrinter } from './printer'
 import { createStore, useStore } from '../lib/store'
 import { toast } from '../components/toast'
 import { baseName, extOf, isLocked, joinPath, parentOf, rootProps, type FsEntry } from '../components/files/fs'
+import { errorText, saveBlob, saveUrl } from '../lib/browser'
 import { t } from '../i18n'
 
 export type Thumbnail = { width: number; height: number; size: number; relative_path: string }
@@ -46,19 +47,19 @@ export type HistoryJob = {
   exists?: boolean
 }
 
-const metaCache = new Map<string, { meta: FileMeta | null; at: number }>()
+const metaCache = new Map<string, FileMeta | null>()
 const inflight = new Map<string, Promise<FileMeta | null>>()
 
 export function fetchMeta(filename: string, force = false): Promise<FileMeta | null> {
   const hit = metaCache.get(filename)
-  if (hit && !force) return Promise.resolve(hit.meta)
+  if (hit !== undefined && !force) return Promise.resolve(hit)
   let p = inflight.get(filename)
   if (!p) {
     p = client
       .call<FileMeta>('server.files.metadata', { filename })
       .catch(() => null)
       .then((meta) => {
-        metaCache.set(filename, { meta, at: Date.now() })
+        metaCache.set(filename, meta)
         inflight.delete(filename)
         return meta
       })
@@ -69,7 +70,7 @@ export function fetchMeta(filename: string, force = false): Promise<FileMeta | n
 
 export function useFileMeta(filename: string | null | undefined) {
   const filesRev = usePrinter((s) => s.filesRev)
-  const [meta, setMeta] = useState<FileMeta | null>(filename ? (metaCache.get(filename)?.meta ?? null) : null)
+  const [meta, setMeta] = useState<FileMeta | null>(filename ? (metaCache.get(filename) ?? null) : null)
   useEffect(() => {
     if (!filename) return setMeta(null)
     let live = true
@@ -87,45 +88,32 @@ export function thumbnailUrl(filename: string, meta: FileMeta | null | undefined
   if (!thumbs?.length) return null
   const sorted = [...thumbs].sort((a, b) => b.width - a.width)
   const pick = sorted.find((t) => t.width >= minWidth && t.width <= 400) ?? sorted[0]
-  const dir = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : ''
-  return client.fileUrl('gcodes', dir + pick.relative_path)
+  return client.fileUrl('gcodes', joinPath(parentOf(filename), pick.relative_path))
 }
 
-export function useFiles() {
-  const rev = usePrinter((s) => s.filesRev)
-  const ready = usePrinter((s) => s.conn === 'open')
-  const [files, setFiles] = useState<FileEntry[] | null>(null)
-  useEffect(() => {
-    if (!ready) return
-    let live = true
-    client
-      .call<FileEntry[]>('server.files.list', { root: 'gcodes' })
-      .then((f) => live && setFiles(f.filter((x) => /\.(gcode|g|gco|gcode\.3mf)$/i.test(x.path) && !x.path.startsWith('.'))))
-      .catch(() => live && setFiles([]))
-    return () => {
-      live = false
-    }
-  }, [rev, ready])
-  return files
-}
-
-export function useHistory(limit = 200, enabled = true) {
-  const rev = usePrinter((s) => s.historyRev)
-  const ready = usePrinter((s) => s.conn === 'open')
-  const [jobs, setJobs] = useState<HistoryJob[] | null>(null)
+/** A Moonraker list, fetched while connected and enabled and again when `rev` moves; empty when the call fails. */
+function useList<R, T>(method: string, params: Record<string, unknown>, rev: 'filesRev' | 'historyRev', enabled: boolean, pick: (r: R) => T[]) {
+  const n = usePrinter((s) => s[rev])
+  const ready = useConnected()
+  const [list, setList] = useState<T[] | null>(null)
+  const key = JSON.stringify(params)
   useEffect(() => {
     if (!ready || !enabled) return
     let live = true
     client
-      .call<{ jobs: HistoryJob[] }>('server.history.list', { limit, order: 'desc' })
-      .then((r) => live && setJobs(r.jobs))
-      .catch(() => live && setJobs([]))
+      .call<R>(method, params)
+      .then((r) => live && setList(pick(r)))
+      .catch(() => live && setList([]))
     return () => {
       live = false
     }
-  }, [rev, ready, limit, enabled])
-  return jobs
+  }, [method, key, n, ready, enabled])
+  return list
 }
+
+export const useFiles = () => useList<FileEntry[], FileEntry>('server.files.list', { root: 'gcodes' }, 'filesRev', true, (f) => f.filter((x) => /\.(gcode|g|gco|gcode\.3mf)$/i.test(x.path) && !x.path.startsWith('.')))
+
+export const useHistory = (limit = 200, enabled = true) => useList<{ jobs: HistoryJob[] }, HistoryJob>('server.history.list', { limit, order: 'desc' }, 'historyRev', enabled, (r) => r.jobs)
 
 // ---------------------------------------------------------------------------------------------------------------
 // Any root: directories, file operations, uploads, and downloads, for the file browser and the editor. Paths are
@@ -142,7 +130,7 @@ const rooted = (root: string, path: string) => joinPath(root, path)
 /** One folder of a root, with G-code metadata inline; reloads when Moonraker reports a file change. */
 export function useDirectory(root: string, path: string) {
   const rev = usePrinter((s) => s.filesRev)
-  const ready = usePrinter((s) => s.conn === 'open')
+  const ready = useConnected()
   const [state, setState] = useState<{ key: string; dir: Directory | null; error: string | null }>({ key: '', dir: null, error: null })
   const key = `${root}/${path}`
   useEffect(() => {
@@ -160,7 +148,7 @@ export function useDirectory(root: string, path: string) {
         })
         setState({ key, dir: { dirs, files, disk: r.disk_usage ?? null, permissions: r.root_info?.permissions ?? 'rw' }, error: null })
       })
-      .catch((e) => live && setState({ key, dir: null, error: e instanceof Error ? e.message : String(e) }))
+      .catch((e) => live && setState({ key, dir: null, error: errorText(e) }))
     return () => {
       live = false
     }
@@ -170,23 +158,7 @@ export function useDirectory(root: string, path: string) {
 }
 
 /** Every file in a root (server.files.list), for searching across folders. */
-export function useRootFiles(root: string, enabled = true) {
-  const rev = usePrinter((s) => s.filesRev)
-  const ready = usePrinter((s) => s.conn === 'open')
-  const [files, setFiles] = useState<FileEntry[] | null>(null)
-  useEffect(() => {
-    if (!ready || !enabled) return
-    let live = true
-    client
-      .call<FileEntry[]>('server.files.list', { root })
-      .then((f) => live && setFiles(f))
-      .catch(() => live && setFiles([]))
-    return () => {
-      live = false
-    }
-  }, [root, rev, ready, enabled])
-  return files
-}
+export const useRootFiles = (root: string, enabled = true) => useList<FileEntry[], FileEntry>('server.files.list', { root }, 'filesRev', enabled, (f) => f)
 
 /** Refuses writes over files Valve Oil UI must leave alone (config/fluidd.cfg). */
 function guard(root: string, path: string) {
@@ -217,7 +189,7 @@ export async function makeDir(root: string, path: string) {
 /** Rescans a G-code file's metadata, as Fluidd's Refresh Metadata. */
 export async function rescanMeta(filename: string) {
   const m = await client.call<FileMeta>('server.files.metascan', { filename })
-  metaCache.set(filename, { meta: m, at: Date.now() })
+  metaCache.set(filename, m)
   return m
 }
 
@@ -238,26 +210,13 @@ export async function writeText(root: string, path: string, text: string) {
   await uploadOne(new File([text], baseName(path)), root, parentOf(path), false)
 }
 
-function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  document.body.append(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 30000)
-}
-
 /** Downloads one file. Moonraker sends it as an attachment, so the browser saves it rather than opening it. */
-export function downloadFile(root: string, path: string) {
-  const a = document.createElement('a')
-  a.href = client.fileUrl(root, path)
-  a.download = baseName(path)
-  a.rel = 'noopener'
-  document.body.append(a)
-  a.click()
-  a.remove()
+export const downloadFile = (root: string, path: string) => saveUrl(client.fileUrl(root, path), baseName(path))
+
+/** A zip's name: the one item's name, or else `fallback`, with the time it was made. */
+export function zipName(items: Pick<FsEntry, 'name'>[], fallback: string) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').slice(0, 15)
+  return items.length === 1 ? `${items[0].name}-${stamp}.zip` : `${fallback && `${fallback}-`}${stamp}.zip`
 }
 
 /**
@@ -270,8 +229,7 @@ export async function downloadZip(root: string, dir: string, items: FsEntry[]) {
     for (const e of items.filter((x) => x.kind === 'file')) downloadFile(root, e.path)
     return
   }
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').slice(0, 15)
-  const name = items.length === 1 ? `${items[0].name}-${stamp}.zip` : `${baseName(dir) || root}-${stamp}.zip`
+  const name = zipName(items, baseName(dir) || root)
   const dest = joinPath(dir, name)
   await createZip(root, dest, items)
   try {
@@ -307,8 +265,11 @@ export function cancelUpload(id: number) {
   patchUpload(id, { state: 'cancelled', xhr: undefined })
 }
 
+/** An upload that hasn't finished: waiting its turn or sending. */
+export const isPending = (u: Upload) => u.state === 'waiting' || u.state === 'sending'
+
 export function clearUploads() {
-  uploads.set((list) => list.filter((u) => u.state === 'waiting' || u.state === 'sending'))
+  uploads.set((list) => list.filter(isPending))
 }
 
 function uploadOne(file: File, root: string, dir: string, print: boolean, id?: number): Promise<void> {
@@ -356,7 +317,7 @@ export async function uploadFiles(root: string, dir: string, items: (File | File
   list = list.filter((x) => !locked.includes(x))
   if (list.length !== 1) print = false
   const queued = list.map((x) => ({ ...x, id: ++uploadId }))
-  uploads.set((u) => [...u.filter((x) => x.state === 'waiting' || x.state === 'sending'), ...queued.map((q): Upload => ({ id: q.id, name: joinPath(dir, q.path, q.file.name), root, size: q.file.size, loaded: 0, state: 'waiting' }))])
+  uploads.set((u) => [...u.filter(isPending), ...queued.map((q): Upload => ({ id: q.id, name: joinPath(dir, q.path, q.file.name), root, size: q.file.size, loaded: 0, state: 'waiting' }))])
   let done = 0
   for (const q of queued) {
     if (uploads.get().find((u) => u.id === q.id)?.state !== 'waiting') continue
@@ -366,7 +327,7 @@ export async function uploadFiles(root: string, dir: string, items: (File | File
       done++
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') patchUpload(q.id, { state: 'cancelled', xhr: undefined })
-      else patchUpload(q.id, { state: 'failed', error: e instanceof Error ? e.message : String(e), xhr: undefined })
+      else patchUpload(q.id, { state: 'failed', error: errorText(e), xhr: undefined })
     }
   }
   // Finished uploads clear themselves a little later; failures stay until dismissed.

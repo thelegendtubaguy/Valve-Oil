@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useStore } from '../../lib/store'
-import { usePrinter } from '../../state/printer'
+import { useConnected } from '../../state/printer'
 import { applyCompletion, completions, currentCommand } from './model'
 import { draftStore, sendCommand, useCommandHistory, useGcodeHelp } from './store'
 import { t } from '../../i18n'
@@ -11,7 +11,7 @@ import { t } from '../../i18n'
  * Fluidd), and Tab completes a command from the ones Klipper knows, with its help shown.
  */
 export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?: boolean; compact?: boolean; dropUp?: boolean }) {
-  const conn = usePrinter((s) => s.conn)
+  const connected = useConnected()
   const { help, names } = useGcodeHelp()
   const [history, setHistory] = useCommandHistory()
   const focusReq = useStore(draftStore, (d) => d.focus)
@@ -150,9 +150,9 @@ export function CommandInput({ autoFocus, compact, dropUp = true }: { autoFocus?
           autoComplete="off"
           autoCorrect="off"
           aria-label={t('console.input.label')}
-          disabled={conn !== 'open'}
+          disabled={!connected}
         />
-        <button className={`btn btn-primary ${compact ? 'px-2.5!' : ''}`} disabled={!value.trim() || conn !== 'open'} aria-label={t('console.input.send')}>
+        <button className={`btn btn-primary ${compact ? 'px-2.5!' : ''}`} disabled={!value.trim() || !connected} aria-label={t('console.input.send')}>
           {compact ? <ChevronRight size={16} /> : t('console.input.send')}
         </button>
       </form>

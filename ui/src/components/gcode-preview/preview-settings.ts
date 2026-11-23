@@ -54,12 +54,12 @@ export const PREVIEW_DEFAULTS: PreviewSettings = {
   colorMode: 'tool',
 }
 
-const COLOR_MODES: ColorMode[] = ['tool', 'role', 'speed', 'fan']
+export const COLOR_MODES: ColorMode[] = ['tool', 'role', 'speed', 'fan']
 
 /** Stored values over the defaults, ignoring any of the wrong type. */
 export function mergePreviewSettings(stored: unknown): PreviewSettings {
   const s = (stored && typeof stored === 'object' ? stored : {}) as Record<string, unknown>
-  const out = { ...PREVIEW_DEFAULTS, flip: { ...PREVIEW_DEFAULTS.flip } } as Record<string, unknown>
+  const out: Record<string, unknown> = { ...PREVIEW_DEFAULTS }
   for (const [k, def] of Object.entries(PREVIEW_DEFAULTS)) {
     const v = s[k]
     if (k === 'flip') {

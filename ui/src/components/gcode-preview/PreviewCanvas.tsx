@@ -33,7 +33,7 @@ export type PreviewCanvasProps = {
   className?: string
 }
 
-export type PreviewCanvasHandle = { fit: () => void; zoom: (factor: number) => void }
+export type PreviewCanvasHandle = { zoom: (factor: number) => void }
 
 type View = { s: number; tx: number; ty: number }
 
@@ -52,10 +52,18 @@ function greyLayer(data: ParsedGcode, layers: readonly Layer[], layer: number): 
   return d ? new Path2D(d) : null
 }
 
+/** A closed outline through the points. */
+function outline(points: number[][]) {
+  const path = new Path2D()
+  points.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)))
+  path.closePath()
+  return path
+}
+
 function cssVars(): Record<string, string> {
   const cs = getComputedStyle(document.documentElement)
   const v = (n: string) => cs.getPropertyValue(n).trim()
-  return { inset: v('--inset'), line: v('--line'), lineStrong: v('--line-strong'), ink2: v('--ink-2'), ink3: v('--ink-3'), accent: v('--accent'), green: v('--green'), red: v('--red'), blue: v('--blue'), surface: v('--surface') }
+  return { inset: v('--inset'), line: v('--line'), lineStrong: v('--line-strong'), ink3: v('--ink-3'), accent: v('--accent'), green: v('--green'), red: v('--red'), blue: v('--blue'), surface: v('--surface') }
 }
 
 export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(function PreviewCanvas(props, ref) {
@@ -92,28 +100,8 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       moves: paths.moves ? new Path2D(paths.moves) : null,
     }
   }, [data, layers, layer, moveEnd, settings.colorMode, settings.showExtrusions, settings.showMoves, settings.showRetractions])
-  const parts = useMemo(
-    () =>
-      data.parts.map((p) => {
-        const path = new Path2D()
-        p.polygon.forEach((pt, i) => (i ? path.lineTo(pt.x, pt.y) : path.moveTo(pt.x, pt.y)))
-        path.closePath()
-        return path
-      }),
-    [data.parts],
-  )
-  const objectPaths = useMemo(
-    () =>
-      (objects ?? [])
-        .filter((o) => o.polygon?.length && o.center && o.center.length >= 2)
-        .map((o) => {
-          const path = new Path2D()
-          o.polygon!.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)))
-          path.closePath()
-          return { ...o, path }
-        }),
-    [objects],
-  )
+  const parts = useMemo(() => data.parts.map((p) => outline(p.polygon.map((pt) => [pt.x, pt.y]))), [data.parts])
+  const objectPaths = useMemo(() => (objects ?? []).filter((o) => o.polygon?.length && o.center && o.center.length >= 2).map((o) => ({ ...o, path: outline(o.polygon!) })), [objects])
   const colorsCss = useMemo(cssVars, [isDark])
 
   // ---- view ----
@@ -146,6 +134,12 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     const { w, h } = size.current
     return (Math.min(w / (bedBox.x.max - bedBox.x.min), h / (bedBox.y.max - bedBox.y.min)) || 1) * 0.5
   }
+  /** The view zoomed by `factor` about a point on screen, within the zoom limits. */
+  const zoomed = (v: View, factor: number, cx: number, cy: number): View => {
+    const s = Math.min(Math.max(v.s * factor, minScale()), minScale() * 120)
+    const k = s / v.s
+    return { s, tx: cx - (cx - v.tx) * k, ty: cy - (cy - v.ty) * k }
+  }
 
   // ---- drawing ----
   const draw = useCallback(() => {
@@ -158,6 +152,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     const { w, h } = size.current
     const { s, tx, ty } = view.current
     const css = colorsCss
+    const tone = (o: ExcludeObject) => (o.excluded ? css.red : o.current ? css.blue : css.green)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     ctx.setTransform(dpr * s * fx, 0, 0, dpr * s * fy, dpr * tx, dpr * ty)
@@ -271,9 +266,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
 
     if (settings.showParts && objectPaths.length) {
       for (const o of objectPaths) {
-        const color = o.excluded ? css.red : o.current ? css.blue : css.green
-        ctx.strokeStyle = color
-        ctx.fillStyle = color
+        ctx.strokeStyle = ctx.fillStyle = tone(o)
         ctx.globalAlpha = 0.15
         ctx.fill(o.path)
         ctx.globalAlpha = 0.7
@@ -305,7 +298,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       for (const o of objectPaths) {
         const [sx, sy] = toScreen(o.center![0], o.center![1])
-        const color = o.excluded ? css.red : o.current ? css.blue : css.green
         ctx.beginPath()
         ctx.arc(sx, sy, 9, 0, Math.PI * 2)
         ctx.fillStyle = css.surface
@@ -313,7 +305,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         ctx.fill()
         ctx.globalAlpha = 1
         ctx.lineWidth = 1.5
-        ctx.strokeStyle = color
+        ctx.strokeStyle = tone(o)
         ctx.stroke()
         ctx.beginPath()
         ctx.moveTo(sx - 3.5, sy - 3.5)
@@ -374,10 +366,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
 
   const zoomAt = useCallback(
     (factor: number, cx: number, cy: number) => {
-      const v = view.current
-      const s = Math.min(Math.max(v.s * factor, minScale()), minScale() * 120)
-      const k = s / v.s
-      view.current = { s, tx: cx - (cx - v.tx) * k, ty: cy - (cy - v.ty) * k }
+      view.current = zoomed(view.current, factor, cx, cy)
       moved.current = true
       schedule()
     },
@@ -385,7 +374,6 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
   )
 
   useImperativeHandle(ref, () => ({
-    fit: () => (fit(), schedule()),
     zoom: (factor) => zoomAt(factor, size.current.w / 2, size.current.h / 2),
   }))
 
@@ -430,11 +418,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     const v = view.current
     v.tx += g.cx - prevG.cx
     v.ty += g.cy - prevG.cy
-    if (g.dist && prevG.dist) {
-      const s = Math.min(Math.max(v.s * (g.dist / prevG.dist), minScale()), minScale() * 120)
-      const k = s / v.s
-      view.current = { s, tx: g.cx - (g.cx - v.tx) * k, ty: g.cy - (g.cy - v.ty) * k }
-    }
+    if (g.dist && prevG.dist) view.current = zoomed(v, g.dist / prevG.dist, g.cx, g.cy)
     gesture.current = { ...g, travel: prevG.travel + Math.hypot(g.cx - prevG.cx, g.cy - prevG.cy) }
     if (gesture.current.travel > 3) moved.current = true
     schedule()
