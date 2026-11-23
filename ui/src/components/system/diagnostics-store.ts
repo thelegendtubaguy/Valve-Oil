@@ -1,7 +1,7 @@
-import { useSyncExternalStore } from 'react'
 import { client, printer as printerStore, type Status } from '../../state/printer'
 import { getItem, postItem, FLUIDD } from '../../state/database'
 import { createStore, useStore } from '../../lib/store'
+import { uuid } from '../../lib/browser'
 import { createBuffer, pushSample, type SeriesBuffer } from './chart-data'
 import { referencedObjects } from './collectors'
 import { t } from '../../i18n'
@@ -17,8 +17,6 @@ export type DiagnosticsContainers = Record<string, DiagnosticsCardConfig[]>
 
 /** Seconds of history, as Fluidd's CHART_HISTORY_RETENTION. */
 export const DIAGNOSTICS_RETENTION = 1200
-
-const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`)
 
 /** Fluidd's default card (createDiagnosticsCardState). */
 export function defaultCard(): DiagnosticsCardConfig {
@@ -166,8 +164,7 @@ export async function collectorPrinter(collectors: string[]): Promise<Status> {
 }
 
 const buffer: SeriesBuffer = createBuffer()
-let rev = 0
-const subs = new Set<() => void>()
+const rev = createStore(0)
 let running = false
 
 /** Starts sampling the charts once a second; it carries on after the tab closes so the charts keep their history. */
@@ -192,17 +189,13 @@ export function startCollecting() {
       const values: Record<string, number> = {}
       for (const c of collectors) values[c] = typeof results[c] === 'number' ? (results[c] as number) : NaN
       pushSample(buffer, Date.now(), values, DIAGNOSTICS_RETENTION)
-      rev++
-      for (const fn of subs) fn()
+      rev.set((r) => r + 1)
     } catch {}
     busy = false
   }, 1000)
 }
 
 export function useDiagnosticsBuffer(): SeriesBuffer {
-  useSyncExternalStore(
-    (fn) => (subs.add(fn), () => subs.delete(fn)),
-    () => rev,
-  )
+  useStore(rev, (r) => r)
   return buffer
 }

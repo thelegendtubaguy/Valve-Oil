@@ -3,7 +3,7 @@ import { confirm, Segmented } from '../ui'
 import { attempt } from '../toast'
 import { setTheme, useTheme } from '../../lib/theme'
 import { deleteItem, getItem, VALVE_OIL_UI } from '../../state/database'
-import { Row, SettingsCard, TextField, ToggleRow } from './common'
+import { Row, SettingsCard, TextField, UiToggleRow } from './common'
 import { useUiSetting } from './fluidd'
 import { browserLanguage, LANGUAGES, languageStore, setLanguage, t, type LangChoice } from '../../i18n'
 import { useStore } from '../../lib/store'
@@ -11,9 +11,6 @@ import { useStore } from '../../lib/store'
 export function GeneralSettings() {
   const [theme] = useTheme()
   const [name, setName] = useUiSetting('general.instanceName')
-  const [confirmEstop, setConfirmEstop] = useUiSetting('general.confirmOnEstop')
-  const [cpu, setCpu] = useUiSetting('warnings.warnOnCpuThrottled')
-  const [drivers, setDrivers] = useUiSetting('warnings.warnOnStepperDriverOverheating')
 
   return (
     <>
@@ -34,12 +31,12 @@ export function GeneralSettings() {
             ]}
           />
         </Row>
-        <ToggleRow title={t('settings.general.confirm_estop')} checked={confirmEstop} onChange={setConfirmEstop} />
+        <UiToggleRow path="general.confirmOnEstop" title={t('settings.general.confirm_estop')} />
       </SettingsCard>
 
       <SettingsCard title={t('settings.general.warnings')} icon={<TriangleAlert size={14} />} footer={t('settings.general.warnings_footer')}>
-        <ToggleRow title={t('settings.general.warn_cpu')} sub={t('settings.general.warn_cpu_sub')} checked={cpu} onChange={setCpu} />
-        <ToggleRow title={t('settings.general.warn_drivers')} sub={t('settings.general.warn_drivers_sub')} checked={drivers} onChange={setDrivers} />
+        <UiToggleRow path="warnings.warnOnCpuThrottled" title={t('settings.general.warn_cpu')} sub={t('settings.general.warn_cpu_sub')} />
+        <UiToggleRow path="warnings.warnOnStepperDriverOverheating" title={t('settings.general.warn_drivers')} sub={t('settings.general.warn_drivers_sub')} />
       </SettingsCard>
 
       <SettingsCard title="Valve Oil UI" icon={<RotateCcw size={14} />}>

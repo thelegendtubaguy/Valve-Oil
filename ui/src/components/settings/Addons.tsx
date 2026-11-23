@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ExternalLink, Puzzle } from 'lucide-react'
-import { Card, confirm, Spinner, Notice } from '../ui'
+import { confirm, Spinner, Notice } from '../ui'
 import { voAddonActions, type VoAddon, type VoAddonAction, type VoAddonJob } from '../../qidi/vo-addons'
 import { actionsDisabled, dismissJob, hasStatusPanel, installBlocked, jobFor, runAddonAction, useAddons, watchAddons } from '../../state/addons'
 import { ObicoPanel, OctoEverywherePanel, TailscalePanel, ZerotierPanel } from './AddonPanels'
+import { WaitingCard } from './common'
 import { t, type MessageKey } from '../../i18n'
 
 // The Fluidd fork's Add-ons section (src/components/settings/addons/) and its wording (app.vo_addons in
@@ -28,12 +29,9 @@ export function AddonsSettings() {
 
   if (!s.list || addons.length === 0)
     return (
-      <Card title={t('settings.addons.title')} icon={<Puzzle size={14} />}>
-        <div className="flex items-center gap-2.5 text-ink-2">
-          {!s.list && !s.unavailable && <Spinner size={14} />}
-          {!s.list ? (s.unavailable ? t('settings.addons.unavailable') : t('settings.addons.loading')) : t('settings.addons.none')}
-        </div>
-      </Card>
+      <WaitingCard title={t('settings.addons.title')} icon={<Puzzle size={14} />} waiting={!s.list && !s.unavailable}>
+        {!s.list ? (s.unavailable ? t('settings.addons.unavailable') : t('settings.addons.loading')) : t('settings.addons.none')}
+      </WaitingCard>
     )
 
   return (
@@ -105,7 +103,18 @@ function AddonCard({ addon }: { addon: VoAddon }) {
         <div className="mt-3 grid gap-2">
           {addon.state === 'foreign' && <Notice tone="info">{t('settings.addons.foreign_notice', { name: addon.name })}</Notice>}
           {error && <Notice tone="bad">{error}</Notice>}
-          {job && <AddonJob job={job} name={addon.name} />}
+          {job && (
+            <JobView id={job.id} failed={job.state === 'failed'} log={job.log} show={t('settings.addons.show_log')} hide={t('settings.addons.hide_log')}>
+              {job.state === 'running' ? (
+                <RunningBox title={jobText(job.action, 'running', addon.name)}>{job.message && <div className="text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{job.message}</div>}</RunningBox>
+              ) : (
+                <Notice tone={job.state === 'failed' ? 'bad' : 'good'} onClose={() => dismissJob(job.id)}>
+                  <div className="font-medium">{jobText(job.action, job.state, addon.name)}</div>
+                  {job.state === 'failed' && job.message && <div className="text-ink-2">{job.message}</div>}
+                </Notice>
+              )}
+            </JobView>
+          )}
           {hasStatusPanel(addon) && addon.id === 'octoeverywhere' && <OctoEverywherePanel addon={addon} />}
           {hasStatusPanel(addon) && addon.id === 'obico' && <ObicoPanel addon={addon} disabled={disabled} onAction={(a) => run(a.action, a.body)} />}
           {hasStatusPanel(addon) && addon.id === 'tailscale' && <TailscalePanel addon={addon} />}
@@ -116,36 +125,37 @@ function AddonCard({ addon }: { addon: VoAddon }) {
   )
 }
 
-function AddonJob({ job, name }: { job: VoAddonJob; name: string }) {
+/** A job's progress or result, then its log behind a button; the log opens by itself when the job fails. */
+export function JobView({ id, failed, log, show, hide, children }: { id: string; failed: boolean; log: string[]; show: string; hide: string; children: ReactNode }) {
   // null follows the job: the log opens by itself when the job fails.
   const [showLog, setShowLog] = useState<boolean | null>(null)
-  useEffect(() => setShowLog(null), [job.id])
-  const logVisible = showLog ?? job.state === 'failed'
+  useEffect(() => setShowLog(null), [id])
+  const logVisible = showLog ?? failed
   return (
     <div className="grid gap-1.5">
-      {job.state === 'running' ? (
-        <div className="grid gap-1.5 rounded-lg bg-inset px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          <div className="font-medium">{jobText(job.action, 'running', name)}</div>
-          <div className="bar live">
-            <i style={{ width: '100%' }} />
-          </div>
-          {job.message && <div className="text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{job.message}</div>}
-        </div>
-      ) : (
-        <Notice tone={job.state === 'failed' ? 'bad' : 'good'} onClose={() => dismissJob(job.id)}>
-          <div className="font-medium">{jobText(job.action, job.state, name)}</div>
-          {job.state === 'failed' && job.message && <div className="text-ink-2">{job.message}</div>}
-        </Notice>
-      )}
-      {job.log.length > 0 && (
+      {children}
+      {log.length > 0 && (
         <>
           <button className="btn btn-sm btn-ghost justify-self-start px-1.5!" onClick={() => setShowLog(!logVisible)}>
             <ChevronDown size={14} className={logVisible ? 'rotate-180' : ''} />
-            {logVisible ? t('settings.addons.hide_log') : t('settings.addons.show_log')}
+            {logVisible ? hide : show}
           </button>
-          {logVisible && <Log lines={job.log} />}
+          {logVisible && <Log lines={log} />}
         </>
       )}
+    </div>
+  )
+}
+
+/** A running job: what it's doing over a moving bar, then any more it says. */
+export function RunningBox({ title, children }: { title: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="grid gap-1.5 rounded-lg bg-inset px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
+      <div className="font-medium">{title}</div>
+      <div className="bar live">
+        <i style={{ width: '100%' }} />
+      </div>
+      {children}
     </div>
   )
 }

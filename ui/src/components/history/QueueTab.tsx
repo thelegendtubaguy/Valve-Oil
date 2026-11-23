@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { ArrowUpToLine, Copy, Ellipsis, GripVertical, ListOrdered, Pause, Play, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
-import { Card, Dialog, Empty, MenuButton, Spinner, confirm } from '../ui'
+import { CancelButton, Card, Dialog, Empty, Field, Loading, MenuButton, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { fetchMeta, useFileMeta, useFiles, type FileMeta } from '../../state/files'
 import { loadQueue, queueActions, useQueue } from '../../state/history'
@@ -115,9 +115,7 @@ export function QueueTab() {
       </div>
 
       {!loaded ? (
-        <div className="grid place-items-center py-10">
-          <Spinner size={22} />
-        </div>
+        <Loading size={22} />
       ) : jobs.length === 0 ? (
         <Empty>{t('history.queue.empty')}</Empty>
       ) : (
@@ -216,9 +214,7 @@ function MultiplyDialog({ jobs, onClose }: { jobs: QueuedJob[]; onClose: () => v
       title={t('history.queue.multiply_title', { count: jobs.length })}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!ok} onClick={save}>
             {ok ? t('history.queue.add_n', { n: n * jobs.length }) : t('history.job.add_to_queue')}
           </button>
@@ -226,10 +222,9 @@ function MultiplyDialog({ jobs, onClose }: { jobs: QueuedJob[]; onClose: () => v
       }
     >
       <div className="mb-3 text-ink-2">{jobs.length > 1 ? t('history.queue.multiply_body', { count: jobs.length }) : t('history.queue.multiply_body_file', { name: displayName(jobs[0].filename) })}</div>
-      <label className="grid gap-1.5">
-        <span className="lbl">{t('history.queue.copies')}</span>
+      <Field label={t('history.queue.copies')}>
         <input className="field num" inputMode="numeric" autoFocus value={copies} onChange={(e) => setCopies(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
-      </label>
+      </Field>
     </Dialog>
   )
 }
@@ -259,9 +254,7 @@ function AddFilesDialog({ onClose }: { onClose: () => void }) {
       title={t('history.queue.add_title')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!picked.length} onClick={add}>
             <Plus size={15} /> {picked.length ? t('history.queue.add_n', { n: picked.length }) : t('history.job.add_to_queue')}
           </button>
@@ -273,9 +266,7 @@ function AddFilesDialog({ onClose }: { onClose: () => void }) {
         <input className="field pl-8" placeholder={t('history.queue.search_files')} aria-label={t('history.queue.search_files')} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
       </label>
       {!files ? (
-        <div className="grid place-items-center py-8">
-          <Spinner size={20} />
-        </div>
+        <Loading className="py-8" />
       ) : list.length === 0 ? (
         <Empty>{query ? t('history.queue.no_files_match') : t('history.queue.no_files')}</Empty>
       ) : (

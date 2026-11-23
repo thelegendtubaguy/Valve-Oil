@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Plus, X } from 'lucide-react'
-import { Card, Toggle } from '../ui'
+import { LoaderCircle, Plus, X } from 'lucide-react'
+import { Card, Spinner, Toggle } from '../ui'
+import { useUiSetting, type UI_DEFAULTS, type UiSettingPath } from './fluidd'
 import { locale, t } from '../../i18n'
 
 // Building blocks for the Settings sections and the Updates screen: a card of rows, each a title with an optional
@@ -36,6 +37,40 @@ export function ToggleRow({ title, sub, checked, onChange, disabled }: { title: 
   )
 }
 
+type UiSwitchPath = { [P in UiSettingPath]: (typeof UI_DEFAULTS)[P] extends boolean ? P : never }[UiSettingPath]
+
+/** A switch for one of Fluidd's settings, read and saved by its path. */
+export function UiToggleRow({ path, title, sub }: { path: UiSwitchPath; title: string; sub?: string }) {
+  const [checked, set] = useUiSetting(path)
+  return <ToggleRow title={title} sub={sub} checked={checked} onChange={set} />
+}
+
+/** A switch whose change the printer is still saving: it shows a spinner, and `checked` is the value asked for. */
+export function PendingToggleRow({ title, sub, checked, pending, disabled, onChange }: { title: string; sub: string; checked: boolean; pending: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-3 py-1">
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{title}</div>
+        <div className="text-[12.5px] text-ink-3">{sub}</div>
+      </div>
+      {pending && <LoaderCircle size={15} className="spin flex-none text-ink-3" />}
+      <Toggle checked={checked} disabled={disabled} label={title} onChange={onChange} />
+    </label>
+  )
+}
+
+/** A card with only a line saying why there's nothing to show yet, with a spinner while it's on its way. */
+export function WaitingCard({ title, icon, waiting, children }: { title: string; icon: ReactNode; waiting: boolean; children: ReactNode }) {
+  return (
+    <Card title={title} icon={icon}>
+      <div className="flex items-center gap-2.5 text-ink-2">
+        {waiting && <Spinner size={14} />}
+        {children}
+      </div>
+    </Card>
+  )
+}
+
 /** A text field that saves when it loses focus or Enter is pressed. Escape puts it back. */
 export function TextField({ value, onSave, placeholder, required, label, mono }: { value: string; onSave: (v: string) => void; placeholder?: string; required?: boolean; label?: string; mono?: boolean }) {
   const [draft, setDraft] = useState(value)
@@ -67,22 +102,31 @@ export function TextField({ value, onSave, placeholder, required, label, mono }:
  * and without repeats, between `min` and `max` entries long.
  */
 export function NumberList({ value, onChange, min = 1, max = 6, unit, label }: { value: number[]; onChange: (v: number[]) => void; min?: number; max?: number; unit?: string; label: string }) {
+  const parse = (draft: string) => (draft.trim() !== '' && Number.isFinite(Number(draft)) && Number(draft) > 0 ? Number(draft) : null)
+  return <ChipList kind="num" value={value} onChange={onChange} parse={parse} min={min} max={max} unit={unit} placeholder={t('settings.common.add_value')} label={t('settings.common.add_to', { label })} />
+}
+
+/**
+ * Chips that can each be removed, and a field to add one: numbers (kept sorted, `min` to `max` of them) or codes such as
+ * file extensions. `parse` turns the field's text into the entry it adds, or null.
+ */
+export function ChipList<T extends string | number>({ kind, value, onChange, parse, min = 0, max = Infinity, unit, placeholder, label }: { kind: 'num' | 'code'; value: T[]; onChange: (v: T[]) => void; parse: (draft: string) => T | null; min?: number; max?: number; unit?: string; placeholder: string; label: string }) {
   const [draft, setDraft] = useState('')
-  const n = Number(draft)
-  const valid = draft.trim() !== '' && Number.isFinite(n) && n > 0 && !value.includes(n)
+  const next = parse(draft)
+  const valid = next != null && !value.includes(next)
   const add = () => {
     if (!valid || value.length >= max) return
-    onChange([...value, n].sort((a, b) => a - b))
+    onChange(kind === 'num' ? [...value, next].sort((a, b) => Number(a) - Number(b)) : [...value, next])
     setDraft('')
   }
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap gap-1.5">
         {value.map((v) => (
-          <span key={v} className="chip num pr-1!">
+          <span key={v} className={`chip ${kind} pr-1!`}>
             {v}
             {unit && <span className="text-ink-3">{unit}</span>}
-            <button type="button" className="iconbtn h-5! w-5!" disabled={value.length <= min} onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
+            <button type="button" className={`iconbtn ${kind === 'num' ? 'h-5! w-5!' : 'h-6! w-6!'}`} disabled={value.length <= min} onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
               <X size={12} />
             </button>
           </span>
@@ -90,15 +134,7 @@ export function NumberList({ value, onChange, min = 1, max = 6, unit, label }: {
       </div>
       {value.length < max && (
         <div className="flex gap-1.5">
-          <input
-            className="field num h-[30px] py-1"
-            inputMode="decimal"
-            placeholder={t('settings.common.add_value')}
-            aria-label={t('settings.common.add_to', { label })}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add()}
-          />
+          <input className={`field ${kind} h-[30px] py-1`} inputMode={kind === 'num' ? 'decimal' : undefined} placeholder={placeholder} aria-label={label} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
           <button type="button" className="btn btn-sm" disabled={!valid} onClick={add}>
             <Plus size={13} /> {t('common.add')}
           </button>

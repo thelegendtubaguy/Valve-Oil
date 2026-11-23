@@ -6,7 +6,7 @@ import { attempt } from '../toast'
 import { deleteJob } from '../../state/history'
 import { displayName } from '../../lib/format'
 import { t } from '../../i18n'
-import { cellText, fmtDateTime, jobColors, statusLabel, statusTone, type Column, type Job } from './logic'
+import { cellText, columnColors, fmtDateTime, statusLabel, statusTone, type Column, type Job } from './logic'
 
 /** A G-code file's slicer thumbnail, or a file icon (crossed out when the file is gone). */
 export function Thumb({ filename, meta, size = 40, exists = true, className = '' }: { filename: string; meta: FileMeta | Record<string, never> | null | undefined; size?: number; exists?: boolean; className?: string }) {
@@ -41,8 +41,8 @@ export async function confirmDelete(j: Job) {
 export function Cell({ job, col }: { job: Job; col: Column }) {
   if (col.kind === 'status') return <StatusPill status={job.status} />
   if (col.kind === 'colors') {
-    const v = col.key === 'metadata.filament_colors' ? jobColors(job.metadata as Record<string, unknown>) : (job.metadata as Record<string, unknown> | undefined)?.[col.key.slice(9)]
-    return Array.isArray(v) && v.length ? <Swatches colors={v.filter((c): c is string => typeof c === 'string' && c !== '')} /> : <span className="text-ink-3">—</span>
+    const v = columnColors(job, col)
+    return v ? <Swatches colors={v.filter((c): c is string => typeof c === 'string' && c !== '')} /> : <span className="text-ink-3">—</span>
   }
   const text = cellText(job, col)
   if (text == null) return <span className="text-ink-3">—</span>

@@ -1,11 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { Circle, CircleCheck, CircleX, Download, Eye, LoaderCircle, RefreshCw, ScrollText } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { Circle, CircleCheck, CircleX, Eye, LoaderCircle, RefreshCw, ScrollText } from 'lucide-react'
 import { Card, Empty, Notice } from '../ui'
-import type { LogFile } from '../system/Logs'
-import { fmtSize } from '../system/bits'
-import { client, usePrinter } from '../../state/printer'
+import { fmtSize, LogButtons, useLogFiles, type LogFile } from '../system/bits'
+import { fmtDateTime } from '../settings/common'
+import { useConnected } from '../../state/printer'
+import { readLocal, saveLocal } from '../../lib/browser'
 import { VO_RUN_LOG_NAME, type VoProgressOrigin, type VoStatusProgress } from '../../qidi/vo-status'
-import { locale, t, type MessageKey } from '../../i18n'
+import { t, type MessageKey } from '../../i18n'
 
 // The System screen's log viewer, loaded when a log is opened.
 const LogViewer = lazy(() => import('../system/Logs').then((m) => ({ default: m.LogViewer })))
@@ -20,7 +21,6 @@ const SHOW_STOPPED_MS = 24 * 60 * 60 * 1000
 const DISMISSED_KEY = 'vo-install-dismissed'
 
 const parseTime = (iso: string | null) => (iso ? Date.parse(iso) : NaN)
-const fmtTime = (ms: number) => new Date(ms).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
 
 function fmtElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000))
@@ -52,20 +52,12 @@ function useNow(running: boolean) {
   return now
 }
 
-function loadDismissed(): string | null {
-  try {
-    return localStorage.getItem(DISMISSED_KEY)
-  } catch {
-    return null
-  }
-}
-
 /**
  * The install running now, step by step, as the touchscreen shows it, whether it was started over SSH, from a USB drive,
  * or by automatic updates. An install that stopped stays here for a day, with its log, until it's closed.
  */
 export function InstallStepsCard({ progress }: { progress: VoStatusProgress | null }) {
-  const [dismissed, setDismissed] = useState(loadDismissed)
+  const [dismissed, setDismissed] = useState(() => readLocal(DISMISSED_KEY))
   const [viewing, setViewing] = useState(false)
   const running = progress?.state === 'running'
   const now = useNow(running)
@@ -77,11 +69,7 @@ export function InstallStepsCard({ progress }: { progress: VoStatusProgress | nu
 
   const close = () => {
     setDismissed(progress.started_at)
-    try {
-      if (progress.started_at) localStorage.setItem(DISMISSED_KEY, progress.started_at)
-    } catch {
-      // Private browsing can refuse storage; it's closed for this visit.
-    }
+    if (progress.started_at) saveLocal(DISMISSED_KEY, progress.started_at)
   }
   const elapsed = !Number.isNaN(started) ? (running ? now : Number.isNaN(finished) ? now : finished) - started : null
   const current = progress.index
@@ -171,26 +159,13 @@ const runKind = (name: string) => {
  * keeps its newest ten, with how the last install was started and how it ended.
  */
 export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | null }) {
-  const [files, setFiles] = useState<LogFile[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { files, error, loading, load } = useLogFiles()
   const [viewing, setViewing] = useState<LogFile | null>(null)
-  const conn = usePrinter((s) => s.conn)
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const r = await client.call<{ files: LogFile[] }>('server.files.get_directory', { path: 'logs', extended: true })
-      setFiles(r.files ?? [])
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-    setLoading(false)
-  }, [])
+  const open = useConnected()
   // Again when Moonraker comes back, and when an install starts or ends, which writes a log.
   useEffect(() => {
-    if (conn === 'open') load()
-  }, [conn, load, progress?.state, progress?.started_at])
+    if (open) load()
+  }, [open, load, progress?.state, progress?.started_at])
   const logs = useMemo(() => (files ?? []).filter((f) => VO_RUN_LOG_NAME.test(f.filename)).sort((a, b) => b.modified - a.modified), [files])
 
   return (
@@ -198,7 +173,7 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
       title={t('updates.logs.title')}
       icon={<ScrollText size={15} />}
       aside={
-        <button className="iconbtn h-7 w-7" onClick={load} disabled={loading || conn !== 'open'} aria-label={t('updates.refresh')} title={t('updates.refresh')}>
+        <button className="iconbtn h-7 w-7" onClick={load} disabled={loading || !open} aria-label={t('updates.refresh')} title={t('updates.refresh')}>
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
         </button>
       }
@@ -220,15 +195,10 @@ export function InstallerLogsCard({ progress }: { progress: VoStatusProgress | n
                   {progress?.state === 'running' && progress.log === f.filename && <span className="ml-2 text-[12px] font-semibold text-accent-ink">{t('updates.logs.running')}</span>}
                 </div>
                 <div className="num text-[12.5px] text-ink-3">
-                  {fmtTime(f.modified * 1000)} · {fmtSize(f.size)}
+                  {fmtDateTime(f.modified * 1000)} · {fmtSize(f.size)}
                 </div>
               </div>
-              <button className="iconbtn" onClick={() => setViewing(f)} aria-label={t('system.logs.view_named', { name: f.filename })} title={t('system.logs.view')}>
-                <Eye size={15} />
-              </button>
-              <a className="iconbtn" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={t('system.logs.download_named', { name: f.filename })} title={t('system.logs.download')}>
-                <Download size={15} />
-              </a>
+              <LogButtons file={f} onView={() => setViewing(f)} className="iconbtn" />
             </div>
           ))}
         </div>
@@ -249,7 +219,7 @@ function LastInstall({ progress }: { progress: VoStatusProgress | null }) {
   const when = parseTime(progress.finished_at ?? progress.started_at)
   // How it was started, then when, follow "Last install" in each message: " over SSH", ", Nov 20, 2026, 3:04 PM".
   const how = progress.origin ? ` ${originShort(progress.origin)}` : ''
-  const at = Number.isNaN(when) ? '' : `, ${fmtTime(when)}`
+  const at = Number.isNaN(when) ? '' : `, ${fmtDateTime(when)}`
   const step = progress.index > 0 ? progress.steps[progress.index - 1] : null
   const [tone, text] =
     progress.state === 'succeeded'

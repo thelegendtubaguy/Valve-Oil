@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { client, usePrinter } from '../../state/printer'
+import { client, useConnected, usePrinter } from '../../state/printer'
+import { errorText } from '../../lib/browser'
 import { createStore, useStore } from '../../lib/store'
 import { setTotalMemory } from './metrics'
 
@@ -46,7 +47,7 @@ export async function refreshSystemInfo() {
     server: srv.status === 'fulfilled' ? srv.value : s.server,
     printer: pri.status === 'fulfilled' ? pri.value : s.printer,
     loading: false,
-    error: sys.status === 'rejected' ? (sys.reason instanceof Error ? sys.reason.message : String(sys.reason)) : null,
+    error: sys.status === 'rejected' ? errorText(sys.reason) : null,
   }))
 }
 
@@ -63,11 +64,11 @@ client.on('notify_service_state_changed', (p) => {
 
 /** Loads the info when the System screen opens and again whenever Moonraker or Klipper reconnects. */
 export function useLoadSystemInfo() {
-  const conn = usePrinter((s) => s.conn)
+  const open = useConnected()
   const klippy = usePrinter((s) => s.klippy)
   useEffect(() => {
-    if (conn === 'open') refreshSystemInfo()
-  }, [conn, klippy])
+    if (open) refreshSystemInfo()
+  }, [open, klippy])
 }
 
 export function useSystemInfo(): Info {

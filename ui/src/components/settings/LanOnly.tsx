@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LoaderCircle } from 'lucide-react'
-import { Toggle, Notice } from '../ui'
-import { client, usePrinter } from '../../state/printer'
+import { Notice } from '../ui'
+import { client, useConnected } from '../../state/printer'
+import { errorText } from '../../lib/browser'
 import { QIDI_LAN_MODE_KEY, QIDI_LAN_MODE_SECTION, qidiLanModeFromConfig, qidiLanModeValue } from '../../qidi/qidi-lan-mode'
+import { PendingToggleRow } from './common'
 import { t } from '../../i18n'
 
 /**
@@ -10,7 +11,7 @@ import { t } from '../../i18n'
  * has it. Shown only when the printer's Moonraker has QIDI's settings table.
  */
 export function LanOnly({ className = '' }: { className?: string }) {
-  const open = usePrinter((s) => s.conn === 'open')
+  const open = useConnected()
   const [lanOnly, setLanOnly] = useState<boolean | null>(null)
   const [request, setRequest] = useState<boolean | null>(null)
   const [error, setError] = useState('')
@@ -47,7 +48,7 @@ export function LanOnly({ className = '' }: { className?: string }) {
       const response = await client.call<{ message?: string; status?: string }>('server.database.config.update', { section: QIDI_LAN_MODE_SECTION, key: QIDI_LAN_MODE_KEY, value: qidiLanModeValue(on) })
       if (qidiLanModeFromConfig(response) == null) throw new Error(response?.message ?? response?.status ?? t('settings.lan_only.unknown_answer'))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       requesting.current = false
       setRequest(null)
@@ -58,14 +59,7 @@ export function LanOnly({ className = '' }: { className?: string }) {
   if (lanOnly == null || !open) return null
   return (
     <div className={className}>
-      <label className="flex items-center gap-3 py-1">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">{t('settings.lan_only.title')}</div>
-          <div className="text-[12.5px] text-ink-3">{t('settings.lan_only.sub')}</div>
-        </div>
-        {request != null && <LoaderCircle size={15} className="spin flex-none text-ink-3" />}
-        <Toggle checked={request ?? lanOnly === true} disabled={request != null} label={t('settings.lan_only.title')} onChange={set} />
-      </label>
+      <PendingToggleRow title={t('settings.lan_only.title')} sub={t('settings.lan_only.sub')} pending={request != null} checked={request ?? lanOnly === true} disabled={request != null} onChange={set} />
       {error && (
         <Notice tone="bad" className="mt-1" onClose={() => setError('')}>
           {t('settings.lan_only.change_failed', { error })}

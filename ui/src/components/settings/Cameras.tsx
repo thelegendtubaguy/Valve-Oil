@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Camera, Pencil, Plus, Trash2, VideoOff } from 'lucide-react'
-import { Choices, confirm, Dialog, Empty, Spinner, Toggle } from '../ui'
+import { CancelButton, Choices, confirm, Dialog, Empty, Spinner } from '../ui'
 import { attempt } from '../toast'
-import { client, usePrinter } from '../../state/printer'
-import { Row, SettingsCard, TextField } from './common'
+import { client, useConnected } from '../../state/printer'
+import { Row, SettingsCard, TextField, ToggleRow } from './common'
 import { t } from '../../i18n'
 
 // Moonraker's webcams (server.webcams.*), the same list Fluidd and the slicers use, with Fluidd's camera form.
@@ -58,7 +58,7 @@ const NEW_CAMERA: Webcam = {
 
 export function useWebcams(): Webcam[] | null {
   const [cams, setCams] = useState<Webcam[] | null>(null)
-  const open = usePrinter((s) => s.conn === 'open')
+  const open = useConnected()
   useEffect(() => {
     if (!open) return
     client
@@ -201,9 +201,7 @@ function CameraDialog({ camera, names, onClose }: { camera: Webcam; names: strin
       footer={
         <>
           {errors.length > 0 && <span className="mr-auto text-[12.5px] text-ink-3">{errors[0]}</span>}
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={errors.length > 0 || saving} onClick={save}>
             {saving && <Spinner size={13} />}
             {camera.uid ? t('common.save') : t('common.add')}
@@ -213,9 +211,7 @@ function CameraDialog({ camera, names, onClose }: { camera: Webcam; names: strin
     >
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="grid content-start divide-y divide-line">
-          <Row title={t('settings.cameras.enable')}>
-            <Toggle checked={c.enabled} onChange={(v) => set('enabled', v)} label={t('settings.cameras.enable')} />
-          </Row>
+          <ToggleRow title={t('settings.cameras.enable')} checked={c.enabled} onChange={(v) => set('enabled', v)} />
           <Row title={t('settings.cameras.name')} wide>
             <input className="field" value={c.name} onChange={(e) => set('name', e.target.value)} aria-label={t('settings.cameras.name')} autoFocus={!camera.uid} />
           </Row>
@@ -253,12 +249,8 @@ function CameraDialog({ camera, names, onClose }: { camera: Webcam; names: strin
           <Row title={t('settings.cameras.rotate')}>
             <Choices value={c.rotation} onChange={(v) => set('rotation', v)} options={[0, 90, 180, 270].map((r) => ({ value: r, label: r ? `${r}°` : t('settings.cameras.rotate_none') }))} />
           </Row>
-          <Row title={t('settings.cameras.flip_h')}>
-            <Toggle checked={c.flip_horizontal} onChange={(v) => set('flip_horizontal', v)} label={t('settings.cameras.flip_h')} />
-          </Row>
-          <Row title={t('settings.cameras.flip_v')}>
-            <Toggle checked={c.flip_vertical} onChange={(v) => set('flip_vertical', v)} label={t('settings.cameras.flip_v')} />
-          </Row>
+          <ToggleRow title={t('settings.cameras.flip_h')} checked={c.flip_horizontal} onChange={(v) => set('flip_horizontal', v)} />
+          <ToggleRow title={t('settings.cameras.flip_v')} checked={c.flip_vertical} onChange={(v) => set('flip_vertical', v)} />
         </div>
         <div className="grid content-start gap-2">
           <div className="section-label">{t('settings.cameras.preview')}</div>

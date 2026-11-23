@@ -10,6 +10,7 @@
 // without saying so, the page stops waiting: the update stopped (its own warning says so) or ended unseen.
 import { createStore, useStore } from '../lib/store'
 import { getRenamedItem } from '../lib/storage'
+import { errorText, saveBlob, saveLocal } from '../lib/browser'
 import { client, printer, type PrinterState } from './printer'
 import {
   parseVoKlipperAnswer,
@@ -264,34 +265,30 @@ export function watchValveOil() {
 }
 
 // ---- actions ----
+/** Posts to api/auto-update, with `busy` set while it's saving and a failure kept in `error`. */
+async function postAutoUpdate(body: Record<string, unknown>, busy: Partial<ValveOilState>, done: Partial<ValveOilState>, error: 'autoUpdateError' | 'windowError') {
+  patch({ ...busy, [error]: '' })
+  try {
+    const status = parseVoStatus(await request('/auto-update', 'POST', undefined, body))
+    if (status) applyStatus(status)
+  } catch (e) {
+    patch({ [error]: errorText(e) })
+  } finally {
+    patch(done)
+  }
+  poll()
+}
+
 export async function setAutoUpdate(enabled: boolean) {
   const s = valveOil.get()
   if (autoUpdateDisabled(s) || enabled === s.status?.auto_update.enabled) return
-  patch({ autoUpdateRequest: enabled, autoUpdateError: '' })
-  try {
-    const status = parseVoStatus(await request('/auto-update', 'POST', undefined, { enabled }))
-    if (status) applyStatus(status)
-  } catch (e) {
-    patch({ autoUpdateError: e instanceof Error ? e.message : String(e) })
-  } finally {
-    patch({ autoUpdateRequest: null })
-  }
-  poll()
+  await postAutoUpdate({ enabled }, { autoUpdateRequest: enabled }, { autoUpdateRequest: null }, 'autoUpdateError')
 }
 
 /** Saves the update window or its timezone: any of {"window": {...} | null, "timezone": "<IANA name>"}. */
 export async function setUpdateWindow(body: { window?: VoUpdateWindowHours | null; timezone?: string }) {
   if (autoUpdateDisabled(valveOil.get())) return
-  patch({ windowPending: true, windowError: '' })
-  try {
-    const status = parseVoStatus(await request('/auto-update', 'POST', undefined, body))
-    if (status) applyStatus(status)
-  } catch (e) {
-    patch({ windowError: e instanceof Error ? e.message : String(e) })
-  } finally {
-    patch({ windowPending: false })
-  }
-  poll()
+  await postAutoUpdate(body, { windowPending: true }, { windowPending: false }, 'windowError')
 }
 
 export const clearWindowError = () => patch({ windowError: '' })
@@ -307,7 +304,7 @@ export async function updateNow() {
     if (job && status) patch({ status: { ...status, busy: job.state === 'running' || status.busy, job } })
   } catch (e) {
     patch({
-      updateNowError: e instanceof Error ? e.message : String(e),
+      updateNowError: errorText(e),
       updateNowBlockedBy: e instanceof VoStatusRequestError && e.status === 409 ? e.blockedBy : [],
     })
   } finally {
@@ -321,11 +318,7 @@ export function dismissUpdate(id: string) {
   if (s.dismissed.includes(id)) return
   const dismissed = [...s.dismissed, id].slice(-DISMISSED_UPDATES_KEPT)
   patch({ dismissed })
-  try {
-    localStorage.setItem(DISMISSED_UPDATES_KEY, JSON.stringify(dismissed))
-  } catch {
-    // Private browsing can refuse storage; the result still clears for this page.
-  }
+  saveLocal(DISMISSED_UPDATES_KEY, JSON.stringify(dismissed))
 }
 
 /**
@@ -341,15 +334,9 @@ export async function reportProblem() {
   patch({ supportPending: true, supportError: '' })
   try {
     const { blob, name } = await voSupportBundle(base)
-    const objectUrl = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = objectUrl
-    link.download = name
-    link.click()
-    // Deferred, as revoking right after the click can cancel the download.
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    saveBlob(blob, name)
   } catch (e) {
-    patch({ supportError: e instanceof Error ? e.message : String(e) })
+    patch({ supportError: errorText(e) })
   } finally {
     patch({ supportPending: false })
   }
@@ -368,7 +355,7 @@ export async function switchKlipper(use: VoKlipperTree) {
     if (klipper && status) patch({ status: { ...status, klipper } })
   } catch (e) {
     patch({
-      klipperError: e instanceof Error ? e.message : String(e),
+      klipperError: errorText(e),
       klipperBlockedBy: e instanceof VoStatusRequestError && e.status === 409 ? e.blockedBy : [],
     })
     poll()

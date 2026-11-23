@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { createStore, useStore } from '../../lib/store'
 import { printer, type HostStats, type Status } from '../../state/printer'
 import { createBuffer, klipperChartValues, mcuChartValues, pushSample, round2, type SeriesBuffer } from './chart-data'
 
@@ -11,18 +11,10 @@ export const SYSTEM_RETENTION = 600
 export type SystemBuffers = { host: SeriesBuffer; klipper: SeriesBuffer; mcus: Record<string, SeriesBuffer> }
 const buffers: SystemBuffers = { host: createBuffer(), klipper: createBuffer(), mcus: {} }
 
-let rev = 0
-const subs = new Set<() => void>()
-const bump = () => {
-  rev++
-  for (const fn of subs) fn()
-}
+const rev = createStore(0)
 /** Re-renders once a second with the buffers (mutated in place). */
 export function useSystemBuffers(): SystemBuffers {
-  useSyncExternalStore(
-    (fn) => (subs.add(fn), () => subs.delete(fn)),
-    () => rev,
-  )
+  useStore(rev, (r) => r)
   return buffers
 }
 
@@ -61,7 +53,7 @@ function sample() {
       pushSample((buffers.mcus[name] ??= createBuffer()), now, v, SYSTEM_RETENTION)
     }
   } else lastCpu = null
-  bump()
+  rev.set((r) => r + 1)
 }
 
 if (typeof window !== 'undefined') setInterval(sample, 1000)

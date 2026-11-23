@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Clapperboard, Film, ParkingSquare } from 'lucide-react'
 import { Choices, Spinner, Stepper, Toggle } from '../ui'
 import { attempt } from '../toast'
-import { client, usePrinter } from '../../state/printer'
+import { client, useConnected } from '../../state/printer'
 import { Row, SettingsCard } from './common'
 import { useWebcams } from './Cameras'
 import { t, type MessageKey } from '../../i18n'
@@ -15,7 +15,7 @@ const PARK_POSITIONS = ['front_left', 'front_right', 'center', 'back_left', 'bac
 const parkPositions = () => PARK_POSITIONS.map((value) => ({ value, label: t(`settings.timelapse.park.${value}` as MessageKey) }))
 
 export function TimelapseSettingsSection() {
-  const open = usePrinter((s) => s.conn === 'open')
+  const open = useConnected()
   const [s, setS] = useState<TimelapseSettings | null>(null)
   const [failed, setFailed] = useState(false)
   const cams = useWebcams()

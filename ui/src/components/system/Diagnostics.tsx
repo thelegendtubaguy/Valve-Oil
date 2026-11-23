@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChartLine, ListTree, Pencil, Plus } from 'lucide-react'
-import { Card, Empty, Spinner } from '../ui'
+import { Card, Empty, Loading } from '../ui'
 import { usePrinter } from '../../state/printer'
 import { LineChart, type ChartSeries } from './LineChart'
 import { DIAGNOSTICS_RETENTION, allCards, defaultCard, loadLayout, startCollecting, useDiagnosticsBuffer, useLayout, type ChartAxis, type DiagnosticsCardConfig } from './diagnostics-store'
@@ -38,9 +38,7 @@ export function Diagnostics() {
         {klippy !== 'ready' && <p className="mb-0 text-warn">{t('system.diagnostics.paused')}</p>}
       </Card>
       {!loaded ? (
-        <div className="grid place-items-center p-6">
-          <Spinner size={20} />
-        </div>
+        <Loading className="p-6" />
       ) : cards.length === 0 ? (
         <Empty>{t('system.diagnostics.none')}</Empty>
       ) : (

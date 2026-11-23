@@ -3,8 +3,9 @@
 // arrives; only this card's own words are translated.
 import { useCallback, useEffect, useState } from 'react'
 import { Download, ExternalLink, Stethoscope } from 'lucide-react'
-import { Card, Segmented, Spinner } from '../ui'
+import { Card, Loading, Segmented, Spinner } from '../ui'
 import { statusRequest } from '../../state/valve-oil'
+import { errorText, saveBlob } from '../../lib/browser'
 import { VoStatusRequestError } from '../../qidi/vo-status'
 import { FAULT_CHECK_POLL_MS, FAULT_CHECK_SINCE, faultReportName, parseFaultCheck, type FaultCheck, type FaultCheckSince, type FaultFinding, type FaultResult, type FaultSeverity } from './fault-check'
 import { locale, t, type MessageKey } from '../../i18n'
@@ -16,8 +17,6 @@ const SEVERITY_TONE: Record<FaultSeverity, string> = {
   repaired: 'tone-good',
   info: 'tone-muted',
 }
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export function FaultCheckCard() {
   const [since, setSince] = useState<FaultCheckSince>('all')
@@ -88,16 +87,7 @@ export function FaultCheckCard() {
   }
 
   const downloadReport = () => {
-    if (!check?.report) return
-    const url = URL.createObjectURL(new Blob([check.report], { type: 'text/plain;charset=utf-8' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = faultReportName(check.finished_at)
-    document.body.append(a)
-    a.click()
-    a.remove()
-    // Deferred, as revoking right after the click can cancel the download.
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    if (check?.report) saveBlob(new Blob([check.report], { type: 'text/plain;charset=utf-8' }), faultReportName(check.finished_at))
   }
 
   const title = t('system.diagnostics.check.title')
@@ -135,9 +125,7 @@ export function FaultCheckCard() {
       {error && <p className="mb-0 text-warn">{error}</p>}
       <div className="mt-3.5">
         {!loaded ? (
-          <div className="grid place-items-center p-4">
-            <Spinner size={20} />
-          </div>
+          <Loading className="p-4" />
         ) : running ? (
           <p className="m-0 flex items-center gap-2 text-ink-2">
             <Spinner size={15} /> {t('system.diagnostics.check.running')}

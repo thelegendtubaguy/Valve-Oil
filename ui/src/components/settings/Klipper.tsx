@@ -6,6 +6,7 @@ import { clearKlipperError, klipperSwitchDisabled, poll, switchKlipper, useValve
 import { VO_KLIPPER_SWITCH_BLOCKERS, voKlipperState, voSentence, type VoKlipper, type VoKlipperTree, type VoStatusBlocker } from '../../qidi/vo-status'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
+import { WaitingCard } from './common'
 
 // Which Klipper runs: QIDI's, or Valve Oil's (upstream Klipper with QIDI's changes), which is off unless chosen. The
 // choice is the status service's (POST api/klipper), which restarts Klipper; VO_KLIPPER does the same from the console.
@@ -53,12 +54,9 @@ export function KlipperSettings() {
   const k = s.status?.klipper
   if (!k)
     return (
-      <Card title={t('settings.klipper.title')} icon={<Cpu size={14} />}>
-        <div className="flex items-center gap-2.5 text-ink-2">
-          {!s.status && !s.unavailable && <Spinner size={14} />}
-          {s.status ? t('settings.klipper.not_reported') : s.unavailable ? t('settings.klipper.unavailable') : t('settings.klipper.loading')}
-        </div>
-      </Card>
+      <WaitingCard title={t('settings.klipper.title')} icon={<Cpu size={14} />} waiting={!s.status && !s.unavailable}>
+        {s.status ? t('settings.klipper.not_reported') : s.unavailable ? t('settings.klipper.unavailable') : t('settings.klipper.loading')}
+      </WaitingCard>
     )
 
   const state = voKlipperState(k)

@@ -1,35 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Eye, FileText, LifeBuoy, RefreshCw, ScrollText, Search } from 'lucide-react'
-import { Card, Dialog, Empty, Spinner, Toggle } from '../ui'
+import { Download, FileText, LifeBuoy, RefreshCw, ScrollText, Search } from 'lucide-react'
+import { CancelButton, Card, Dialog, Empty, Loading, Spinner, Toggle } from '../ui'
 import { attempt, toast } from '../toast'
 import { client, usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
 import { href } from '../../lib/router'
+import { errorText } from '../../lib/browser'
 import { fmtAgo } from '../../lib/format'
-import { fmtSize } from './bits'
+import { fmtSize, LogButtons, useLogFiles, type LogFile } from './bits'
 import { tailText, type LogTail } from './log-tail'
 import { locale, t } from '../../i18n'
 import { tr } from '../../i18n/rich'
 
-export type LogFile = { filename: string; size: number; modified: number; permissions?: string }
-
 export function Logs() {
-  const [files, setFiles] = useState<LogFile[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { files, error, loading, load } = useLogFiles()
   const [viewing, setViewing] = useState<LogFile | null>(null)
   const [rollover, setRollover] = useState(false)
   const has = usePrinter((s) => s.server?.registered_directories.includes('logs') ?? true)
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const r = await client.call<{ files: LogFile[] }>('server.files.get_directory', { path: 'logs', extended: true })
-      setFiles(r.files ?? [])
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-    setLoading(false)
-  }, [])
   useEffect(() => {
     load()
   }, [load])
@@ -61,9 +48,7 @@ export function Logs() {
         {error ? (
           <Empty>{error}</Empty>
         ) : !files ? (
-          <div className="grid place-items-center p-6">
-            <Spinner size={20} />
-          </div>
+          <Loading className="p-6" />
         ) : sorted.length === 0 ? (
           <Empty>{t('system.logs.none')}</Empty>
         ) : (
@@ -94,12 +79,7 @@ export function Logs() {
                       {fmtAgo(f.modified)}
                     </td>
                     <td className="text-right whitespace-nowrap">
-                      <button className="iconbtn inline-grid h-8 w-8 align-middle" onClick={() => setViewing(f)} aria-label={t('system.logs.view_named', { name: f.filename })} title={t('system.logs.view')}>
-                        <Eye size={15} />
-                      </button>
-                      <a className="iconbtn inline-grid h-8 w-8 align-middle" href={client.fileUrl('logs', f.filename)} download={f.filename} aria-label={t('system.logs.download_named', { name: f.filename })} title={t('system.logs.download')}>
-                        <Download size={15} />
-                      </a>
+                      <LogButtons file={f} onView={() => setViewing(f)} className="iconbtn inline-grid h-8 w-8 align-middle" />
                     </td>
                   </tr>
                 ))}
@@ -135,7 +115,7 @@ export function LogViewer({ file, onClose }: { file: LogFile; onClose: () => voi
       setTail(await fetchTail(client.fileUrl('logs', file.filename), file.size, bytes))
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
     setLoading(false)
   }, [file.filename, bytes])
@@ -260,7 +240,7 @@ async function fetchTail(url: string, size: number, bytes: number): Promise<LogT
 }
 
 function RolloverDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const busyPrinting = usePrinter((s) => s.status.print_stats?.state === 'printing' || s.status.print_stats?.state === 'paused')
+  const busyPrinting = useJobActive()
   const [app, setApp] = useState<'' | 'klipper' | 'moonraker'>('')
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -289,9 +269,7 @@ function RolloverDialog({ open, onClose, onDone }: { open: boolean; onClose: () 
       title={t('system.logs.rollover_logs')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" onClick={go} disabled={busy}>
             {busy && <Spinner size={14} />} {t('system.logs.rollover')}
           </button>

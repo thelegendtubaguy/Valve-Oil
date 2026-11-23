@@ -2,7 +2,7 @@
 // (notify_history_changed, notify_job_queue_changed, notify_timelapse_event) as Fluidd's history, jobQueue, and
 // timelapse stores are.
 import { useEffect, useState } from 'react'
-import { client, printer, usePrinter } from './printer'
+import { client, printer, useConnected, usePrinter } from './printer'
 import { createStore, useStore } from '../lib/store'
 import { toast } from '../components/toast'
 import { t } from '../i18n'
@@ -157,7 +157,7 @@ function onTimelapseEvent(e: TimelapseEvent) {
 /** The timelapse folder, re-read when Moonraker reports file changes. */
 export function useTimelapseFiles(): TimelapseFile[] | null {
   const rev = usePrinter((s) => s.filesRev)
-  const ready = usePrinter((s) => s.conn === 'open')
+  const ready = useConnected()
   const [files, setFiles] = useState<TimelapseFile[] | null>(null)
   useEffect(() => {
     if (!ready) return

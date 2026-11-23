@@ -4,10 +4,10 @@ import { Dialog, SectionLabel } from '../ui'
 import { attempt, toast } from '../toast'
 import { PrintDialog } from '../PrintDialog'
 import { queueActions, useComponent } from '../../state/history'
-import { useJob, isActive } from '../../state/job'
+import { useJobActive } from '../../state/job'
 import { displayName } from '../../lib/format'
 import { t } from '../../i18n'
-import { cellText, fmtDateTime, fmtLength, fmtSpan, historyColumns, jobColors, type Column, type Job } from './logic'
+import { cellText, columnColors, fmtDateTime, fmtLength, fmtSpan, historyColumns, type Column, type Job } from './logic'
 import { Cell, StatusPill, Thumb, confirmDelete } from './bits'
 
 // Shown in the summary at the top, so left out of the file details below.
@@ -17,9 +17,8 @@ const SUMMARY = new Set(['status', 'start_time', 'end_time', 'print_duration', '
 export function JobDialog({ job, onClose }: { job: Job; onClose: () => void }) {
   const [print, setPrint] = useState(false)
   const hasQueue = useComponent('job_queue')
-  const printing = isActive(useJob().state)
-  const meta = job.metadata as Record<string, unknown> | undefined
-  const hasValue = (c: Column) => (c.kind !== 'colors' ? cellText(job, c) != null : c.key === 'metadata.filament_colors' ? jobColors(meta).length > 0 : Array.isArray(meta?.[c.key.slice(9)]) && (meta[c.key.slice(9)] as unknown[]).length > 0)
+  const printing = useJobActive()
+  const hasValue = (c: Column) => (c.kind !== 'colors' ? cellText(job, c) != null : columnColors(job, c) != null)
   const details = historyColumns([job]).filter((c) => !SUMMARY.has(c.key) && c.key !== 'user' && !c.key.startsWith('auxiliary_data.') && hasValue(c))
   const aux = job.auxiliary_data ?? []
 

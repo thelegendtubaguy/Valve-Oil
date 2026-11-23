@@ -1,4 +1,8 @@
-import type { ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
+import { Download, Eye } from 'lucide-react'
+import { KV } from '../ui'
+import { client } from '../../state/printer'
+import { errorText } from '../../lib/browser'
 import { prettyName } from '../../lib/format'
 import { t } from '../../i18n'
 
@@ -6,10 +10,44 @@ import { t } from '../../i18n'
 export function Row({ k, children, mono }: { k: ReactNode; children: ReactNode; mono?: boolean }) {
   if (children == null || children === '' || children === false) return null
   return (
-    <div className="row-k">
-      <span className="k">{k}</span>
-      <span className={`v min-w-0 break-words ${mono ? 'code font-medium' : ''}`}>{children}</span>
-    </div>
+    <KV k={k} vClassName={`min-w-0 break-words ${mono ? 'code font-medium' : ''}`}>
+      {children}
+    </KV>
+  )
+}
+
+export type LogFile = { filename: string; size: number; modified: number; permissions?: string }
+
+/** Moonraker's logs folder; `load` reads it again. */
+export function useLogFiles() {
+  const [files, setFiles] = useState<LogFile[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await client.call<{ files: LogFile[] }>('server.files.get_directory', { path: 'logs', extended: true })
+      setFiles(r.files ?? [])
+      setError(null)
+    } catch (e) {
+      setError(errorText(e))
+    }
+    setLoading(false)
+  }, [])
+  return { files, error, loading, load }
+}
+
+/** A log's View and Download buttons. */
+export function LogButtons({ file, onView, className }: { file: LogFile; onView: () => void; className: string }) {
+  return (
+    <>
+      <button className={className} onClick={onView} aria-label={t('system.logs.view_named', { name: file.filename })} title={t('system.logs.view')}>
+        <Eye size={15} />
+      </button>
+      <a className={className} href={client.fileUrl('logs', file.filename)} download={file.filename} aria-label={t('system.logs.download_named', { name: file.filename })} title={t('system.logs.download')}>
+        <Download size={15} />
+      </a>
+    </>
   )
 }
 

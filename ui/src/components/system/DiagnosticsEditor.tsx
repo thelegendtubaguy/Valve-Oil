@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Play, Plus, Search, Trash2 } from 'lucide-react'
-import { Dialog, Segmented, Spinner, Toggle, confirm } from '../ui'
+import { CancelButton, Dialog, Segmented, Spinner, Toggle, confirm } from '../ui'
 import { attempt } from '../toast'
 import { collectorPrinter, defaultMetric, deleteCard, evalCollectors, saveCard, type ChartAxis, type DiagnosticsCardConfig, type Metric } from './diagnostics-store'
 import { StateExplorer } from './StateExplorer'
@@ -48,9 +48,7 @@ export function DiagnosticsEditor({ card: initial, onClose }: { card: Diagnostic
               <Trash2 size={14} /> {t('common.remove')}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!valid || saving} onClick={save}>
             {saving && <Spinner size={14} />} {isNew ? t('common.add') : t('common.save')}
           </button>

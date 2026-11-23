@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, Pencil, Plus, Thermometer, Trash2 } from 'lucide-react'
-import { confirm, Dialog, Empty } from '../ui'
-import { attempt, toast } from '../toast'
+import { CancelButton, confirm, Dialog, Empty, Field } from '../ui'
+import { attempt } from '../toast'
+import { uuid } from '../../lib/browser'
 import { prettyName } from '../../lib/format'
 import { usePrinter } from '../../state/printer'
 import { usePresets, type PresetValue, type TemperaturePreset } from '../../state/presets'
@@ -41,8 +42,6 @@ function useTargets(): Target[] {
     [keys],
   )
 }
-
-const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`)
 
 export function PresetSettings() {
   const [presets, save] = usePresets()
@@ -119,15 +118,12 @@ export function PresetSettings() {
           preset={editing}
           targets={targets}
           onClose={() => setEditing(null)}
-          onSave={async (p) => {
-            const next = p.id === -1 ? [...presets, { ...p, id: newId() }] : presets.map((x) => (x.id === p.id ? p : x))
-            try {
-              await save(next)
+          onSave={(p) =>
+            attempt(async () => {
+              await save(p.id === -1 ? [...presets, { ...p, id: uuid() }] : presets.map((x) => (x.id === p.id ? p : x)))
               setEditing(null)
-            } catch (e) {
-              toast(e instanceof Error ? e.message : String(e), 'error')
-            }
-          }}
+            })
+          }
         />
       )}
     </SettingsCard>
@@ -152,9 +148,7 @@ function PresetDialog({ preset, targets, onClose, onSave }: { preset: Temperatur
       title={preset.id === -1 ? t('settings.presets.add') : t('settings.presets.edit')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={invalid} onClick={() => onSave({ ...p, name: p.name.trim(), gcode: p.gcode?.trim() ? p.gcode : undefined })}>
             {preset.id === -1 ? t('common.add') : t('common.save')}
           </button>
@@ -162,11 +156,10 @@ function PresetDialog({ preset, targets, onClose, onSave }: { preset: Temperatur
       }
     >
       <div className="grid grid-cols-1 gap-4">
-        <label className="grid grid-cols-1 gap-1.5">
-          <span className="lbl">{t('settings.presets.name')}</span>
+        <Field label={t('settings.presets.name')} className="grid-cols-1 gap-1.5">
           {/* i18n-ignore: the placeholder is a material's name */}
           <input className="field" value={p.name} autoFocus={preset.id === -1} placeholder="PLA" onChange={(e) => setP((x) => ({ ...x, name: e.target.value }))} />
-        </label>
+        </Field>
         <div className="grid grid-cols-1 gap-1.5">
           <span className="lbl">{t('settings.presets.targets')}</span>
           <div className="grid grid-cols-1 divide-y divide-line rounded-[10px] px-3 shadow-[inset_0_0_0_1px_var(--line)]">
@@ -197,10 +190,9 @@ function PresetDialog({ preset, targets, onClose, onSave }: { preset: Temperatur
             })}
           </div>
         </div>
-        <label className="grid grid-cols-1 gap-1.5">
-          <span className="lbl">{t('settings.presets.gcode')}</span>
+        <Field label={t('settings.presets.gcode')} className="grid-cols-1 gap-1.5">
           <textarea className="field code min-h-[70px]" rows={3} spellCheck={false} value={p.gcode ?? ''} onChange={(e) => setP((x) => ({ ...x, gcode: e.target.value }))} />
-        </label>
+        </Field>
       </div>
     </Dialog>
   )

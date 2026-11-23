@@ -16,13 +16,7 @@ export function StateExplorer({ onPick }: { onPick?: (path: string) => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set())
   const q = query.trim().toLowerCase()
   const shown = useMemo(() => [...new Set(objects)].filter((o) => !q || o.toLowerCase().includes(q) || open.has(o)).sort((a, b) => a.localeCompare(b)), [objects, q, open])
-  const toggle = (o: string) =>
-    setOpen((s) => {
-      const n = new Set(s)
-      if (n.has(o)) n.delete(o)
-      else n.add(o)
-      return n
-    })
+  const toggle = (o: string) => setOpen((s) => new Set(s.has(o) ? [...s].filter((x) => x !== o) : [...s, o]))
   const pick =
     onPick ??
     ((path: string) => {

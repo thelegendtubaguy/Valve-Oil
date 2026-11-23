@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, Info } from 'lucide-react'
-import { Card } from '../ui'
+import { Card, KV } from '../ui'
 import { fluiddUrl } from '../../lib/links'
-import { client, usePrinter } from '../../state/printer'
+import { client, useConnected } from '../../state/printer'
 import { useValveOil, useValveOilView, watchValveOil } from '../../state/valve-oil'
 import { href } from '../../lib/router'
 import { t } from '../../i18n'
@@ -10,7 +10,7 @@ import { t } from '../../i18n'
 type Versions = { klipper?: string; moonraker?: string; hostname?: string; fluidd?: string }
 
 function useVersions(): Versions {
-  const open = usePrinter((s) => s.conn === 'open')
+  const open = useConnected()
   const [v, setV] = useState<Versions>({})
   useEffect(() => {
     if (!open) return
@@ -52,13 +52,10 @@ export function AboutSettings() {
     <Card title={t('settings.about.title')} icon={<Info size={14} />}>
       <div className="grid">
         {rows.filter(([id, , value]) => id !== 'fluidd' || value).map(([id, k, value, note]) => (
-          <div key={id} className="row-k">
-            <span className="k">{k}</span>
-            <span className="v [overflow-wrap:anywhere]">
-              {value || <span className="font-normal text-ink-3">{id === 'valve_oil' && !s.unavailable && !s.status ? '…' : t('settings.about.unknown')}</span>}
-              {note && <span className="block text-[12px] font-normal text-ink-3">{note}</span>}
-            </span>
-          </div>
+          <KV key={id} k={k} vClassName="[overflow-wrap:anywhere]">
+            {value || <span className="font-normal text-ink-3">{id === 'valve_oil' && !s.unavailable && !s.status ? '…' : t('settings.about.unknown')}</span>}
+            {note && <span className="block text-[12px] font-normal text-ink-3">{note}</span>}
+          </KV>
         ))}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">

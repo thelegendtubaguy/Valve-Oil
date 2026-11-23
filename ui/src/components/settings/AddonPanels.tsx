@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
-import { confirm, Dialog, Spinner, Notice } from '../ui'
+import { CancelButton, confirm, Dialog, Spinner, Notice } from '../ui'
 import {
   parseVoAddonLinkCode,
   parseVoTailscaleStatus,
@@ -16,6 +16,7 @@ import {
   type VoZerotierStatus,
 } from '../../qidi/vo-addons'
 import { addonsRequest } from '../../state/addons'
+import { errorText } from '../../lib/browser'
 import { fmtDateTime, fmtTime, KV } from './common'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
@@ -29,12 +30,12 @@ const SERVICE: Record<string, string> = { active: 'text-good', activating: 'text
 // Obico's name for its hosted service.
 const obicoCloud = 'Obico Cloud' // i18n-ignore
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const isIpv4 = (address: string) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(address)
 const unavailableText = (addon: VoAddon) => (typeof addon.status?.unavailable === 'string' ? addon.status.unavailable : '')
 const path = (addon: VoAddon, action: string) => `/addons/${encodeURIComponent(addon.id)}/${action}`
 
-function Panel({ addon, children }: { addon: VoAddon; children?: ReactNode }) {
+/** The add-on's service state, then the panel's rows, or why the add-on can't say more. */
+function Panel({ addon, unavailable, children }: { addon: VoAddon; unavailable?: string; children?: ReactNode }) {
   const state = addon.service?.active ?? 'unknown'
   const service = Object.hasOwn(SERVICE, state) ? { label: t(`settings.addons.panel.service_state.${state}` as MessageKey), cls: SERVICE[state] } : { label: state, cls: 'text-warn' }
   return (
@@ -42,7 +43,7 @@ function Panel({ addon, children }: { addon: VoAddon; children?: ReactNode }) {
       <KV k={t('settings.addons.panel.service')}>
         <span className={`font-semibold ${service.cls}`}>{service.label}</span>
       </KV>
-      {children}
+      {unavailable ? <div className="mt-1 text-ink-2">{unavailable}</div> : children}
     </div>
   )
 }
@@ -75,8 +76,20 @@ function Addresses({ list }: { list: string[] }) {
   )
 }
 
-function LinkedChip() {
-  return <span className="pill tone-good py-0.5!">{t('settings.addons.panel.linked')}</span>
+/** Whether the add-on is linked to its account, and with a link there when it is. */
+function Account({ linked, children }: { linked: boolean; children: ReactNode }) {
+  return (
+    <KV k={t('settings.addons.panel.account')}>
+      {linked ? (
+        <span className="inline-flex items-center gap-2">
+          <span className="pill tone-good py-0.5!">{t('settings.addons.panel.linked')}</span>
+          {children}
+        </span>
+      ) : (
+        <span className="font-semibold text-warn">{t('settings.addons.panel.not_linked')}</span>
+      )}
+    </KV>
+  )
 }
 
 const Code = ({ children }: { children: ReactNode }) => <div className="code my-1 text-center text-[28px] font-semibold tracking-[0.2em]">{children}</div>
@@ -119,54 +132,43 @@ export function OctoEverywherePanel({ addon }: { addon: VoAddon }) {
   }
 
   return (
-    <Panel addon={addon}>
-      {unavailable ? (
-        <div className="mt-1 text-ink-2">{unavailable}</div>
-      ) : (
-        status && (
-          <>
-            <KV k="OctoEverywhere">
-              <span className={`font-semibold ${connected ? 'text-good' : 'text-warn'}`}>{connected ? t('settings.addons.panel.octo.connected') : t('settings.addons.panel.octo.not_connected')}</span>
-            </KV>
-            <KV k={t('settings.addons.panel.account')}>
-              {linked ? (
-                <span className="inline-flex items-center gap-2">
-                  <LinkedChip />
-                  <Ext href="https://octoeverywhere.com/dashboard">{t('settings.addons.panel.octo.dashboard')}</Ext>
-                </span>
-              ) : (
-                <span className="font-semibold text-warn">{t('settings.addons.panel.not_linked')}</span>
-              )}
-            </KV>
-            {!linked && (
-              <>
-                <Actions>
-                  {linkUrl && (
-                    <a className="btn btn-sm btn-primary" href={linkUrl} target="_blank" rel="noopener noreferrer">
-                      {t('settings.addons.panel.octo.link_account')} <ExternalLink size={13} />
-                    </a>
-                  )}
-                  <button className="btn btn-sm" disabled={loading} onClick={showLinkCode}>
-                    {loading && <Spinner size={12} />}
-                    {t('settings.addons.panel.octo.show_code')}
-                  </button>
-                </Actions>
-                {codeError && <Notice tone="bad" className="mt-2">{codeError}</Notice>}
-                {code && (
-                  <div className="mt-2 text-center">
-                    <Code>{code.link.code}</Code>
-                    {code.link.url && (
-                      <div>
-                        {tr('settings.addons.panel.octo.enter_code', { url: <Ext href={code.link.url}>{code.link.url}</Ext> })}
-                      </div>
-                    )}
-                    {code.expiresAt > 0 && <div className="text-[12px] text-ink-3">{t('settings.addons.panel.octo.expires', { time: fmtTime(code.expiresAt) })}</div>}
-                  </div>
+    <Panel addon={addon} unavailable={unavailable}>
+      {status && (
+        <>
+          <KV k="OctoEverywhere">
+            <span className={`font-semibold ${connected ? 'text-good' : 'text-warn'}`}>{connected ? t('settings.addons.panel.octo.connected') : t('settings.addons.panel.octo.not_connected')}</span>
+          </KV>
+          <Account linked={linked}>
+            <Ext href="https://octoeverywhere.com/dashboard">{t('settings.addons.panel.octo.dashboard')}</Ext>
+          </Account>
+          {!linked && (
+            <>
+              <Actions>
+                {linkUrl && (
+                  <a className="btn btn-sm btn-primary" href={linkUrl} target="_blank" rel="noopener noreferrer">
+                    {t('settings.addons.panel.octo.link_account')} <ExternalLink size={13} />
+                  </a>
                 )}
-              </>
-            )}
-          </>
-        )
+                <button className="btn btn-sm" disabled={loading} onClick={showLinkCode}>
+                  {loading && <Spinner size={12} />}
+                  {t('settings.addons.panel.octo.show_code')}
+                </button>
+              </Actions>
+              {codeError && <Notice tone="bad" className="mt-2">{codeError}</Notice>}
+              {code && (
+                <div className="mt-2 text-center">
+                  <Code>{code.link.code}</Code>
+                  {code.link.url && (
+                    <div>
+                      {tr('settings.addons.panel.octo.enter_code', { url: <Ext href={code.link.url}>{code.link.url}</Ext> })}
+                    </div>
+                  )}
+                  {code.expiresAt > 0 && <div className="text-[12px] text-ink-3">{t('settings.addons.panel.octo.expires', { time: fmtTime(code.expiresAt) })}</div>}
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </Panel>
   )
@@ -199,16 +201,7 @@ export function ObicoPanel({ addon, disabled, onAction }: { addon: VoAddon; disa
               </button>
             </span>
           </KV>
-          <KV k={t('settings.addons.panel.account')}>
-            {linked ? (
-              <span className="inline-flex items-center gap-2">
-                <LinkedChip />
-                {serverUrl && <Ext href={serverUrl}>{t('settings.addons.panel.obico.open')}</Ext>}
-              </span>
-            ) : (
-              <span className="font-semibold text-warn">{t('settings.addons.panel.not_linked')}</span>
-            )}
-          </KV>
+          <Account linked={linked}>{serverUrl && <Ext href={serverUrl}>{t('settings.addons.panel.obico.open')}</Ext>}</Account>
           {linked ? (
             <Actions>
               <button className="btn btn-sm btn-danger" disabled={disabled} onClick={unlink}>
@@ -269,9 +262,7 @@ function ObicoServerDialog({ cloud, server, onClose, onSave }: { cloud: boolean;
       title={t('settings.addons.panel.obico.server_title')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(choice === 'cloud' ? VO_OBICO_CLOUD : input.trim())}>
             {t('settings.addons.panel.obico.use_server')}
           </button>
@@ -340,81 +331,77 @@ export function TailscalePanel({ addon }: { addon: VoAddon }) {
     if (await confirm({ title: t('settings.addons.panel.tailscale.logout_title'), body: t('settings.addons.panel.tailscale.logout_body'), confirm: t('settings.addons.panel.tailscale.logout'), danger: true })) run('logout')
   }
   return (
-    <Panel addon={addon}>
-      {unavailable ? (
-        <div className="mt-1 text-ink-2">{unavailable}</div>
-      ) : (
-        status && (
-          <>
-            <KV k="Tailscale">
-              <span className={`font-semibold ${TAILSCALE_STATE[status.state]}`}>{t(`settings.addons.panel.tailscale.state.${status.state}` as MessageKey)}</span>
-            </KV>
-            {status.state === 'running' && (
-              <>
-                {status.tailnet && <KV k={t('settings.addons.panel.tailscale.tailnet')}>{status.tailnet}</KV>}
-                {status.name && (
-                  <KV k={t('settings.addons.panel.tailscale.name')}>
-                    <a href={`http://${status.name}/`} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-ink hover:underline">
-                      {status.name}
-                    </a>
-                  </KV>
-                )}
-                {status.addresses.length > 0 && (
-                  <KV k={t('settings.addons.panel.address')}>
-                    <Addresses list={status.addresses} />
-                  </KV>
-                )}
-                {status.keyExpiry && <KV k={t('settings.addons.panel.tailscale.key_expiry')}>{fmtDateTime(status.keyExpiry)}</KV>}
-                <div className="mt-1 text-ink-2">{t('settings.addons.panel.tailscale.reach')}</div>
-                {status.problems.map((p) => (
-                  <Notice key={p} tone="warn" className="mt-2">
-                    {p}
-                  </Notice>
-                ))}
-              </>
-            )}
-            {status.state === 'needs_approval' && <div className="mt-1">{t('settings.addons.panel.tailscale.needs_approval')}</div>}
+    <Panel addon={addon} unavailable={unavailable}>
+      {status && (
+        <>
+          <KV k="Tailscale">
+            <span className={`font-semibold ${TAILSCALE_STATE[status.state]}`}>{t(`settings.addons.panel.tailscale.state.${status.state}` as MessageKey)}</span>
+          </KV>
+          {status.state === 'running' && (
+            <>
+              {status.tailnet && <KV k={t('settings.addons.panel.tailscale.tailnet')}>{status.tailnet}</KV>}
+              {status.name && (
+                <KV k={t('settings.addons.panel.tailscale.name')}>
+                  <a href={`http://${status.name}/`} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-ink hover:underline">
+                    {status.name}
+                  </a>
+                </KV>
+              )}
+              {status.addresses.length > 0 && (
+                <KV k={t('settings.addons.panel.address')}>
+                  <Addresses list={status.addresses} />
+                </KV>
+              )}
+              {status.keyExpiry && <KV k={t('settings.addons.panel.tailscale.key_expiry')}>{fmtDateTime(status.keyExpiry)}</KV>}
+              <div className="mt-1 text-ink-2">{t('settings.addons.panel.tailscale.reach')}</div>
+              {status.problems.map((p) => (
+                <Notice key={p} tone="warn" className="mt-2">
+                  {p}
+                </Notice>
+              ))}
+            </>
+          )}
+          {status.state === 'needs_approval' && <div className="mt-1">{t('settings.addons.panel.tailscale.needs_approval')}</div>}
+          {status.state === 'needs_login' && (
+            <>
+              <div className="mt-1">
+                {status.loginUrl ? t('settings.addons.panel.tailscale.login_url_hint') : t('settings.addons.panel.tailscale.login_hint')}
+              </div>
+              {status.loginUrl && (
+                <div className="my-2 text-center">
+                  <Ext href={status.loginUrl}>{status.loginUrl}</Ext>
+                </div>
+              )}
+            </>
+          )}
+          {error && <Notice tone="bad" className="mt-2">{error}</Notice>}
+          <Actions>
             {status.state === 'needs_login' && (
               <>
-                <div className="mt-1">
-                  {status.loginUrl ? t('settings.addons.panel.tailscale.login_url_hint') : t('settings.addons.panel.tailscale.login_hint')}
-                </div>
                 {status.loginUrl && (
-                  <div className="my-2 text-center">
-                    <Ext href={status.loginUrl}>{status.loginUrl}</Ext>
-                  </div>
+                  <a className="btn btn-sm btn-primary" href={status.loginUrl} target="_blank" rel="noopener noreferrer">
+                    {t('settings.addons.panel.tailscale.sign_in')} <ExternalLink size={13} />
+                  </a>
                 )}
+                <button className={`btn btn-sm ${status.loginUrl ? '' : 'btn-primary'}`} disabled={working} onClick={() => run('login')}>
+                  {working && <Spinner size={12} />}
+                  {status.loginUrl ? t('settings.addons.panel.tailscale.new_link') : t('settings.addons.panel.tailscale.log_in')}
+                </button>
               </>
             )}
-            {error && <Notice tone="bad" className="mt-2">{error}</Notice>}
-            <Actions>
-              {status.state === 'needs_login' && (
-                <>
-                  {status.loginUrl && (
-                    <a className="btn btn-sm btn-primary" href={status.loginUrl} target="_blank" rel="noopener noreferrer">
-                      {t('settings.addons.panel.tailscale.sign_in')} <ExternalLink size={13} />
-                    </a>
-                  )}
-                  <button className={`btn btn-sm ${status.loginUrl ? '' : 'btn-primary'}`} disabled={working} onClick={() => run('login')}>
-                    {working && <Spinner size={12} />}
-                    {status.loginUrl ? t('settings.addons.panel.tailscale.new_link') : t('settings.addons.panel.tailscale.log_in')}
-                  </button>
-                </>
-              )}
-              {status.state === 'stopped' && (
-                <button className="btn btn-sm btn-primary" disabled={working} onClick={() => run('login')}>
-                  {working && <Spinner size={12} />}
-                  {t('settings.addons.panel.tailscale.connect')}
-                </button>
-              )}
-              {(status.state === 'running' || status.state === 'stopped' || status.state === 'needs_approval') && (
-                <button className="btn btn-sm btn-danger" disabled={working} onClick={logOut}>
-                  {t('settings.addons.panel.tailscale.logout')}
-                </button>
-              )}
-            </Actions>
-          </>
-        )
+            {status.state === 'stopped' && (
+              <button className="btn btn-sm btn-primary" disabled={working} onClick={() => run('login')}>
+                {working && <Spinner size={12} />}
+                {t('settings.addons.panel.tailscale.connect')}
+              </button>
+            )}
+            {(status.state === 'running' || status.state === 'stopped' || status.state === 'needs_approval') && (
+              <button className="btn btn-sm btn-danger" disabled={working} onClick={logOut}>
+                {t('settings.addons.panel.tailscale.logout')}
+              </button>
+            )}
+          </Actions>
+        </>
       )}
     </Panel>
   )
@@ -467,74 +454,70 @@ export function ZerotierPanel({ addon }: { addon: VoAddon }) {
   }
 
   return (
-    <Panel addon={addon}>
-      {unavailable ? (
-        <div className="mt-1 text-ink-2">{unavailable}</div>
-      ) : (
-        status && (
-          <>
-            <KV k="ZeroTier">
-              <span className={`font-semibold ${status.online ? 'text-good' : 'text-warn'}`}>{status.online ? t('settings.addons.panel.zerotier.online') : t('settings.addons.panel.zerotier.offline')}</span>
+    <Panel addon={addon} unavailable={unavailable}>
+      {status && (
+        <>
+          <KV k="ZeroTier">
+            <span className={`font-semibold ${status.online ? 'text-good' : 'text-warn'}`}>{status.online ? t('settings.addons.panel.zerotier.online') : t('settings.addons.panel.zerotier.offline')}</span>
+          </KV>
+          {status.nodeId && (
+            <KV k={t('settings.addons.panel.zerotier.node_id')}>
+              <span className="code">{status.nodeId}</span>
             </KV>
-            {status.nodeId && (
-              <KV k={t('settings.addons.panel.zerotier.node_id')}>
-                <span className="code">{status.nodeId}</span>
-              </KV>
-            )}
-            {status.networks.length === 0 && <div className="mt-1">{t('settings.addons.panel.zerotier.no_networks')}</div>}
-            {status.networks.map((n) => {
-              const message = networkMessage(n.state, status.nodeId)
-              return (
-                <div key={n.id} className="mt-2 grid gap-0.5 rounded-[9px] bg-surface px-3 py-2 shadow-[inset_0_0_0_1px_var(--line)]">
-                  <KV k={t('settings.addons.panel.zerotier.network')}>
-                    <span>
-                      {n.name ? `${n.name} ` : ''}
-                      <span className="code text-[12px]">{n.name ? `(${n.id})` : n.id}</span>
-                    </span>
+          )}
+          {status.networks.length === 0 && <div className="mt-1">{t('settings.addons.panel.zerotier.no_networks')}</div>}
+          {status.networks.map((n) => {
+            const message = networkMessage(n.state, status.nodeId)
+            return (
+              <div key={n.id} className="mt-2 grid gap-0.5 rounded-[9px] bg-surface px-3 py-2 shadow-[inset_0_0_0_1px_var(--line)]">
+                <KV k={t('settings.addons.panel.zerotier.network')}>
+                  <span>
+                    {n.name ? `${n.name} ` : ''}
+                    <span className="code text-[12px]">{n.name ? `(${n.id})` : n.id}</span>
+                  </span>
+                </KV>
+                <KV k={t('settings.addons.panel.zerotier.status')}>
+                  <span className={`font-semibold ${NETWORK_STATE[n.state]}`}>{t(`settings.addons.panel.zerotier.state.${n.state}` as MessageKey)}</span>
+                </KV>
+                {n.addresses.length > 0 && (
+                  <KV k={t('settings.addons.panel.address')}>
+                    <Addresses list={n.addresses} />
                   </KV>
-                  <KV k={t('settings.addons.panel.zerotier.status')}>
-                    <span className={`font-semibold ${NETWORK_STATE[n.state]}`}>{t(`settings.addons.panel.zerotier.state.${n.state}` as MessageKey)}</span>
-                  </KV>
-                  {n.addresses.length > 0 && (
-                    <KV k={t('settings.addons.panel.address')}>
-                      <Addresses list={n.addresses} />
-                    </KV>
-                  )}
-                  {message && <div className={`mt-1 ${n.state === 'ok' ? 'text-ink-2' : ''}`}>{message}</div>}
-                  <Actions>
-                    <button className="btn btn-sm btn-danger" disabled={working} onClick={() => leave(n)}>
-                      {t('settings.addons.panel.zerotier.leave')}
-                    </button>
-                  </Actions>
-                </div>
-              )
-            })}
-            {error && <Notice tone="bad" className="mt-2">{error}</Notice>}
-            <div className="mt-2 grid gap-1">
-              <span className="lbl">{t('settings.addons.panel.zerotier.network_id')}</span>
-              <div className="flex gap-2">
-                <input
-                  className="field code"
-                  placeholder="8056c2e21c000001"
-                  maxLength={16}
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-label={t('settings.addons.panel.zerotier.network_id')}
-                  value={networkId}
-                  onChange={(e) => setNetworkId(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && join()}
-                />
-                <button className="btn btn-primary" disabled={!idValid || working} onClick={join}>
-                  {working && <Spinner size={12} />}
-                  {t('settings.addons.panel.zerotier.join')}
-                </button>
+                )}
+                {message && <div className={`mt-1 ${n.state === 'ok' ? 'text-ink-2' : ''}`}>{message}</div>}
+                <Actions>
+                  <button className="btn btn-sm btn-danger" disabled={working} onClick={() => leave(n)}>
+                    {t('settings.addons.panel.zerotier.leave')}
+                  </button>
+                </Actions>
               </div>
-              <div className={`text-[12px] ${networkId && !idValid ? 'text-bad' : 'text-ink-3'}`}>
-                {networkId && !idValid ? t('settings.addons.panel.zerotier.id_invalid') : t('settings.addons.panel.zerotier.id_hint')}
-              </div>
+            )
+          })}
+          {error && <Notice tone="bad" className="mt-2">{error}</Notice>}
+          <div className="mt-2 grid gap-1">
+            <span className="lbl">{t('settings.addons.panel.zerotier.network_id')}</span>
+            <div className="flex gap-2">
+              <input
+                className="field code"
+                placeholder="8056c2e21c000001"
+                maxLength={16}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label={t('settings.addons.panel.zerotier.network_id')}
+                value={networkId}
+                onChange={(e) => setNetworkId(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && join()}
+              />
+              <button className="btn btn-primary" disabled={!idValid || working} onClick={join}>
+                {working && <Spinner size={12} />}
+                {t('settings.addons.panel.zerotier.join')}
+              </button>
             </div>
-          </>
-        )
+            <div className={`text-[12px] ${networkId && !idValid ? 'text-bad' : 'text-ink-3'}`}>
+              {networkId && !idValid ? t('settings.addons.panel.zerotier.id_invalid') : t('settings.addons.panel.zerotier.id_hint')}
+            </div>
+          </div>
+        </>
       )}
     </Panel>
   )

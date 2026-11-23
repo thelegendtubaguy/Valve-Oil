@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Cable, Cpu, Database, HardDrive, RefreshCw, RotateCcw, Server, Trash2, TriangleAlert, Usb } from 'lucide-react'
-import { Card, Dialog, Empty, Segmented, Spinner, confirm } from '../ui'
+import { Card, Dialog, Empty, Loading, SectionLabel, Segmented, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { client, usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
+import { errorText } from '../../lib/browser'
 import { Row, fmtFreq, fmtSize, mcuLabel, timestampName } from './bits'
 import { useSystemInfo, type SystemInfo } from './system-info'
 import { UsageCard } from './Usage'
@@ -180,7 +182,7 @@ function DiskCard() {
 }
 
 function DatabaseCard() {
-  const printing = usePrinter((s) => s.status.print_stats?.state === 'printing' || s.status.print_stats?.state === 'paused')
+  const printing = useJobActive()
   const [list, setList] = useState<{ namespaces: string[]; backups: string[] } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const load = useCallback(() => {
@@ -328,31 +330,27 @@ function McuDialog({ name, mcu, open, onClose }: { name: string; mcu: McuStatus;
       </tbody>
     </table>
   )
+  const section = (title: string, body: ReactNode) => (
+    <div>
+      <SectionLabel className="mb-1">{title}</SectionLabel>
+      {body}
+    </div>
+  )
   const kconfig = mcu.mcu_kconfig?.trim()
   return (
     <Dialog open={open} onClose={onClose} title={t('system.mcu.info_title', { name: mcuLabel(name) })} size="wide">
       <div className="grid gap-4">
-        {mcu.mcu_version && (
-          <div>
-            <div className="section-label mb-1">{t('system.mcu.version')}</div>
-            <div className="code break-all">{mcu.mcu_version}</div>
-            {mcu.mcu_build_versions && <div className="code mt-1 break-all text-ink-3">{mcu.mcu_build_versions}</div>}
-          </div>
-        )}
-        <div>
-          <div className="section-label mb-1">{t('system.mcu.constants')}</div>
-          {table(mcu.mcu_constants ?? {})}
-        </div>
-        <div>
-          <div className="section-label mb-1">{t('system.mcu.last_stats')}</div>
-          {table(mcu.last_stats ?? {})}
-        </div>
-        {kconfig && (
-          <div>
-            <div className="section-label mb-1">{t('system.mcu.build_config')}</div>
-            <pre className="code m-0 max-h-80 overflow-auto rounded-lg bg-inset p-3">{kconfig}</pre>
-          </div>
-        )}
+        {mcu.mcu_version &&
+          section(
+            t('system.mcu.version'),
+            <>
+              <div className="code break-all">{mcu.mcu_version}</div>
+              {mcu.mcu_build_versions && <div className="code mt-1 break-all text-ink-3">{mcu.mcu_build_versions}</div>}
+            </>,
+          )}
+        {section(t('system.mcu.constants'), table(mcu.mcu_constants ?? {}))}
+        {section(t('system.mcu.last_stats'), table(mcu.last_stats ?? {}))}
+        {kconfig && section(t('system.mcu.build_config'), <pre className="code m-0 max-h-80 overflow-auto rounded-lg bg-inset p-3">{kconfig}</pre>)}
       </div>
     </Dialog>
   )
@@ -378,7 +376,7 @@ function DevicesDialog({ open, onClose }: { open: boolean; onClose: () => void }
       const r = await client.call<Record<string, Peripheral[]>>(def.method)
       setFound((f) => ({ ...f, [which]: which === 'video' ? [...(r.v4l2_devices ?? []), ...(r.libcamera_devices ?? [])] : (r[def.key] ?? []) }))
     } catch (e) {
-      setFound((f) => ({ ...f, [which]: e instanceof Error ? e.message : String(e) }))
+      setFound((f) => ({ ...f, [which]: errorText(e) }))
     }
     setLoading(false)
   }, [])
@@ -397,9 +395,7 @@ function DevicesDialog({ open, onClose }: { open: boolean; onClose: () => void }
       {typeof list === 'string' ? (
         <Empty>{list}</Empty>
       ) : !list ? (
-        <div className="grid place-items-center p-6">
-          <Spinner size={20} />
-        </div>
+        <Loading className="p-6" />
       ) : list.length === 0 ? (
         <Empty>{t('system.overview.devices.none')}</Empty>
       ) : (

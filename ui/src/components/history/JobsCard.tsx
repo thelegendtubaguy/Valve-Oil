@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, Ellipsis, FileDown, History as HistoryIcon, Search, Trash2 } from 'lucide-react'
-import { Card, Choices, Dialog, Empty, MenuButton, Spinner, Toggle, confirm } from '../ui'
+import { Card, Choices, Dialog, Empty, Loading, MenuButton, Spinner, Toggle, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { deleteAllJobs, history, loadHistory, useHistoryState } from '../../state/history'
 import { displayName } from '../../lib/format'
+import { saveBlob } from '../../lib/browser'
 import { csvHeader, exportValue, filterJobs, fmtDateTime, fmtLength, fmtSpan, groupLabel, historyColumns, isVisible, mergeColumns, sortJobs, statusGroup, STATUS_GROUPS, toggleColumn, type Column, type ConfiguredColumn, type StatusGroup } from './logic'
 import { toCsv } from './csv'
 import { Cell, StatusPill, Thumb, confirmDelete } from './bits'
@@ -60,12 +61,7 @@ export function JobsCard() {
       const cols = [{ key: 'filename', label: '', name: 'name' as const }, ...mergeColumns(historyColumns(all), configured).filter(isVisible)]
       const csv = toCsv([cols.map(csvHeader), ...all.map((j) => cols.map((c) => exportValue(j, c.key)))])
       // The BOM makes Excel read the file as UTF-8.
-      const url = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `print-history-${instance}.csv`
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      saveBlob(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }), `print-history-${instance}.csv`)
     } catch {
       toast(t('history.jobs.export_failed'), 'error')
     }
@@ -118,9 +114,7 @@ export function JobsCard() {
       </div>
 
       {!loaded ? (
-        <div className="grid place-items-center py-10">
-          <Spinner size={22} />
-        </div>
+        <Loading size={22} />
       ) : list.length === 0 ? (
         <Empty>{jobs.length === 0 ? t('history.jobs.empty') : t('history.jobs.no_match')}</Empty>
       ) : (

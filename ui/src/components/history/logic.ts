@@ -49,8 +49,7 @@ const KNOWN_STATUSES = new Set(['completed', 'cancelled', 'error', 'interrupted'
 export function statusLabel(status: string): string {
   if (status === 'in_progress' || status === 'printing') return t('history.status.in_progress')
   if (KNOWN_STATUSES.has(status)) return t(`history.status.${status}` as MessageKey)
-  const s = status.replace(/_/g, ' ')
-  return s.charAt(0).toUpperCase() + s.slice(1)
+  return pretty(status)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -95,6 +94,13 @@ export function jobColors(meta: Record<string, unknown> | undefined): string[] {
   if (!Array.isArray(preset)) return []
   const used = Array.isArray(meta.used_extruders) ? (meta.used_extruders as number[]) : null
   return (used ? used.map((i) => preset[i]) : preset).filter((c): c is string => typeof c === 'string' && c !== '')
+}
+
+/** A colors column's list, or null when the job's file has none. */
+export function columnColors(job: Job, col: Column): unknown[] | null {
+  const meta = job.metadata as Record<string, unknown> | undefined
+  const v = col.key === 'metadata.filament_colors' ? jobColors(meta) : meta?.[col.key.slice(9)]
+  return Array.isArray(v) && v.length ? v : null
 }
 
 export const fmtDateTime = (epochSeconds: number) => new Date(epochSeconds * 1000).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })

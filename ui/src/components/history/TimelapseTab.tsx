@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Archive, Download, Ellipsis, Film, Image as ImageIcon, Pencil, Play, Settings2, Trash2, Video } from 'lucide-react'
-import { Card, Dialog, Empty, MenuButton, Spinner, Toggle, confirm } from '../ui'
+import { Card, Dialog, Empty, Loading, MenuButton, Spinner, Toggle, confirm } from '../ui'
 import { href } from '../../lib/router'
+import { saveUrl } from '../../lib/browser'
 import { attempt, toast } from '../toast'
 import { client } from '../../state/printer'
 import { postTimelapseSettings, renderTimelapse, saveTimelapseFrames, useTimelapse, useTimelapseFiles } from '../../state/history'
@@ -192,6 +193,16 @@ function RenderSettingsDialog({ renderable, onClose }: { renderable: boolean; on
     onClose()
     await attempt(renderTimelapse)
   }
+  const toggle = (k: 'variable_fps' | 'saveframes' | 'previewimage', title: string) => (
+    <Row title={title} blocked={b(k)}>
+      <Toggle checked={s[k]} disabled={b(k)} onChange={(v) => post({ [k]: v })} label={title} />
+    </Row>
+  )
+  const number = (k: 'output_framerate' | 'targetlength' | 'variable_fps_min' | 'variable_fps_max' | 'duplicatelastframe', title: string, unit: string) => (
+    <Row title={title} blocked={b(k)}>
+      <NumField value={s[k]} unit={unit} disabled={b(k)} onSave={(v) => post({ [k]: v })} />
+    </Row>
+  )
   return (
     <Dialog
       open
@@ -208,32 +219,18 @@ function RenderSettingsDialog({ renderable, onClose }: { renderable: boolean; on
         ) : undefined
       }
     >
-      <Row title={t('history.timelapse.variable_fps')} blocked={b('variable_fps')}>
-        <Toggle checked={s.variable_fps} disabled={b('variable_fps')} onChange={(v) => post({ variable_fps: v })} label={t('history.timelapse.variable_fps')} />
-      </Row>
+      {toggle('variable_fps', t('history.timelapse.variable_fps'))}
       {!s.variable_fps ? (
-        <Row title={t('history.timelapse.output_framerate')} blocked={b('output_framerate')}>
-          <NumField value={s.output_framerate} unit="fps" disabled={b('output_framerate')} onSave={(v) => post({ output_framerate: v })} />
-        </Row>
+        number('output_framerate', t('history.timelapse.output_framerate'), 'fps')
       ) : (
         <>
-          <Row title={t('history.timelapse.target_length')} blocked={b('targetlength')}>
-            <NumField value={s.targetlength} unit="s" disabled={b('targetlength')} onSave={(v) => post({ targetlength: v })} />
-          </Row>
-          <Row title={t('history.timelapse.min_framerate')} blocked={b('variable_fps_min')}>
-            <NumField value={s.variable_fps_min} unit="fps" disabled={b('variable_fps_min')} onSave={(v) => post({ variable_fps_min: v })} />
-          </Row>
-          <Row title={t('history.timelapse.max_framerate')} blocked={b('variable_fps_max')}>
-            <NumField value={s.variable_fps_max} unit="fps" disabled={b('variable_fps_max')} onSave={(v) => post({ variable_fps_max: v })} />
-          </Row>
+          {number('targetlength', t('history.timelapse.target_length'), 's')}
+          {number('variable_fps_min', t('history.timelapse.min_framerate'), 'fps')}
+          {number('variable_fps_max', t('history.timelapse.max_framerate'), 'fps')}
         </>
       )}
-      <Row title={t('history.timelapse.save_frames')} blocked={b('saveframes')}>
-        <Toggle checked={s.saveframes} disabled={b('saveframes')} onChange={(v) => post({ saveframes: v })} label={t('history.timelapse.save_frames')} />
-      </Row>
-      <Row title={t('history.timelapse.duplicate_last_frames')} blocked={b('duplicatelastframe')}>
-        <NumField value={s.duplicatelastframe} unit={t('history.timelapse.frames_unit', { count: s.duplicatelastframe })} disabled={b('duplicatelastframe')} onSave={(v) => post({ duplicatelastframe: v })} />
-      </Row>
+      {toggle('saveframes', t('history.timelapse.save_frames'))}
+      {number('duplicatelastframe', t('history.timelapse.duplicate_last_frames'), t('history.timelapse.frames_unit', { count: s.duplicatelastframe }))}
       <Row
         title={
           <span className="flex items-center gap-2">
@@ -252,9 +249,7 @@ function RenderSettingsDialog({ renderable, onClose }: { renderable: boolean; on
           <CrfSlider value={s.constant_rate_factor} disabled={b('constant_rate_factor')} />
         </span>
       </Row>
-      <Row title={t('history.timelapse.thumbnail')} blocked={b('previewimage')}>
-        <Toggle checked={s.previewimage} disabled={b('previewimage')} onChange={(v) => post({ previewimage: v })} label={t('history.timelapse.thumbnail')} />
-      </Row>
+      {toggle('previewimage', t('history.timelapse.thumbnail'))}
     </Dialog>
   )
 }
@@ -281,9 +276,7 @@ function FilesCard() {
   return (
     <Card title={t('history.timelapse.files_title')} icon={<Video size={14} />} aside={items ? t('history.timelapse.videos', { count: videos }) : undefined}>
       {!items ? (
-        <div className="grid place-items-center py-10">
-          <Spinner size={22} />
-        </div>
+        <Loading size={22} />
       ) : items.length === 0 ? (
         <Empty>{t('history.timelapse.empty')}</Empty>
       ) : (
@@ -300,12 +293,7 @@ function FilesCard() {
 
 const fileUrl = (path: string) => client.fileUrl('timelapse', path)
 
-function download(path: string) {
-  const a = document.createElement('a')
-  a.href = fileUrl(path)
-  a.download = path.split('/').pop() ?? path
-  a.click()
-}
+const download = (path: string) => saveUrl(fileUrl(path), path.split('/').pop() ?? path)
 
 async function remove(item: TimelapseItem) {
   const paired = item.kind === 'video' && item.poster ? item.poster : null

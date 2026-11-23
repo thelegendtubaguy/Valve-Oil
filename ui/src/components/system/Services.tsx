@@ -3,6 +3,7 @@ import { Cog, Play, Power, PowerOff, RotateCw, Square, Zap } from 'lucide-react'
 import { Card, Empty, Spinner, confirm } from '../ui'
 import { attempt, toast } from '../toast'
 import { client, usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
 import { useUpdateRunning } from '../../state/valve-oil'
 import { serviceTone } from './bits'
 import { refreshSystemInfo, useSystemInfo } from './system-info'
@@ -27,8 +28,7 @@ const printStops = () => t('system.services.print_stops')
 
 export function Services() {
   const { system, loading } = useSystemInfo()
-  const printState = usePrinter((s) => s.status.print_stats?.state as string | undefined)
-  const printing = printState === 'printing' || printState === 'paused'
+  const printing = useJobActive()
   const updating = useUpdateRunning()
   const services = Object.entries(system?.service_state ?? {}).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))
   const canHost = system?.virtualization?.virt_type !== 'container'
@@ -82,15 +82,9 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
         {about()[name] && <div className="mt-0.5 text-[12.5px] text-ink-3">{about()[name]}</div>}
       </div>
       <div className="flex min-w-0 max-w-full flex-wrap gap-1.5">
-        {stopped ? (
-          <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act('start')}>
-            {busy === 'start' ? <Spinner size={13} /> : <Play size={14} />} {t('system.services.start')}
-          </button>
-        ) : (
-          <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act('restart')}>
-            {busy === 'restart' ? <Spinner size={13} /> : <RotateCw size={14} />} {t('system.services.restart')}
-          </button>
-        )}
+        <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act(stopped ? 'start' : 'restart')}>
+          {busy === (stopped ? 'start' : 'restart') ? <Spinner size={13} /> : stopped ? <Play size={14} /> : <RotateCw size={14} />} {stopped ? t('system.services.start') : t('system.services.restart')}
+        </button>
         {/* Stopping Moonraker would take this page with it, with no way back but SSH, so Fluidd hides it too. */}
         {name !== 'moonraker' && (
           <button className="btn btn-sm btn-danger" disabled={locked || busy != null || stopped} onClick={() => act('stop')}>
@@ -128,33 +122,23 @@ function KlipperCard({ printing }: { printing: boolean }) {
     await attempt(fn)
     setBusy(null)
   }
+  // One of the card's buttons: what it asks first, then what it runs.
+  const button = (key: string, Icon: typeof Zap, hint: string, title: string, body: string, label: string, fn: () => Promise<unknown>) => (
+    <button className="btn" disabled={busy != null} title={hint} onClick={() => run(key, title, body, label, fn)}>
+      {busy === key ? <Spinner size={14} /> : <Icon size={15} />} {label}
+    </button>
+  )
   return (
     <Card title="Klipper" icon={<Zap size={15} />} aside={<span className={`pill ${klippy === 'ready' ? 'tone-good' : klippy === 'startup' ? 'tone-warn' : 'tone-bad'} py-0.5 text-[11.5px]`}>{klippy}</span>}>
       {klippy !== 'ready' && message && <pre className="code m-0 mb-3 max-h-48 overflow-auto rounded-lg bg-inset p-2.5 whitespace-pre-wrap">{message}</pre>}
       <div className="grid gap-2 sm:grid-cols-2">
         {connected ? (
           <>
-            <button
-              className="btn"
-              disabled={busy != null}
-              title={t('system.services.klipper.restart_hint')}
-              onClick={() => run('restart', t('system.services.klipper.restart_title'), t('system.services.klipper.restart_body'), t('system.services.klipper.restart'), () => client.call('printer.restart'))}
-            >
-              {busy === 'restart' ? <Spinner size={14} /> : <RotateCw size={15} />} {t('system.services.klipper.restart')}
-            </button>
-            <button
-              className="btn"
-              disabled={busy != null}
-              title={t('system.services.klipper.fw_hint')}
-              onClick={() => run('fw', t('system.services.klipper.fw_title'), t('system.services.klipper.fw_body'), t('system.services.klipper.fw'), () => client.call('printer.firmware_restart'))}
-            >
-              {busy === 'fw' ? <Spinner size={14} /> : <Zap size={15} />} {t('system.services.klipper.fw')}
-            </button>
+            {button('restart', RotateCw, t('system.services.klipper.restart_hint'), t('system.services.klipper.restart_title'), t('system.services.klipper.restart_body'), t('system.services.klipper.restart'), () => client.call('printer.restart'))}
+            {button('fw', Zap, t('system.services.klipper.fw_hint'), t('system.services.klipper.fw_title'), t('system.services.klipper.fw_body'), t('system.services.klipper.fw'), () => client.call('printer.firmware_restart'))}
           </>
         ) : (
-          <button className="btn" disabled={busy != null} title={t('system.services.klipper.svc_hint')} onClick={() => run('svc', t('system.services.klipper.restart_title'), t('system.services.klipper.svc_body'), t('system.services.klipper.restart'), () => client.call('machine.services.restart', { service: 'klipper' }, 90000))}>
-            {busy === 'svc' ? <Spinner size={14} /> : <RotateCw size={15} />} {t('system.services.klipper.restart')}
-          </button>
+          button('svc', RotateCw, t('system.services.klipper.svc_hint'), t('system.services.klipper.restart_title'), t('system.services.klipper.svc_body'), t('system.services.klipper.restart'), () => client.call('machine.services.restart', { service: 'klipper' }, 90000))
         )}
       </div>
     </Card>

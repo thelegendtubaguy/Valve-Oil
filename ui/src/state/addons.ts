@@ -3,6 +3,7 @@
 // service is polled only while the Add-ons settings are shown.
 import { createStore, useStore } from '../lib/store'
 import { getRenamedItem } from '../lib/storage'
+import { errorText, saveLocal } from '../lib/browser'
 import { client } from './printer'
 import { t } from '../i18n'
 import {
@@ -165,11 +166,7 @@ export function dismissJob(id: string) {
   if (s.dismissedJobs.includes(id)) return
   const dismissedJobs = [...s.dismissedJobs, id].slice(-DISMISSED_JOBS_KEPT)
   patch({ dismissedJobs })
-  try {
-    localStorage.setItem(DISMISSED_JOBS_KEY, JSON.stringify(dismissedJobs))
-  } catch {
-    // Private browsing can refuse storage; the result still clears for this page.
-  }
+  saveLocal(DISMISSED_JOBS_KEY, JSON.stringify(dismissedJobs))
 }
 
 /** Starts an install, update, remove, or relink. The caller confirms a remove first. */
@@ -184,7 +181,7 @@ export async function runAddonAction(addon: VoAddon, action: VoAddonAction, body
     const list = addons.get().list
     if (job && list) setList({ ...list, busy: job.state === 'running' || list.busy, job })
   } catch (e) {
-    patch({ actionErrors: { ...addons.get().actionErrors, [addon.id]: e instanceof Error ? e.message : String(e) } })
+    patch({ actionErrors: { ...addons.get().actionErrors, [addon.id]: errorText(e) } })
   } finally {
     patch({ pendingAction: null })
   }

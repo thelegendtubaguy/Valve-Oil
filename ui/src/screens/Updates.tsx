@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, CircleCheck, Cpu, Download, ExternalLink, Info, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { Card, Dialog, PageHeader, Toggle, Notice } from '../components/ui'
+import { CircleCheck, Cpu, Download, ExternalLink, Info, LoaderCircle, TriangleAlert } from 'lucide-react'
+import { Card, Dialog, PageHeader, Notice } from '../components/ui'
 import { LanOnly } from '../components/settings/LanOnly'
-import { Log } from '../components/settings/Addons'
+import { JobView, RunningBox } from '../components/settings/Addons'
+import { fmtDateTime, fmtTime, PendingToggleRow } from '../components/settings/common'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
 import { client } from '../state/printer'
 import {
@@ -42,13 +43,12 @@ import {
   watchValveOil,
   type ValveOilState,
 } from '../state/valve-oil'
-import { locale, t, type MessageKey } from '../i18n'
+import { t, type MessageKey } from '../i18n'
 
 // The wording is the Fluidd fork's (app.vo_valve_oil in src/locales/en.yaml there); keep the two in step.
 
-const fmtTime = (ms: number) => new Date(ms).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
 /** A time later today as just the time, and one on another day with its date. */
-const fmtSoon = (ms: number) => (new Date(ms).toDateString() === new Date().toDateString() ? new Date(ms).toLocaleTimeString(locale(), { timeStyle: 'short' }) : fmtTime(ms))
+const fmtSoon = (ms: number) => (new Date(ms).toDateString() === new Date().toDateString() ? fmtTime(ms) : fmtDateTime(ms))
 
 function DontPowerOff() {
   return <>{t('updates.dont_power_off')}</>
@@ -343,14 +343,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
       </div>
 
       <div className="mt-2" />
-      <label className="flex items-center gap-3 py-1">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">{t('updates.card.auto')}</div>
-          <div className="text-[12.5px] text-ink-3">{t('updates.card.auto_sub')}</div>
-        </div>
-        {s.autoUpdateRequest != null && <LoaderCircle size={15} className="spin flex-none text-ink-3" />}
-        <Toggle checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} label={t('updates.card.auto')} onChange={setAutoUpdate} />
-      </label>
+      <PendingToggleRow title={t('updates.card.auto')} sub={t('updates.card.auto_sub')} pending={s.autoUpdateRequest != null} checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} onChange={setAutoUpdate} />
       {view.updateWindow && <UpdateWindow window={view.updateWindow} disabled={autoUpdateDisabled(s)} pending={s.windowPending} error={s.windowError} />}
       {/* QIDI's setting, through Moonraker; it hides itself while Moonraker is down or isn't QIDI's. */}
       <LanOnly className="mt-2 border-t border-line pt-2" />
@@ -424,7 +417,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
         </>
       )}
 
-      {view.checkedAt && <div className="mt-3 border-t border-line pt-2 text-[12px] text-ink-3">{t('updates.card.last_checked', { time: fmtTime(view.checkedAt) })}</div>}
+      {view.checkedAt && <div className="mt-3 border-t border-line pt-2 text-[12px] text-ink-3">{t('updates.card.last_checked', { time: fmtDateTime(view.checkedAt) })}</div>}
 
       <Dialog
         open={confirm}
@@ -462,19 +455,10 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
 }
 
 function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; recoveryRequired: boolean }) {
-  // null follows the update: the log opens by itself when it fails.
-  const [showLog, setShowLog] = useState<boolean | null>(null)
-  useEffect(() => setShowLog(null), [update.id])
-  const logVisible = showLog ?? update.state === 'failed'
-
   return (
-    <div className="grid gap-1.5">
+    <JobView id={update.id} failed={update.state === 'failed'} log={update.log} show={t('updates.progress.show_log')} hide={t('updates.progress.hide_log')}>
       {update.state === 'running' ? (
-        <div className="grid gap-1.5 rounded-lg bg-inset px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-          <div className="font-medium">{t(`updates.progress.running.${update.kind}`)}</div>
-          <div className="bar live">
-            <i style={{ width: '100%' }} />
-          </div>
+        <RunningBox title={t(`updates.progress.running.${update.kind}`)}>
           <div className="task run -mx-1 [overflow-wrap:anywhere]">
             <span className="ic">
               <LoaderCircle size={15} className="spin" />
@@ -484,31 +468,20 @@ function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; re
           </div>
           {update.resumed && <div className="text-[12px] text-ink-3">{t('updates.progress.resumed')}</div>}
           <div className="font-medium text-warn">{DONT_POWER_OFF}</div>
-        </div>
+        </RunningBox>
       ) : (
         <Notice tone={update.state === 'succeeded' ? 'good' : update.state === 'interrupted' ? 'warn' : 'bad'} onClose={() => dismissUpdate(update.id)}>
           <div>
             <b>{update.state === 'failed' && update.firmware ? t('updates.progress.firmware_failed') : t(`updates.progress.result.${update.state}.${update.kind}`)}</b>
-            {update.finishedAt && <span className="text-[12px] text-ink-2"> · {fmtTime(update.finishedAt)}</span>}
+            {update.finishedAt && <span className="text-[12px] text-ink-2"> · {fmtDateTime(update.finishedAt)}</span>}
           </div>
           {update.stepLabel && <div className="text-ink-2">{t('updates.progress.stopped_at', { step: update.stepLabel })}</div>}
           {update.message && <div className="text-ink-2">{update.message}</div>}
           {update.state === 'interrupted' && <div className="text-ink-2">{t('updates.progress.finish_hint')}</div>}
-          {update.canContinue && !recoveryRequired && (
-            <div className="text-ink-2">{t('updates.progress.continue_hint')}</div>
-          )}
+          {update.canContinue && !recoveryRequired && <div className="text-ink-2">{t('updates.progress.continue_hint')}</div>}
         </Notice>
       )}
-      {update.log.length > 0 && (
-        <>
-          <button className="btn btn-sm btn-ghost justify-self-start px-1.5!" onClick={() => setShowLog(!logVisible)}>
-            <ChevronDown size={14} className={logVisible ? 'rotate-180' : ''} />
-            {logVisible ? t('updates.progress.hide_log') : t('updates.progress.show_log')}
-          </button>
-          {logVisible && <Log lines={update.log} />}
-        </>
-      )}
-    </div>
+    </JobView>
   )
 }
 

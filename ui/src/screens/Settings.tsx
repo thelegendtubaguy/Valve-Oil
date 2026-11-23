@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Camera, ChevronLeft, ChevronRight, Cpu, Film, Folder, Info, Layers, Move, Puzzle, RefreshCw, SlidersHorizontal, Thermometer } from 'lucide-react'
 import { PageHeader, Spinner } from '../components/ui'
 import { href, useSubPath } from '../lib/router'
-import { usePrinter } from '../state/printer'
+import { useConnected, usePrinter } from '../state/printer'
 import { useValveOil, useValveOilView, watchValveOil } from '../state/valve-oil'
 import { t, type MessageKey } from '../i18n'
 import { GeneralSettings } from '../components/settings/General'
@@ -42,7 +42,7 @@ const sectionSub = (s: Section) => t(`settings.sections.${s.key}.sub` as Message
 export function SettingsScreen() {
   const [sub] = useSubPath()
   const components = usePrinter((s) => s.server?.components ?? [])
-  const open = usePrinter((s) => s.conn === 'open')
+  const open = useConnected()
   const sections = SECTIONS.filter((s) => !s.when || s.when(components))
   const current = sections.find((s) => s.id === sub)
 
@@ -66,7 +66,7 @@ export function SettingsScreen() {
       <div className="grid items-start gap-3.5 lg:grid-cols-[280px_minmax(0,1fr)]">
         <nav className={`${current ? 'hidden lg:grid' : 'grid'} gap-1.5 lg:sticky lg:top-0`} aria-label={t('settings.screen.sections')}>
           {sections.map((s) => (
-            <SectionLink key={s.id} section={s} on={(current ?? (sub ? undefined : sections[0]))?.id === s.id} />
+            <NavRow key={s.id} href={href('settings', s.id)} icon={s.icon} title={sectionLabel(s)} sub={sectionSub(s)} on={(current ?? (sub ? undefined : sections[0]))?.id === s.id} />
           ))}
           <UpdatesLink />
         </nav>
@@ -85,15 +85,16 @@ export function SettingsScreen() {
   )
 }
 
-function SectionLink({ section, on }: { section: Section; on: boolean }) {
+/** A link in the list of sections; `on` is given for a section, which is outlined when open and has an arrow only on phones. */
+function NavRow({ href, icon, title, sub, subClass = 'text-ink-3', on }: { href: string; icon: ReactNode; title: string; sub: string; subClass?: string; on?: boolean }) {
   return (
-    <a href={href('settings', section.id)} className={`link-row py-2.5! ${on ? 'lg:shadow-[0_0_0_1px_var(--accent)]!' : ''}`} aria-current={on ? 'page' : undefined}>
-      <span className={`ic h-[34px]! w-[34px]! ${on ? 'lg:bg-accent-tint!' : ''}`}>{section.icon}</span>
+    <a href={href} className={`link-row py-2.5! ${on ? 'lg:shadow-[0_0_0_1px_var(--accent)]!' : ''}`} aria-current={on ? 'page' : undefined}>
+      <span className={`ic h-[34px]! w-[34px]! ${on ? 'lg:bg-accent-tint!' : ''}`}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className={`block font-semibold ${on ? 'lg:text-accent-ink' : ''}`}>{sectionLabel(section)}</span>
-        <span className="block truncate text-[12px] text-ink-3">{sectionSub(section)}</span>
+        <span className={`block font-semibold ${on ? 'lg:text-accent-ink' : ''}`}>{title}</span>
+        <span className={`block truncate text-[12px] ${subClass}`}>{sub}</span>
       </span>
-      <ChevronRight size={16} className="flex-none text-ink-3 lg:hidden" />
+      <ChevronRight size={16} className={`flex-none text-ink-3 ${on == null ? '' : 'lg:hidden'}`} />
     </a>
   )
 }
@@ -105,6 +106,7 @@ function UpdatesLink() {
   const view = useValveOilView()
   const auto = s.status?.auto_update.enabled
   const release = view?.release
+  const waiting = !!view && view.waiting.length > 0
   const summary = !view
     ? t('settings.screen.valve_oil_sub')
     : release
@@ -114,16 +116,5 @@ function UpdatesLink() {
       : auto == null
         ? ''
         : t(auto ? 'settings.screen.summary_auto_on' : 'settings.screen.summary_auto_off')
-  return (
-    <a href={href('updates')} className="link-row py-2.5!">
-      <span className="ic h-[34px]! w-[34px]!">
-        <RefreshCw size={I} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold">Valve Oil</span>
-        {view && view.waiting.length > 0 ? <span className="block truncate text-[12px] font-semibold text-accent-ink">{t('settings.screen.update_waiting')}</span> : <span className="block truncate text-[12px] text-ink-3">{summary}</span>}
-      </span>
-      <ChevronRight size={16} className="flex-none text-ink-3" />
-    </a>
-  )
+  return <NavRow href={href('updates')} icon={<RefreshCw size={I} />} title="Valve Oil" sub={waiting ? t('settings.screen.update_waiting') : summary} subClass={waiting ? 'font-semibold text-accent-ink' : undefined} />
 }
