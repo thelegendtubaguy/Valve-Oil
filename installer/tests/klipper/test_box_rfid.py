@@ -38,6 +38,8 @@ ELEGOO = bytes.fromhex(
 QIDI_BLOCK = bytes.fromhex("41001100ff000000000000000000000a")
 # A QIDI spool's own tag: QIDI's original layout (ABS, color 1, maker QIDI), sector 1 keyed D3F7D3F7D3F7.
 QIDI_SPOOL = dict(key=bytes.fromhex("d3f7d3f7d3f7"), block4=bytes.fromhex("0b0101").ljust(16, b"\0"))
+# Block 4 of a field tag written by the "My Filaments" app (2026-11-23 report): QIDI's layout padded with 0xFF.
+QIDI_SPOOL_FF = bytes.fromhex("12030100ffffffffffffffffffffffff")
 # A Creality Hyper PLA tag (orange), UID c0ffee42: sector 1's key and blocks 4-6 as OpenSSL computes them
 # with Creality's two AES keys (the record is AB124 0276 A2 101001 0FF6600 0330 000001 and 14 zeros).
 CREALITY_KEY = bytes.fromhex("019c0258bc0b")
@@ -513,6 +515,10 @@ class BoxRfidTests(unittest.TestCase):
         test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", NAME=1)
         self.assertEqual(bytes(spool.blocks[4]), box_rfid.qidi_block("QFA00", ["0000FF"]))
         self.assertEqual(self.qidi_read()["data"], bytes(spool.blocks[4]))
+        spool = Tag("classic", block4=QIDI_SPOOL_FF)
+        self.module(spool)
+        test(ACTION="WRITE", FILAMENT="QFA00", COLORS="0000FF", NAME=1)
+        self.assertEqual(bytes(spool.blocks[4]), box_rfid.qidi_block("QFA00", ["0000FF"]))
         # Another brand's tag, a Bambu Lab tag, a locked tag, and a QIDI block beside other data are never written.
         for tag in (Tag("ntag", ELEGOO), Tag("ntag", ANYCUBIC), Tag("classic", blocks=BAMBU_BLOCKS, bambu=True),
                     Tag("classic", blocks=BAMBU_BLOCKS, block4=BAMBU_BLOCKS[4]), Tag("classic", key=b"\x12" * 6),

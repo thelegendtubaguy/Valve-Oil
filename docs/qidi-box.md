@@ -213,7 +213,7 @@ On the Box card on Home in [Valve Oil UI](valve-oil-ui.md), or the QIDI Box card
 
 The tag has to be on the side of the spool facing the reader; a tag on the far side is never seen, so turn the spool over. Each write is read back from the tag before it counts. Any filament in the printer's filament list can be written, whatever its vendor, including ones you added. The tag also carries the filament's name, so a printer whose list has that name under a different ID uses its own.
 
-Only blank tags, the tags on QIDI's own spools, and tags Valve Oil wrote before are written. A QIDI spool's tag can be rewritten with any filament, for a QIDI spool you refill or rewind with another. Tags holding Anycubic, Elegoo, Creality, TigerTag, or OpenTag3D data, Bambu Lab tags, and locked tags are left alone, and the dialog says why. Each reader serves two slots, but a write goes only to the tag of the spool being turned; a parked spool beside it is never written.
+Only blank tags, tags in QIDI's own layout (QIDI's spools, and tags other apps wrote for QIDI), and tags Valve Oil wrote before are written. A QIDI spool's tag can be rewritten with any filament, for a QIDI spool you refill or rewind with another. Tags holding Anycubic, Elegoo, Creality, TigerTag, or OpenTag3D data, Bambu Lab tags, and locked tags are left alone, and the dialog says why. Each reader serves two slots, but a write goes only to the tag of the spool being turned; a parked spool beside it is never written.
 
 The commands behind it, for macros:
 

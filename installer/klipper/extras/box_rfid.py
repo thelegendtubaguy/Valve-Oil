@@ -304,9 +304,10 @@ def qidi_block_valid(block):
 
 def qidi_legacy_block(block):
     """True for QIDI's original layout as QIDI's spools carry it: a material
-    code, a color code, the maker code (0 generic, 1 QIDI), then zeros."""
+    code, a color code, the maker code (0 generic, 1 QIDI), then padding of
+    zeros, or 0xFF as third-party tag apps write it."""
     return (len(block) >= 16 and 1 <= block[0] <= 50 and 1 <= block[1] <= 24 and block[2] in (0, 1)
-            and not block[3:16].strip(b"\0"))
+            and set(block[3:16]) <= {0x00, 0xFF})
 
 
 def is_filament_id(value):
