@@ -87,28 +87,6 @@
     "snooze_day": "1 día",
     "snooze_week": "7 días"
   },
-  "thermals": {
-    "title": "Calentadores y ventiladores",
-    "speed": "Velocidad",
-    "heater_power": "Potencia del calentador"
-  },
-  "job": {
-    "title": "Esta impresión",
-    "speed": "Velocidad",
-    "flow": "Flujo",
-    "filament": "Filamento",
-    "layer": "Capa",
-    "left_by_file": "Restante según archivo",
-    "left_by_slicer": "Restante según slicer",
-    "against_slicer": "Frente al slicer",
-    "on_time": "a tiempo",
-    "slower": "{{pct}}% más lenta",
-    "faster": "{{pct}}% más rápida",
-    "slicer_estimate": "Estimación del slicer",
-    "layer_height": "Altura de capa",
-    "of": "{{value}} de {{total}}",
-    "tall": "{{n}} mm de alto"
-  },
   "units": {
     "m": "{{n}} m",
     "g": "{{n}} g",
@@ -129,14 +107,7 @@
     "bad": "Estado de la impresora: una lectura está demasiado alta"
   },
   "temps": {
-    "off": "apagado",
-    "running": "en marcha",
-    "sensor": "sensor",
-    "fan_now": "Ahora al {{pct}}%. Las macros y la protección del recinto pueden volver a cambiarlo.",
-    "target_title": "Objetivo: {{name}}",
-    "now": "Ahora {{temp}} °C. Hasta {{max}} °C.",
-    "now_heating": "Ahora {{temp}} °C, calentando a {{target}} °C. Hasta {{max}} °C.",
-    "set": "Fijar"
+    "off": "apagado"
   },
   "chart": {
     "title": "Temperaturas",
@@ -150,11 +121,7 @@
   },
   "mini_console": {
     "title": "Consola",
-    "open": "Abrir la consola",
-    "macros": "Macros",
-    "macros_hint": "haz clic para ponerla en la línea de comandos",
-    "filter": "Filtrar",
-    "filter_macros": "Filtrar macros"
+    "open": "Abrir la consola"
   },
   "file": {
     "new": "Nuevo",
@@ -200,8 +167,6 @@
     "connection_closed": "Conexión cerrada",
     "not_connected": "Sin conexión con Moonraker",
     "timed_out": "{{method}} agotó el tiempo de espera",
-    "upload_failed_status": "Falló la subida ({{status}})",
-    "upload_failed": "Falló la subida",
     "misread": "No enviado: Klipper leería mal el número en {{command}}"
   }
 }

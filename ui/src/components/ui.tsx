@@ -133,26 +133,6 @@ export function Dialog({ open, onClose, title, children, footer, size }: { open:
   )
 }
 
-export function Sparkline({ values, target, width = 80, height = 24, color = 'var(--orange)' }: { values: number[]; target?: number; width?: number; height?: number; color?: string }) {
-  const pts = values.slice(-180)
-  if (pts.length < 2) return <svg width={width} height={height} />
-  let lo = Math.min(...pts, target ?? Infinity)
-  let hi = Math.max(...pts, target ?? -Infinity)
-  if (hi - lo < 4) {
-    const mid = (hi + lo) / 2
-    lo = mid - 2
-    hi = mid + 2
-  }
-  const y = (v: number) => height - 2 - ((v - lo) / (hi - lo)) * (height - 4)
-  const d = pts.map((v, i) => `${((i / (pts.length - 1)) * width).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
-  return (
-    <svg width={width} height={height} aria-hidden>
-      {target != null && target > 0 && <line x1={0} x2={width} y1={y(target)} y2={y(target)} stroke={color} strokeOpacity={0.35} strokeDasharray="3 3" />}
-      <polyline points={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 export function Toggle({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) {
   return (
     <button

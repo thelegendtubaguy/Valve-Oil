@@ -66,8 +66,3 @@ export function Spool({ slot, size = 44, selected, loaded, label }: { slot: Pick
     </svg>
   )
 }
-
-export function slotTitle(slot: QidiBoxSlot) {
-  if (!slot.present) return slot.index === 16 ? t('box.external_spool') : t('box.empty')
-  return [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') || t('box.unknown_filament')
-}

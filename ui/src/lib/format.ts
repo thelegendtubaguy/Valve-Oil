@@ -10,19 +10,9 @@ export function fmtDuration(seconds: number | null | undefined): string {
   return t('common.time.seconds', { s })
 }
 
-export function fmtClock(seconds: number | null | undefined): string {
-  if (seconds == null || !isFinite(seconds) || seconds < 0) return '—:—'
-  const s = Math.round(seconds)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
-
 export function fmtEta(remainingSeconds: number | null | undefined): string {
   if (remainingSeconds == null || !isFinite(remainingSeconds)) return '—'
   return new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })
-}
-
-export function fmtTemp(t: number | null | undefined): string {
-  return t == null || !isFinite(t) ? '—' : `${Math.round(t)}`
 }
 
 export function fmtBytes(n: number): string {

@@ -28,7 +28,6 @@ export class MoonrakerClient {
   private handlers = new Map<string, Set<NotificationHandler>>()
   private stateHandlers = new Set<(s: ConnectionState) => void>()
   private retryMs = 1000
-  private stopped = false
   state: ConnectionState = 'closed'
 
   constructor(origin: string) {
@@ -38,7 +37,6 @@ export class MoonrakerClient {
   }
 
   connect() {
-    this.stopped = false
     this.setState('connecting')
     const ws = new WebSocket(this.wsUrl)
     this.ws = ws
@@ -56,16 +54,9 @@ export class MoonrakerClient {
       }
       this.pending.clear()
       this.setState('closed')
-      if (!this.stopped) {
-        setTimeout(() => this.connect(), this.retryMs)
-        this.retryMs = Math.min(this.retryMs * 2, 10000)
-      }
+      setTimeout(() => this.connect(), this.retryMs)
+      this.retryMs = Math.min(this.retryMs * 2, 10000)
     }
-  }
-
-  close() {
-    this.stopped = true
-    this.ws?.close()
   }
 
   call<T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs = 30000): Promise<T> {
@@ -101,21 +92,6 @@ export class MoonrakerClient {
 
   fileUrl(root: string, path: string) {
     return `${this.httpBase}/server/files/${root}/${path.split('/').map(encodeURIComponent).join('/')}`
-  }
-
-  async upload(file: File, path = '', onProgress?: (fraction: number) => void): Promise<void> {
-    const form = new FormData()
-    form.append('root', 'gcodes')
-    if (path) form.append('path', path)
-    form.append('file', file, file.name)
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${this.httpBase}/server/files/upload`)
-      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total)
-      xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(t('app.moonraker.upload_failed_status', { status: xhr.status }))))
-      xhr.onerror = () => reject(new Error(t('app.moonraker.upload_failed')))
-      xhr.send(form)
-    })
   }
 
   private setState(s: ConnectionState) {

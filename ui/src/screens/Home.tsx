@@ -41,8 +41,8 @@ export function HomeScreen() {
   const twoColumns = useMedia('(min-width: 768px) and (not (min-width: 100rem))')
   const jobCard = showJob ? <JobCard /> : <ReadyCard jobs={jobs} />
   const recent = <RecentFiles jobs={jobs} className="min-h-[240px]" />
-  const macros = <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
-  const consoleCard = <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
+  const macros = <MacrosDeck className="min-h-[260px]" />
+  const consoleCard = <MiniConsole className="min-h-[320px]" />
   // The camera and the first cards under it keep their places in every layout, so changing layout doesn't restart them.
   return (
     <div className="deck deck-4">

@@ -145,7 +145,6 @@
   /* Small uppercase labels over a group of controls, as in the touchscreen's "BED MESH" and "THIS PRINT". */
   .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
   .lbl { font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
-  .muted { color: var(--ink-3); }
   .big { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
 
   /* Screen header: the page title the touchscreen puts top left, with tabs or actions after it. */
@@ -210,7 +209,6 @@
   .bar.live > i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent); animation: vo-shim 2.2s infinite; transform: translateX(-100%); }
 
   .tile { padding: 12px 14px; border-radius: 12px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 4px; position: relative; min-width: 0; text-align: left; border: 0; color: inherit; font: inherit; }
-  button.tile:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
   .tile.box-selectable:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
   .tile.hot { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
   .tile .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
@@ -281,9 +279,6 @@
   .rail-item.on { color: var(--accent-ink); background: var(--accent-tint); }
   .rail-item .badge { position: absolute; top: 6px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--rail); }
   /* Kept for screens that still link with it. */
-  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 9px; color: var(--ink-2); font-weight: 600; }
-  .nav-item:hover { background: var(--hover); }
-  .nav-item.active { background: var(--accent-tint); color: var(--accent-ink); }
 
   .wordmark { font-weight: 800; letter-spacing: 0.16em; font-size: 13px; }
 
@@ -321,27 +316,6 @@
 
   .sep { height: 1px; background: var(--line); }
 
-  /* Home cockpit: one column on phones, two on tablets, three fitted to the screen on desktops. */
-  .cockpit { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "job" "cam" "box" "thermals" "motion" "chart" "details" "console" "health" "files"; }
-  .cockpit .col, .cockpit .strip { display: contents; }
-  .cockpit .card { min-height: 0; }
-  @media (min-width: 768px) {
-    .cockpit { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-areas: "job cam" "thermals chart" "motion box" "details health" "files console"; }
-  }
-  @media (min-width: 100rem) {
-    .cockpit { min-height: max(100%, 740px); grid-template-areas: none;
-      grid-template-columns: minmax(320px, 370px) minmax(0, 1fr) minmax(340px, 410px); }
-    .cockpit .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-    .cockpit .strip { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
-    /* Area names place cards on phones and tablets; inside the desktop columns they'd make stray grid tracks. */
-    .cockpit .col > *, .cockpit .strip > * { grid-area: auto !important; }
-    /* Cards share out the screen's height but keep what they need, so a short window scrolls instead of squeezing them.
-       A card's scrolling body (the console, recent files) counts only its own minimum toward that. */
-    .cockpit .grow { flex: 1 1 0; min-height: auto; display: flex; flex-direction: column; }
-    .cockpit .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; contain: size; }
-  }
   .row-k { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 5px 0; }
   .row-k + .row-k { border-top: 1px solid var(--line); }
   .rows-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; }
@@ -353,7 +327,6 @@
 @keyframes vo-shim { to { transform: translateX(100%); } }
 @keyframes vo-tshim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @keyframes vo-spin { to { transform: rotate(360deg); } }
-@keyframes vo-dash { to { stroke-dashoffset: -12; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

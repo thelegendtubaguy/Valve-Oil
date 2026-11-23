@@ -87,28 +87,6 @@
     "snooze_day": "in 1 day",
     "snooze_week": "in 7 days"
   },
-  "thermals": {
-    "title": "Heaters and fans",
-    "speed": "Speed",
-    "heater_power": "Heater power"
-  },
-  "job": {
-    "title": "This print",
-    "speed": "Speed",
-    "flow": "Flow",
-    "filament": "Filament",
-    "layer": "Layer",
-    "left_by_file": "Left by file",
-    "left_by_slicer": "Left by slicer",
-    "against_slicer": "Against the slicer",
-    "on_time": "on time",
-    "slower": "{{pct}}% slower",
-    "faster": "{{pct}}% faster",
-    "slicer_estimate": "Slicer estimate",
-    "layer_height": "Layer height",
-    "of": "{{value}} of {{total}}",
-    "tall": "{{n}} mm tall"
-  },
   "units": {
     "m": "{{n}} m",
     "g": "{{n}} g",
@@ -129,14 +107,7 @@
     "bad": "Printer health, a reading is too high"
   },
   "temps": {
-    "off": "off",
-    "running": "running",
-    "sensor": "sensor",
-    "fan_now": "Now {{pct}}%. Macros and the chamber guard can change it again.",
-    "target_title": "{{name}} target",
-    "now": "Now {{temp}} °C. Up to {{max}} °C.",
-    "now_heating": "Now {{temp}} °C, heating to {{target}} °C. Up to {{max}} °C.",
-    "set": "Set"
+    "off": "off"
   },
   "chart": {
     "title": "Temperatures",
@@ -150,11 +121,7 @@
   },
   "mini_console": {
     "title": "Console",
-    "open": "Open the console",
-    "macros": "Macros",
-    "macros_hint": "click to put in the command line",
-    "filter": "Filter",
-    "filter_macros": "Filter macros"
+    "open": "Open the console"
   },
   "file": {
     "new": "New",
@@ -200,8 +167,6 @@
     "connection_closed": "Connection closed",
     "not_connected": "Not connected to Moonraker",
     "timed_out": "{{method}} timed out",
-    "upload_failed_status": "Upload failed ({{status}})",
-    "upload_failed": "Upload failed",
     "misread": "Not sent: Klipper would misread the number in {{command}}"
   }
 }

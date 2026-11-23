@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchQidiBoxSlots, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxFileTools, qidiBoxReloadGroups, qidiBoxSlots, qidiBoxToolButtons } from '../qidi-box'
+import { matchQidiBoxSlots, qidiColorNearBackground, parseQidiFilamentDatabase, parseQidiFilamentList, qidiBoxFileTools, qidiBoxReloadGroups, qidiBoxSlots, qidiBoxToolButtons } from '../qidi-box'
 
 const filamentList = parseQidiFilamentList([
   '[fila18]',
@@ -201,5 +201,18 @@ describe('qidiBoxToolButtons', () => {
     // A selected tool mapped elsewhere leaves every tool on the loaded slot active.
     expect(active(0)).toStrictEqual([1, 6])
     expect(qidiBoxToolButtons({ 0: 0, 1: 1 }, slots, null, 1).some(button => button.active)).toBe(false)
+  })
+})
+
+describe('qidiColorNearBackground', () => {
+  it.each([
+    ['#1F1F1F', true, true],
+    ['#1F1F1F', false, false],
+    ['#F2F2F2', false, true],
+    ['#F2F2F2', true, false],
+    ['#FF362D', true, false],
+    [null, true, false]
+  ])('%s on dark=%s is %s', (color, dark, expected) => {
+    expect(qidiColorNearBackground(color, dark)).toBe(expected)
   })
 })

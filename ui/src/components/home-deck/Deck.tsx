@@ -1,7 +1,7 @@
 // The Home control deck: the jog wheel, step sizes, temperature actions, outputs, and macros for the Home mockup.
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, Fan, Footprints, House, Rabbit, Settings2, Snowflake, Turtle, Zap } from 'lucide-react'
-import { Card, MenuButton, Segmented, confirm } from '../ui'
+import { MenuButton, Segmented, confirm } from '../ui'
 import { objectLabel, send, useJobActive } from '../control/common'
 import { FAN_TYPES, FanRow, LED_TYPES, LedRow, PIN_TYPES, PinRow, QIDI_FAN_ORDER, nameOf, typeOf, useOutputs } from '../control/Outputs'
 import { MacroButton, MacrosActions, useMacros, useMacrosDb } from '../control/Macros'
@@ -214,35 +214,26 @@ function AutoFan({ obj }: { obj: string }) {
 }
 
 // ---- macros ----
-export function MacrosDeck({ className = '', grow, fold }: { className?: string; grow?: boolean; fold?: string }) {
+/** Home's folding macros card, by category. */
+export function MacrosDeck({ className = '' }: { className?: string }) {
   const { db, loaded } = useMacrosDb()
   const macros = useMacros(db)
   const groups = macroGroups(macros, db)
   const [open, setOpen] = useState<string | null>(null)
-  const [unfolded, toggle] = useFold(fold ?? 'vo-home-macros-open')
+  const [unfolded, toggle] = useFold('vo-home-macros-open')
   if (!loaded) return null
   const shown = groups.find((g) => g.id === open) ?? groups[0]
-  const folded = !!fold && !unfolded
-  const title = (
-    <>
-      <Zap size={14} /> {t('control.screen.tab_macros')}
-    </>
-  )
   return (
-    <section className={`card ${folded ? 'folded' : grow ? 'grow' : ''} ${className}`}>
+    <section className={`card ${unfolded ? 'grow' : 'folded'} ${className}`}>
       <h3 className="card-title">
-        {fold ? (
-          <FoldTitle open={!folded} onToggle={toggle}>
-            {title}
-          </FoldTitle>
-        ) : (
-          title
-        )}
+        <FoldTitle open={unfolded} onToggle={toggle}>
+          <Zap size={14} /> {t('control.screen.tab_macros')}
+        </FoldTitle>
         <span className="aside">
           <MacrosActions />
         </span>
       </h3>
-      {!folded && (
+      {unfolded && (
         <>
           {groups.length > 1 && (
             <div className="mb-2.5 overflow-x-auto">
@@ -257,7 +248,7 @@ export function MacrosDeck({ className = '', grow, fold }: { className?: string;
               />
             </div>
           )}
-          <div className={`flex flex-wrap gap-1.5 ${grow ? 'grow-body' : 'max-h-[220px] overflow-auto'}`}>
+          <div className="grow-body flex flex-wrap gap-1.5">
             {shown?.macros.map((m) => (
               <MacroButton key={m.name} macro={m} />
             ))}
@@ -272,5 +263,3 @@ export function MacrosDeck({ className = '', grow, fold }: { className?: string;
     </section>
   )
 }
-
-export { Card }

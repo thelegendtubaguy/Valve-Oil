@@ -21,42 +21,11 @@ function Can() {
   )
 }
 
-function Word() {
-  return (
-    <>
-      <g transform="translate(370,15)">
-        <polygon points="0,0 68,0 105.0,128 142,0 210,0 145.0,200 65.0,200" fill={INK} />
-        <polygon points="297.0,0 385.0,0 448,200 234,200" fill={INK} />
-        <polygon points="341.0,72 381.0,170 301.0,170" fill="#C84A5A" />
-        <polygon points="472,0 538,0 538,140 642,140 642,200 472,200" fill={INK} />
-        <polygon points="666,0 734,0 771.0,128 808,0 876,0 811.0,200 731.0,200" fill={INK} />
-        <polygon points="900,0 1070,0 1070,50 966,50 966,77 1056,77 1056,123 966,123 966,150 1070,150 1070,200 900,200" fill={INK} />
-      </g>
-      <g transform="translate(370,255)">
-        <path d="M88.0,0 C128.0,50 176,98 176,132 A88.0,74.0 0 0 1 0,132 C0,98 48.0,50 88.0,0 Z" fill={INK} />
-        <path d="M88.0,78 C104.0,100 126,118 126,136 A38.0,34.0 0 0 1 50,136 C50,118 72.0,100 88.0,78 Z" fill="#F2B05A" />
-        <rect x="200" y="0" width="66" height="200" fill={INK} />
-        <polygon points="290,0 356,0 356,140 460,140 460,200 290,200" fill={INK} />
-      </g>
-    </>
-  )
-}
-
 /** The oil can alone. */
-export function LogoMark({ height = 40, className = '' }: { height?: number; className?: string }) {
+export function LogoMark({ height = 40 }: { height?: number }) {
   return (
-    <svg className={className} viewBox="40 8 220 470" height={height} width={(height * 220) / 470} aria-hidden>
+    <svg viewBox="40 8 220 470" height={height} width={(height * 220) / 470} aria-hidden>
       <Can />
-    </svg>
-  )
-}
-
-/** The oil can with VALVE OIL beside it. */
-export function LogoFull({ height = 80, className = '' }: { height?: number; className?: string }) {
-  return (
-    <svg className={className} viewBox="20 0 1440 490" height={height} width={(height * 1440) / 490} role="img" aria-label="Valve Oil">
-      <Can />
-      <Word />
     </svg>
   )
 }

@@ -127,22 +127,6 @@ export function useHistory(limit = 200, enabled = true) {
   return jobs
 }
 
-export type HistoryTotals = { total_jobs: number; total_time: number; total_print_time: number; total_filament_used: number; longest_job: number; longest_print: number }
-
-export function useHistoryTotals() {
-  const rev = usePrinter((s) => s.historyRev)
-  const ready = usePrinter((s) => s.conn === 'open')
-  const [totals, setTotals] = useState<HistoryTotals | null>(null)
-  useEffect(() => {
-    if (!ready) return
-    client
-      .call<{ job_totals: HistoryTotals }>('server.history.totals')
-      .then((r) => setTotals(r.job_totals))
-      .catch(() => setTotals(null))
-  }, [rev, ready])
-  return totals
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Any root: directories, file operations, uploads, and downloads, for the file browser and the editor. Paths are
 // relative to the root; Moonraker's file methods take them with the root in front.
