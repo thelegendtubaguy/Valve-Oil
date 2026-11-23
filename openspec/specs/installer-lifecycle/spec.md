@@ -939,6 +939,11 @@ Normal install and update SHALL install the package's Klipper tree (`klipper/`, 
 - **AND** it installs the launcher and the `klipper.service` drop-in that starts Klipper through it
 - **AND** QIDI's `~/klipper` is left unchanged
 
+#### Scenario: Compiled copies of the tree's own modules are passed over
+- **WHEN** QIDI's `~/klipper/klippy` also holds an unlisted compiled module whose import name the tree has its own Python module for, such as `extras/heater_feng.cpython-39-aarch64-linux-gnu.so` beside the tree's `extras/heater_feng.py`
+- **THEN** install, update, and every Klipper start treat QIDI's modules as matching, whatever that file holds, and it isn't copied into the tree or named as not listed in the report
+- **AND** an unlisted compiled module the tree has no module of its own for still counts as a difference
+
 #### Scenario: Other firmware or unrecognized units leave QIDI's Klipper in use
 - **WHEN** the firmware has no module list, QIDI's live modules differ from it, the tree directory exists without the package marker, or `klipper.service` doesn't start Klipper as `~/klippy-env/bin/python $KLIPPER_ARGS`
 - **THEN** the outcome is recorded without failing the install, no drop-in overrides the unit, and QIDI's Klipper runs

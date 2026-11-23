@@ -26,7 +26,9 @@ It runs on the firmware whose QIDI modules were checked against it:
 
 On other firmware it isn't installed, and QIDI's Klipper runs.
 
-If your firmware is in the table but QIDI's modules in `~/klipper/klippy` aren't the ones Valve Oil's Klipper was checked with, as with a module an older firmware left behind, the installer says `QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was checked with; Klipper stays QIDI's.`, and the rest of the install carries on. It writes what differs to `vo_klipper_modules.json` in Fluidd's **Logs** and prints a link to a prefilled [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml). Open it and attach that file so a release can support your printer. The file goes away once an install finds modules it was checked with.
+Some printers carry compiled modules an earlier QIDI image left in `~/klipper/klippy`, such as `heater_feng.cpython-39-aarch64-linux-gnu.so` found on a Max 4 with `01.01.07.01`. Where Valve Oil's Klipper has its own module of the same name, as it has `heater_feng`, the compiled one doesn't stop it from installing or starting, and it never uses it. Those files are left where they are.
+
+If your firmware is in the table but QIDI's modules in `~/klipper/klippy` aren't the ones Valve Oil's Klipper was checked with, as with another module an older firmware left behind, the installer says `QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was checked with; Klipper stays QIDI's.`, and the rest of the install carries on. It writes what differs to `vo_klipper_modules.json` in Fluidd's **Logs** and prints a link to a prefilled [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml). Open it and attach that file so a release can support your printer. The file goes away once an install finds modules it was checked with.
 
 ## Turning it on and off
 

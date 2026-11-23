@@ -1608,15 +1608,18 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual((tree / "klippy/klippy.py").read_text(encoding="utf-8"), "# the newest klippy.py\n")
 
             with self.subTest("QIDI's modules or unit not the ones it was made for"):
-                # A QIDI package changed QIDI's modules, and an older one left a compiled module behind: the tree
+                # A QIDI package changed QIDI's modules, and an older one left compiled modules behind: the tree
                 # stays, unused by the launcher, and uninstall still removes it. What differs is left in Klipper's log
-                # folder with a prefilled issue for the operator to attach it to. A later package checked with the new
-                # modules replaces the tree, and the report goes.
+                # folder with a prefilled issue for the operator to attach it to; a compiled copy of a module the tree
+                # has its own of isn't among it. A later package checked with the new modules replaces the tree, which
+                # QIDI's leftovers stay out of, and the report goes.
                 installed = marker()
                 box_stepper = qidi / "klippy/extras/box_stepper.so"
                 box_stepper.write_bytes(b"QIDI's newer box_stepper\n")
-                stray = qidi / "klippy/extras/heater_feng.cpython-39-aarch64-linux-gnu.so"
-                stray.write_bytes(b"an older QIDI heater_feng\n")
+                stray = qidi / "klippy/extras/qidi_legacy.so"
+                stray.write_bytes(b"an older QIDI module\n")
+                own_copy = qidi / "klippy/extras/heaters.cpython-39-aarch64-linux-gnu.so"
+                own_copy.write_bytes(b"an older QIDI heaters\n")
                 output = io.StringIO()
                 ledger = apply(ledger, output=output)
                 self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "unsupported")
@@ -1627,14 +1630,13 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual((report["printer"], report["firmware"], report["missing"]), ("plus5", "01.01.02.01", []))
                 self.assertEqual([(entry["path"], entry["sha256"]) for entry in report["changed"]],
                                  [("extras/box_stepper.so", hashlib.sha256(box_stepper.read_bytes()).hexdigest())])
-                self.assertEqual([entry["path"] for entry in report["extra"]],
-                                 ["extras/heater_feng.cpython-39-aarch64-linux-gnu.so"])
-                self.assertEqual(len(report["modules"]), 3)
+                self.assertEqual([entry["path"] for entry in report["extra"]], ["extras/qidi_legacy.so"])
+                self.assertEqual(len(report["modules"]), 4)
                 self.assertIn(str(report_path), output.getvalue())
                 self.assertIn(report["issue_url"], output.getvalue())
                 link = urllib.parse.parse_qs(urllib.parse.urlsplit(report["issue_url"]).query)
                 self.assertEqual(link["template"], ["printer-support.yml"])
-                self.assertIn("heater_feng", link["klipper_modules"][0])
+                self.assertIn("qidi_legacy", link["klipper_modules"][0])
                 stray.unlink()
                 spec = manifest.system_optimizations
                 pins = dict(spec.klipper_tree.modules_for("01.01.02.01"))
@@ -1646,6 +1648,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 ledger = apply(ledger)
                 self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "applied")
                 self.assertEqual((tree / "klippy/extras/box_stepper.so").read_bytes(), box_stepper.read_bytes())
+                self.assertFalse((tree / "klippy/extras/heaters.cpython-39-aarch64-linux-gnu.so").exists())
                 self.assertFalse(report_path.exists())
                 # A unit QIDI changed leaves the drop-in in place but inactive, and it is active again once the unit is
                 # QIDI's again.
@@ -1689,8 +1692,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual(restored, list(reversed(operations)))
                 self.assertFalse(tree.exists() or launcher.exists() or dropin.exists())
                 self.assertEqual(unit.read_text(encoding="utf-8"), unit_text)
-                self.assertEqual({name: data for name, data in snapshot_tree(qidi).items() if name != "klippy/extras/box_stepper.so"},
-                                 {name: data for name, data in qidi_before.items() if name != "klippy/extras/box_stepper.so"})
+                # QIDI's files are as they were, besides the ones this test changed as QIDI's packages would.
+                changed = {"klippy/extras/box_stepper.so", "klippy/extras/qidi_legacy.so",
+                           "klippy/extras/heaters.cpython-39-aarch64-linux-gnu.so"}
+                self.assertEqual({name: data for name, data in snapshot_tree(qidi).items() if name not in changed},
+                                 {name: data for name, data in qidi_before.items() if name not in changed})
 
     def _legacy_host_context(self):
         paths, manifest, env, root = self._installed_host_context()

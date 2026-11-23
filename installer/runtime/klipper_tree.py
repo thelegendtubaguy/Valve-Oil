@@ -7,7 +7,10 @@ rebuilds the library only when a source file is newer than it, so the installer 
 The installer builds the tree in /home/qidi/vo-klipper for the detected printer and firmware: klipper/klippy, the
 printer's files from klipper/printers/<printer>/klippy over it, Valve Oil's own Klipper modules where QIDI's tree has
 them, QIDI's compiled modules copied from the printer's ~/klipper/klippy, the prebuilt c_helper.so, and klippy/.version.
-A marker written last records what went in, so the launcher (installer/system/vo_klipper_launch.py) can tell at every
+Other compiled modules in QIDI's klippy/ are passed over when the tree has its own Python module of that name, such as a
+compiled heater_feng an earlier QIDI image left beside heater_feng.py: Valve Oil's Klipper imports only its own tree, so
+they never reach it. Any other compiled module the tree doesn't have keeps Valve Oil's Klipper from being installed or
+started, since the printer's configuration may need it. A marker written last records what went in, so the launcher (installer/system/vo_klipper_launch.py) can tell at every
 Klipper start that the tree is whole and still matches the printer's firmware and QIDI's modules. QIDI's ~/klipper is
 never changed. Klipper runs Valve Oil's tree only when the operator chose it (the choice file); otherwise, and on any
 doubt, QIDI's.
@@ -141,6 +144,10 @@ class Plan:
     def version(self) -> str:
         return f"{KLIPPER_VERSION}-valve-oil-{self.package_version}"
 
+    def own_modules(self) -> frozenset[str]:
+        """The Python modules the tree has of its own, by import path under klippy/."""
+        return own_modules(relative for relative, _ in self.files)
+
     def expected(self) -> dict[str, str]:
         """Every file the tree holds, with its sha256."""
         hashes = {relative: sha256_file(path) for relative, path in self.files}
@@ -190,16 +197,39 @@ def _version_bytes(version: str) -> bytes:
     return f"{version}\n".encode("utf-8")
 
 
-def qidi_modules_match(qidi_klippy: Path, pins: dict[str, ImagePin]) -> bool:
-    """Whether QIDI's klippy/ has exactly these compiled modules (its c_helper.so aside)."""
-    return _live_modules(qidi_klippy) == set(pins) and all(
+def module_name(relative: str) -> str:
+    """A module's import path under klippy/: extras/heater_feng for extras/heater_feng.cpython-39-aarch64-linux-gnu.so,
+    extras/heater_feng.py, or extras/heater_feng/__init__.py."""
+    directory, _, name = relative.rpartition("/")
+    if name == "__init__.py":
+        return directory
+    stem = name.split(".", 1)[0]
+    return f"{directory}/{stem}" if directory else stem
+
+
+def own_modules(tree_files: Iterable[str]) -> frozenset[str]:
+    """The Python modules among a tree's files (paths in the tree, such as klippy/extras/heater_feng.py), by import
+    path under klippy/."""
+    return frozenset(module_name(relative[len("klippy/"):]) for relative in tree_files
+                     if relative.startswith("klippy/") and relative.endswith(".py"))
+
+
+def qidi_modules_match(qidi_klippy: Path, pins: dict[str, ImagePin], own: frozenset[str] = frozenset()) -> bool:
+    """Whether QIDI's klippy/ has exactly these compiled modules (its c_helper.so aside), besides compiled modules of
+    the tree's own Python modules (`own`), which never reach Valve Oil's Klipper."""
+    return _counted(_live_modules(qidi_klippy), pins, own) == set(pins) and all(
         _matches_pin(qidi_klippy / path, pin) for path, pin in pins.items())
 
 
-def module_differences(qidi_klippy: Path, pins: dict[str, ImagePin]) -> dict:
+def _counted(live: set[str], pins: dict[str, ImagePin], own: frozenset[str]) -> set[str]:
+    """QIDI's compiled modules less the unpinned ones the tree has its own Python module for."""
+    return {relative for relative in live if relative in pins or module_name(relative) not in own}
+
+
+def module_differences(qidi_klippy: Path, pins: dict[str, ImagePin], own: frozenset[str] = frozenset()) -> dict:
     """How QIDI's klippy/ differs from the modules Valve Oil's Klipper was checked with, for the report an operator
-    attaches to an issue: pinned modules missing or changed, compiled modules not pinned, and every module found, so a
-    QIDI build can be pinned from the report alone."""
+    attaches to an issue: pinned modules missing or changed, compiled modules neither pinned nor the tree's own, and
+    every module found, so a QIDI build can be pinned from the report alone."""
     found = {}
     for relative in sorted(_live_modules(qidi_klippy)):
         path = qidi_klippy / relative
@@ -218,7 +248,7 @@ def module_differences(qidi_klippy: Path, pins: dict[str, ImagePin]) -> dict:
     return {
         "missing": sorted(set(pins) - set(found)),
         "changed": changed,
-        "extra": [entry for relative, entry in found.items() if relative not in pins],
+        "extra": [entry for relative, entry in found.items() if relative not in pins and module_name(relative) not in own],
         "modules": list(found.values()),
     }
 

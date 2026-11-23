@@ -116,6 +116,11 @@ class LauncherTests(unittest.TestCase):
                                       "qidi_modules_changed", False),
             "a QIDI module added": (lambda: (self.qidi / "extras/new.so").write_bytes(b"new"), "valve_oil", "qidi",
                                     "qidi_modules_changed", False),
+            # As an earlier QIDI image left a compiled heater_feng beside heater_feng.py on some Max 4s: Valve Oil's
+            # Klipper imports its own module of that name.
+            "a compiled copy of a module the tree has its own of": (
+                lambda: (self.qidi / "extras/heaters.cpython-39-aarch64-linux-gnu.so").write_bytes(b"heaters"),
+                "valve_oil", "valve_oil", "selected", True),
             "a tree file changed": (lambda: replace_same_size(self.tree / "klippy/klippy.py"), "valve_oil", "qidi",
                                     "tree_changed", False),
             "a copied QIDI module removed": (lambda: (self.tree / "klippy/extras/box_stepper.so").unlink(), "valve_oil",

@@ -1116,7 +1116,7 @@ _LINKABLE_MODULE = re.compile(r"^[A-Za-z0-9._/+-]{1,120}$")
 
 
 def _publish_klipper_modules_report(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, manifest: Manifest,
-                                    why: str, reporter) -> None:
+                                    why: str, tree: klipper_tree.Plan | None, reporter) -> None:
     """Where QIDI's compiled Klipper modules aren't the ones Valve Oil's Klipper was checked with, leave what differs in
     Klipper's log folder and point the operator to a prefilled issue to attach it to; otherwise remove an earlier
     report."""
@@ -1138,7 +1138,7 @@ def _publish_klipper_modules_report(paths: RuntimePaths, spec: SystemOptimizatio
         "printer": printer.id,
         "firmware": printer.soc_version(firmware),
         "qidi_klippy_symlinked": _path_has_symlink_component(qidi_klippy, root=root),
-        **klipper_tree.module_differences(qidi_klippy, pins),
+        **klipper_tree.module_differences(qidi_klippy, pins, tree.own_modules() if tree else frozenset()),
     }
 
     def linkable(entry):
@@ -1185,13 +1185,16 @@ def _klipper_tree_plan(paths: RuntimePaths, spec: SystemOptimizationsSpec, root:
     destination = _map_path(root, klipper_tree.TREE_ROOT)
     _reject_parent_symlink_path(destination, root=root)
     qidi_klippy = _map_path(root, klipper_tree.QIDI_KLIPPY)
-    if _path_has_symlink_component(qidi_klippy, root=root) or not klipper_tree.qidi_modules_match(qidi_klippy, pins):
-        return "unsupported", None, KLIPPER_MODULES_CHANGED
     tree = klipper_tree.plan(
         source=source, printer=printer.id, firmware=firmware, package_version=manifest.package.version,
         extra_modules=[(paths.installer_root / module.source, module.destination) for module in manifest.install.extra_modules],
         qidi_modules=pins,
     )
+    # The tree to install comes back with "unsupported" here only so the modules report can tell QIDI's compiled
+    # copies of the tree's own modules from the ones it doesn't have.
+    if (_path_has_symlink_component(qidi_klippy, root=root)
+            or not klipper_tree.qidi_modules_match(qidi_klippy, pins, tree.own_modules())):
+        return "unsupported", tree, KLIPPER_MODULES_CHANGED
     return klipper_tree.state(destination, tree), tree, ""
 
 
@@ -2201,7 +2204,7 @@ def apply_system_optimizations(
                     reporter.line(why)
                 elif state == klipper_tree.FOREIGN:
                     reporter.line(f"{klipper_tree.TREE_ROOT} already exists and was preserved; Klipper stays QIDI's.")
-                _publish_klipper_modules_report(paths, spec, root, manifest, why, reporter)
+                _publish_klipper_modules_report(paths, spec, root, manifest, why, tree, reporter)
                 if state in {"missing", "unsupported", klipper_tree.FOREIGN, klipper_tree.CURRENT}:
                     if state == klipper_tree.CURRENT and operation_id in restore_preimages:
                         continue

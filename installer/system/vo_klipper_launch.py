@@ -7,7 +7,8 @@ At every start it runs Valve Oil's Klipper (/home/qidi/vo-klipper) only when all
   - printer_data/.vo_klipper.json says {"use": "valve_oil"};
   - no Valve Oil QIDI firmware update is pending;
   - the tree has the installer's marker, made for the firmware ~/update/firmware_manifest.json names now;
-  - QIDI's ~/klipper/klippy has the compiled modules the installer copied from it, and no others;
+  - QIDI's ~/klipper/klippy has the compiled modules the installer copied from it, and no others besides compiled
+    copies of modules the tree has its own Python module for, which Valve Oil's Klipper never imports;
   - every file the installer put in the tree is still as it was, and c_helper.so is the newest file in its folder;
   - the drop-in that runs this launcher is in place;
   - fewer than three starts in a row on Valve Oil's Klipper went without Klipper acknowledging it was ready.
@@ -79,14 +80,31 @@ def _same(path, record):
         return False
 
 
-def _qidi_modules_match(qidi_klippy, recorded):
+def _module_name(relative):
+    """A module's import path under klippy/, as installer/runtime/klipper_tree.module_name gives it."""
+    directory, _, name = relative.rpartition("/")
+    if name == "__init__.py":
+        return directory
+    stem = name.split(".", 1)[0]
+    return directory + "/" + stem if directory else stem
+
+
+def _qidi_modules_match(qidi_klippy, recorded, tree_files):
+    # The tree's own Python modules, checked against the marker by _tree_matches.
+    own = {_module_name(relative[len("klippy/"):]) for relative in (tree_files if isinstance(tree_files, dict) else ())
+           if relative.startswith("klippy/") and relative.endswith(".py")}
+    recorded = recorded if isinstance(recorded, dict) else {}
     found = set()
     for directory, dirnames, filenames in os.walk(qidi_klippy):
         dirnames[:] = [name for name in dirnames if name != "__pycache__"]
         for name in filenames:
             relative = os.path.relpath(os.path.join(directory, name), qidi_klippy).replace(os.sep, "/")
-            if name.endswith(".so") and relative != QIDI_CHELPER:
-                found.add(relative)
+            if not name.endswith(".so") or relative == QIDI_CHELPER:
+                continue
+            # Valve Oil's Klipper imports its own module of this name, never QIDI's compiled one.
+            if relative not in recorded and _module_name(relative) in own:
+                continue
+            found.add(relative)
     return (isinstance(recorded, dict) and bool(recorded) and found == set(recorded)
             and all(_safe(relative) and _same(os.path.join(qidi_klippy, relative), record)
                     for relative, record in recorded.items()))
@@ -140,7 +158,8 @@ def _unavailable(paths, marker, soc):
         ("installer_hold", lambda: os.path.lexists(os.path.join(paths["printer_data"], INSTALLER_HOLD))),
         ("not_installed", lambda: marker is None),
         ("firmware_changed", lambda: soc is None or marker.get("soc") != soc),
-        ("qidi_modules_changed", lambda: not _qidi_modules_match(paths["qidi_klippy"], marker.get("qidi_modules"))),
+        ("qidi_modules_changed", lambda: not _qidi_modules_match(paths["qidi_klippy"], marker.get("qidi_modules"),
+                                                                 marker.get("files"))),
         ("tree_changed", lambda: not _tree_matches(paths["tree_root"], marker.get("files"))),
         ("launcher_not_installed", lambda: not _dropin_active(paths["dropin"])),
     ):
