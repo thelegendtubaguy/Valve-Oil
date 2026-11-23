@@ -110,9 +110,11 @@ export function meshColor(z: number, zMin: number, zMax: number): string {
 
 export const MESH_GRADIENT = `linear-gradient(90deg, ${RAMP.map((c) => `rgb(${c.join(',')})`).join(', ')})`
 
-/** Quotes a G-code parameter value that holds a space or a character Klipper would split on, as Fluidd does. */
-export function gcodeParam(value: string) {
-  return /[ '"#;=\\]/.test(value) ? `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : value
+/** A round step for axis ticks near `raw`: 1, 2.5, 5, or 10 times a power of ten. */
+export function niceStep(raw: number) {
+  const p = 10 ** Math.floor(Math.log10(raw))
+  const n = raw / p
+  return (n < 1.5 ? 1 : n < 3.5 ? 2.5 : n < 7.5 ? 5 : 10) * p
 }
 
 /** A point marked on the mesh, in bed coordinates. */

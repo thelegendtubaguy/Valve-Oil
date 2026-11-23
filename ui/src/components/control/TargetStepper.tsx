@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../toast'
 import { targetError, type TargetRange } from './heaters'
+import { draftKeys } from './common'
 import { t } from '../../i18n'
 
 /**
@@ -61,10 +62,7 @@ export function TargetStepper({
           onFocus={(e) => (setDraft(String(cur)), e.target.select())}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-            if (e.key === 'Escape') (setDraft(null), (e.target as HTMLInputElement).blur())
-          }}
+          onKeyDown={draftKeys(setDraft)}
         />
         {cur > 0 && draft == null && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] font-semibold text-ink-3">°C</span>}
       </div>

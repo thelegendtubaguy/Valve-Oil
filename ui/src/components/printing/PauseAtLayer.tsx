@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Layers } from 'lucide-react'
-import { Dialog, Toggle } from '../ui'
+import { CancelButton, Dialog, Field, Toggle } from '../ui'
 import { send } from '../control/common'
 import { encodeGcodeParamValue, gcode } from '../control/gcode'
 import { registerObjects, usePrinter } from '../../state/printer'
@@ -72,9 +72,7 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
       title={t('home.pause_layer.title')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!!layerError} onClick={accept}>
             {t('home.pause_layer.accept')}
           </button>
@@ -84,47 +82,46 @@ function PauseAtLayerDialog({ onClose }: { onClose: () => void }) {
       <div className="grid gap-4">
         <div className="text-ink-2">{t('home.pause_layer.now', { current: p.current, total: p.total })}</div>
         {p.next && (
-          <div className="grid gap-2">
-            <label className="flex items-center gap-3">
-              <span className="flex-1 font-semibold">{t('home.pause_layer.next')}</span>
-              <Toggle label={t('home.pause_layer.next')} checked={next.enable} onChange={(enable) => setNext((x) => ({ ...x, enable }))} />
-            </label>
-            {next.enable && <CallField value={next.call} onChange={(call) => setNext((x) => ({ ...x, call }))} />}
-          </div>
+          <Pause label={t('home.pause_layer.next')} on={next.enable} onToggle={(enable) => setNext((x) => ({ ...x, enable }))}>
+            <CallField value={next.call} onChange={(call) => setNext((x) => ({ ...x, call }))} />
+          </Pause>
         )}
         {p.at && (
-          <div className="grid gap-2">
-            <label className="flex items-center gap-3">
-              <span className="flex-1 font-semibold">{t('home.pause_layer.at')}</span>
-              <Toggle label={t('home.pause_layer.at')} checked={at.enable} onChange={(enable) => setAt((x) => ({ ...x, enable }))} />
-            </label>
-            {at.enable && (
-              <>
-                <label className="grid gap-1">
-                  <span className="lbl">{t('home.pause_layer.layer')}</span>
-                  <input className="field" inputMode="numeric" value={layer} onChange={(e) => setLayer(e.target.value)} />
-                  {layerError && <span className="text-[12px] text-bad">{layerError}</span>}
-                </label>
-                <CallField value={at.call} onChange={(call) => setAt((x) => ({ ...x, call }))} />
-              </>
-            )}
-          </div>
+          <Pause label={t('home.pause_layer.at')} on={at.enable} onToggle={(enable) => setAt((x) => ({ ...x, enable }))}>
+            <Field label={t('home.pause_layer.layer')} className="gap-1">
+              <input className="field" inputMode="numeric" value={layer} onChange={(e) => setLayer(e.target.value)} />
+              {layerError && <span className="text-[12px] text-bad">{layerError}</span>}
+            </Field>
+            <CallField value={at.call} onChange={(call) => setAt((x) => ({ ...x, call }))} />
+          </Pause>
         )}
       </div>
     </Dialog>
   )
 }
 
+/** A pause's switch, and its settings while it's on. */
+function Pause({ label, on, onToggle, children }: { label: string; on: boolean; onToggle: (on: boolean) => void; children: ReactNode }) {
+  return (
+    <div className="grid gap-2">
+      <label className="flex items-center gap-3">
+        <span className="flex-1 font-semibold">{label}</span>
+        <Toggle label={label} checked={on} onChange={onToggle} />
+      </label>
+      {on && children}
+    </div>
+  )
+}
+
 function CallField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <label className="grid gap-1">
-      <span className="lbl">{t('home.pause_layer.command')}</span>
+    <Field label={t('home.pause_layer.command')} className="gap-1">
       <input className="field code" list="vo-pause-calls" value={value} onChange={(e) => onChange(e.target.value)} />
       <datalist id="vo-pause-calls">
         {CALLS.map((c) => (
           <option key={c} value={c} />
         ))}
       </datalist>
-    </label>
+    </Field>
   )
 }

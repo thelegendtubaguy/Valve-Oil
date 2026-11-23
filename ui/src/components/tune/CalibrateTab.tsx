@@ -1,23 +1,23 @@
 import { useMemo, useState } from 'react'
-import { Activity, CircleCheck, CircleDot, Crosshair, Hand, House, RefreshCw, RotateCcw, RotateCw, Ruler, Scale, TriangleAlert, Waves } from 'lucide-react'
-import { Card, Choices, Empty, Spinner, Stepper, confirm } from '../ui'
+import { Activity, CircleCheck, CircleDot, Crosshair, Hand, House, RefreshCw, RotateCcw, RotateCw, Ruler, Scale, Waves } from 'lucide-react'
+import { Card, Choices, Empty, Field, SectionLabel, Spinner, Stepper, confirm } from '../ui'
 import { attempt } from '../toast'
-import { client, runGcode, useObject, usePrinter } from '../../state/printer'
+import { client, useHasCommand, useObject, usePrinter } from '../../state/printer'
+import { send, useHomedAxes } from '../control/common'
 import { useStore } from '../../lib/store'
 import { SaveConfigNotice } from './SaveConfigNotice'
 import { reopenHelper } from './HelperDialogs'
 import { calibrationLog } from './calibration-log'
 import { lastProbeAccuracy, shaperResults, tiltScrews, type TiltScrew } from './calibrate'
-import { useHasCommand, usePrinterFlags } from './hooks'
+import { Banner, Stat, usePrinterFlags } from './common'
 import { locale, t, type MessageKey } from '../../i18n'
 
-const run = (g: string) => attempt(() => runGcode(g))
-
 export function CalibrateTab() {
-  const has = useHasCommand()
   const settings = usePrinter((s) => s.settings)
-  const hasZTilt = !!settings.z_tilt && has('Z_TILT_ADJUST')
-  const hasScrews = !!settings.screws_tilt_adjust && has('SCREWS_TILT_CALCULATE')
+  const hasZTilt = useHasCommand('Z_TILT_ADJUST') && !!settings.z_tilt
+  const hasScrews = useHasCommand('SCREWS_TILT_CALCULATE') && !!settings.screws_tilt_adjust
+  const loadCell = useHasCommand('VO_TEST_PROBE')
+  const shaper = useHasCommand('SHAPER_CALIBRATE')
   return (
     <>
       <SaveConfigNotice />
@@ -29,9 +29,9 @@ export function CalibrateTab() {
         </div>
         <div className="grid content-start gap-3.5">
           <ProbeCard />
-          {has('VO_TEST_PROBE') && <LoadCellCard />}
+          {loadCell && <LoadCellCard />}
         </div>
-        {has('SHAPER_CALIBRATE') && (
+        {shaper && (
           <div className="grid content-start gap-3.5 lg:col-span-2 2xl:col-span-1">
             <InputShaperCard />
           </div>
@@ -44,7 +44,7 @@ export function CalibrateTab() {
 /** Homing state, since most of these need the printer homed first. */
 function HomeCard() {
   const { busy, homed } = usePrinterFlags()
-  const axes = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
+  const axes = useHomedAxes()
   const manual = !!useObject('manual_probe').is_active
   const screws = !!useObject('bed_screws').is_active
   return (
@@ -63,7 +63,7 @@ function HomeCard() {
           {t('tune.shared.bed_screws_adjust')}
         </button>
       )}
-      <button className={`btn btn-sm ${homed ? '' : 'btn-primary'}`} disabled={busy} onClick={() => run('G28')}>
+      <button className={`btn btn-sm ${homed ? '' : 'btn-primary'}`} disabled={busy} onClick={() => send('G28')}>
         <House size={14} /> {t('tune.shared.home_all')}
       </button>
     </div>
@@ -71,7 +71,6 @@ function HomeCard() {
 }
 
 function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
-  const has = useHasCommand()
   const { busy, homed } = usePrinterFlags()
   const zt = useObject('z_tilt')
   const sta = useObject('screws_tilt_adjust')
@@ -79,7 +78,8 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
   const toolhead = useObject('toolhead')
   const list = tiltScrews(settings.screws_tilt_adjust, sta)
   const hasResults = list.some((s) => s.adjust != null)
-  const corner = has('VO_CORNER_BED_SCREW_CHECK')
+  const corner = useHasCommand('VO_CORNER_BED_SCREW_CHECK')
+  const byHand = useHasCommand('BED_SCREWS_ADJUST') && settings.bed_screws
   const thread = settings.screws_tilt_adjust?.screw_thread as string | undefined
   return (
     <Card title={t('tune.calibrate.leveling')} icon={<Scale size={14} />}>
@@ -91,7 +91,7 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
               {zt.applied ? t('tune.calibrate.applied') : t('tune.calibrate.not_applied')}
             </span>
             <span className="flex-1" />
-            <button className="btn btn-sm" disabled={busy || !homed} title={homed ? undefined : t('tune.shared.home_first')} onClick={() => run('Z_TILT_ADJUST')}>
+            <button className="btn btn-sm" disabled={busy || !homed} title={homed ? undefined : t('tune.shared.home_first')} onClick={() => send('Z_TILT_ADJUST')}>
               {t('tune.calibrate.z_tilt_adjust')}
             </button>
           </div>
@@ -106,11 +106,11 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
             {sta.max_deviation != null && <span className={`pill ${sta.error ? 'tone-bad' : 'tone-muted'}`}>{t('tune.calibrate.max_deviation', { value: Number(sta.max_deviation).toFixed(3) })}</span>}
             <span className="flex-1" />
             {corner ? (
-              <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run('VO_CORNER_BED_SCREW_CHECK')}>
+              <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => send('VO_CORNER_BED_SCREW_CHECK')}>
                 {t('tune.calibrate.check_screws')}
               </button>
             ) : (
-              <button className="btn btn-sm btn-primary" disabled={busy || !homed} onClick={() => run('SCREWS_TILT_CALCULATE')}>
+              <button className="btn btn-sm btn-primary" disabled={busy || !homed} onClick={() => send('SCREWS_TILT_CALCULATE')}>
                 {t('tune.calibrate.calculate')}
               </button>
             )}
@@ -122,14 +122,14 @@ function LevelingCard({ zTilt, screws }: { zTilt: boolean; screws: boolean }) {
               .join(' ')}
           </p>
           {corner && homed && (
-            <button className="btn btn-sm btn-ghost justify-self-start" disabled={busy} onClick={() => run('SCREWS_TILT_CALCULATE')}>
+            <button className="btn btn-sm btn-ghost justify-self-start" disabled={busy} onClick={() => send('SCREWS_TILT_CALCULATE')}>
               {t('tune.calibrate.calculate_again')}
             </button>
           )}
-          {has('BED_SCREWS_ADJUST') && settings.bed_screws && (
+          {byHand && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-inset px-3 py-2">
               <span className="min-w-0 flex-1 text-[12.5px] text-ink-2">{t('tune.calibrate.by_hand')}</span>
-              <button className="btn btn-sm" disabled={busy || !homed} onClick={() => run('BED_SCREWS_ADJUST')}>
+              <button className="btn btn-sm" disabled={busy || !homed} onClick={() => send('BED_SCREWS_ADJUST')}>
                 {t('tune.shared.bed_screws_adjust')}
               </button>
             </div>
@@ -233,28 +233,28 @@ function EndstopsCard() {
 }
 
 function ProbeCard() {
-  const has = useHasCommand()
   const { busy, homed } = usePrinterFlags()
   const log = useStore(calibrationLog, (l) => l)
   const acc = useMemo(() => lastProbeAccuracy(log), [log])
   const [samples, setSamples] = useState(20)
-  const center = has('VO_PROBE_ACCURACY_CENTER')
+  const center = useHasCommand('VO_PROBE_ACCURACY_CENTER')
+  const probeCalibrate = useHasCommand('PROBE_CALIBRATE')
+  const endstopCalibrate = useHasCommand('Z_ENDSTOP_CALIBRATE')
   const manual = !!useObject('manual_probe').is_active
   return (
     <Card title={t('tune.calibrate.probe')} icon={<Ruler size={14} />}>
-      <SectionTitle>{t('tune.calibrate.probe_accuracy')}</SectionTitle>
+      <SectionLabel>{t('tune.calibrate.probe_accuracy')}</SectionLabel>
       <div className="mt-2 flex flex-wrap items-end gap-2.5">
-        <label className="grid w-[150px] gap-1">
-          <span className="lbl">{t('tune.calibrate.samples')}</span>
+        <Field label={t('tune.calibrate.samples')} className="w-[150px] gap-1">
           <Stepper value={samples} onChange={setSamples} min={2} max={100} step={5} label={t('tune.calibrate.samples')} />
-        </label>
+        </Field>
         <span className="flex-1" />
         {center ? (
-          <button className="btn btn-primary" disabled={busy} onClick={() => run(`VO_PROBE_ACCURACY_CENTER SAMPLES=${samples}`)}>
+          <button className="btn btn-primary" disabled={busy} onClick={() => send(`VO_PROBE_ACCURACY_CENTER SAMPLES=${samples}`)}>
             {t('tune.calibrate.run_center')}
           </button>
         ) : (
-          <button className="btn btn-primary" disabled={busy || !homed} onClick={() => run(`PROBE_ACCURACY SAMPLES=${samples}`)}>
+          <button className="btn btn-primary" disabled={busy || !homed} onClick={() => send(`PROBE_ACCURACY SAMPLES=${samples}`)}>
             {t('tune.calibrate.run_here')}
           </button>
         )}
@@ -265,29 +265,26 @@ function ProbeCard() {
       {acc ? (
         <>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Tile label={t('tune.shared.range')} value={acc.range.toFixed(4)} unit="mm" hot />
-            <Tile label={t('tune.shared.deviation')} value={acc.deviation.toFixed(4)} unit="mm" />
-            <Tile label={t('tune.shared.average')} value={acc.average.toFixed(4)} unit="mm" />
-            <Tile label={t('tune.shared.median')} value={acc.median.toFixed(4)} unit="mm" />
-            <Tile label={t('tune.shared.lowest')} value={acc.minimum.toFixed(4)} unit="mm" />
-            <Tile label={t('tune.shared.highest')} value={acc.maximum.toFixed(4)} unit="mm" />
+            {([[t('tune.shared.range'), acc.range], [t('tune.shared.deviation'), acc.deviation], [t('tune.shared.average'), acc.average], [t('tune.shared.median'), acc.median], [t('tune.shared.lowest'), acc.minimum], [t('tune.shared.highest'), acc.maximum]] as const).map(([label, v], i) => (
+              <Stat key={label} label={label} value={v.toFixed(4)} unit="mm" hot={i === 0} />
+            ))}
           </div>
           <div className="mt-1.5 text-[12px] text-ink-3">
             {[acc.samples != null ? t('tune.calibrate.samples_count', { count: acc.samples }) : null, acc.at, new Date(acc.time).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ')}
           </div>
         </>
       ) : null}
-      {has('PROBE_CALIBRATE') && (
+      {probeCalibrate && (
         <>
           <div className="sep my-3.5" />
-          <SectionTitle>{t('tune.calibrate.z_offset')}</SectionTitle>
+          <SectionLabel>{t('tune.calibrate.z_offset')}</SectionLabel>
           <p className="mt-1 mb-2.5 text-[12.5px] text-ink-3">{t('tune.calibrate.z_offset_hint')}</p>
           <div className="flex flex-wrap gap-2">
-            <button className="btn" disabled={busy || !homed || manual} title={homed ? undefined : t('tune.shared.home_first')} onClick={() => run('PROBE_CALIBRATE')}>
+            <button className="btn" disabled={busy || !homed || manual} title={homed ? undefined : t('tune.shared.home_first')} onClick={() => send('PROBE_CALIBRATE')}>
               {t('tune.calibrate.probe_calibrate')}
             </button>
-            {has('Z_ENDSTOP_CALIBRATE') && (
-              <button className="btn" disabled={busy || !homed || manual} onClick={() => run('Z_ENDSTOP_CALIBRATE')}>
+            {endstopCalibrate && (
+              <button className="btn" disabled={busy || !homed || manual} onClick={() => send('Z_ENDSTOP_CALIBRATE')}>
                 {t('tune.calibrate.z_endstop_calibrate')}
               </button>
             )}
@@ -337,7 +334,7 @@ function LoadCellCard() {
         confirm: t('tune.load_cell.start'),
       })
     )
-      run('VO_TEST_PROBE CONFIRM=1')
+      send('VO_TEST_PROBE CONFIRM=1')
   }
   return (
     <Card title={t('tune.load_cell.title')} icon={<Hand size={14} />}>
@@ -368,12 +365,7 @@ function LoadCellCard() {
           </div>
         </>
       )}
-      <div className="tone-warn mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-[12.5px]">
-        <TriangleAlert size={14} className="mt-0.5 flex-none" />
-        <span className="text-ink">
-          {t('tune.load_cell.caution')}
-        </span>
-      </div>
+      <Banner small>{t('tune.load_cell.caution')}</Banner>
     </Card>
   )
 }
@@ -404,7 +396,7 @@ function InputShaperCard() {
         confirm: t('tune.shaper.start'),
       })
     )
-      run(`${homed ? '' : 'G28\n'}SHAPER_CALIBRATE${axis === 'both' ? '' : ` AXIS=${axis.toUpperCase()}`}`)
+      send(`${homed ? '' : 'G28\n'}SHAPER_CALIBRATE${axis === 'both' ? '' : ` AXIS=${axis.toUpperCase()}`}`)
   }
   const axisRow = (a: 'x' | 'y') => {
     const type = (cfg[`shaper_type_${a}`] ?? cfg.shaper_type) as string | undefined
@@ -437,10 +429,7 @@ function InputShaperCard() {
       <div className="grid grid-cols-2 gap-2">{(['x', 'y'] as const).map(axisRow)}</div>
       <div className="mt-1.5 text-[12px] text-ink-3">{t('tune.shaper.from_config')}</div>
       {shaper && shaper.saved === false && (
-        <div className="tone-warn mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-[12.5px]">
-          <TriangleAlert size={14} className="mt-0.5 flex-none" />
-          <span className="text-ink">{t('tune.shaper.not_saved')}</span>
-        </div>
+        <Banner small>{t('tune.shaper.not_saved')}</Banner>
       )}
       <div className="sep my-3.5" />
       <div className="flex flex-wrap items-center gap-2.5">
@@ -459,13 +448,10 @@ function InputShaperCard() {
           <Activity size={15} /> {t('tune.shared.calibrate')}
         </button>
       </div>
-      <div className="tone-warn mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-[12.5px]">
-        <TriangleAlert size={14} className="mt-0.5 flex-none" />
-        <span className="text-ink">{t('tune.shaper.empty_bed')}</span>
-      </div>
+      <Banner small>{t('tune.shaper.empty_bed')}</Banner>
       {shown.length > 0 && (
         <div className="mt-3.5 grid gap-3">
-          <SectionTitle>{t('tune.shaper.last_calibration')}</SectionTitle>
+          <SectionLabel>{t('tune.shaper.last_calibration')}</SectionLabel>
           {shown.map((a) => {
             const r = results[a]
             return (
@@ -518,20 +504,5 @@ function InputShaperCard() {
         </div>
       )}
     </Card>
-  )
-}
-
-function SectionTitle({ children }: { children: string }) {
-  return <div className="section-label">{children}</div>
-}
-
-function Tile({ label, value, unit, hot }: { label: string; value: string; unit: string; hot?: boolean }) {
-  return (
-    <div className={`tile ${hot ? 'hot' : ''}`}>
-      <span className="section-label">{label}</span>
-      <span className="v num">
-        {value} <small>{unit}</small>
-      </span>
-    </div>
   )
 }

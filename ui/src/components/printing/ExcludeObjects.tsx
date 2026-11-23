@@ -19,6 +19,8 @@ export function useExcludeObject(): ExcludeObjectState {
 /** Klipper's object names as people read them: "planter_body_id_0_copy_1" stays as is, but without shouting. */
 export const partLabel = (name: string) => name.replace(/_/g, ' ')
 
+const partColor = (out: boolean, now: boolean) => (out ? 'var(--red)' : now ? 'var(--accent)' : 'var(--green)')
+
 async function exclude(name: string) {
   if (!(await confirm({ title: t('home.exclude.confirm_title', { name: partLabel(name) }), body: t('home.exclude.confirm_body'), confirm: t('home.exclude.confirm'), danger: true }))) return
   send(excludeObjectGcode(name))
@@ -53,7 +55,7 @@ export function ExcludeObjectsDialog({ onClose }: { onClose: () => void }) {
             const now = eo.current_object === o.name
             return (
               <div key={o.name} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${hover === o.name ? 'bg-hover' : ''}`} onPointerEnter={() => setHover(o.name)} onPointerLeave={() => setHover(null)}>
-                <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: out ? 'var(--red)' : now ? 'var(--accent)' : 'var(--green)' }} />
+                <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: partColor(out, now) }} />
                 <span className={`min-w-0 flex-1 text-[12.5px] break-all ${out ? 'text-ink-3 line-through' : ''}`}>{partLabel(o.name)}</span>
                 {now && <span className="pill tone-accent px-2! py-0.5! text-[11px]!">{t('home.exclude.printing')}</span>}
                 {!out && (
@@ -93,8 +95,7 @@ function ObjectMap({ eo, hover, onHover, onPick }: { eo: ExcludeObjectState; hov
       ))}
       {eo.objects.map((o) => {
         const out = eo.excluded_objects.includes(o.name)
-        const now = eo.current_object === o.name
-        const color = out ? 'var(--red)' : now ? 'var(--accent)' : 'var(--green)'
+        const color = partColor(out, eo.current_object === o.name)
         const hot = hover === o.name
         if (!o.polygon?.length) {
           if (!o.center) return null

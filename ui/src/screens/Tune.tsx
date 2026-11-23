@@ -1,15 +1,12 @@
 import { useEffect } from 'react'
 import { PageHeader, Segmented } from '../components/ui'
 import { href, useSubPath } from '../lib/router'
-import { registerObjects, usePrinter } from '../state/printer'
+import { usePrinter } from '../state/printer'
 import { BedMeshTab } from '../components/tune/BedMeshTab'
 import { BedSoakTab } from '../components/tune/BedSoakTab'
 import { CalibrateTab } from '../components/tune/CalibrateTab'
 import { meshPreview } from '../components/tune/mesh'
 import { t } from '../i18n'
-
-// Klipper's BED_SCREWS_ADJUST helper isn't in the app's default subscription.
-registerObjects((name) => name === 'bed_screws')
 
 type Tab = 'mesh' | 'soak' | 'calibrate'
 

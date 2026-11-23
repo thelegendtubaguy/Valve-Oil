@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { bedCorners, gridX, gridY, meshColor, nearestCell, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { useState } from 'react'
+import { bedCorners, gridX, gridY, meshColor, nearestCell, niceStep, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { useWidth } from './common'
 import { t } from '../../i18n'
 
 /**
@@ -7,16 +8,8 @@ import { t } from '../../i18n'
  * the cell when there's room. Marked points get an amber ring. The corners are named above and below the bed.
  */
 export function MeshHeatmap({ grid, bed, zMin, zMax, markers, height, unit = 'mm' }: { grid: MeshGrid; bed: BedBounds; zMin: number; zMax: number; markers: MeshMarker[]; height: number; unit?: 'mm' | 'µm' }) {
-  const wrap = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(600)
+  const [wrap, width] = useWidth<HTMLDivElement>(false)
   const [hover, setHover] = useState<{ row: number; col: number } | null>(null)
-  useEffect(() => {
-    const el = wrap.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth || 600))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   const padL = 34
   // Room for the X ticks and the front corners' names below, and the back corners' above.
@@ -48,7 +41,7 @@ export function MeshHeatmap({ grid, bed, zMin, zMax, markers, height, unit = 'mm
   }
   const fmt = (z: number) => (unit === 'µm' ? `${z < 0 ? '−' : z > 0 ? '+' : ''}${Math.abs(z * 1000).toFixed(1)}` : `${z < 0 ? '−' : ''}${Math.abs(z).toFixed(3)}`)
   const ticks = (lo: number, hi: number) => {
-    const step = niceStep((hi - lo) / 5)
+    const step = niceStep((hi - lo) / 5 || 1)
     const out: number[] = []
     for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-6; v += step) out.push(v)
     return out
@@ -134,12 +127,6 @@ export function MeshHeatmap({ grid, bed, zMin, zMax, markers, height, unit = 'mm
       )}
     </div>
   )
-}
-
-function niceStep(raw: number) {
-  const p = 10 ** Math.floor(Math.log10(raw || 1))
-  const n = raw / p
-  return (n < 1.5 ? 1 : n < 3.5 ? 2.5 : n < 7.5 ? 5 : 10) * p
 }
 
 /** Dark or light text over a ramp colour. */

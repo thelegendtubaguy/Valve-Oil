@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { useWidth } from './common'
 import { t } from '../../i18n'
 
 export type BedSoakChartPoint = { x: number; y: number; name?: string }
@@ -44,17 +45,8 @@ const BOTTOM = 22
  * labelled above the plot in as many rows as they need, the latest value at the end of each line.
  */
 export function BedSoakChart({ title, note, unit, series, xMin, xMax, yMin, yMax, events = [], references = [], band, height = 150, timeLabel, hoverX, onHover }: Props) {
-  const wrap = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(600)
+  const [wrap, width] = useWidth<HTMLDivElement>()
   const [pointerIn, setPointerIn] = useState(false)
-  useEffect(() => {
-    const el = wrap.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth || 600))
-    ro.observe(el)
-    setWidth(el.clientWidth || 600)
-    return () => ro.disconnect()
-  }, [])
 
   const plotW = Math.max(100, width - LEFT - RIGHT)
   // Event labels sit above the plot, centred on their line, in rows that don't overlap.

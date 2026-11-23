@@ -1,7 +1,8 @@
 import { Save } from 'lucide-react'
 import { confirm } from '../ui'
-import { attempt } from '../toast'
-import { runGcode, useObject } from '../../state/printer'
+import { useObject } from '../../state/printer'
+import { useJobActive } from '../../state/job'
+import { send } from '../control/common'
 import { prettyName } from '../../lib/format'
 import { t } from '../../i18n'
 
@@ -21,11 +22,10 @@ export function pendingLabel(section: string) {
  */
 export function SaveConfigNotice({ only }: { only?: (section: string) => boolean }) {
   const cf = useObject('configfile')
-  const ps = useObject('print_stats')
+  const printing = useJobActive()
   const items = Object.keys((cf.save_config_pending_items as Record<string, unknown> | undefined) ?? {})
   const shown = only ? items.filter(only) : items
   if (!cf.save_config_pending || (only && items.length > 0 && shown.length === 0)) return null
-  const printing = ps.state === 'printing' || ps.state === 'paused'
   const save = async () => {
     if (
       await confirm({
@@ -34,7 +34,7 @@ export function SaveConfigNotice({ only }: { only?: (section: string) => boolean
         confirm: t('tune.save_config.confirm_button'),
       })
     )
-      attempt(() => runGcode('SAVE_CONFIG'))
+      send('SAVE_CONFIG')
   }
   return (
     <div className="tone-warn flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-3.5 py-2.5">

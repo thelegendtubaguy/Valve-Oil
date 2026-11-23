@@ -2,10 +2,8 @@
 // that line), each heater shows how far it is toward its target, and sensors sit in a compact grid under them.
 import { useState } from 'react'
 import { Flame } from 'lucide-react'
-import { encodeGcodeParamValue, gcode } from '../control/gcode'
-import { objectLabel, send } from '../control/common'
-import { boxHeaterNumber, targetError, targetRange, type HeaterConfig } from '../control/heaters'
-import { heaterName } from '../control/Thermals'
+import { draftKeys, objectLabel, send } from '../control/common'
+import { boxHeaterNumber, heaterGcode, targetError, targetRange, type HeaterConfig } from '../control/heaters'
 import { TempChart } from '../TempChart'
 import { toast } from '../toast'
 import { usePrinter } from '../../state/printer'
@@ -85,7 +83,7 @@ function HeaterRow({ obj, slot, shown, onToggle }: { obj: string; slot: number |
   const set = (v: number) => {
     const err = targetError(v, range)
     if (err) return toast(err, 'error')
-    send(gcode`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${v}`)
+    send(heaterGcode(obj, v))
   }
   return (
     <div className={`tc-row ${on ? 'on' : ''}`} style={{ '--c': color } as React.CSSProperties}>
@@ -129,10 +127,7 @@ function TargetField({ label, value, disabled, onSet }: { label: string; value: 
         onFocus={(e) => (setDraft(value > 0 ? String(value) : ''), e.target.select())}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          if (e.key === 'Escape') (setDraft(null), (e.target as HTMLInputElement).blur())
-        }}
+        onKeyDown={draftKeys(setDraft)}
       />
       {(value > 0 || draft != null) && <span className="unit">°</span>}
     </label>

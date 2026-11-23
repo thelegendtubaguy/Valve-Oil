@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Gauge, ScanLine, Undo2 } from 'lucide-react'
 import { Card, Empty, Stepper, Toggle } from '../ui'
-import { Note, objectLabel, send } from './common'
+import { Columns, Note, objectLabel, send } from './common'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
 import { t } from '../../i18n'
@@ -9,13 +9,10 @@ import { t } from '../../i18n'
 /** The Limits tab: printer limits, runout sensors, and firmware retraction where the printer has it. */
 export function LimitsTab() {
   return (
-    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
-      <LimitsCard />
-      <div className="grid min-w-0 grid-cols-1 gap-3.5">
-        <RunoutCard />
-        <RetractCard />
-      </div>
-    </div>
+    <Columns left={<LimitsCard />}>
+      <RunoutCard />
+      <RetractCard />
+    </Columns>
   )
 }
 

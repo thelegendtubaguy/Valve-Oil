@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
-import { Card, Dialog, Empty, Toggle, confirm, prompt } from '../ui'
+import { CancelButton, Card, Dialog, Empty, Toggle, confirm, prompt } from '../ui'
 import { attempt } from '../toast'
 import { ColorInput, send } from './common'
 import { usePrinting } from '../../state/job'
@@ -106,9 +106,7 @@ function ParamsDialog({ macro, onClose }: { macro: Macro; onClose: () => void })
       title={macro.alias || macro.name}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" onClick={run}>
             {t('control.macros.send')}
           </button>

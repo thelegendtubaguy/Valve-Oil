@@ -3,31 +3,28 @@
 import { useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronRight, ChevronsDown, ChevronsUp, Ellipsis, House, Move3d, Lock, LockOpen, Pipette, Power, SlidersHorizontal, Snowflake } from 'lucide-react'
 import { MenuButton, Stepper, confirm } from '../ui'
-import { NumberInput, Slider, jog as jogAxis, send } from '../control/common'
+import { NumberInput, Slider, jog as jogAxis, send, useHomedAxes, usePercent, useZOffset } from '../control/common'
 import { usePrinting } from '../../state/job'
 import { extrudeGcode, gcode, moveGcode } from '../control/gcode'
-import { useClientMacro, useTools } from '../control/Move'
+import { Z_SPEED, Z_STEPS, Z_STEP_MAX, axisSpeed, useClientMacro, useSteppersOn, useToolItems } from '../control/Move'
 import { BoxTools } from '../box/BoxTools'
 import { printer, useHasCommand, usePrinter } from '../../state/printer'
 import { useUiSetting } from '../settings/fluidd'
 import { useBox } from '../../state/box'
 import { toast } from '../toast'
+import { readLocal, saveLocal, useStored } from '../../lib/browser'
 import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
 import { JogWheel, MODES, useMode, type Mode } from './Deck'
 import './deck.css'
 
-const XY_SPEED = 130
-const Z_SPEED = 10
-const Z_STEP_MAX = 25
 const UNHOMED_XY_SPEED = 50
-const Z_STEPS = [0.005, 0.01, 0.025, 0.05]
 const E_LENGTHS = [5, 10, 25, 50]
 
 const sign = (v: number, d: number) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}`
 
 export function ToolheadCard({ className = '' }: { className?: string }) {
-  const homed = usePrinter((s) => (s.status.toolhead?.homed_axes as string | undefined) ?? '')
+  const homed = useHomedAxes()
   const printing = usePrinting()
   const ctx = printing ? 'printing' : 'idle'
   const missing = 'XYZ'.split('').filter((a) => !homed.includes(a.toLowerCase()))
@@ -56,17 +53,9 @@ export function ToolheadCard({ className = '' }: { className?: string }) {
 
 /** The toolhead tools (clean, park, calibrations) behind one button; homing has its own buttons on the card. */
 function MoreMenu() {
-  const tools = useTools()
-  const printing = usePrinting()
-  const allHomed = usePrinter((s) => s.status.toolhead?.homed_axes === 'xyz')
-  if (!tools.some(Boolean)) return null
-  return (
-    <MenuButton
-      label={t('home.toolhead.more')}
-      button={<Ellipsis size={16} />}
-      items={tools.map((t) => (t ? { label: <span className="code">{t.label ?? t.name}</span>, onSelect: () => send(t.homeFirst && !allHomed ? `G28\n${t.name}` : t.name), disabled: printing || t.disabled } : null))}
-    />
-  )
+  const items = useToolItems()
+  if (!items.some(Boolean)) return null
+  return <MenuButton label={t('home.toolhead.more')} button={<Ellipsis size={16} />} items={items} />
 }
 
 /** One number per axis: the live position, which you can click and type over to move there. An axis that isn't homed shows in amber. */
@@ -87,7 +76,7 @@ function Readout({ homed, printing }: { homed: string; printing: boolean }) {
               digits={i === 2 ? 3 : 2}
               disabled={!ok}
               readOnly={printing}
-              onCommit={(v) => send(moveGcode({ [a]: v }, a === 'Z' ? Z_SPEED : XY_SPEED, true, clientMacro))}
+              onCommit={(v) => send(moveGcode({ [a]: v }, axisSpeed(a), true, clientMacro))}
             />
           </label>
         )
@@ -98,16 +87,9 @@ function Readout({ homed, printing }: { homed: string; printing: boolean }) {
 
 /** A section heading that folds the section. Closed, it shows a one-line summary instead. */
 function Fold({ id, ctx, title, icon, def, locked, summary, children }: { id: string; ctx: string; title: string; icon: ReactNode; def: boolean; locked?: string | false; summary: ReactNode; children: ReactNode }) {
-  const key = `vo-th-${id}-${ctx}`
-  const [, bump] = useState(0)
-  const saved = localStorage.getItem(key)
-  const open = !locked && (saved == null ? def : saved === '1')
-  const toggle = () => {
-    try {
-      localStorage.setItem(key, open ? '0' : '1')
-    } catch {}
-    bump((n) => n + 1)
-  }
+  const [saved, save] = useStored(`vo-th-${id}-${ctx}`, def ? '1' : '0')
+  const open = !locked && saved === '1'
+  const toggle = () => save(open ? '0' : '1')
   return (
     <div className="th-fold">
       <button type="button" className="th-head" aria-expanded={open} disabled={!!locked} onClick={toggle}>
@@ -132,14 +114,6 @@ function MoveSummary() {
   )
 }
 
-/** Whether any stepper is powered. Printers without stepper_enable status count as on. */
-function useSteppersOn() {
-  return usePrinter((s) => {
-    const st = s.status.stepper_enable?.steppers as Record<string, boolean> | undefined
-    return st ? Object.values(st).some(Boolean) : true
-  })
-}
-
 function MoveBody({ homed, free, onFree }: { homed: string; free: boolean; onFree: (on: boolean) => void }) {
   const printing = usePrinting()
   const clientMacro = useClientMacro()
@@ -150,9 +124,13 @@ function MoveBody({ homed, free, onFree }: { homed: string; free: boolean; onFre
   const can = (a: string) => !printing && (homed.includes(a) || free)
   const zBig = Math.min(big, Z_STEP_MAX)
   // A homed axis jogs as usual, inside its limits; an unhomed one moves only with "Move without homing" on.
-  const move = (axis: 'X' | 'Y' | 'Z', d: number) => (homed.includes(axis.toLowerCase()) ? jogAxis(axis, d, axis === 'Z' ? Z_SPEED : XY_SPEED, clientMacro) : unhomedMove(axis, d))
-  const jogZ = (d: number) => move('Z', d)
+  const move = (axis: 'X' | 'Y' | 'Z', d: number) => (homed.includes(axis.toLowerCase()) ? jogAxis(axis, d, axisSpeed(axis), clientMacro) : unhomedMove(axis, d))
   const zHot = free && !homed.includes('z') ? 'hot' : ''
+  const jogZ = (d: number, icon: ReactNode, title: string) => (
+    <button className={zHot} disabled={!can('z')} onClick={() => move('Z', d)} title={title}>
+      {icon} {Math.abs(d)}
+    </button>
+  )
   return (
     <div className="grid gap-3">
       <div className={`th-move ${free ? 'free' : ''}`}>
@@ -194,21 +172,13 @@ function MoveBody({ homed, free, onFree }: { homed: string; free: boolean; onFre
         <JogWheel small={small} big={big} canX={can('x')} canY={can('y')} canHome={!printing} onJog={move} onHome={() => tracked('G28 X Y')} hotX={free && !homed.includes('x')} hotY={free && !homed.includes('y')} />
         <div className="zrock" role="group" aria-label={t('control.toolhead.move_z')}>
           <span className="cap">{t('home.toolhead.bed_down')}</span>
-          <button className={zHot} disabled={!can('z')} onClick={() => jogZ(zBig)} title={big > Z_STEP_MAX ? t('home.toolhead.z_plus_capped', { step: zBig, max: Z_STEP_MAX }) : t('home.toolhead.z_plus', { step: zBig })}>
-            <ChevronsUp size={15} /> {zBig}
-          </button>
-          <button className={zHot} disabled={!can('z')} onClick={() => jogZ(small)} title={t('home.toolhead.z_plus', { step: small })}>
-            <ArrowUp size={14} /> {small}
-          </button>
+          {jogZ(zBig, <ChevronsUp size={15} />, big > Z_STEP_MAX ? t('home.toolhead.z_plus_capped', { step: zBig, max: Z_STEP_MAX }) : t('home.toolhead.z_plus', { step: zBig }))}
+          {jogZ(small, <ArrowUp size={14} />, t('home.toolhead.z_plus', { step: small }))}
           <button className="home" disabled={printing} onClick={() => tracked('G28 Z')} title={t('control.toolhead.home_z')}>
             <House size={14} /> Z
           </button>
-          <button className={zHot} disabled={!can('z')} onClick={() => jogZ(-small)} title={t('home.toolhead.z_minus', { step: small })}>
-            <ArrowDown size={14} /> {small}
-          </button>
-          <button className={zHot} disabled={!can('z')} onClick={() => jogZ(-zBig)} title={t('home.toolhead.z_minus', { step: zBig })}>
-            <ChevronsDown size={15} /> {zBig}
-          </button>
+          {jogZ(-small, <ArrowDown size={14} />, t('home.toolhead.z_minus', { step: small }))}
+          {jogZ(-zBig, <ChevronsDown size={15} />, t('home.toolhead.z_minus', { step: zBig }))}
           <span className="cap">{t('home.toolhead.bed_up')}</span>
         </div>
       </div>
@@ -235,7 +205,7 @@ function unhomedMove(axis: 'X' | 'Y' | 'Z', d: number) {
   const th = st.toolhead ?? {}
   const homed = (th.homed_axes as string | undefined) ?? ''
   // Homed since the last render: jog it the normal way.
-  if (homed.includes(axis.toLowerCase())) return jogAxis(axis, d, axis === 'Z' ? Z_SPEED : XY_SPEED, null)
+  if (homed.includes(axis.toLowerCase())) return jogAxis(axis, d, axisSpeed(axis), null)
   const lo = th.axis_minimum as number[] | undefined
   const hi = th.axis_maximum as number[] | undefined
   if (!lo || !hi) return
@@ -253,12 +223,9 @@ function useMoveUnhomed(printing: boolean, allHomed: boolean) {
   const [warn] = useUiSetting('general.forceMoveToggleWarning')
   const set = async (next: boolean) => {
     // The warning shows once per browser: after someone has read and accepted it, the toggle just switches.
-    const seen = localStorage.getItem('vo-unhomed-ack') === '1'
-    if (next && warn && !seen) {
+    if (next && warn && readLocal('vo-unhomed-ack') !== '1') {
       if (!(await confirm({ title: t('home.toolhead.unhomed_confirm_title'), body: t('home.toolhead.unhomed_confirm_body'), confirm: t('home.toolhead.unhomed_confirm'), danger: true }))) return
-      try {
-        localStorage.setItem('vo-unhomed-ack', '1')
-      } catch {}
+      saveLocal('vo-unhomed-ack', '1')
     }
     setOn(next)
   }
@@ -288,14 +255,9 @@ function ExtrudeBody() {
   const printing = usePrinting()
   const clientMacro = useClientMacro()
   const { ready, min } = useExtruder()
-  const [len, setLen] = useState(() => Number(localStorage.getItem('vo-th-elen')) || 10)
+  const [savedLen, saveLen] = useStored<string>('vo-th-elen', '10')
+  const len = Number(savedLen) || 10
   const [speed, setSpeed] = useState(5)
-  const pickLen = (v: number) => {
-    setLen(v)
-    try {
-      localStorage.setItem('vo-th-elen', String(v))
-    } catch {}
-  }
   const off = printing || !ready || speed <= 0
   return (
     <div className="th-extrude-fold grid min-w-0 grid-cols-1 gap-2.5">
@@ -306,7 +268,7 @@ function ExtrudeBody() {
         </button>
         <div className="seg" role="group" aria-label={t('control.extruder.length')}>
           {E_LENGTHS.map((v) => (
-            <button key={v} type="button" aria-pressed={len === v} className={len === v ? 'on' : ''} onClick={() => pickLen(v)}>
+            <button key={v} type="button" aria-pressed={len === v} className={len === v ? 'on' : ''} onClick={() => saveLen(String(v))}>
               {v}
             </button>
           ))}
@@ -334,17 +296,8 @@ function ExtrudeBody() {
 
 // ---- Tune: the values you change during a print ----
 function useTune() {
-  return usePrinter((s) => {
-    const gm = s.status.gcode_move ?? {}
-    const ext = s.status.extruder ?? {}
-    return {
-      z: (gm.homing_origin?.[2] as number | undefined) ?? 0,
-      speed: Math.round(((gm.speed_factor as number | undefined) ?? 1) * 100),
-      flow: Math.round(((gm.extrude_factor as number | undefined) ?? 1) * 100),
-      pa: ext.pressure_advance as number | undefined,
-      smooth: (ext.smooth_time as number | undefined) ?? 0,
-    }
-  })
+  const ext = usePrinter((s) => ({ pa: s.status.extruder?.pressure_advance as number | undefined, smooth: (s.status.extruder?.smooth_time as number | undefined) ?? 0 }))
+  return { z: useZOffset(), speed: usePercent('speed_factor'), flow: usePercent('extrude_factor'), ...ext }
 }
 
 function TuneSummary() {
@@ -361,7 +314,7 @@ function TuneSummary() {
 
 function TuneBody() {
   const v = useTune()
-  const zHomed = usePrinter((s) => ((s.status.toolhead?.homed_axes as string | undefined) ?? '').includes('z'))
+  const zHomed = useHomedAxes().includes('z')
   const printing = usePrinting()
   const probe = useHasCommand('Z_OFFSET_APPLY_PROBE')
   const endstop = useHasCommand('Z_OFFSET_APPLY_ENDSTOP')

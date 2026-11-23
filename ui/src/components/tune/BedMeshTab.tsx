@@ -1,20 +1,21 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Download, FolderOpen, Grid3x3, House, RotateCcw, Trash2, TriangleAlert } from 'lucide-react'
-import { Card, Dialog, Segmented, Choices, Toggle, Empty, confirm } from '../ui'
-import { attempt } from '../toast'
-import { runGcode, useObject } from '../../state/printer'
+import { CancelButton, Card, Dialog, Field, Segmented, Choices, Toggle, Empty, confirm } from '../ui'
+import { useObject } from '../../state/printer'
+import { send } from '../control/common'
+import { encodeGcodeParamValue } from '../control/gcode'
 import { useStore } from '../../lib/store'
 import voProbeReportPoints, { type VoProbeReportPoint } from '../../qidi/vo-probe-report'
 import { MeshSurface3D, type MeshSurfaceHandle } from './MeshSurface3D'
 import { MeshHeatmap } from './MeshHeatmap'
 import { SaveConfigNotice } from './SaveConfigNotice'
-import { bedBounds, fmtMm, gcodeParam, MESH_GRADIENT, meshGrid, meshPreview, meshProfiles, meshScale, meshStats, meshView, type BedMeshStatus, type MeshMarker, type MeshView } from './mesh'
-import { usePrinterFlags } from './hooks'
+import { bedBounds, fmtMm, MESH_GRADIENT, meshGrid, meshPreview, meshProfiles, meshScale, meshStats, meshView, type BedMeshStatus, type MeshMarker, type MeshView } from './mesh'
+import { Stat, usePrinterFlags } from './common'
+import { bedSoakPointName } from './bed-soak-format'
 import { useMedia } from '../../lib/browser'
 import { locale, t } from '../../i18n'
 import { tr } from '../../i18n/rich'
 
-const pointName = (p: { x: number; y: number }) => `X${Math.round(p.x)} Y${Math.round(p.y)}`
 const bold = (c: ReactNode) => <b className="text-ink-2">{c}</b>
 
 export function BedMeshTab() {
@@ -51,7 +52,7 @@ function MeshCard() {
   const stats = useMemo(() => (grid ? meshStats(grid.z) : null), [grid])
   const bed = useMemo(() => (grid ? bedBounds(toolhead.axis_minimum as number[] | undefined, toolhead.axis_maximum as number[] | undefined, grid) : null), [grid, toolhead.axis_minimum, toolhead.axis_maximum])
   const scale = stats ? meshScale(stats, view.colorScale, view.boxScale, !!preview) : null
-  const markers: MeshMarker[] = preview ? preview.markers : problems.map((p) => ({ x: p.x, y: p.y, label: t('tune.mesh.point_tries', { point: pointName(p), count: p.tries }) }))
+  const markers: MeshMarker[] = preview ? preview.markers : problems.map((p) => ({ x: p.x, y: p.y, label: t('tune.mesh.point_tries', { point: bedSoakPointName(p), count: p.tries }) }))
   const unit = preview ? 'µm' : 'mm'
   const height = wide ? 460 : 300
 
@@ -61,7 +62,7 @@ function MeshCard() {
       icon={<Grid3x3 size={14} />}
       aside={
         <span className="flex items-center justify-end gap-1.5">
-          {!preview && problems.length > 0 && <ProblemChip count={problems.length} />}
+          {!preview && problems.length > 0 && <ProblemChip>{t('tune.mesh.problem_points', { count: problems.length })}</ProblemChip>}
           {!preview && bedMesh.profile_name && <span className="pill tone-accent">{bedMesh.profile_name}</span>}
         </span>
       }
@@ -122,20 +123,17 @@ function MeshCard() {
             </span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat label={t('tune.shared.range')} value={fmtZ(stats.range, unit)} unit={unit} />
-            <Stat label={t('tune.shared.lowest')} value={fmtZ(stats.min, unit)} unit={unit} />
-            <Stat label={t('tune.shared.highest')} value={fmtZ(stats.max, unit)} unit={unit} />
-            <Stat label={t('tune.shared.deviation')} value={fmtZ(stats.deviation, unit)} unit={unit} />
+            {([[t('tune.shared.range'), stats.range], [t('tune.shared.lowest'), stats.min], [t('tune.shared.highest'), stats.max], [t('tune.shared.deviation'), stats.deviation]] as const).map(([label, v]) => (
+              <Stat key={label} label={label} value={fmtZ(v, unit)} unit={unit} />
+            ))}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2.5">
-            <label className="flex items-center gap-2">
-              <Toggle checked={view.wireframe} onChange={(wireframe) => setView({ wireframe })} disabled={view.mode !== '3d'} label={t('tune.mesh.wireframe')} />
-              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>{t('tune.mesh.wireframe')}</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <Toggle checked={view.flat} onChange={(flat) => setView({ flat })} disabled={view.mode !== '3d'} label={t('tune.mesh.flat_plane')} />
-              <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>{t('tune.mesh.flat_plane')}</span>
-            </label>
+            {([['wireframe', t('tune.mesh.wireframe')], ['flat', t('tune.mesh.flat_plane')]] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2">
+                <Toggle checked={view[k]} onChange={(v) => setView({ [k]: v })} disabled={view.mode !== '3d'} label={label} />
+                <span className={view.mode !== '3d' ? 'text-ink-3' : ''}>{label}</span>
+              </label>
+            ))}
           </div>
           {!preview && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -181,29 +179,18 @@ function fmtZ(v: number, unit: 'mm' | 'µm') {
   return unit === 'µm' ? `${v < 0 ? '−' : ''}${Math.abs(v * 1000).toFixed(0)}` : fmtMm(v)
 }
 
-function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
-  return (
-    <div className="tile">
-      <span className="section-label">{label}</span>
-      <span className="v num">
-        {value} <small>{unit}</small>
-      </span>
-    </div>
-  )
-}
-
-function ProblemChip({ count, title }: { count: number; title?: string }) {
+function ProblemChip({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <span className="chip" title={title}>
       <TriangleAlert size={12} className="text-accent-ink" />
-      {t('tune.mesh.problem_points', { count })}
+      {children}
     </span>
   )
 }
 
 /** The fork's note under the Bed mesh card: retried points of the loaded mesh. */
 function ProblemPoints({ points, measured }: { points: VoProbeReportPoint[]; measured?: number | null }) {
-  const list = points.map((p) => t('tune.mesh.retry_item', { point: pointName(p), count: p.tries, um: Math.round(p.spread * 1000) })).join(', ')
+  const list = points.map((p) => t('tune.mesh.retry_item', { point: bedSoakPointName(p), count: p.tries, um: Math.round(p.spread * 1000) })).join(', ')
   return (
     <div className="tone-warn mt-3 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
       <TriangleAlert size={15} className="mt-0.5 flex-none" />
@@ -223,7 +210,6 @@ function ProfilesCard() {
   const profiles = meshProfiles(bedMesh)
   const loaded = !!bedMesh.profile_name
   const [saveOpen, setSaveOpen] = useState(false)
-  const run = (g: string) => attempt(() => runGcode(g))
   const problemTitle = problems.length
     ? report.measured
       ? t('tune.mesh.problem_points_measured', { count: problems.length, time: new Date((report.measured as number) * 1000).toLocaleString(locale()) })
@@ -232,15 +218,15 @@ function ProfilesCard() {
 
   const load = async (name: string) => {
     if (printing && !(await confirm({ title: t('tune.mesh.load_profile'), body: t('tune.mesh.load_body', { name }), confirm: t('tune.mesh.load') }))) return
-    run(`BED_MESH_PROFILE LOAD=${gcodeParam(name)}`)
+    send(`BED_MESH_PROFILE LOAD=${encodeGcodeParamValue(name)}`)
   }
   const remove = async (name: string) => {
     if (await confirm({ title: t('tune.mesh.remove_profile_named', { name }), body: t('tune.mesh.remove_body'), confirm: t('common.remove'), danger: true }))
-      run(`BED_MESH_PROFILE REMOVE=${gcodeParam(name)}`)
+      send(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(name)}`)
   }
   const clear = async () => {
     if (printing && !(await confirm({ title: t('tune.mesh.clear_title'), body: t('tune.mesh.clear_body'), confirm: t('tune.mesh.clear'), danger: true }))) return
-    run('BED_MESH_CLEAR')
+    send('BED_MESH_CLEAR')
   }
 
   return (
@@ -263,12 +249,7 @@ function ProfilesCard() {
                       <span className="font-semibold">{p.name}</span>
                       {p.active && <span className="pill tone-accent py-0.5!">{t('tune.mesh.active')}</span>}
                       {p.adaptive && <span className="chip">{t('tune.mesh.not_saved')}</span>}
-                      {p.active && problems.length > 0 && (
-                        <span className="chip" title={problemTitle}>
-                          <TriangleAlert size={12} className="text-accent-ink" />
-                          {problems.length}
-                        </span>
-                      )}
+                      {p.active && problems.length > 0 && <ProblemChip title={problemTitle}>{problems.length}</ProblemChip>}
                     </div>
                   </td>
                   <td className="num text-right">{p.range.toFixed(4)}</td>
@@ -291,10 +272,10 @@ function ProfilesCard() {
         <Empty>{t('tune.mesh.no_profiles')}</Empty>
       )}
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button className={`btn ${homed ? '' : 'btn-primary'}`} disabled={busy} onClick={() => run('G28')}>
+        <button className={`btn ${homed ? '' : 'btn-primary'}`} disabled={busy} onClick={() => send('G28')}>
           <House size={15} /> {t('tune.shared.home_all')}
         </button>
-        <button className="btn" disabled={busy || !homed} onClick={() => run('BED_MESH_CALIBRATE')} title={homed ? undefined : t('tune.shared.home_first')}>
+        <button className="btn" disabled={busy || !homed} onClick={() => send('BED_MESH_CALIBRATE')} title={homed ? undefined : t('tune.shared.home_first')}>
           {t('tune.shared.calibrate')}
         </button>
         <button className="btn" disabled={!loaded} onClick={clear}>
@@ -316,9 +297,9 @@ function ProfilesCard() {
           onClose={() => setSaveOpen(false)}
           onSave={(name, removeExisting) => {
             const lines: string[] = []
-            if (name !== bedMesh.profile_name) lines.push(`BED_MESH_PROFILE SAVE=${gcodeParam(name)}`)
-            if (removeExisting) lines.push(`BED_MESH_PROFILE REMOVE=${gcodeParam(bedMesh.profile_name!)}`)
-            if (lines.length) run(lines.join('\n'))
+            if (name !== bedMesh.profile_name) lines.push(`BED_MESH_PROFILE SAVE=${encodeGcodeParamValue(name)}`)
+            if (removeExisting) lines.push(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(bedMesh.profile_name!)}`)
+            if (lines.length) send(lines.join('\n'))
             setSaveOpen(false)
           }}
         />
@@ -331,6 +312,7 @@ function SaveMeshDialog({ existing, adaptive, onClose, onSave }: { existing: str
   const [name, setName] = useState('default')
   const [removeExisting, setRemoveExisting] = useState(false)
   const valid = name.trim() !== ''
+  const save = () => onSave(name.trim(), removeExisting && name.trim() !== existing)
   return (
     <Dialog
       open
@@ -338,19 +320,16 @@ function SaveMeshDialog({ existing, adaptive, onClose, onSave }: { existing: str
       title={t('tune.mesh.save_as')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
-          <button className="btn btn-primary" disabled={!valid} onClick={() => onSave(name.trim(), removeExisting && name.trim() !== existing)}>
+          <CancelButton onClick={onClose} />
+          <button className="btn btn-primary" disabled={!valid} onClick={save}>
             {t('common.save')}
           </button>
         </>
       }
     >
-      <label className="grid gap-1.5">
-        <span className="lbl">{t('tune.mesh.profile_name')}</span>
-        <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && valid && onSave(name.trim(), removeExisting && name.trim() !== existing)} />
-      </label>
+      <Field label={t('tune.mesh.profile_name')}>
+        <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && valid && save()} />
+      </Field>
       {!adaptive && (
         <>
           <label className={`mt-3 flex items-center gap-2.5 ${name.trim() === existing ? 'opacity-50' : ''}`}>

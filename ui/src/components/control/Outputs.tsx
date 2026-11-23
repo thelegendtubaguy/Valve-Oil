@@ -1,6 +1,6 @@
 import { Fan, Lightbulb, ToggleRight } from 'lucide-react'
 import { Card, Empty, Toggle } from '../ui'
-import { ColorInput, Note, Slider, objectLabel, send } from './common'
+import { ColorInput, Columns, Note, Slider, objectLabel, send } from './common'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { usePrinter } from '../../state/printer'
 import { t, type MessageKey } from '../../i18n'
@@ -30,6 +30,8 @@ const QIDI_FAN_NAMES: Record<string, MessageKey> = {
 }
 export const QIDI_FAN_ORDER = Object.keys(QIDI_FAN_NAMES)
 
+const percentOrOff = (v: number) => (v > 0 ? `${v}%` : t('common.off'))
+
 export function useOutputs(types: string[]) {
   return usePrinter((s) =>
     s.objects
@@ -41,13 +43,10 @@ export function useOutputs(types: string[]) {
 /** The Outputs tab: fans, then pins, then lights. */
 export function OutputsTab() {
   return (
-    <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
-      <FansCard />
-      <div className="grid min-w-0 grid-cols-1 gap-3.5">
-        <PinsCard />
-        <LedsCard />
-      </div>
-    </div>
+    <Columns left={<FansCard />}>
+      <PinsCard />
+      <LedsCard />
+    </Columns>
   )
 }
 
@@ -109,7 +108,7 @@ export function FanRow({ obj, inline }: { obj: string; inline?: boolean }) {
           <span className="block truncate font-semibold">{fanLabel(obj)}</span>
           {rpm && <span className="num block text-[11px] text-ink-3">{rpm}</span>}
         </span>
-        <Slider label={fanLabel(obj)} value={value} onCommit={set} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
+        <Slider label={fanLabel(obj)} value={value} onCommit={set} format={percentOrOff} />
       </div>
     )
   return (
@@ -119,7 +118,7 @@ export function FanRow({ obj, inline }: { obj: string; inline?: boolean }) {
         {rpm && <span className="num text-[11.5px] text-ink-3">{rpm}</span>}
         {!controllable && <span className={`num font-semibold ${value > 0 ? 'text-accent-ink' : 'text-ink-3'}`}>{value > 0 ? `${value}%` : t('common.off')}</span>}
       </div>
-      {controllable && <Slider label={fanLabel(obj)} value={value} onCommit={set} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />}
+      {controllable && <Slider label={fanLabel(obj)} value={value} onCommit={set} format={percentOrOff} />}
     </div>
   )
 }
@@ -152,7 +151,7 @@ export function PinRow({ obj }: { obj: string }) {
     return (
       <div className="grid gap-0.5">
         <span className="font-semibold">{label}</span>
-        <Slider label={label} value={Math.round(value * 100)} disabled={!controllable} onCommit={(pct) => set(Math.round(pct * scale) / 100)} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
+        <Slider label={label} value={Math.round(value * 100)} disabled={!controllable} onCommit={(pct) => set(Math.round(pct * scale) / 100)} format={percentOrOff} />
       </div>
     )
   return (
@@ -259,14 +258,14 @@ export function LedRow({ obj }: { obj: string }) {
           </div>
           <div className="grid gap-0.5">
             <span className="section-label">{t('control.outputs.brightness')}</span>
-            <Slider label={t('control.outputs.brightness_named', { name: objectLabel(obj) })} value={Math.round(brightness * 100)} onCommit={setBrightness} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
+            <Slider label={t('control.outputs.brightness_named', { name: objectLabel(obj) })} value={Math.round(brightness * 100)} onCommit={setBrightness} format={percentOrOff} />
           </div>
         </>
       )}
       {hasW && (
         <div className="grid gap-0.5">
           <span className="section-label">{t('control.outputs.white')}</span>
-          <Slider label={t('control.outputs.white_named', { name: objectLabel(obj) })} value={Math.round(w * 100)} onCommit={(pct) => sendColor({ ...color, w: pct / 100 })} format={(v) => (v > 0 ? `${v}%` : t('common.off'))} />
+          <Slider label={t('control.outputs.white_named', { name: objectLabel(obj) })} value={Math.round(w * 100)} onCommit={(pct) => sendColor({ ...color, w: pct / 100 })} format={percentOrOff} />
         </div>
       )}
     </div>

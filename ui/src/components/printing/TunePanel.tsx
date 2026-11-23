@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { ArrowDownToLine, Droplet, Fan, Flame, Gauge, Heater, Thermometer } from 'lucide-react'
 import { Choices, Dialog, Stepper } from '../ui'
-import { send } from '../control/common'
+import { send, usePercent, useZOffset } from '../control/common'
 import { TargetStepper, startTarget } from '../control/TargetStepper'
-import { targetRange, type HeaterConfig } from '../control/heaters'
+import { heaterGcode, targetRange, type HeaterConfig } from '../control/heaters'
 import { fanLabel } from '../control/Outputs'
 import { usePrinter } from '../../state/printer'
 import { gcode } from '../control/gcode'
@@ -47,8 +47,8 @@ export function TunePanel() {
         ))}
       </div>
       <div className="grid gap-2.5 sm:grid-cols-3">
-        <SpeedTile />
-        <FlowTile />
+        <PercentTile factor="speed_factor" icon={<Gauge size={14} />} label={t('home.tune.speed')} command="M220" step={5} min={10} max={500} />
+        <PercentTile factor="extrude_factor" icon={<Droplet size={14} />} label={t('home.tune.flow')} command="M221" step={1} min={50} max={200} />
         <ZOffsetTile step={zStep} />
       </div>
       {fans.length > 0 && (
@@ -100,31 +100,22 @@ function HeaterTile({ obj, step }: { obj: string; step: number }) {
   const label = t(labelKey)
   return (
     <Tile icon={icon} label={label} now={typeof st.temperature === 'number' ? `${Math.round(st.temperature)}°` : null} hot>
-      <TargetStepper size="lg" label={label} step={step} start={startTarget(obj)} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${obj.replace(/^heater_generic /, '')} TARGET=${t}`)} />
+      <TargetStepper size="lg" label={label} step={step} start={startTarget(obj)} target={target} range={targetRange(cfg, null, target)} onSet={(t) => send(heaterGcode(obj, t))} />
     </Tile>
   )
 }
 
-function SpeedTile() {
-  const v = usePrinter((s) => Math.round(((s.status.gcode_move?.speed_factor as number | undefined) ?? 1) * 100))
+function PercentTile({ factor, icon, label, command, step, min, max }: { factor: 'speed_factor' | 'extrude_factor'; icon: ReactNode; label: string; command: string; step: number; min: number; max: number }) {
+  const v = usePercent(factor)
   return (
-    <Tile icon={<Gauge size={14} />} label={t('home.tune.speed')}>
-      <Stepper label={t('home.tune.speed')} value={v} step={5} min={10} max={500} unit="%" onChange={(x) => send(gcode`M220 S${Math.round(x)}`)} />
-    </Tile>
-  )
-}
-
-function FlowTile() {
-  const v = usePrinter((s) => Math.round(((s.status.gcode_move?.extrude_factor as number | undefined) ?? 1) * 100))
-  return (
-    <Tile icon={<Droplet size={14} />} label={t('home.tune.flow')}>
-      <Stepper label={t('home.tune.flow')} value={v} step={1} min={50} max={200} unit="%" onChange={(x) => send(gcode`M221 S${Math.round(x)}`)} />
+    <Tile icon={icon} label={label}>
+      <Stepper label={label} value={v} step={step} min={min} max={max} unit="%" onChange={(x) => send(gcode`${command} S${Math.round(x)}`)} />
     </Tile>
   )
 }
 
 function ZOffsetTile({ step }: { step: number }) {
-  const z = usePrinter((s) => (s.status.gcode_move?.homing_origin?.[2] as number | undefined) ?? 0)
+  const z = useZOffset()
   return (
     <Tile icon={<ArrowDownToLine size={14} />} label={t('home.tune.z_offset')}>
       <Stepper label={t('home.tune.z_offset')} value={z} step={step} min={-5} max={5} digits={3} onChange={(v) => send(gcode`SET_GCODE_OFFSET Z_ADJUST=${Math.round((v - z) * 1000) / 1000} MOVE=1`)} />

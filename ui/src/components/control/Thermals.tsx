@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { ChevronDown, Ellipsis, Fan, Flame, Snowflake, Thermometer } from 'lucide-react'
-import { Card, Dialog, Empty, MenuButton, confirm } from '../ui'
+import { CancelButton, Card, Dialog, Empty, Field, MenuButton, confirm } from '../ui'
 import { TempChart } from '../TempChart'
-import { Note, objectLabel, send } from './common'
+import { Columns, Note, objectLabel, send } from './common'
 import { useJobActive, usePrinting } from '../../state/job'
 import { TargetStepper, startTarget } from './TargetStepper'
-import { boxHeaterNumber, targetError, targetRange, type HeaterConfig } from './heaters'
+import { boxHeaterNumber, heaterGcode, heaterParam, targetError, targetRange, type HeaterConfig } from './heaters'
 import { encodeGcodeParamValue, gcode } from './gcode'
 import { attempt } from '../toast'
 import { useHasCommand, usePrinter } from '../../state/printer'
@@ -24,9 +24,6 @@ export function heaterLabel(obj: string) {
   return objectLabel(obj)
 }
 
-/** The name SET_HEATER_TEMPERATURE takes. */
-export const heaterName = (obj: string) => obj.replace(/^heater_generic /, '')
-
 /** The Temperatures tab: the chart, every heater's target, temperature fans, and sensors. */
 export function TempsTab() {
   return (
@@ -34,13 +31,10 @@ export function TempsTab() {
       <div className="h-[300px]">
         <TempChart className="h-full" />
       </div>
-      <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2">
-        <HeatersCard />
-        <div className="grid min-w-0 grid-cols-1 gap-3.5">
-          <TemperatureFansCard />
-          <SensorsCard />
-        </div>
-      </div>
+      <Columns left={<HeatersCard />}>
+        <TemperatureFansCard />
+        <SensorsCard />
+      </Columns>
     </div>
   )
 }
@@ -137,14 +131,14 @@ function HeaterRow({ obj, boxLimit }: { obj: string; boxLimit: number | null }) 
         </div>
       </div>
       <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
-        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(v) => send(gcode`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${v}`)} />
+        <TargetStepper label={label} start={startTarget(obj)} target={target} range={range} onSet={(v) => send(heaterGcode(obj, v))} />
       </div>
       <div className="col-start-2 row-start-1 sm:col-start-3">
         <MenuButton
           label={t('control.temps.actions', { name: label })}
           button={<Ellipsis size={16} />}
           items={[
-            { label: t('control.temps.turn_off'), onSelect: () => send(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=0`), disabled: printing || target === 0 },
+            { label: t('control.temps.turn_off'), onSelect: () => send(heaterGcode(obj, 0)), disabled: printing || target === 0 },
             { label: <span className="code">PID_CALIBRATE</span>, onSelect: () => setCalibrate('pid'), disabled: printing }, // i18n-ignore: command names
             mpc && { label: <span className="code">MPC_CALIBRATE</span>, onSelect: () => setCalibrate('mpc'), disabled: printing || cfg?.control !== 'mpc' }, // i18n-ignore: command names
           ]}
@@ -169,7 +163,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
   const command = kind === 'pid' ? 'PID_CALIBRATE' : 'MPC_CALIBRATE'
   const run = () => {
     if (error || bpError) return
-    send(gcode`${command} HEATER=${encodeGcodeParamValue(heaterName(obj))} TARGET=${value}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
+    send(gcode`${command} HEATER=${heaterParam(obj)} TARGET=${value}${kind === 'mpc' && bp != null ? gcode` FAN_BREAKPOINTS=${bp}` : ''}`)
     onClose()
   }
   return (
@@ -179,9 +173,7 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
       title={t('control.temps.calibrate_title', { kind: kind === 'pid' ? 'PID' : 'MPC', name })}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!!error || !!bpError} onClick={run}>
             {t('control.temps.calibrate')}
           </button>
@@ -189,17 +181,15 @@ function CalibrateDialog({ obj, kind, onClose }: { obj: string; kind: 'pid' | 'm
       }
     >
       <div className="grid gap-3">
-        <label className="grid gap-1.5">
-          <span className="lbl">{t('control.temps.target_temperature')}</span>
+        <Field label={t('control.temps.target_temperature')}>
           <input className="field" inputMode="numeric" autoFocus value={target} onChange={(e) => setTarget(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} />
           {error && <span className="text-[12px] text-bad">{error}</span>}
-        </label>
+        </Field>
         {kind === 'mpc' && (
-          <label className="grid gap-1.5">
-            <span className="lbl">{t('control.temps.fan_breakpoints')}</span>
+          <Field label={t('control.temps.fan_breakpoints')}>
             <input className="field" inputMode="numeric" value={breakpoints} onChange={(e) => setBreakpoints(e.target.value)} />
             {bpError && <span className="text-[12px] text-bad">{bpError}</span>}
-          </label>
+          </Field>
         )}
         <div className="text-[12.5px] text-ink-2">
           {tr('control.temps.calibrate_note', { command: <span className="code">{command}</span>, name: name.toLowerCase() })}

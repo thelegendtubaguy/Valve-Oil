@@ -1,5 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { bedCorners, gridX, gridY, meshColor, nearestCell, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { bedCorners, gridX, gridY, meshColor, nearestCell, niceStep, type BedBounds, type MeshGrid, type MeshMarker } from './mesh'
+import { useWidth } from './common'
+import { saveUrl } from '../../lib/browser'
 import { t } from '../../i18n'
 
 type Props = {
@@ -25,6 +27,22 @@ const DEFAULT_VIEW = { az: -32, el: 32, zoom: 1 }
 const BOX_HEIGHT = 0.55
 
 type Projected = { sx: number; sy: number; depth: number }
+type Point = { sx: number; sy: number }
+
+/** A line from a to b in the current stroke style. */
+function seg(ctx: CanvasRenderingContext2D, a: Point, b: Point) {
+  ctx.beginPath()
+  ctx.moveTo(a.sx, a.sy)
+  ctx.lineTo(b.sx, b.sy)
+  ctx.stroke()
+}
+
+/** A closed path through the points, to fill or stroke. */
+function shape(ctx: CanvasRenderingContext2D, pts: Point[]) {
+  ctx.beginPath()
+  pts.forEach((p, i) => (i ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy)))
+  ctx.closePath()
+}
 
 /**
  * A bed mesh as a shaded surface on canvas: drag to rotate, scroll or pinch to zoom, hover for a point's height.
@@ -32,21 +50,11 @@ type Projected = { sx: number; sy: number; depth: number }
  */
 export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshSurface3D(props, ref) {
   const { grid, bed, zMin, zMax, zBoxMin, zBoxMax, wireframe, flatAt, markers, height, unit = 'mm' } = props
-  const wrap = useRef<HTMLDivElement>(null)
+  const [wrap, width] = useWidth<HTMLDivElement>()
   const canvas = useRef<HTMLCanvasElement>(null)
-  const [width, setWidth] = useState(600)
   const [view, setView] = useState(DEFAULT_VIEW)
   const [hover, setHover] = useState<{ x: number; y: number; z: number; sx: number; sy: number; label?: string } | null>(null)
   const drag = useRef<{ x: number; y: number; pointers: Map<number, { x: number; y: number }>; pinch: number | null } | null>(null)
-
-  useEffect(() => {
-    const el = wrap.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth || 600))
-    ro.observe(el)
-    setWidth(el.clientWidth || 600)
-    return () => ro.disconnect()
-  }, [])
 
   // World to screen. x/y are normalised to the bed's longer side, z to the box height.
   const project = useCallback(
@@ -85,11 +93,6 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
     const line = css.getPropertyValue('--line-strong').trim() || '#444'
     const warn = css.getPropertyValue('--accent').trim() || '#f2b05a'
     const font = '11px Montserrat Variable, Montserrat, sans-serif'
-    const path = (pts: Projected[]) => {
-      ctx.beginPath()
-      pts.forEach((p, i) => (i ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy)))
-      ctx.closePath()
-    }
 
     // Floor of the box with a 50 mm grid, and the Z axis at the back corner.
     const { minX, maxX, minY, maxY } = bed
@@ -97,34 +100,15 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
     ctx.strokeStyle = line
     ctx.globalAlpha = 0.6
     const step = niceStep(Math.max(maxX - minX, maxY - minY) / (width < 560 ? 3 : 6))
-    for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) {
-      const a = project(x, minY, zBoxMin)
-      const b = project(x, maxY, zBoxMin)
-      ctx.beginPath()
-      ctx.moveTo(a.sx, a.sy)
-      ctx.lineTo(b.sx, b.sy)
-      ctx.stroke()
-    }
-    for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) {
-      const a = project(minX, y, zBoxMin)
-      const b = project(maxX, y, zBoxMin)
-      ctx.beginPath()
-      ctx.moveTo(a.sx, a.sy)
-      ctx.lineTo(b.sx, b.sy)
-      ctx.stroke()
-    }
+    for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) seg(ctx, project(x, minY, zBoxMin), project(x, maxY, zBoxMin))
+    for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) seg(ctx, project(minX, y, zBoxMin), project(maxX, y, zBoxMin))
     ctx.globalAlpha = 1
-    path([project(minX, minY, zBoxMin), project(maxX, minY, zBoxMin), project(maxX, maxY, zBoxMin), project(minX, maxY, zBoxMin)])
+    shape(ctx, [project(minX, minY, zBoxMin), project(maxX, minY, zBoxMin), project(maxX, maxY, zBoxMin), project(minX, maxY, zBoxMin)])
     ctx.stroke()
     // The front edge, where the printer's door is.
-    const fl = project(minX, minY, zBoxMin)
-    const fr = project(maxX, minY, zBoxMin)
     ctx.strokeStyle = warn
     ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(fl.sx, fl.sy)
-    ctx.lineTo(fr.sx, fr.sy)
-    ctx.stroke()
+    seg(ctx, project(minX, minY, zBoxMin), project(maxX, minY, zBoxMin))
     ctx.strokeStyle = line
     ctx.lineWidth = 1
     // The vertical edge farthest from the viewer carries the Z axis.
@@ -173,22 +157,14 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
       if (tags.some((t) => left < t.cx + t.w / 2 + 2 && left + w > t.cx - t.w / 2 - 2 && top < t.cy + t.h / 2 + 2 && top + 13 > t.cy - t.h / 2 - 2)) return
       ctx.fillText(text, x, y)
     }
-    const zb = project(back[0], back[1], zBoxMin)
-    const zt = project(back[0], back[1], zBoxMax)
-    ctx.beginPath()
-    ctx.moveTo(zb.sx, zb.sy)
-    ctx.lineTo(zt.sx, zt.sy)
-    ctx.stroke()
+    seg(ctx, project(back[0], back[1], zBoxMin), project(back[0], back[1], zBoxMax))
     ctx.fillStyle = ink
     ctx.font = font
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
     for (const z of [zBoxMin, (zBoxMin + zBoxMax) / 2, zBoxMax]) {
       const p = project(back[0], back[1], z)
-      ctx.beginPath()
-      ctx.moveTo(p.sx - 3, p.sy)
-      ctx.lineTo(p.sx + 3, p.sy)
-      ctx.stroke()
+      seg(ctx, { sx: p.sx - 3, sy: p.sy }, { sx: p.sx + 3, sy: p.sy })
       label(fmtZ(z, unit), p.sx - 6, p.sy)
     }
     // Axis labels on the floor's front edges.
@@ -236,7 +212,7 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
     quads.sort((a, b) => a.depth - b.depth)
     ctx.lineJoin = 'round'
     for (const q of quads) {
-      path(q.pts)
+      shape(ctx, q.pts)
       ctx.globalAlpha = q.alpha
       ctx.fillStyle = q.fill
       ctx.fill()
@@ -262,10 +238,7 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
       const top = project(m.x, m.y, grid.z[row][col] + lift)
       ctx.strokeStyle = warn
       ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(base.sx, base.sy)
-      ctx.lineTo(top.sx, top.sy)
-      ctx.stroke()
+      seg(ctx, base, top)
       ctx.fillStyle = warn
       ctx.beginPath()
       ctx.arc(top.sx, top.sy, 8, 0, Math.PI * 2)
@@ -330,10 +303,7 @@ export const MeshSurface3D = forwardRef<MeshSurfaceHandle, Props>(function MeshS
       ctx.fillStyle = getComputedStyle(c).getPropertyValue('--surface').trim() || '#161c25'
       ctx.fillRect(0, 0, out.width, out.height)
       ctx.drawImage(c, 0, 0)
-      const a = document.createElement('a')
-      a.href = out.toDataURL('image/png')
-      a.download = `${name}.png`
-      a.click()
+      saveUrl(out.toDataURL('image/png'), `${name}.png`)
     },
     resetView: () => setView(DEFAULT_VIEW),
   }))
@@ -470,11 +440,7 @@ function drawPrinter(
     { n: [0, 0, 1], pts: [[-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]] },
   ]
   const facing = ([x, y, z]: V) => z * Math.sin(e) - (x * Math.sin(a) + y * Math.cos(a)) * Math.cos(e) > 1e-6
-  const poly = (pts: V[]) => {
-    ctx.beginPath()
-    pts.map(P).forEach((p, i) => (i ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy)))
-    ctx.closePath()
-  }
+  const poly = (pts: V[]) => shape(ctx, pts.map(P))
   ctx.lineJoin = 'round'
   for (const f of faces) {
     if (!facing(f.n)) continue
@@ -521,24 +487,13 @@ function drawPrinter(
     if (readable([0, -1, 0])) label(t('tune.mesh.printer_front'), [0, -hy, -hz * 0.08], [1, 0, 0], c.accentInk)
   }
   // From above, the top's front edge and FRONT written along it.
-  const top = P([-hx, -hy, hz])
-  const topR = P([hx, -hy, hz])
   ctx.strokeStyle = c.warn
   ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(top.sx, top.sy)
-  ctx.lineTo(topR.sx, topR.sy)
-  ctx.stroke()
+  seg(ctx, P([-hx, -hy, hz]), P([hx, -hy, hz]))
   if (!readable([0, -1, 0]) && facing([0, 0, 1])) label(t('tune.mesh.printer_front'), [0, -hy * 0.62, hz], [1, 0, 0], c.accentInk, [0, 1, 0])
   if (readable([0, 1, 0])) label(t('tune.mesh.printer_back'), [0, hy, 0], [-1, 0, 0], c.ink)
   if (readable([-1, 0, 0])) label(t('tune.mesh.printer_left'), [-hx, 0, 0], [0, -1, 0], c.ink)
   if (readable([1, 0, 0])) label(t('tune.mesh.printer_right'), [hx, 0, 0], [0, 1, 0], c.ink)
-}
-
-function niceStep(raw: number) {
-  const p = 10 ** Math.floor(Math.log10(raw))
-  const n = raw / p
-  return (n < 1.5 ? 1 : n < 3.5 ? 2.5 : n < 7.5 ? 5 : 10) * p
 }
 
 function fmtZ(z: number, unit: 'mm' | 'µm', precise = false) {

@@ -3,6 +3,7 @@
 // min_temp and max_temp. A QIDI Box heater is further limited to the lowest Box temperature limit among the filaments
 // loaded in that Box; when that is 0 the target is locked, though a Box already heating can still be turned off.
 
+import { encodeGcodeParamValue, gcode } from './gcode'
 import { t } from '../../i18n'
 
 export type HeaterConfig = { min_temp?: number; max_temp?: number; target_min_temp?: number; target_max_temp?: number; control?: string }
@@ -29,6 +30,12 @@ export function targetError(value: number, range: TargetRange): string | null {
   if (value > range.max) return t('control.heaters.at_most', { max: range.max })
   return null
 }
+
+/** A heater's name as SET_HEATER_TEMPERATURE and the calibrations take it, quoted when it needs to be. */
+export const heaterParam = (obj: string) => encodeGcodeParamValue(obj.replace(/^heater_generic /, ''))
+
+/** Sets a heater's target; 0 turns it off. */
+export const heaterGcode = (obj: string, target: number) => gcode`SET_HEATER_TEMPERATURE HEATER=${heaterParam(obj)} TARGET=${target}`
 
 /** The Box number of a QIDI Box heater object, or null. */
 export function boxHeaterNumber(obj: string): number | null {

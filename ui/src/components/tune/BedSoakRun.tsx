@@ -1,4 +1,4 @@
-import { CircleCheck, Download, Info, TriangleAlert } from 'lucide-react'
+import { CircleCheck, Download, TriangleAlert } from 'lucide-react'
 import { Spinner } from '../ui'
 import { client, usePrinter } from '../../state/printer'
 import {
@@ -17,7 +17,20 @@ import {
 import { BedSoakRunCharts } from './BedSoakRunCharts'
 import { BedSoakHeatmap } from './BedSoakHeatmap'
 import { bedSoakClock, bedSoakDuration, bedSoakPointName, bedSoakStateLabel, bedSoakTargets, fmtDateTime } from './bed-soak-format'
-import { t } from '../../i18n'
+import { Banner } from './common'
+import { t, type MessageKey } from '../../i18n'
+
+// What the live run is doing, by its step; nozzle and mesh steps name the temperature and the mesh.
+const STEPS: Record<string, MessageKey> = {
+  nozzle: 'tune.soak.step.nozzle',
+  mesh: 'tune.soak.step.mesh',
+  home: 'tune.soak.step.home',
+  wipe: 'tune.soak.step.wipe',
+  z_tilt: 'tune.soak.step.z_tilt',
+  home_z: 'tune.soak.step.home_z',
+  cold_mesh: 'tune.soak.step.cold_mesh',
+  finishing: 'tune.soak.step.finishing',
+}
 
 type Stat = { id: string; label: string; value: string; detail?: string; state: 'done' | 'active' | 'warning' | 'none' }
 
@@ -48,30 +61,7 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
     return live ? [...saved, ...liveTemps.filter((x) => x[0] > lastT)] : saved
   })()
 
-  const stepText = (() => {
-    if (!status) return ''
-    if (status.stop_requested) return t('tune.soak.step.stopping')
-    switch (status.step) {
-      case 'nozzle':
-        return t('tune.soak.step.nozzle', { temp: status.settings?.nozzle ?? '' })
-      case 'mesh':
-        return t('tune.soak.step.mesh', { n: status.meshes })
-      case 'home':
-        return t('tune.soak.step.home')
-      case 'wipe':
-        return t('tune.soak.step.wipe')
-      case 'z_tilt':
-        return t('tune.soak.step.z_tilt')
-      case 'home_z':
-        return t('tune.soak.step.home_z')
-      case 'cold_mesh':
-        return t('tune.soak.step.cold_mesh')
-      case 'finishing':
-        return t('tune.soak.step.finishing')
-      default:
-        return t('tune.soak.step.running')
-    }
-  })()
+  const stepText = !status ? '' : status.stop_requested ? t('tune.soak.step.stopping') : t(STEPS[status.step] ?? 'tune.soak.step.running', { temp: status.settings?.nozzle ?? '', n: status.meshes })
 
   const targets = bedSoakTargets(settings.bed, settings.chamber)
   const meshSize = `${settings.probeCount} × ${settings.probeCount}`
@@ -175,18 +165,8 @@ export function BedSoakRunView({ run, status, live, liveTemps = [], file }: { ru
       {!isLive && run && (
         <>
           {summary && <div className="mt-2.5 text-[12.5px] text-ink-2">{summary}</div>}
-          {warning && (
-            <div className="tone-warn mt-3 flex items-start gap-2 rounded-lg px-3 py-2.5">
-              <TriangleAlert size={15} className="mt-0.5 flex-none" />
-              <span className="text-ink">{warning}</span>
-            </div>
-          )}
-          {endNote && (
-            <div className="tone-info mt-3 flex items-start gap-2 rounded-lg px-3 py-2.5">
-              <Info size={15} className="mt-0.5 flex-none" />
-              <span className="text-ink">{endNote}</span>
-            </div>
-          )}
+          {warning && <Banner>{warning}</Banner>}
+          {endNote && <Banner tone="info">{endNote}</Banner>}
         </>
       )}
       {run && run.meshes.length > 0 ? (

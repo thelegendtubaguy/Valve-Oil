@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { Dialog } from '../ui'
-import { attempt } from '../toast'
-import { runGcode, useObject, usePrinter } from '../../state/printer'
+import { useObject, usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
+import { send } from '../control/common'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { prettyName } from '../../lib/format'
 import { createStore, useStore } from '../../lib/store'
-import { usePrinterFlags } from './hooks'
 import { useUiSetting } from '../settings/fluidd'
 import { gcode } from '../control/gcode'
 import { t } from '../../i18n'
@@ -20,7 +20,7 @@ export const reopenHelper = (h: Helper) => helperOpen.set((s) => ({ ...s, [h]: t
 
 /** Opens itself while a helper is active, as Fluidd's dialogs do, and closes when it ends. */
 function useAutoOpen(h: Helper, active: boolean) {
-  const { printing } = usePrinterFlags()
+  const printing = useJobActive()
   // Fluidd's "show automatically" settings, shared with it. Off, the dialog opens only from reopenHelper().
   const [autoManual] = useUiSetting('general.showManualProbeDialogAutomatically')
   const [autoScrews] = useUiSetting('general.showBedScrewsAdjustDialogAutomatically')
@@ -35,13 +35,17 @@ export function ManualProbeDialog() {
   const mp = useObject('manual_probe')
   const active = !!mp.is_active
   const [open, setOpen] = useAutoOpen('manual', active)
-  const { printing } = usePrinterFlags()
+  const printing = useJobActive()
   const ready = usePrinter((s) => s.klippy === 'ready')
   const [distances] = useDbItem<number[]>(FLUIDD, 'uiSettings.general.zAdjustDistances', [0.005, 0.01, 0.025, 0.05])
   const offsets = [...new Set([1, 0.1, ...distances])].sort((a, b) => b - a)
-  const run = (g: string) => attempt(() => runGcode(g))
   const fmt = (v: unknown) => (typeof v === 'number' ? v.toFixed(3) : '—')
   const disabled = !ready || printing
+  const bisect = (z: string, title: string, text: string) => (
+    <button disabled={disabled} onClick={() => send(`TESTZ Z=${z}`)} title={title}>
+      {text}
+    </button>
+  )
   return (
     <Dialog
       open={open}
@@ -49,10 +53,10 @@ export function ManualProbeDialog() {
       title={t('tune.shared.manual_probe')}
       footer={
         <>
-          <button className="btn btn-danger" onClick={() => (run('ABORT'), setOpen(false))}>
+          <button className="btn btn-danger" onClick={() => (send('ABORT'), setOpen(false))}>
             {t('tune.shared.abort')}
           </button>
-          <button className="btn btn-primary" onClick={() => run('ACCEPT')}>
+          <button className="btn btn-primary" onClick={() => send('ACCEPT')}>
             {t('tune.shared.accept')}
           </button>
         </>
@@ -73,31 +77,23 @@ export function ManualProbeDialog() {
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="seg">
-          <button disabled={disabled} onClick={() => run('TESTZ Z=--')} title={t('tune.helpers.halfway_min')}>
-            − −
-          </button>
-          <button disabled={disabled} onClick={() => run('TESTZ Z=-')} title={t('tune.helpers.partway_min')}>
-            −
-          </button>
+          {bisect('--', t('tune.helpers.halfway_min'), '− −')}
+          {bisect('-', t('tune.helpers.partway_min'), '−')}
         </div>
         <span className="text-[12px] text-ink-3">{t('tune.helpers.bisect')}</span>
         <div className="seg">
-          <button disabled={disabled} onClick={() => run('TESTZ Z=+')} title={t('tune.helpers.partway_max')}>
-            +
-          </button>
-          <button disabled={disabled} onClick={() => run('TESTZ Z=++')} title={t('tune.helpers.halfway_max')}>
-            + +
-          </button>
+          {bisect('+', t('tune.helpers.partway_max'), '+')}
+          {bisect('++', t('tune.helpers.halfway_max'), '+ +')}
         </div>
       </div>
       <div className="mt-3 grid gap-1.5">
         {offsets.map((o) => (
           <div key={o} className="flex items-center gap-2">
-            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=-${o}`)} aria-label={t('common.lower_named', { name: `${o} mm` })}>
+            <button className="pm" disabled={disabled} onClick={() => send(gcode`TESTZ Z=-${o}`)} aria-label={t('common.lower_named', { name: `${o} mm` })}>
               <Minus size={15} />
             </button>
             <div className="num flex-1 text-center font-semibold">{o} mm</div>
-            <button className="pm" disabled={disabled} onClick={() => run(gcode`TESTZ Z=+${o}`)} aria-label={t('common.raise_named', { name: `${o} mm` })}>
+            <button className="pm" disabled={disabled} onClick={() => send(gcode`TESTZ Z=+${o}`)} aria-label={t('common.raise_named', { name: `${o} mm` })}>
               <Plus size={15} />
             </button>
           </div>
@@ -113,7 +109,6 @@ export function BedScrewsDialog() {
   const cfg = usePrinter((s) => s.settings.bed_screws) as Record<string, unknown> | undefined
   const active = !!bs.is_active
   const [open, setOpen] = useAutoOpen('screws', active)
-  const run = (g: string) => attempt(() => runGcode(g))
   const screws: string[] = []
   for (let i = 1; cfg?.[`screw${i}`]; i++) screws.push((cfg[`screw${i}_name`] as string | undefined) || t('tune.helpers.screw_n', { n: i }))
   const current = typeof bs.current_screw === 'number' ? bs.current_screw : 0
@@ -126,13 +121,13 @@ export function BedScrewsDialog() {
       title={t('tune.shared.bed_screws_adjust')}
       footer={
         <>
-          <button className="btn btn-danger" onClick={() => (run('ABORT'), setOpen(false))}>
+          <button className="btn btn-danger" onClick={() => (send('ABORT'), setOpen(false))}>
             {t('tune.shared.abort')}
           </button>
-          <button className="btn" onClick={() => run('ADJUSTED')}>
+          <button className="btn" onClick={() => send('ADJUSTED')}>
             {t('tune.helpers.adjusted')}
           </button>
-          <button className="btn btn-primary" onClick={() => run('ACCEPT')}>
+          <button className="btn btn-primary" onClick={() => send('ACCEPT')}>
             {t('tune.shared.accept')}
           </button>
         </>

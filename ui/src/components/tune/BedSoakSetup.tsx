@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, Flame, Play, TriangleAlert } from 'lucide-react'
+import { ChevronDown, Flame, Play } from 'lucide-react'
 import { Choices, MenuButton, Spinner, Stepper, Toggle } from '../ui'
 import { attempt } from '../toast'
 import { runGcode, usePrinter } from '../../state/printer'
@@ -7,7 +7,7 @@ import { usePresets } from '../../state/presets'
 import { BED_SOAK_SETTLED_MESHES, bedSoakMilestones, bedSoakStartCommand, type BedSoakRun, type VoBedSoakState } from '../../qidi/vo-bed-soak'
 import { bedSoakDuration, fmtDate } from './bed-soak-format'
 import { useChamberTemp } from './BedSoakRun'
-import { usePrinterFlags } from './hooks'
+import { Banner, usePrinterFlags } from './common'
 import { t } from '../../i18n'
 
 /** Above this, the bed or chamber is still warm and the cold mesh won't be cold */
@@ -143,12 +143,7 @@ export function BedSoakSetup({ status, runs }: { status: VoBedSoakState; runs: {
       <p className="m-0 text-[12.5px] text-ink-3">
         {stopWhenSettled ? t('tune.soak.ends_settled', { speed: speedLimit, count: BED_SOAK_SETTLED_MESHES }) : t('tune.soak.runs_to_limit')}
       </p>
-      {warning && (
-        <div className="tone-warn flex items-start gap-2 rounded-lg px-3 py-2.5">
-          <TriangleAlert size={15} className="mt-0.5 flex-none" />
-          <span className="text-ink">{warning}</span>
-        </div>
-      )}
+      {warning && <Banner className="">{warning}</Banner>}
       {lastRun && <div className="text-ink-2">{lastRun}</div>}
     </div>
   )
