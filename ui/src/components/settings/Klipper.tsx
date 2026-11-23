@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Cpu } from 'lucide-react'
-import { Card, confirm, Spinner } from '../ui'
-import { Notice } from './common'
+import { Card, confirm, Spinner, Notice } from '../ui'
 import { usePrinter } from '../../state/printer'
 import { clearKlipperError, klipperSwitchDisabled, poll, switchKlipper, useValveOil, watchValveOil } from '../../state/valve-oil'
 import { VO_KLIPPER_SWITCH_BLOCKERS, voKlipperState, voSentence, type VoKlipper, type VoKlipperTree, type VoStatusBlocker } from '../../qidi/vo-status'

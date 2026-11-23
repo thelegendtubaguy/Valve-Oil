@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
 import { t } from '../i18n'
 
 const dialogStack: HTMLElement[] = []
@@ -147,6 +147,61 @@ export function Toggle({ checked, onChange, disabled, label }: { checked: boolea
     >
       <i className="absolute top-1 h-4 w-4 rounded-full bg-white transition-all" style={{ left: checked ? 16 : 2 }} />
     </button>
+  )
+}
+
+/** A tinted message with its tone's icon, and a dismiss button when it can be closed. */
+export function Notice({ tone, icon, onClose, children, className = '' }: { tone: 'info' | 'warn' | 'bad' | 'good'; icon?: ReactNode; onClose?: () => void; children: ReactNode; className?: string }) {
+  const cls = { info: 'tone-accent', warn: 'tone-warn', bad: 'tone-bad', good: 'tone-good' }[tone]
+  const Icon = { info: Info, warn: TriangleAlert, bad: CircleAlert, good: CircleCheck }[tone]
+  return (
+    <div className={`${cls} flex items-start gap-2.5 rounded-lg px-3 py-2 ${className}`}>
+      <span className="mt-0.5 flex-none">{icon ?? <Icon size={15} />}</span>
+      <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{children}</div>
+      {onClose && (
+        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label={t('common.dismiss')}>
+          <X size={15} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** A key and its value on one line, as Fluidd's status labels. */
+export function KV({ k, children, className = '', vClassName = '' }: { k: ReactNode; children: ReactNode; className?: string; vClassName?: string }) {
+  return (
+    <div className={`row-k ${className}`}>
+      <span className="k">{k}</span>
+      <span className={`v ${vClassName}`}>{children}</span>
+    </div>
+  )
+}
+
+/** A label over its field. */
+export function Field({ label, children, className = 'gap-1.5' }: { label: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <label className={`grid ${className}`}>
+      <span className="lbl">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+/** A dialog's Cancel button. */
+export function CancelButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="btn btn-ghost" onClick={onClick}>
+      {t('common.cancel')}
+    </button>
+  )
+}
+
+/** A spinner in the middle of the space a list or panel will fill. */
+export function Loading({ className = 'py-10', size = 20 }: { className?: string; size?: number }) {
+  return (
+    <div className={`grid place-items-center ${className}`}>
+      <Spinner size={size} />
+    </div>
   )
 }
 

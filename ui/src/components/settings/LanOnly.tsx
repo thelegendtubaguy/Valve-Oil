@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
-import { Toggle } from '../ui'
+import { Toggle, Notice } from '../ui'
 import { client, usePrinter } from '../../state/printer'
 import { QIDI_LAN_MODE_KEY, QIDI_LAN_MODE_SECTION, qidiLanModeFromConfig, qidiLanModeValue } from '../../qidi/qidi-lan-mode'
-import { Notice } from './common'
 import { t } from '../../i18n'
 
 /**

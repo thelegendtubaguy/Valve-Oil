@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
-import { confirm, Dialog, Spinner } from '../ui'
+import { confirm, Dialog, Spinner, Notice } from '../ui'
 import {
   parseVoAddonLinkCode,
   parseVoTailscaleStatus,
@@ -16,7 +16,7 @@ import {
   type VoZerotierStatus,
 } from '../../qidi/vo-addons'
 import { addonsRequest } from '../../state/addons'
-import { fmtDateTime, fmtTime, KV, Notice } from './common'
+import { fmtDateTime, fmtTime, KV } from './common'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
 

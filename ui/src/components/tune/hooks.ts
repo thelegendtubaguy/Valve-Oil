@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { usePrinter } from '../../state/printer'
 
 /** What the Tune tools need to know before they move the printer, as Fluidd decides it. */
@@ -19,15 +18,4 @@ export function usePrinterFlags() {
 export function useHasCommand() {
   const commands = usePrinter((s) => s.commands)
   return (c: string) => commands.includes(c)
-}
-
-export function useMedia(query: string) {
-  const [match, setMatch] = useState(() => window.matchMedia(query).matches)
-  useEffect(() => {
-    const m = window.matchMedia(query)
-    const on = () => setMatch(m.matches)
-    m.addEventListener('change', on)
-    return () => m.removeEventListener('change', on)
-  }, [query])
-  return match
 }

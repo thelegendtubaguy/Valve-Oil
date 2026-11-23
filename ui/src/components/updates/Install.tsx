@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Circle, CircleCheck, CircleX, Download, Eye, LoaderCircle, RefreshCw, ScrollText } from 'lucide-react'
-import { Card, Empty } from '../ui'
-import { Notice } from '../settings/common'
+import { Card, Empty, Notice } from '../ui'
 import type { LogFile } from '../system/Logs'
 import { fmtSize } from '../system/bits'
 import { client, usePrinter } from '../../state/printer'

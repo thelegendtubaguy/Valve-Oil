@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { attempt, toast } from '../toast'
-import { printer, runGcode, usePrinter } from '../../state/printer'
+import { printer, runGcode } from '../../state/printer'
 import { clampJog, moveGcode } from './gcode'
 import { t } from '../../i18n'
 import './control.css'
@@ -18,31 +18,6 @@ export function jog(axis: 'X' | 'Y' | 'Z', distance: number, rate: number, clien
   const d = clampJog(th.position?.[i], distance, th.axis_minimum?.[i], th.axis_maximum?.[i])
   if (d === 0) return toast(t('control.end_of_travel', { axis }), 'error')
   return send(moveGcode({ [axis]: d }, rate, false, clientMacro))
-}
-
-/** True while a print is running (not paused): what Fluidd locks moves and some controls on. */
-export function usePrinting() {
-  return usePrinter((s) => s.status.print_stats?.state === 'printing')
-}
-
-/** True while a print is running or paused. */
-export function useJobActive() {
-  return usePrinter((s) => s.status.print_stats?.state === 'printing' || s.status.print_stats?.state === 'paused')
-}
-
-/** Whether Klipper knows a G-code command. */
-export function useHasCommand(name: string) {
-  return usePrinter((s) => s.commands.includes(name.toUpperCase()))
-}
-
-/** A key and its value on one line, as Fluidd's status labels. */
-export function KV({ k, children, className = '' }: { k: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <div className={`row-k ${className}`}>
-      <span className="k">{k}</span>
-      <span className="v">{children}</span>
-    </div>
-  )
 }
 
 /**

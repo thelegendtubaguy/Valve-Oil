@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, CircleCheck, Cpu, Download, ExternalLink, Info, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { Card, Dialog, PageHeader, Toggle } from '../components/ui'
-import { Notice } from '../components/settings/common'
+import { Card, Dialog, PageHeader, Toggle, Notice } from '../components/ui'
 import { LanOnly } from '../components/settings/LanOnly'
 import { Log } from '../components/settings/Addons'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'

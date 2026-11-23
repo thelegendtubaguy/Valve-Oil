@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDownUp, BookOpen, Copy, Eraser, Search, X } from 'lucide-react'
+import { useMedia } from '../lib/browser'
 import { Dialog, PageHeader } from '../components/ui'
 import { toast } from '../components/toast'
 import { ConsoleOutput } from '../components/console/ConsoleOutput'
@@ -87,17 +88,6 @@ export function ConsoleScreen() {
       </Dialog>
     </>
   )
-}
-
-function useMedia(query: string) {
-  const [on, setOn] = useState(() => window.matchMedia(query).matches)
-  useEffect(() => {
-    const m = window.matchMedia(query)
-    const fn = () => setOn(m.matches)
-    m.addEventListener('change', fn)
-    return () => m.removeEventListener('change', fn)
-  }, [query])
-  return on
 }
 
 /** Height that reaches the bottom of the scrolling page area, so the console fills the screen whatever is above it. */

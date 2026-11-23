@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { CircleAlert, CircleCheck, Info, Plus, TriangleAlert, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { Card, Toggle } from '../ui'
 import { locale, t } from '../../i18n'
 
@@ -103,22 +103,6 @@ export function NumberList({ value, onChange, min = 1, max = 6, unit, label }: {
             <Plus size={13} /> {t('common.add')}
           </button>
         </div>
-      )}
-    </div>
-  )
-}
-
-export function Notice({ tone, icon, onClose, children, className = '' }: { tone: 'info' | 'warn' | 'bad' | 'good'; icon?: ReactNode; onClose?: () => void; children: ReactNode; className?: string }) {
-  const cls = { info: 'tone-accent', warn: 'tone-warn', bad: 'tone-bad', good: 'tone-good' }[tone]
-  const Icon = { info: Info, warn: TriangleAlert, bad: CircleAlert, good: CircleCheck }[tone]
-  return (
-    <div className={`${cls} flex items-start gap-2.5 rounded-lg px-3 py-2 ${className}`}>
-      <span className="mt-0.5 flex-none">{icon ?? <Icon size={15} />}</span>
-      <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">{children}</div>
-      {onClose && (
-        <button className="iconbtn -my-1.5 -mr-2 h-7 w-7 flex-none" onClick={onClose} aria-label={t('common.dismiss')}>
-          <X size={15} />
-        </button>
       )}
     </div>
   )

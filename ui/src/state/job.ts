@@ -52,3 +52,13 @@ export function remainingSeconds(job: Job, meta: FileMeta | null): number | null
 export function isActive(state: JobState) {
   return state === 'printing' || state === 'paused'
 }
+
+/** True while a print is running (not paused): what Fluidd locks moves and some controls on. */
+export function usePrinting() {
+  return usePrinter((s) => s.status.print_stats?.state === 'printing')
+}
+
+/** True while a print is running or paused. */
+export function useJobActive() {
+  return usePrinter((s) => isActive(s.status.print_stats?.state))
+}

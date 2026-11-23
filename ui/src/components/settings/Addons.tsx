@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, ExternalLink, Puzzle } from 'lucide-react'
-import { Card, confirm, Spinner } from '../ui'
+import { Card, confirm, Spinner, Notice } from '../ui'
 import { voAddonActions, type VoAddon, type VoAddonAction, type VoAddonJob } from '../../qidi/vo-addons'
 import { actionsDisabled, dismissJob, hasStatusPanel, installBlocked, jobFor, runAddonAction, useAddons, watchAddons } from '../../state/addons'
-import { Notice } from './common'
 import { ObicoPanel, OctoEverywherePanel, TailscalePanel, ZerotierPanel } from './AddonPanels'
 import { t, type MessageKey } from '../../i18n'
 
