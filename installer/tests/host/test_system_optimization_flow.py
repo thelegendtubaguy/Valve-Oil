@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import io
 import json
 import os
 import shutil
 import unittest
 import urllib.error
+import urllib.parse
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
@@ -1500,9 +1502,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         operations = (klipper_tree.OPERATION, klipper_tree.LAUNCHER_OPERATION, klipper_tree.DROPIN_OPERATION)
         qidi_before = snapshot_tree(qidi)
 
-        def apply(ledger, run=host_run, source="yes_install"):
+        def apply(ledger, run=host_run, source="yes_install", output=None):
             return apply_system_optimizations(
-                paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()),
+                paths=paths, spec=manifest.system_optimizations, ledger=ledger,
+                reporter=PlainReporter(output if output is not None else io.StringIO()),
                 input_stream=None, environ=env, source=source, block_qidi_updates=True, manifest=manifest, run=run,
                 urlopen=moonraker_urlopen(),
             )
@@ -1605,15 +1608,34 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertEqual((tree / "klippy/klippy.py").read_text(encoding="utf-8"), "# the newest klippy.py\n")
 
             with self.subTest("QIDI's modules or unit not the ones it was made for"):
-                # A QIDI package changed QIDI's modules: the tree stays, unused by the launcher, and uninstall still
-                # removes it. A later package checked with the new modules replaces it.
+                # A QIDI package changed QIDI's modules, and an older one left a compiled module behind: the tree
+                # stays, unused by the launcher, and uninstall still removes it. What differs is left in Klipper's log
+                # folder with a prefilled issue for the operator to attach it to. A later package checked with the new
+                # modules replaces the tree, and the report goes.
                 installed = marker()
                 box_stepper = qidi / "klippy/extras/box_stepper.so"
                 box_stepper.write_bytes(b"QIDI's newer box_stepper\n")
-                ledger = apply(ledger)
+                stray = qidi / "klippy/extras/heater_feng.cpython-39-aarch64-linux-gnu.so"
+                stray.write_bytes(b"an older QIDI heater_feng\n")
+                output = io.StringIO()
+                ledger = apply(ledger, output=output)
                 self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "unsupported")
                 self.assertEqual(marker(), installed)
                 self.assertIn(klipper_tree.OPERATION, ledger["restore_preimages"])
+                report_path = paths.printer_data_root / "logs" / klipper_tree.MODULES_REPORT
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                self.assertEqual((report["printer"], report["firmware"], report["missing"]), ("plus5", "01.01.02.01", []))
+                self.assertEqual([(entry["path"], entry["sha256"]) for entry in report["changed"]],
+                                 [("extras/box_stepper.so", hashlib.sha256(box_stepper.read_bytes()).hexdigest())])
+                self.assertEqual([entry["path"] for entry in report["extra"]],
+                                 ["extras/heater_feng.cpython-39-aarch64-linux-gnu.so"])
+                self.assertEqual(len(report["modules"]), 3)
+                self.assertIn(str(report_path), output.getvalue())
+                self.assertIn(report["issue_url"], output.getvalue())
+                link = urllib.parse.parse_qs(urllib.parse.urlsplit(report["issue_url"]).query)
+                self.assertEqual(link["template"], ["printer-support.yml"])
+                self.assertIn("heater_feng", link["klipper_modules"][0])
+                stray.unlink()
                 spec = manifest.system_optimizations
                 pins = dict(spec.klipper_tree.modules_for("01.01.02.01"))
                 pins["extras/box_stepper.so"] = dataclasses.replace(
@@ -1624,6 +1646,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 ledger = apply(ledger)
                 self.assertEqual(ledger["outcomes"][klipper_tree.OPERATION]["status"], "applied")
                 self.assertEqual((tree / "klippy/extras/box_stepper.so").read_bytes(), box_stepper.read_bytes())
+                self.assertFalse(report_path.exists())
                 # A unit QIDI changed leaves the drop-in in place but inactive, and it is active again once the unit is
                 # QIDI's again.
                 unit_text = unit.read_text(encoding="utf-8")

@@ -882,7 +882,8 @@ def support_issue_url(status: dict) -> str:
 
 def support_files() -> list[tuple[str, Path]]:
     """What a support issue needs, by its name in the bundle: Klipper's and Moonraker's logs, today's and the last
-    rotated one, Valve Oil's Box link log, what Valve Oil's own runs wrote, and the last Diagnostics report."""
+    rotated one, Valve Oil's Box link log and Klipper modules report, what Valve Oil's own runs wrote, and the last
+    Diagnostics report."""
     files = []
     for name in ("klippy.log", "moonraker.log"):
         files.append((f"logs/{name}", LOGS / name))
@@ -890,6 +891,7 @@ def support_files() -> list[tuple[str, Path]]:
         if rotated:
             files.append((f"logs/{rotated[-1].name}", rotated[-1]))
     files.append(("logs/vo_box_link.log", LOGS / "vo_box_link.log"))
+    files.append(("logs/vo_klipper_modules.json", LOGS / "vo_klipper_modules.json"))
     files += [
         ("valve-oil/update-now.log", JOB_LOG),
         ("valve-oil/addon-change.log", CACHE / "addons/job.log"),

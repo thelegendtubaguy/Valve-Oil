@@ -943,6 +943,12 @@ Normal install and update SHALL install the package's Klipper tree (`klipper/`, 
 - **WHEN** the firmware has no module list, QIDI's live modules differ from it, the tree directory exists without the package marker, or `klipper.service` doesn't start Klipper as `~/klippy-env/bin/python $KLIPPER_ARGS`
 - **THEN** the outcome is recorded without failing the install, no drop-in overrides the unit, and QIDI's Klipper runs
 
+#### Scenario: QIDI's modules that differ are reported for an issue
+- **WHEN** install or update finds QIDI's live compiled modules differ from the list for a firmware that has one
+- **THEN** it writes a report to Klipper's log folder naming the pinned modules missing or changed, the compiled modules not listed, and every compiled module found, each with its size and SHA-256
+- **AND** the output names that report and gives a link to the printer-support issue form with the printer, firmware, printer details, and the differences filled in, asking the operator to attach the report
+- **AND** a later install or update whose modules match, or on firmware without a list, removes the report
+
 #### Scenario: Each Klipper start picks a tree
 - **WHEN** Klipper starts through the launcher
 - **THEN** it runs the package tree only when the operator's choice is Valve Oil's Klipper, no QIDI firmware update is pending, and the firmware, QIDI's compiled modules, and the tree's files still match the tree's marker, and fewer than three starts in a row on it went without a ready acknowledgement

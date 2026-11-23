@@ -26,6 +26,8 @@ It runs on the firmware whose QIDI modules were checked against it:
 
 On other firmware it isn't installed, and QIDI's Klipper runs.
 
+If your firmware is in the table but QIDI's modules in `~/klipper/klippy` aren't the ones Valve Oil's Klipper was checked with, as with a module an older firmware left behind, the installer says `QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was checked with; Klipper stays QIDI's.`, and the rest of the install carries on. It writes what differs to `vo_klipper_modules.json` in Fluidd's **Logs** and prints a link to a prefilled [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml). Open it and attach that file so a release can support your printer. The file goes away once an install finds modules it was checked with.
+
 ## Turning it on and off
 
 In the [Valve Oil UI](valve-oil-ui.md), open **Settings**, then **Klipper**, and choose **Valve Oil's Klipper** or **QIDI's Klipper**. In Fluidd's console:

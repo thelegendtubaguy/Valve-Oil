@@ -50,6 +50,9 @@ MARKER = ".vo-klipper.json"
 MARKER_SCHEMA = 1
 QIDI_KLIPPY = "/home/qidi/klipper/klippy"
 QIDI_CHELPER = "chelper/c_helper.so"
+# What differs where QIDI's compiled modules aren't the ones the tree was checked with, in Klipper's log folder for the
+# operator to attach to an issue (system_optimizations._publish_klipper_modules_report).
+MODULES_REPORT = "vo_klipper_modules.json"
 CHELPER = "klippy/chelper/c_helper.so"
 VERSION_FILE = "klippy/.version"
 
@@ -191,6 +194,33 @@ def qidi_modules_match(qidi_klippy: Path, pins: dict[str, ImagePin]) -> bool:
     """Whether QIDI's klippy/ has exactly these compiled modules (its c_helper.so aside)."""
     return _live_modules(qidi_klippy) == set(pins) and all(
         _matches_pin(qidi_klippy / path, pin) for path, pin in pins.items())
+
+
+def module_differences(qidi_klippy: Path, pins: dict[str, ImagePin]) -> dict:
+    """How QIDI's klippy/ differs from the modules Valve Oil's Klipper was checked with, for the report an operator
+    attaches to an issue: pinned modules missing or changed, compiled modules not pinned, and every module found, so a
+    QIDI build can be pinned from the report alone."""
+    found = {}
+    for relative in sorted(_live_modules(qidi_klippy)):
+        path = qidi_klippy / relative
+        try:
+            entry = {"path": relative, "size": path.stat().st_size, "sha256": sha256_file(path)}
+        except OSError as exc:
+            entry = {"path": relative, "unreadable": type(exc).__name__}
+        if path.is_symlink():
+            entry["symlink"] = True
+        found[relative] = entry
+    changed = []
+    for relative, pin in sorted(pins.items()):
+        entry = found.get(relative)
+        if entry is not None and (entry.get("symlink") or (entry.get("size"), entry.get("sha256")) != (pin.size, pin.sha256)):
+            changed.append({**entry, "pinned_size": pin.size, "pinned_sha256": pin.sha256})
+    return {
+        "missing": sorted(set(pins) - set(found)),
+        "changed": changed,
+        "extra": [entry for relative, entry in found.items() if relative not in pins],
+        "modules": list(found.values()),
+    }
 
 
 def _live_modules(qidi_klippy: Path) -> set[str]:
