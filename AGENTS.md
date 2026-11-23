@@ -29,7 +29,7 @@ The UI is translated into English, Spanish, and Russian in the browser only; the
 ## Docs
 
 - `README.md` is a short landing page: install, then one-line feature summaries linking to `docs/`. Keep it operator-focused and don't link `openspec/` unless asked.
-- Keep the README's **Supported printers** table matching `installer/package.yaml` `printers:`. Docs describe behavior for every supported printer; label printer-specific facts (positions, firmware versions, hardware, measurements) with the printer they apply to.
+- Keep the README's **Supported printers** and **Community-supported printers** tables matching `installer/package.yaml` `printers:` and each printer's `support:`. A community printer must meet `docs/community-printers.md`'s requirements, Python 3.9 among them. Docs describe behavior for every supported printer; label printer-specific facts (positions, firmware versions, hardware, measurements) with the printer they apply to.
 - Put operator detail in the matching `docs/<topic>.md` (index: `docs/README.md`), new settings and commands in `docs/settings.md`, and new files or services the installer touches in `docs/under-the-hood.md`.
 
 ## Git

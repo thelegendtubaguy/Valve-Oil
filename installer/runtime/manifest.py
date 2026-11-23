@@ -303,6 +303,10 @@ def parse_manifest(raw: Any) -> Manifest:
     )
 
 
+# Releases may ship without being tested on community printers (PrinterSpec.support).
+PRINTER_SUPPORT_LEVELS = ("official", "community")
+
+
 # Firmware keys identify the printer, so no key may belong to two printers. A printer whose SOC versions repeat
 # another printer's gives its keys a firmware_key_prefix. The firmware manifest's SOC file name (QD_MAX4_SOC_...,
 # QD_PLUS5_SOC_..., S5_SOC_...) picks between printers that share a version at runtime.
@@ -332,6 +336,11 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
             raise ManifestValidationError(
                 f"Firmware {sorted(shared)[0]} is listed for more than one printer."
             )
+        support = _require_str(item, "support") if "support" in item else "official"
+        if support not in PRINTER_SUPPORT_LEVELS:
+            raise ManifestValidationError(
+                f"Printer {printer_id} support must be one of {', '.join(PRINTER_SUPPORT_LEVELS)}."
+            )
         target_firmware = _parse_target_firmware(item, printer_id, soc_file_prefix, firmware, key_prefix)
         printer = PrinterSpec(
             id=printer_id,
@@ -346,6 +355,7 @@ def _parse_printers(raw: dict[str, Any]) -> tuple[PrinterSpec, ...]:
             firmware_key_prefix=key_prefix,
             restore_sets=_parse_restore_sets(item, printer_id, soc_file_prefix, firmware, key_prefix,
                                              target_firmware),
+            support=support,
         )
         ids.add(printer.id)
         prefixes.add(printer.soc_file_prefix)

@@ -24,6 +24,12 @@ If you want to help support content like this, consider subscribing on YouTube, 
 | QIDI Plus 5 | `01.01.02.01` |
 | QIDI Smart 5 | `01.01.02.01` |
 
+### Community-supported printers
+
+These printers are supported by their owners and releases may ship without being tested on them. The installer tells you when your printer is one of them. [What community support means, and how to add a printer →](docs/community-printers.md)
+
+None yet.
+
 
 ## Install
 

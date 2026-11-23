@@ -1109,6 +1109,64 @@ def _restore_static_build(operation_id: str, preimage: dict[str, Any], *, root: 
         raise SystemOptimizationRecoveryError(exc.message) from exc
 
 
+KLIPPER_MODULES_CHANGED = ("QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was checked "
+                           "with; Klipper stays QIDI's.")
+# A QIDI file name as it may go into an issue link; any other name is left out of the link and kept in the report.
+_LINKABLE_MODULE = re.compile(r"^[A-Za-z0-9._/+-]{1,120}$")
+
+
+def _publish_klipper_modules_report(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path, manifest: Manifest,
+                                    why: str, reporter) -> None:
+    """Where QIDI's compiled Klipper modules aren't the ones Valve Oil's Klipper was checked with, leave what differs in
+    Klipper's log folder and point the operator to a prefilled issue to attach it to; otherwise remove an earlier
+    report."""
+    target = paths.printer_data_root / "logs" / klipper_tree.MODULES_REPORT
+    found = detect_supported_firmware_best_effort(paths.firmware_manifest_path, manifest)
+    pins = spec.klipper_tree.modules_for(found[1]) if found is not None else None
+    if why != KLIPPER_MODULES_CHANGED or pins is None:
+        with suppress(OSError, InstallerError):
+            ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
+            if target.is_file():
+                target.unlink()
+        return
+    from . import board_firmware
+
+    printer, firmware = found
+    qidi_klippy = _map_path(root, klipper_tree.QIDI_KLIPPY)
+    report = {
+        "package_version": manifest.package.version,
+        "printer": printer.id,
+        "firmware": printer.soc_version(firmware),
+        "qidi_klippy_symlinked": _path_has_symlink_component(qidi_klippy, root=root),
+        **klipper_tree.module_differences(qidi_klippy, pins),
+    }
+
+    def linkable(entry):
+        name = entry if isinstance(entry, str) else entry["path"]
+        if _LINKABLE_MODULE.match(name):
+            return entry
+        return "(name left out)" if isinstance(entry, str) else {**entry, "path": "(name left out)"}
+
+    linked = {key: report[key] for key in ("printer", "firmware", "qidi_klippy_symlinked")}
+    linked.update({key: [linkable(entry) for entry in report[key]] for key in ("missing", "changed", "extra")})
+    relative = os.path.relpath(target, paths.printer_data_root.parent)
+    url, _ = board_firmware.issue_link(
+        printer_name=printer.display_name, firmware=report["firmware"], box_count=0,
+        details=board_firmware.printer_details(paths), report=linked, report_path=relative,
+        output=f"Valve Oil {manifest.package.version} on {printer.display_name} firmware {report['firmware']}:\n{why}",
+        report_field="klipper_modules")
+    report["issue_url"] = url
+    try:
+        ensure_runtime_path_has_no_symlink_components(printer_data_root=paths.printer_data_root, target=target)
+        atomic_write_text(target, json.dumps(report, indent=2) + "\n", mode=0o644)
+    except (OSError, InstallerError):
+        reporter.line("To get Valve Oil's Klipper working on this printer, open this prefilled issue: " + url)
+        return
+    reporter.line(f"What Valve Oil found is in {target}, also in Fluidd's Logs.")
+    reporter.line("To get Valve Oil's Klipper working on this printer, open this prefilled issue and attach that file: "
+                  + url)
+
+
 def _klipper_tree_plan(paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Path,
                       manifest: Manifest) -> tuple[str, klipper_tree.Plan | None, str]:
     """The state of Valve Oil's Klipper for the detected printer and firmware, the tree to install, and, when it isn't
@@ -1128,8 +1186,7 @@ def _klipper_tree_plan(paths: RuntimePaths, spec: SystemOptimizationsSpec, root:
     _reject_parent_symlink_path(destination, root=root)
     qidi_klippy = _map_path(root, klipper_tree.QIDI_KLIPPY)
     if _path_has_symlink_component(qidi_klippy, root=root) or not klipper_tree.qidi_modules_match(qidi_klippy, pins):
-        return "unsupported", None, ("QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was "
-                                     "checked with; Klipper stays QIDI's.")
+        return "unsupported", None, KLIPPER_MODULES_CHANGED
     tree = klipper_tree.plan(
         source=source, printer=printer.id, firmware=firmware, package_version=manifest.package.version,
         extra_modules=[(paths.installer_root / module.source, module.destination) for module in manifest.install.extra_modules],
@@ -2144,6 +2201,7 @@ def apply_system_optimizations(
                     reporter.line(why)
                 elif state == klipper_tree.FOREIGN:
                     reporter.line(f"{klipper_tree.TREE_ROOT} already exists and was preserved; Klipper stays QIDI's.")
+                _publish_klipper_modules_report(paths, spec, root, manifest, why, reporter)
                 if state in {"missing", "unsupported", klipper_tree.FOREIGN, klipper_tree.CURRENT}:
                     if state == klipper_tree.CURRENT and operation_id in restore_preimages:
                         continue

@@ -53,6 +53,14 @@ body:
     validations:
       required: false
 
+  - type: textarea
+    id: klipper_modules
+    attributes:
+      label: Klipper modules report
+      description: If the installer said QIDI's Klipper modules on this printer aren't the ones Valve Oil's Klipper was checked with, attach `vo_klipper_modules.json` from Fluidd's **Logs** here, or paste what it contains. Keep what the installer's link filled in.
+    validations:
+      required: false
+
   - type: input
     id: firmware_source
     attributes:

@@ -17,6 +17,7 @@ package:
 # carries them, and the USB hand-off puts back the set for the installed firmware after QIDI's offline update empties
 # the folder. A set is named by QIDI's version, with the package's date where QIDI published a version twice; the
 # hand-off restores the latest.
+# support: official (default) or community (releases may ship without being tested on it; the installer says so). Keep README.md's two printer tables matching. See docs/community-printers.md.
 printers:
   - id: max4
     display_name: QIDI Max 4

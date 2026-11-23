@@ -619,8 +619,9 @@ def printer_details(paths) -> str:
 
 
 def issue_link(*, printer_name: str, firmware: str, box_count: int, details: str, output: str,
-               report: dict | None, report_path: str | None) -> tuple[str, bool]:
-    """A link to the printer-support form with its fields filled in by ID, and whether a field had to be shortened."""
+               report: dict | None, report_path: str | None, report_field: str = "board_report") -> tuple[str, bool]:
+    """A link to the printer-support form with its fields filled in by ID, the report in `report_field`, and whether a
+    field had to be shortened."""
     report_text = json.dumps(report, separators=(",", ":")) if report else ""
     fields = {
         "template": ISSUE_TEMPLATE,
@@ -629,7 +630,7 @@ def issue_link(*, printer_name: str, firmware: str, box_count: int, details: str
         "firmware": firmware,
         "printer_details": details,
         "installer_output": output,
-        "board_report": report_text,
+        report_field: report_text,
     }
     if box_count:
         fields["box"] = "One USB Box" if box_count == 1 else "More than one USB Box"
@@ -638,11 +639,11 @@ def issue_link(*, printer_name: str, firmware: str, box_count: int, details: str
         return ISSUE_FORM + "?" + urllib.parse.urlencode(fields, quote_via=urllib.parse.quote)
 
     shortened = False
-    for field in ("installer_output", "printer_details", "board_report"):
+    for field in ("installer_output", "printer_details", report_field):
         if len(build()) <= MAX_ISSUE_URL:
             break
         shortened = True
-        if field == "board_report":
+        if field == report_field:
             fields[field] = f"(too long for a link; attach {report_path or 'the report.json the installer named'})"
             continue
         text = fields[field]

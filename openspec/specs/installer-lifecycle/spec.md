@@ -39,6 +39,27 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **THEN** migration requires an idle printer and a validated stock snapshot for the detected firmware
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
+### Requirement: Community-supported printers are named at install
+Each printer in `installer/package.yaml` SHALL be officially supported or community-supported, declared with `support: community`, whose releases may ship without being tested on it. A community-supported printer SHALL install, update, and uninstall with the same admission, backup, rollback, and firmware safeguards as an officially supported one. Every supported printer, of either kind, SHALL run QIDI's Python 3.9.
+
+#### Scenario: A terminal install on a community-supported printer says so first
+- **WHEN** an install or update started over SSH detects a community-supported printer
+- **THEN** it says the printer is community-supported and releases may ship without being tested on it, before its first question
+- **AND** its summary says the same
+
+#### Scenario: A touchscreen install on a community-supported printer says so first
+- **WHEN** the USB installer's first screen or update screen shows a community-supported printer
+- **THEN** the printer's row is marked community-supported
+- **AND** a new install shows a screen saying releases may ship without being tested on the printer before its first question, and Back returns to the first screen
+
+#### Scenario: Officially supported printers show no notice
+- **WHEN** an install or update detects an officially supported printer
+- **THEN** neither front end shows the community notice
+
+#### Scenario: A printer without Python 3.9 stops at once
+- **WHEN** the release's `install.sh` runs on a printer whose `python3` is older than 3.9
+- **THEN** it names the Python it found and that Valve Oil needs 3.9, and exits before the runtime starts
+
 ### Requirement: Runs as root match runs as the printer's user
 Every installer launcher, including the release download, automatic updates, restore, and the THR and Box firmware tools, SHALL leave the same file owners and modes whether it is started as root or as the user who owns `printer_data`, and SHALL return installer-created files that an earlier run left owned by another user to that user.
 
@@ -921,6 +942,12 @@ Normal install and update SHALL install the package's Klipper tree (`klipper/`, 
 #### Scenario: Other firmware or unrecognized units leave QIDI's Klipper in use
 - **WHEN** the firmware has no module list, QIDI's live modules differ from it, the tree directory exists without the package marker, or `klipper.service` doesn't start Klipper as `~/klippy-env/bin/python $KLIPPER_ARGS`
 - **THEN** the outcome is recorded without failing the install, no drop-in overrides the unit, and QIDI's Klipper runs
+
+#### Scenario: QIDI's modules that differ are reported for an issue
+- **WHEN** install or update finds QIDI's live compiled modules differ from the list for a firmware that has one
+- **THEN** it writes a report to Klipper's log folder naming the pinned modules missing or changed, the compiled modules not listed, and every compiled module found, each with its size and SHA-256
+- **AND** the output names that report and gives a link to the printer-support issue form with the printer, firmware, printer details, and the differences filled in, asking the operator to attach the report
+- **AND** a later install or update whose modules match, or on firmware without a list, removes the report
 
 #### Scenario: Each Klipper start picks a tree
 - **WHEN** Klipper starts through the launcher
