@@ -1078,6 +1078,32 @@ Valve Oil's configuration SHALL let the saved variable `vo_box_heater_pwm_cycle_
 - **WHEN** `vo_box_heater_pwm_cycle_time` is missing, not a number, or outside 0.01 s to 0.1 s
 - **THEN** Box heaters keep a 0.1 s cycle and `klippy.log` says why for a value that was set
 
+### Requirement: No print start while a QIDI Box dries
+While vendor drying runs on any USB QIDI Box, Valve Oil configuration SHALL refuse every command that starts a print, `SDCARD_PRINT_FILE`, the vendor power-loss resume, and `M24` when no print is paused, with an error naming the drying Boxes, and SHALL leave the print, the drying, and the heater as they were. Resuming a paused print SHALL NOT be refused.
+
+#### Scenario: Print started while a Box dries
+- **WHEN** a print is started while vendor drying runs on Box 2
+- **THEN** the command fails with `Box 2 is drying. Stop drying before starting a print.` and no print starts
+
+#### Scenario: No Box drying
+- **WHEN** a print is started with no vendor drying running, including with a Box heater target set
+- **THEN** the print starts as it would without Valve Oil
+
+#### Scenario: Paused print resumed
+- **WHEN** `M24` resumes a paused print while a Box dries
+- **THEN** the print resumes
+
+### Requirement: No QIDI Box drying started during a print
+From a print's start until it ends, including while a 3MF print unpacks and while it is paused, Valve Oil configuration SHALL refuse the vendor commands that start drying (`BOX_START_DRYING`, and `ENABLE_BOX_DRY` where the firmware has it).
+
+#### Scenario: Drying started during a print
+- **WHEN** `BOX_START_DRYING` runs while a print runs or is paused
+- **THEN** it fails with `Box drying can't start during a print. Set the Box heater target instead.` and the Box heater target is unchanged
+
+#### Scenario: Drying started between prints
+- **WHEN** `BOX_START_DRYING` runs with no print running, paused, or unpacking
+- **THEN** drying starts as it would without Valve Oil
+
 ### Requirement: Turning empty QIDI Box slots' spools while the Box heats
 While a USB QIDI Box heater has a nonzero target and the saved variable `vo_box_spool_roll` is `1`, Valve Oil configuration SHALL turn each empty slot of that Box back 25 mm at 20 mm/s every 300 s, one slot at a time, starting 300 s after the target is set. A slot is empty only when its saved vendor state is `0`, it is neither `slot_sync` nor `last_load_slot`, and its inlet sensor reads no filament. Turns SHALL NOT hold back or reorder toolhead motion.
 

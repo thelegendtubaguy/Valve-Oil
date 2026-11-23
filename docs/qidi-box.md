@@ -52,6 +52,12 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 
 `klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
 
+### Printing while a Box dries
+
+A print doesn't start while QIDI's timed drying runs on a USB Box, whether it was started from the touchscreen, Fluidd, or Valve Oil UI. The print start stops with `Box 2 is drying. Stop drying before starting a print.` Stop drying, then start the print again. Drying can't start during a print either, paused or not: it stops with `Box drying can't start during a print. Set the Box heater target instead.` To keep the Box warm through the print, set its heater target (Valve Oil UI's **Heat**). That holds the temperature without QIDI's spool turns, and [Turning spools while the Box heats](#turning-spools-while-the-box-heats) can turn the empty slots' spools without pausing the print.
+
+QIDI's drying turns every slot of the Box every 5 minutes, and each turn stops the toolhead for 5 seconds per slot. In a print, that stops the print for about 20 seconds every 5 minutes. A turn that comes while the printer homes or probes shuts Klipper down with `Internal error on command:"RUN_STEPPER"`. Resuming a paused print isn't blocked.
+
 ## Load and unload speed
 
 A load pushes filament from the spool to the Box hub, then fast toward the toolhead, then slowly until the toolhead filament sensor trips. An unload has the extruder pull the filament back, the Box pull it back to the hub, and then back to its parked position.

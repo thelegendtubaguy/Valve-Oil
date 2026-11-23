@@ -348,8 +348,11 @@ class GCode:
 
     def __init__(self):
         self.commands, self.responses, self.scripts = {}, [], []
+        self.gcode_help = {}
 
     def register_command(self, name, handler, desc=None):
+        if handler is None:
+            return self.commands.pop(name, None)
         self.commands[name] = handler
 
     def create_gcode_command(self, command, commandline, params):
@@ -937,6 +940,57 @@ class BoxFilamentGuardTests(QuietTestCase):
         external.set_filament_information("slot16", "#ffffff", "Mystery PETG", "Somebody")
         self.assertEqual(external.saved, {"filament_slot16": "QFG01"})
         self.assertTrue(gcode.responses)
+
+
+class BoxDryGuardTests(QuietTestCase):
+    START = {"SDCARD_PRINT_FILE": "SDCARD_PRINT_FILE FILENAME=part.gcode",
+             "power-loss resume": "SDCARD_POWER_OFF_CONTINUES_PINT_FILE STATE=e30=",
+             "M24": "M24"}
+
+    def printer(self, drying, state="standby"):
+        gcode = GCode()
+        started = []
+        for line in list(self.START.values()) + ["BOX_START_DRYING BOX=2 TEMP=65 TIME=3"]:
+            name = line.split()[0]
+            gcode.register_command(name, lambda gcmd, name=name: started.append(name))
+        boxes = [{"dry_state": 1 if number in drying else 0, "end_time": 120} for number in (1, 2)]
+        status = lambda eventtime, value: types.SimpleNamespace(get_status=lambda _eventtime: value)
+        printer = Printer({"gcode": gcode, "box_extras": status(0, {"boxes": boxes}),
+                           "print_stats": status(0, {"state": state})})
+        load_extra("box_dry_guard").load_config(Config(printer))
+        printer.send_event("klippy:ready")
+        return gcode, started
+
+    def test_no_print_starts_while_a_box_dries(self):
+        for boxes, message in (((2,), "Box 2 is drying."), ((1, 2), "Boxes 1 and 2 are drying.")):
+            for name, line in self.START.items():
+                with self.subTest(name, boxes=boxes):
+                    gcode, started = self.printer(boxes)
+                    with self.assertRaisesRegex(CommandError, message + " Stop drying before starting a print."):
+                        gcode.run_script(line)
+                    self.assertEqual(started, [])
+
+    def test_prints_start_with_no_box_drying_and_paused_prints_resume(self):
+        for name, line in self.START.items():
+            with self.subTest(name):
+                gcode, started = self.printer(())
+                gcode.run_script(line)
+                self.assertEqual(started, [line.split()[0]])
+        gcode, started = self.printer((2,), state="paused")
+        gcode.run_script("M24")
+        self.assertEqual(started, ["M24"])
+
+    def test_drying_starts_only_outside_a_print(self):
+        for state, refused in (("standby", False), ("complete", False), ("cancelled", False),
+                               ("extracting", True), ("printing", True), ("paused", True)):
+            with self.subTest(state):
+                gcode, started = self.printer((), state=state)
+                if refused:
+                    with self.assertRaisesRegex(CommandError, "Box drying can't start during a print."):
+                        gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+                else:
+                    gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+                self.assertEqual(started, [] if refused else ["BOX_START_DRYING"])
 
 
 class WithoutBoxCodeTests(QuietTestCase):
