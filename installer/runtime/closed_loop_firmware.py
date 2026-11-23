@@ -153,7 +153,7 @@ class KlipperAPI:
             sock.close()
             raise
         self.sock, self.buffer = sock, b""
-        self.call("gcode/subscribe_output", {"response_template": {"tltg": "output"}})
+        self.call("gcode/subscribe_output", {"response_template": {"vo": "output"}})
 
     def close(self) -> None:
         if self.sock is not None:

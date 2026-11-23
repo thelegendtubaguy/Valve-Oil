@@ -1,8 +1,8 @@
-# tltg-optimized:boot-animation
+# vo:boot-animation
 """Valve Oil's boot animation, played on the touchscreen from early in the boot until QIDI's touchscreen app runs.
 
-Installed by Valve Oil as /usr/local/lib/tltg_boot_animation.py, with the animation (installer/runtime/boot_screen.py
-describes its format) in ANIMATION, and run by tltg-boot-animation.service. It draws the first frame whole, then only
+Installed by Valve Oil as /usr/local/lib/vo_boot_animation.py, with the animation (installer/runtime/boot_screen.py
+describes its format) in ANIMATION, and run by vo-boot-animation.service. It draws the first frame whole, then only
 what changes, until QIDI's app draws its first screen: the app draws into the same framebuffer, so the player keeps a
 copy of what it drew and looks, before each frame, whether the framebuffer holds something else. The app first shows
 its logo alone on a plain background for a few seconds: the player waits for the app to finish drawing it, draws its own
@@ -29,13 +29,13 @@ ANIMATION = None
 FRAMEBUFFER = "/dev/fb0"
 PRINTER_DATA = "/home/qidi/printer_data"
 # A firmware update resuming at boot, or an install, shows its own screen.
-SCREEN_OWNERS = (".tltg_firmware_update_pending.json", ".tltg_install_screen")
+SCREEN_OWNERS = (".vo_firmware_update_pending.json", ".vo_install_screen")
 APP = b"qidiclient"
 LONGEST_SECONDS = 120
 # udev gives the framebuffer to the video group partway through boot, and until then only root can open it. On the
 # Smart 5 the player got there first on two boots of three.
 FRAMEBUFFER_WAIT_SECONDS = 15
-LOG = PRINTER_DATA + "/logs/tltg_boot_animation.log"
+LOG = PRINTER_DATA + "/logs/vo_boot_animation.log"
 FBIOGET_VSCREENINFO = 0x4600
 FBIOPUT_VSCREENINFO = 0x4601
 FBIOGET_FSCREENINFO = 0x4602

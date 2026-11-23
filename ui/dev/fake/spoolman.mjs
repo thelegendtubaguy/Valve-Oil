@@ -1,4 +1,4 @@
-// Spoolman: Moonraker's Spoolman component and a made-up Spoolman, with Valve Oil's tltg_spoolman Klipper module
+// Spoolman: Moonraker's Spoolman component and a made-up Spoolman, with Valve Oil's vo_spoolman Klipper module
 // giving each QIDI Box slot its spool (docs/spoolman.md).
 //
 // Moonraker reports the `spoolman` component only when started with `--spoolman`, which takes an optional mode:
@@ -8,7 +8,7 @@
 //   --spoolman offline  Spoolman unreachable
 //
 // `VO_SPOOLMAN CONNECTED=0` and `=1` take Spoolman away and back at runtime. While printing, the active spool uses
-// about a gram every 10 s. tltg_spoolman is there either way; with --spoolman, 1A, 1B, 2A, and the external spool
+// about a gram every 10 s. vo_spoolman is there either way; with --spoolman, 1A, 1B, 2A, and the external spool
 // start with spools, and 1B is loaded.
 
 const EXTERNAL_SLOT = 16
@@ -111,7 +111,7 @@ export function install(fake) {
   const mode = typeof args.spoolman === 'string' && !args.spoolman.startsWith('--') ? args.spoolman : 'live'
   let reachable = mode !== 'offline'
   let active = null
-  // tltg_spoolman's saved spools by slot, kept in the saved variable the module uses.
+  // vo_spoolman's saved spools by slot, kept in the saved variable the module uses.
   let slots = enabled ? { slot0: 1, slot1: 2, slot4: 5, slot16: 9 } : {}
   let synced = null
   const sockets = new Set()
@@ -135,12 +135,12 @@ export function install(fake) {
     broadcast('notify_active_spool_set', [{ spool_id: id }])
   }
 
-  // As tltg_spoolman does twice a second: the loaded slot's spool becomes the active one, when any slot has a spool.
+  // As vo_spoolman does twice a second: the loaded slot's spool becomes the active one, when any slot has a spool.
   function sync() {
     if (!st().save_variables) return
     const status = moduleStatus()
-    const prev = st().tltg_spoolman
-    if (!prev || prev.loaded_slot !== status.loaded_slot || JSON.stringify(prev.spools) !== JSON.stringify(status.spools)) set('tltg_spoolman', status)
+    const prev = st().vo_spoolman
+    if (!prev || prev.loaded_slot !== status.loaded_slot || JSON.stringify(prev.spools) !== JSON.stringify(status.spools)) set('vo_spoolman', status)
     if (!enabled || !Object.keys(slots).length || status.loaded_slot == null) return (synced = null)
     const key = `${status.loaded_slot}:${slots[status.loaded_slot] ?? 0}`
     if (synced === key) return
@@ -157,7 +157,7 @@ export function install(fake) {
 
   fake.status((status) => {
     status.save_variables.variables.vo_spoolman_spools = { ...slots }
-    status.tltg_spoolman = { loaded_slot: null, spools: { ...slots } }
+    status.vo_spoolman = { loaded_slot: null, spools: { ...slots } }
     queueMicrotask(sync)
   })
 

@@ -75,7 +75,8 @@ def parse_installed_state(raw: Any) -> InstalledState:
     if system_ledger is not None:
         system_ledger = _without_retired_operations(system_ledger)
     return InstalledState(
-        schema_version=1, package_id=_require_str(package, "id"), package_version=_require_str(package, "version"),
+        schema_version=1, package_id=_current_package_id(_require_str(package, "id")),
+        package_version=_require_str(package, "version"),
         runtime_firmware=_require_str(runtime, "firmware"), backup_label=_require_str(backup, "label"),
         installed_at=_require_str(raw, "installed_at"),
         managed_tree=ManagedTreeState(root=_validate_config_path(_require_str(managed_tree, "root")), files=tree_files),
@@ -198,3 +199,12 @@ def _validate_source_destination(path: str) -> str:
     if pure.is_absolute() or ".." in pure.parts or len(pure.parts) < 3 or pure.parts[:2] != ("klippy", "extras"):
         raise StateValidationError(f"Source patch destination must stay under klippy/extras/: {path}")
     return pure.as_posix()
+
+
+# The package id releases before 26.11.22.3 recorded, from before the project was named Valve Oil.
+EARLIER_PACKAGE_ID = "qidi-max4-optimized"
+PACKAGE_ID = "valve-oil"
+
+
+def _current_package_id(package_id: str) -> str:
+    return PACKAGE_ID if package_id == EARLIER_PACKAGE_ID else package_id

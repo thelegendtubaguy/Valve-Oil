@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
-ARCHIVE_URL=${TLTG_INSTALLER_ARCHIVE_URL:-https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/valve-oil.tar.gz}
-CHECKSUM_URL=${TLTG_INSTALLER_CHECKSUM_URL:-${ARCHIVE_URL}.sha256}
+# TLTG_INSTALLER_ARCHIVE_URL and TLTG_INSTALLER_CHECKSUM_URL are the names instructions before 26.11.22.3 used.
+ARCHIVE_URL=${VO_INSTALLER_ARCHIVE_URL:-${TLTG_INSTALLER_ARCHIVE_URL:-https://github.com/thelegendtubaguy/valve-oil/releases/latest/download/valve-oil.tar.gz}}
+CHECKSUM_URL=${VO_INSTALLER_CHECKSUM_URL:-${TLTG_INSTALLER_CHECKSUM_URL:-${ARCHIVE_URL}.sha256}}
 ARCHIVE_NAME=${ARCHIVE_URL##*/}
 ARCHIVE_NAME=${ARCHIVE_NAME%%\?*}
 ARCHIVE_NAME=${ARCHIVE_NAME%%#*}
@@ -17,7 +18,7 @@ PRINTER_OWNER=
 if [ "$(id -u)" -eq 0 ]; then
   # The installer runs as the user who owns printer_data, so unpack it in that
   # user's home, owned by that user, rather than root's.
-  PRINTER_UID=$(stat -c %u "${TLTG_OPTIMIZED_PRINTER_DATA_ROOT:-/home/qidi/printer_data}" 2>/dev/null || true)
+  PRINTER_UID=$(stat -c %u "${VO_PRINTER_DATA_ROOT:-${TLTG_OPTIMIZED_PRINTER_DATA_ROOT:-/home/qidi/printer_data}}" 2>/dev/null || true)
   if [ -n "$PRINTER_UID" ] && [ "$PRINTER_UID" != 0 ]; then
     PRINTER_ENTRY=$(getent passwd "$PRINTER_UID" || true)
     if [ -n "$PRINTER_ENTRY" ]; then

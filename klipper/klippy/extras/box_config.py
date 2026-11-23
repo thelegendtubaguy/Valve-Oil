@@ -130,9 +130,9 @@ class Boxconfig:
             for key in indexed_keys:
                 cfg_key = key + suffix
                 fileconfig.set(section_name, key, config.get(cfg_key))
-        if module == 'heater_generic':  # tltg-optimized: cap Box heater targets at 65 C
+        if module == 'heater_generic':  # Valve Oil: cap Box heater targets at 65 C
             fileconfig.set(section_name, 'target_max_temp', str(min(fileconfig.getfloat(section_name, 'target_max_temp'), 65.)))
-        access_tracking = config.access_tracking if module == 'heater_generic' else {}  # tltg-optimized: expose Box heater settings
+        access_tracking = config.access_tracking if module == 'heater_generic' else {}  # Valve Oil: expose Box heater settings
         fake_cfg = configfile.ConfigWrapper(
             self.printer, fileconfig, access_tracking, section_name
         )

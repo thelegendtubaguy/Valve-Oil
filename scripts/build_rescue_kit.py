@@ -8,7 +8,7 @@ scripts are left out: S40recovery, whose recovery program reboots the board when
 S00mountall.sh, which would fsck and resize partitions on its own once the eMMC is visible.
 
 Inputs are partition images from a working printer on the same QIDI firmware:
-  --boot      QIDI's boot partition (Valve Oil keeps it as tltg_optimized_system_backups/boot-partition-*.img)
+  --boot      QIDI's boot partition (Valve Oil keeps it as vo_system_backups/boot-partition-*.img)
   --recovery  QIDI's recovery partition (/dev/block/by-name/recovery, or sectors 0x4800-0xe800 of a maskrom export)
 
 Outputs, written to --output-dir:

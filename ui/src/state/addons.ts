@@ -1,7 +1,8 @@
 // Valve Oil's add-ons (src/qidi/vo-addons.ts), from the add-ons service the printer's nginx serves at
-// /tltg-addons/api. The polling, dismissal, and request handling follow the Fluidd fork's VoAddonsSettings.vue; the
+// /vo-addons/api. The polling, dismissal, and request handling follow the Fluidd fork's VoAddonsSettings.vue; the
 // service is polled only while the Add-ons settings are shown.
 import { createStore, useStore } from '../lib/store'
+import { getRenamedItem } from '../lib/storage'
 import { client } from './printer'
 import { t } from '../i18n'
 import {
@@ -29,14 +30,16 @@ export type AddonsState = {
 // Polls lose the list only after this many failures in a row, so a service restart mid-job keeps it on screen.
 const FAILURES_BEFORE_UNAVAILABLE = 3
 // A finished job stays on the printer until the next one starts. Its result here clears when dismissed, a success also
-// by itself after a few seconds, and stays cleared across reloads. The key is the fork's: both UIs share the origin.
+// by itself after a few seconds, and stays cleared across reloads. The key is the fork's: both UIs share the origin. Jobs
+// closed under the key's old tltg- name stay closed.
 const SUCCESS_VISIBLE_MS = 8000
-const DISMISSED_JOBS_KEY = 'tltg-addons.dismissed-jobs'
+const DISMISSED_JOBS_KEY = 'vo-addons.dismissed-jobs'
+const OLD_DISMISSED_JOBS_KEY = 'tltg-addons.dismissed-jobs'
 const DISMISSED_JOBS_KEPT = 20
 
 function loadDismissedJobs(): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(DISMISSED_JOBS_KEY) ?? '[]')
+    const value: unknown = JSON.parse(getRenamedItem(localStorage, DISMISSED_JOBS_KEY, OLD_DISMISSED_JOBS_KEY) ?? '[]')
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
   } catch {
     return []
@@ -50,7 +53,7 @@ export function useAddons() {
   return useStore(addons, (s) => s)
 }
 
-// Valve Oil UI talks only to the web server that served it. In development the dev server proxies /tltg-addons to the
+// Valve Oil UI talks only to the web server that served it. In development the dev server proxies /vo-addons to the
 // printer or the fake, so the page's own origin is used there too.
 const apiBase = () => voAddonsApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
 

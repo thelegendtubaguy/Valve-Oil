@@ -11,20 +11,20 @@
 # openspec/observations/qidi-box/hardware-and-protocols.md and is the tool to
 # reach for when re-measuring the feed path, for example after a PTFE change,
 # or when checking Box motion on new firmware before tuning
-# tltg_box_feed_motion. It does not use or change tltg_box_feed_motion
+# vo_box_feed_motion. It does not use or change vo_box_feed_motion
 # settings, and vendor loads measure from a later start point (after the
 # vendor's load pre-stage), so its distances are longer than vendor
 # three-stage-home travel.
 #
 # Install for testing (printer idle, nozzle cold, filament parked in the slot):
-#   1. Copy this file to ~/klipper/klippy/extras/tltg_box_feed_test.py.
-#   2. Create ~/printer_data/config/tltg-optimized-macros/box_feed_test.cfg
-#      containing the single section line: [tltg_box_feed_test]
+#   1. Copy this file to ~/klipper/klippy/extras/vo_box_feed_test.py.
+#   2. Create ~/printer_data/config/vo-macros/box_feed_test.cfg
+#      containing the single section line: [vo_box_feed_test]
 #   3. Restart the Klipper service (a host RESTART keeps an already imported
 #      module), then run VO_BOX_FEED_CHECK SLOT=<n> before any motion.
 # Remove: delete the .cfg first, then the .py, then restart the Klipper service.
 # Running the package installer also deletes the .cfg, because it mirrors
-# tltg-optimized-macros/, which leaves the .py inert.
+# vo-macros/, which leaves the .py inert.
 #
 # This test polls the toolhead sensor rather than homing on it, so each load
 # runs a fast move that stops short of the last observed trip point and then
@@ -42,7 +42,7 @@
 #       FAST, MAX, MARGIN, MIN_MARGIN, MARGIN_STEP, PAUSE, RESET (see cmd_TEST)
 #   VO_BOX_FEED_STOP                    stop after the current cycle
 #
-# Results append to tltg_box_feed_test.csv beside klippy.log.
+# Results append to vo_box_feed_test.csv beside klippy.log.
 
 import logging
 import math
@@ -58,7 +58,7 @@ try:
 except ImportError:
     _motion_queuing_module = None
 
-CSV_NAME = "tltg_box_feed_test.csv"
+CSV_NAME = "vo_box_feed_test.csv"
 SENSOR_NAME = "filament_switch_sensor filament_switch_sensor"
 ENABLE_SETTLE = 0.100
 STEP_TOLERANCE = 2
@@ -162,7 +162,7 @@ class BoxFeedTest:
         try:
             status = obj.get_status(self.reactor.monotonic())
         except Exception:
-            logging.exception("tltg_box_feed_test: %s get_status failed", name)
+            logging.exception("vo_box_feed_test: %s get_status failed", name)
             return {}
         return status if hasattr(status, "get") else {}
 
@@ -503,7 +503,7 @@ class BoxFeedTest:
                     '"%s"' % str(row.get(key, "")).replace('"', "'")
                     for key in CSV_FIELDS) + "\n")
         except Exception:
-            logging.exception("tltg_box_feed_test: cannot write %s", path)
+            logging.exception("vo_box_feed_test: cannot write %s", path)
 
     def _log_dir(self):
         log_file = self.printer.get_start_args().get("log_file")
@@ -538,7 +538,7 @@ class BoxFeedTest:
         try:
             self.gcode.run_script("_VO_BOX_FEED_CYCLE")
         except Exception as e:
-            logging.exception("tltg_box_feed_test: cycle failed")
+            logging.exception("vo_box_feed_test: cycle failed")
             self._end_session("error: %s" % e)
             return self.reactor.NEVER
         if session["stop"]:

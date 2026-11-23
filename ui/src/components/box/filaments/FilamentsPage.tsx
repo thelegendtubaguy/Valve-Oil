@@ -253,7 +253,7 @@ export function FilamentsPage() {
                       <td className="num whitespace-nowrap">{r.chamber ? `${r.chamber} °C` : <span className="text-ink-3">–</span>}</td>
                       <td>{r.support && <Check size={15} className="text-good" aria-label={t('box.filaments.support')} />}</td>
                       <td className="whitespace-nowrap text-right">
-                        <RowActions busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
+                        <RowActions name={[r.vendor, r.name].filter(Boolean).join(' ')} busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
                       </td>
                     </tr>
                   ))}
@@ -271,7 +271,7 @@ export function FilamentsPage() {
                       {[r.type, r.id, `${r.nozzleMin}–${r.nozzleMax} °C`, r.boxMax ? t('box.filaments.box_temp', { temp: r.boxMax }) : t('box.filaments.no_heating'), r.support ? t('box.filaments.support') : null].filter(Boolean).join(' · ')}
                     </div>
                   </div>
-                  <RowActions busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
+                  <RowActions name={[r.vendor, r.name].filter(Boolean).join(' ')} busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
                 </div>
               ))}
             </div>
@@ -285,16 +285,16 @@ export function FilamentsPage() {
   )
 }
 
-function RowActions({ busy, onEdit, onDuplicate, onRemove }: { busy: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void }) {
+function RowActions({ name, busy, onEdit, onDuplicate, onRemove }: { name: string; busy: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void }) {
   return (
     <span className="inline-flex">
-      <button className="iconbtn" disabled={busy} onClick={onEdit} title={t('common.edit')} aria-label={t('common.edit')}>
+      <button className="iconbtn" disabled={busy} onClick={onEdit} title={t('common.edit')} aria-label={t('box.filaments.edit_named', { name })}>
         <Pencil size={14} />
       </button>
-      <button className="iconbtn" disabled={busy} onClick={onDuplicate} title={t('box.filaments.duplicate')} aria-label={t('box.filaments.duplicate')}>
+      <button className="iconbtn" disabled={busy} onClick={onDuplicate} title={t('box.filaments.duplicate')} aria-label={t('box.filaments.duplicate_named', { name })}>
         <Copy size={14} />
       </button>
-      <button className="iconbtn" disabled={busy} onClick={onRemove} title={t('common.remove')} aria-label={t('common.remove')}>
+      <button className="iconbtn" disabled={busy} onClick={onRemove} title={t('common.remove')} aria-label={t('box.filaments.remove_named', { name })}>
         <Trash2 size={14} />
       </button>
     </span>

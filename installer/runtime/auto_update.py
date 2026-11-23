@@ -1,6 +1,6 @@
 """The hourly update check and automatic updates.
 
-Every install schedules the check (tltg-optimized-auto-update.timer and its service), as a guarded host change in
+Every install schedules the check (vo-auto-update.timer and its service), as a guarded host change in
 system_optimizations.py, and only uninstall removes it. Each run finds what is waiting for the printer (a newer release,
 the release's QIDI firmware update, boards not on their pinned firmware) and publishes it to the status file
 (update_check.py). The enrollment marker in printer_data is the only switch: without it a run only checks and
@@ -49,27 +49,28 @@ from .postflight import verify_install_postflight
 from .process_restart import ProcessRestartError, restart_entries, restart_pending
 from .manifest import ManifestValidationError, load_manifest
 from .state_file import StateValidationError, load_installed_state
-from .naming import (ARCHIVE_NAME, BUNDLE_ROOT_NAME, CACHE_DIRECTORY, LEGACY_BUNDLE_ROOT_NAME, LEGACY_CACHE_DIRECTORIES,
+from .naming import (
+    has_marker,ARCHIVE_NAME, BUNDLE_ROOT_NAME, CACHE_DIRECTORY, LEGACY_BUNDLE_ROOT_NAME, LEGACY_CACHE_DIRECTORIES,
                      REPOSITORY_URL)
 from .sudo import run_sudo_ignore_failure as _run_sudo_ignore_failure
 
 DEFAULT_ARCHIVE_URL = f"{REPOSITORY_URL}/releases/latest/download/{ARCHIVE_NAME}"
 DEFAULT_CHECKSUM_URL = f"{DEFAULT_ARCHIVE_URL}.sha256"
-LOCK_HELD_ENV = "TLTG_OPTIMIZED_INSTALLER_LOCK_HELD"
+LOCK_HELD_ENV = "VO_INSTALLER_LOCK_HELD"
 # Who asked for an install's QIDI firmware update, as its status-file run kind: "automatic", "update_now", or by default
 # "install" (firmware_update.py).
-KIND_ENV = "TLTG_FIRMWARE_UPDATE_KIND"
-STATE_FILE = "config/tltg_optimized_auto_update_state.json"
-ENROLLMENT_FILE = ".tltg_optimized_auto_update_enrolled"
-SERVICE_NAME = "tltg-optimized-auto-update.service"
-TIMER_NAME = "tltg-optimized-auto-update.timer"
+KIND_ENV = "VO_FIRMWARE_UPDATE_KIND"
+STATE_FILE = "config/vo_auto_update_state.json"
+ENROLLMENT_FILE = ".vo_auto_update_enrolled"
+SERVICE_NAME = "vo-auto-update.service"
+TIMER_NAME = "vo-auto-update.timer"
 SYSTEMD_DIR = Path("/etc/systemd/system")
-SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"
+SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"
 URL_OVERRIDE_ENVIRONMENT = (
-    "TLTG_AUTO_UPDATE_ARCHIVE_URL",
-    "TLTG_AUTO_UPDATE_CHECKSUM_URL",
-    "TLTG_INSTALLER_ARCHIVE_URL",
-    "TLTG_INSTALLER_CHECKSUM_URL",
+    "VO_AUTO_UPDATE_ARCHIVE_URL",
+    "VO_AUTO_UPDATE_CHECKSUM_URL",
+    "VO_INSTALLER_ARCHIVE_URL",
+    "VO_INSTALLER_CHECKSUM_URL",
 )
 # A release bundle is downloaded and unpacked here, in the printer user's home and never /tmp, which QIDI's firmware
 # package empties; one directory per run, removed when the run's bundle is in place or the run fails.
@@ -86,8 +87,8 @@ TIMER_OPERATION = "auto_update_timer"
 SERVICE_FILE = str(SYSTEMD_DIR / SERVICE_NAME)
 TIMER_FILE = str(SYSTEMD_DIR / TIMER_NAME)
 INSTALLED_BUNDLE = Path("/home/qidi") / BUNDLE_ROOT_NAME
-SERVICE_MARKER = "# tltg-optimized:auto-update-service\n"
-TIMER_MARKER = "# tltg-optimized:auto-update-timer\n"
+SERVICE_MARKER = "# vo:auto-update-service\n"
+TIMER_MARKER = "# vo:auto-update-timer\n"
 SERVICE_CONTENT = SERVICE_MARKER + f"""\
 # Valve Oil's update check: shows what is waiting, and installs it only when automatic updates are on. Installed by
 # Valve Oil.
@@ -150,13 +151,13 @@ def patch_timer(current: str) -> str:
 
 
 def _patch_unit(current: str, desired: str, marker: str, legacy: re.Pattern, name: str) -> str:
-    if current == "" or current.startswith(marker) or legacy.fullmatch(current):
+    if current == "" or has_marker(current, marker) or legacy.fullmatch(current):
         return desired
     raise InstallerError(f"Existing {name} is unrecognized and was preserved.")
 
 
 def _ours(text: str, marker: str, legacy: re.Pattern) -> bool:
-    return text.startswith(marker) or legacy.fullmatch(text) is not None
+    return has_marker(text, marker) or legacy.fullmatch(text) is not None
 
 
 def systemd_dir(environ: dict[str, str] | None = None) -> Path:
@@ -492,7 +493,7 @@ def release_urlopen(url, timeout=20):
     """urlopen that keeps the redirects it followed, which name the latest release's tag."""
     handler = _RecordedRedirects()
     response = urllib.request.build_opener(handler).open(url, timeout=timeout)
-    response.tltg_redirects = tuple(handler.urls)
+    response.vo_redirects = tuple(handler.urls)
     return response
 
 
@@ -506,7 +507,7 @@ def fetch_latest_release(checksum_url: str, *, urlopen: UrlOpenFn = release_urlo
         with urlopen(checksum_url, timeout=20) as response:
             body = response.read().decode("utf-8", errors="replace")
             geturl = getattr(response, "geturl", None)
-            urls = (*getattr(response, "tltg_redirects", ()), geturl() if callable(geturl) else "")
+            urls = (*getattr(response, "vo_redirects", ()), geturl() if callable(geturl) else "")
     except (OSError, urllib.error.URLError, UnicodeDecodeError) as exc:
         raise AutoUpdateError(messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED) from exc
     first = body.strip().split()[0] if body.strip() else ""
@@ -654,14 +655,14 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
 
 
 def release_checksum_url(environ: dict[str, str]) -> str:
-    return environ.get("TLTG_AUTO_UPDATE_CHECKSUM_URL") or environ.get(
-        "TLTG_INSTALLER_CHECKSUM_URL", DEFAULT_CHECKSUM_URL
+    return environ.get("VO_AUTO_UPDATE_CHECKSUM_URL") or environ.get(
+        "VO_INSTALLER_CHECKSUM_URL", DEFAULT_CHECKSUM_URL
     )
 
 
 def release_archive_url(environ: dict[str, str]) -> str:
-    return environ.get("TLTG_AUTO_UPDATE_ARCHIVE_URL") or environ.get(
-        "TLTG_INSTALLER_ARCHIVE_URL", DEFAULT_ARCHIVE_URL
+    return environ.get("VO_AUTO_UPDATE_ARCHIVE_URL") or environ.get(
+        "VO_INSTALLER_ARCHIVE_URL", DEFAULT_ARCHIVE_URL
     )
 
 

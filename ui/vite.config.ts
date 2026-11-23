@@ -57,15 +57,15 @@ export default defineConfig({
       // Valve Oil's status service, which the printer's nginx serves on the same origin as Valve Oil UI. VO_PRINTER
       // names the printer or fake Moonraker to send it to; Origin is rewritten to match, as the service refuses
       // cross-origin changes.
-      '/tltg-status': {
+      '/vo-status': {
         target: statusTarget,
         changeOrigin: true,
         configure: (proxy) => proxy.on('proxyReq', (req) => req.getHeader('origin') && req.setHeader('origin', new URL(statusTarget).origin)),
       },
-      // The touchscreen stream (tltg-remote-screen), a websocket on the same origin.
-      '/tltg-screen': { target: statusTarget, ws: true, changeOrigin: true },
+      // The touchscreen stream (vo-remote-screen), a websocket on the same origin.
+      '/vo-screen': { target: statusTarget, ws: true, changeOrigin: true },
       // Valve Oil's add-ons service, on the same origin and with the same cross-origin rule.
-      '/tltg-addons': {
+      '/vo-addons': {
         target: statusTarget,
         changeOrigin: true,
         configure: (proxy) => proxy.on('proxyReq', (req) => req.getHeader('origin') && req.setHeader('origin', new URL(statusTarget).origin)),

@@ -171,3 +171,33 @@ source_patches:
   firmware: 01.01.02.01
   original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
   desired_sha256: 3065abb2faad5ed580eb14389495440074512bd6fcb9a7929d09997bb50d823d
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.06.03
+  original_sha256: 89428b465b7f3d62bd8b65b3155b8aa8e93cd917f59779e40a246b5d89ff8d71
+  desired_sha256: 47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.06.04
+  original_sha256: ff0439f8b9e702537f66c16508f7b0a137b27cff51eb653aa951172d3e5184a0
+  desired_sha256: 47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.06.04
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.06.05
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.07.01
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565
+- id: qidi_homing
+  destination: klippy/extras/homing.py
+  firmware: 01.01.02.01
+  original_sha256: 0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761
+  desired_sha256: 24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565

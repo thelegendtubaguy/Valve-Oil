@@ -12,7 +12,7 @@
 
 `G28 X Y` took 12.5–12.7 s on stock and 12.8 s with the fix.
 
-The fixed firmware reports its version as `02.01.01.12-valve-oil.1`, which is QIDI's version, the project name, and a revision that goes up with each new mainboard firmware. You can see it in `klippy.log` (`Loaded MCU 'mcu' … (02.01.01.12-valve-oil.1 …`), in Fluidd's system information, and with `./mainboard-firmware.sh status`. The earlier build, `02.01.01.12-tltg-clreplies1`, has the same fix; `install` replaces it.
+The fixed firmware reports its version as `02.01.01.12-valve-oil.1`, which is QIDI's version, the project name, and a revision that goes up with each new mainboard firmware. You can see it in `klippy.log` (`Loaded MCU 'mcu' … (02.01.01.12-valve-oil.1 …`), in Fluidd's system information, and with `./mainboard-firmware.sh status`. The earlier build, `02.01.01.12-vo-clreplies1`, has the same fix; `install` replaces it.
 
 The fix changes four instructions, the version string, and the space the shorter data dictionary frees, which holds the new reply-length table. Nothing else about the mainboard changes.
 
@@ -38,14 +38,14 @@ Run these from the unpacked installer folder (`~/valve-oil`) over SSH:
 The script:
 
 1. Reads the mainboard's bootloader and firmware through Klipper's connection to it, and admits them only if both match a validated build exactly.
-2. Saves the read-back under `~/printer_data/.tltg_mainboard_firmware_backups/`.
+2. Saves the read-back under `~/printer_data/.vo_mainboard_firmware_backups/`.
 3. Builds the patched image from the mainboard's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged. Once the services stop, closing the SSH session or pressing Ctrl-C doesn't stop it.
 
-A mainboard that already has the requested firmware is skipped. A mainboard with the earlier build, or with QIDI's `02.01.01.11`, is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. A new Valve Oil install is refused in that case, and an existing one keeps the mainboard and THR firmware as they are, with a printer warning and `tltg_mainboard_firmware.json` in Fluidd's **Logs**. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private.
+A mainboard that already has the requested firmware is skipped. A mainboard with the earlier build, or with QIDI's `02.01.01.11`, is reflashed with a new image built from QIDI's stock firmware, taken from the script's earlier backups or `~/update`; without one, `install` stops before changing anything. If the script doesn't recognize the bootloader or firmware, nothing is changed: it saves a read-only capture and points to a shareable `report.json` in it. A new Valve Oil install is refused in that case, and an existing one keeps the mainboard and THR firmware as they are, with a printer warning and `vo_mainboard_firmware.json` in Fluidd's **Logs**. Attach only `report.json` to a [support issue](https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml); the `.bin` files stay private.
 
 ## If a flash fails
 
-The mainboard's bootloader is never erased or written. If a transfer stops part way, the bootloader erases the first 4 KiB of the firmware ten seconds later and keeps waiting for a new transfer, also after the printer is turned off and on. The script then leaves Klipper and the touchscreen stopped, keeps `~/printer_data/.tltg_mainboard_firmware_pending.json`, and prints the command to run:
+The mainboard's bootloader is never erased or written. If a transfer stops part way, the bootloader erases the first 4 KiB of the firmware ten seconds later and keeps waiting for a new transfer, also after the printer is turned off and on. The script then leaves Klipper and the touchscreen stopped, keeps `~/printer_data/.vo_mainboard_firmware_pending.json`, and prints the command to run:
 
 ```sh
 ./mainboard-firmware.sh rescue

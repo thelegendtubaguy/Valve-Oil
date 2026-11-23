@@ -38,7 +38,7 @@ function Panel({ addon, children }: { addon: VoAddon; children?: ReactNode }) {
   const state = addon.service?.active ?? 'unknown'
   const service = Object.hasOwn(SERVICE, state) ? { label: t(`settings.addons.panel.service_state.${state}` as MessageKey), cls: SERVICE[state] } : { label: state, cls: 'text-warn' }
   return (
-    <div className="grid gap-0.5 rounded-[10px] bg-inset px-3 py-2 shadow-[inset_0_0_0_1px_var(--line)]">
+    <div className="grid min-w-0 grid-cols-1 gap-0.5 rounded-[10px] bg-inset px-3 py-2 shadow-[inset_0_0_0_1px_var(--line)]">
       <KV k={t('settings.addons.panel.service')}>
         <span className={`font-semibold ${service.cls}`}>{service.label}</span>
       </KV>
@@ -53,7 +53,7 @@ function Actions({ children }: { children: ReactNode }) {
 
 function Ext({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-accent-ink hover:underline">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 max-w-full flex-wrap items-center justify-center gap-1 break-all font-semibold text-accent-ink hover:underline">
       {children} <ExternalLink size={12} />
     </a>
   )

@@ -40,6 +40,8 @@ from . import moonraker_fixes
 from . import moonraker_speedups
 from . import moonraker_spoolman
 from . import moonraker_used_extruders
+from . import earlier_names
+from . import thr_firmware
 from . import qidiclient_firmware_popup
 from . import addons_service
 from . import status_service
@@ -74,11 +76,11 @@ from .safety import FIRMWARE_UPDATE_RUN_ENV
 from .state_file import StateValidationError, load_installed_state, write_installed_state
 from .sudo import authenticate_sudo, run_sudo, run_sudo_ignore_failure, run_sudo_or_raise
 
-SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"
+SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
-SYSTEM_BACKUP_DIR = "tltg_optimized_system_backups"
-SYSTEM_JOURNAL = ".tltg_optimized_system_journal.json"
-LEGACY_MIGRATION_JOURNAL = ".tltg_optimized_system_ledger_migration.json"
+SYSTEM_BACKUP_DIR = "vo_system_backups"
+SYSTEM_JOURNAL = ".vo_system_journal.json"
+LEGACY_MIGRATION_JOURNAL = ".vo_system_ledger_migration.json"
 LEGACY_MIGRATION_PREFIX = ".ledger-migration-"
 LEGACY_MIGRATION_OWNER = ".migration-owner.json"
 AI_TOUCHSCREEN_WARNING = (
@@ -207,6 +209,8 @@ class _GuardedFilePatch:
     binary: Any = None
 
     def patched(self, text: str, *, spec: SystemOptimizationsSpec, root: Path) -> str:
+        # A release before 26.11.22.3 wrote the same changes under tltg names.
+        text = earlier_names.current_text(text)
         return self.patch(text, **(self.patch_options(spec, root) if self.patch_options is not None else {}))
 
 
@@ -1432,6 +1436,32 @@ def _retire_services(restore_preimages: dict[str, Any], actions: list[dict[str, 
     return retired
 
 
+def retire_earlier_host_names(*, paths: RuntimePaths, reporter, input_stream, environ: dict[str, str], run=subprocess.run) -> None:
+    """Uninstall: remove what releases before 26.11.22.3 installed on the host under tltg names, ledger or not."""
+    if not _system_root_allowed(paths=paths, environ=environ):
+        return
+    root = _system_root(environ)
+    if not earlier_names.earlier_host_files(root):
+        return
+    sudo_password = None if _is_fake_root(root) else _sudo_password(
+        reporter=reporter, input_stream=input_stream, environ=environ, run=run
+    )
+    retire_earlier_names(root=root, sudo_password=sudo_password, run=run, reporter=reporter, folders=True)
+
+
+def retire_earlier_names(*, root: Path, sudo_password: str | None, run, reporter, folders: bool) -> None:
+    """Remove what releases before 26.11.22.3 installed on the host under tltg names (earlier_names). A folder the
+    nginx site still serves stays."""
+    served = ""
+    with suppress(OSError, UnicodeDecodeError):
+        served = _map_path(root, remote_screen.NGINX_SITE).read_text(encoding="utf-8")
+    removed = earlier_names.retire_earlier_host_files(
+        root=root, sudo_password=sudo_password, run=run, folders=folders, keep=lambda path: f"{path}/" in served or f"{path};" in served,
+    )
+    for path in removed:
+        reporter.debug(event="system_optimizations.earlier_name_removed", path=path)
+
+
 def _replace_link_with_file(path: str, content: str, *, root: Path, sudo_password: str | None, run) -> None:
     """Replace the symlink at path with a regular file, in one rename."""
     mapped = _map_path(root, path)
@@ -1443,7 +1473,7 @@ def _replace_link_with_file(path: str, content: str, *, root: Path, sudo_passwor
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
         handle.write(content)
         tmp = handle.name
-    staged = f"{path}.tltg-new"
+    staged = f"{path}.vo-new"
     try:
         run_sudo_or_raise(["install", "-m", "0644", tmp, staged], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run,
                           password=sudo_password or "")
@@ -1544,7 +1574,7 @@ def _restore_decision(operation_id: str, *, preimage: dict[str, Any], outcome: d
 
 # The system ledger a QIDI firmware update carries across QIDI's package, which deletes the state file holding it. It
 # lives beside the update's pending record, and only that update's own install reads it.
-CARRIED_LEDGER_FILE = ".tltg_carried_system_ledger.json"
+CARRIED_LEDGER_FILE = ".vo_carried_system_ledger.json"
 
 
 def save_carried_system_ledger(paths: RuntimePaths, state_path: Path, update_id: str) -> bool:
@@ -1821,6 +1851,8 @@ def apply_system_optimizations(
         restarts=restarts,
         reporter=reporter,
     )
+    # Units, files, and Klipper-side .pth files from releases before 26.11.22.3 go before their replacements start.
+    retire_earlier_names(root=root, sudo_password=sudo_password, run=run, reporter=reporter, folders=False)
     selected_ids = _selected_operation_ids(spec, policy)
     if "qidiclient_static_gifs" in selected_ids:
         _validate_qidiclient_archive(paths.installer_root / spec.qidiclient_static_gifs.archive, spec.qidiclient_static_gifs.sha256)
@@ -2591,6 +2623,12 @@ def apply_system_optimizations(
             restore_preimages, actions, spec=spec, root=root, sudo_password=sudo_password, run=run, reporter=reporter,
             source=source,
         ) or applied_any
+        # Their folders go once nginx and the .pth files point at the current ones.
+        retire_earlier_names(root=root, sudo_password=sudo_password, run=run, reporter=reporter, folders=True)
+        if not _is_fake_root(root):
+            with suppress(InstallerError, OSError):
+                if thr_firmware.refresh_rescue_unit(paths, run=run, password=sudo_password or ""):
+                    reporter.debug(event="system_optimizations.thr_rescue_unit_refreshed")
     except BaseException as exc:
         if current_preimages:
             last_id = next(reversed(current_preimages))
@@ -2882,7 +2920,7 @@ def _apply_guarded_file_patch(operation_id: str, *, spec: SystemOptimizationsSpe
             or (original is not None and original_sha256 != preimage.get("sha256"))
             or (original is None and not guarded.create_if_missing)):
         raise SystemOptimizationError(f"{guarded.label} changed after backup; refusing replacement.")
-    staged_path = f"{path}.tltg-{uuid.uuid4().hex}.tmp"
+    staged_path = f"{path}.vo-{uuid.uuid4().hex}.tmp"
     staged = _map_path(root, staged_path)
     try:
         if guarded.binary is not None:
@@ -3055,7 +3093,7 @@ def _apply_gifs(*, paths: RuntimePaths, spec: SystemOptimizationsSpec, root: Pat
             archive.extractall(destination, members=members)
             _apply_fake_gif_metadata(destination=destination, replaced=replaced, metadata=metadata)
         else:
-            tmp = Path(tempfile.mkdtemp(prefix="tltg-static-gifs-"))
+            tmp = Path(tempfile.mkdtemp(prefix="vo-static-gifs-"))
             try:
                 archive.extractall(tmp, members=members)
                 for relative in [*replaced, *created]:
@@ -3272,14 +3310,14 @@ def _restore_file_preimage(preimage: dict[str, Any], *, paths: RuntimePaths, roo
     if _is_fake_root(root):
         # Replaced in one rename, as `install` and `mv` do on the printer.
         mapped.parent.mkdir(parents=True, exist_ok=True)
-        staged = mapped.with_name(f"{mapped.name}.tltg-restore-{_now_for_path()}.tmp")
+        staged = mapped.with_name(f"{mapped.name}.vo-restore-{_now_for_path()}.tmp")
         shutil.copy2(backup_path, staged)
         os.replace(staged, mapped)
         if durable:
             _sync_host_path(path, root=root, sudo_password=sudo_password, run=run)
     else:
         _reject_parent_symlink_path(mapped, root=root)
-        tmp_path = f"{path}.tltg-restore-{_now_for_path()}.tmp"
+        tmp_path = f"{path}.vo-restore-{_now_for_path()}.tmp"
         try:
             run_sudo_or_raise(["install", "-D", "-m", preimage.get("mode", "0644"), str(backup_path), tmp_path], messages.SYSTEM_RESTORE_FAILED, run=run, password=sudo_password or "")
             if durable:
@@ -3930,7 +3968,7 @@ def _install_rockchip_dropin(
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
         handle.write(spec.dropin_content)
         source = handle.name
-    target_tmp = f"{spec.dropin}.tltg-{_now_for_path()}.tmp"
+    target_tmp = f"{spec.dropin}.vo-{_now_for_path()}.tmp"
     try:
         run_sudo_or_raise(["install", "-D", "-m", "0644", source, target_tmp], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")
         run_sudo_or_raise(["mv", "-f", target_tmp, spec.dropin], messages.SYSTEM_OPTIMIZATIONS_FAILED, run=run, password=sudo_password or "")

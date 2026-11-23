@@ -179,7 +179,7 @@ ZeroTier's own package installs system-wide and runs as root. Valve Oil installs
 
 - ZeroTier's `zerotier-one` program, unmodified, in `~/vo-addons/zerotier/`;
 - the printer's ZeroTier identity and its networks in `~/vo-addons/zerotier-data/`;
-- the `tun` driver and the script that loads it in `/usr/local/lib/tltg-addons/zerotier/`, owned by root, since root loads them;
+- the `tun` driver and the script that loads it in `/usr/local/lib/vo-addons/zerotier/`, owned by root, since root loads them;
 - the `zerotier-one` service, which loads the `tun` driver as root and then runs ZeroTier as the `qidi` user with only the rights it needs to create and configure its network connection, on CPUs 0 and 3, away from Klipper's CPUs, at a lower priority than Klipper.
 
 On the test Plus 5, ZeroTier takes about 12 MB of memory and under 1% of one CPU core while nothing uses it.

@@ -20,8 +20,8 @@ from .sudo import SudoError, authenticate_sudo, run_sudo, run_sudo_or_raise
 HOST_REBOOT_SCHEMA_VERSION = 1
 HOST_REBOOT_REASON = "rockchip_root_sync"
 HOST_REBOOT_OPERATION = "rockchip_root_sync"
-HOST_REBOOT_UNIT = "tltg-optimized-host-reboot"
-HOST_REBOOT_FOLLOWUP_UNIT = "tltg-optimized-host-reboot-followup"
+HOST_REBOOT_UNIT = "vo-host-reboot"
+HOST_REBOOT_FOLLOWUP_UNIT = "vo-host-reboot-followup"
 # Automatic updates reboot only after Klipper has been this long without motion, heat, or a running command.
 KLIPPER_IDLE_SECONDS = 600
 # A scheduled reboot waits this long for a printer whose state can't be read yet, such as one whose Klipper is starting

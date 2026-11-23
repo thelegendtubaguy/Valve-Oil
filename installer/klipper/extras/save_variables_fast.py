@@ -65,7 +65,7 @@ def _write(path, varfile):
     """Replace the file at path with varfile, keeping its mode and group."""
     path = os.path.realpath(path)
     temp = os.path.join(os.path.dirname(path),
-                        ".%s.tltg-tmp" % (os.path.basename(path),))
+                        ".%s.vo-tmp" % (os.path.basename(path),))
     try:
         with open(temp, "w") as f:
             varfile.write(f)
@@ -92,13 +92,13 @@ class SaveVariablesFast:
     def __init__(self, config):
         self.printer = config.get_printer()
         if not config.has_section("save_variables"):
-            logging.info("tltg_save_variables_fast: [save_variables] is not"
+            logging.info("vo_save_variables_fast: [save_variables] is not"
                          " configured; SAVE_VARIABLE unchanged")
             return
         self.save_vars = self.printer.load_object(config, "save_variables")
         if not all(hasattr(self.save_vars, name) for name in
                    ("allVariables", "filename", "cmd_SAVE_VARIABLE")):
-            logging.info("tltg_save_variables_fast: unrecognized save_variables"
+            logging.info("vo_save_variables_fast: unrecognized save_variables"
                          " module; SAVE_VARIABLE unchanged")
             return
         self._copy_earlier_names()
@@ -136,11 +136,11 @@ class SaveVariablesFast:
                 varfile.set("Variables", key, repr(val))
             _write(save_vars.filename, varfile)
         except Exception:
-            logging.exception("tltg_save_variables_fast: saving the vo_ names"
+            logging.exception("vo_save_variables_fast: saving the vo_ names"
                               " of tltg_ variables failed")
             return
         save_vars.allVariables = variables
-        logging.info("tltg_save_variables_fast: saved %s under their vo_"
+        logging.info("vo_save_variables_fast: saved %s under their vo_"
                      " names", ", ".join(sorted("tltg_" + name[3:]
                                                 for name in copies)))
 
@@ -193,7 +193,7 @@ class SaveVariablesFast:
             try:
                 setattr(owner, method, self._vendor_save(owner, attr, original))
             except (AttributeError, TypeError):
-                logging.info("tltg_save_variables_fast: %s.%s can't be "
+                logging.info("vo_save_variables_fast: %s.%s can't be "
                              "replaced; its saves are unchanged",
                              obj_name, method)
 

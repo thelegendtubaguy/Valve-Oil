@@ -33,7 +33,7 @@ REAR_CHUTE_WINDOW = {
 TRAVEL = {"plus5": {"X": (-7, 326), "Y": (-5, 340)}, "smart5": {"X": (-2, 185), "Y": (-4, 200)}}
 
 
-class OptimizedMacroContractTests(unittest.TestCase):
+class MacroContractTests(unittest.TestCase):
     def setUp(self):
         files = installed_macro_files("max4")
         self.macros, duplicates = parse_macro_definitions(files)
@@ -262,7 +262,7 @@ class OptimizedMacroContractTests(unittest.TestCase):
                 self.assertEqual(large.findall(text), [])
                 self.assertEqual(
                     text.count("set box_available ="),
-                    text.count("{% set box_available = printer.tltg_macro_status.box_available %}"),
+                    text.count("{% set box_available = printer.vo_macro_status.box_available %}"),
                 )
 
     def test_plus5_macros_have_no_closed_loop_commands(self):

@@ -13,7 +13,7 @@ INSTALL_NOOP_DESIRED = "noop_desired"
 UNINSTALL_REVERTED = "reverted"
 UNINSTALL_NOOP_EXPECTED = "noop_expected"
 USER_MODIFIED = "user_modified"
-SECTION_DELETED = "__TLTG_SECTION_DELETED__"
+SECTION_DELETED = "__VO_SECTION_DELETED__"
 _SECTION_HASH = re.compile(r"[0-9a-f]{64}")
 
 

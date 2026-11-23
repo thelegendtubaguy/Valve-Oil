@@ -1,0 +1,16 @@
+# Operator klippy.log, Max 4 01.01.07.01, Valve Oil 26.11.22.1, 2026-11-22, trimmed to the lines the checker reads.
+# Box feeds that save and put back the same clock, a print start that re-arms auto-feed with no feed running, and an
+# unload that clears the toolhead sensor.
+2026-11-22 09:59:06 - Start printer at Sun Nov 22 09:59:06 2026 (1795337946.2 89048.9)
+variable_package_version = "26.11.22.1"
+MCU 'mcu_box1' config: ADC_MAX=4095 CLOCK_FREQ=84000000 MCU=stm32f401xc PWM_MAX=255
+2026-11-22 10:27:02 - tltg_box_flow_recovery: 1C unload from the toolhead: toolhead sensor filament -> clear, cleared after 85 mm; hub sensor filament -> clear; extruder pulled back 85 mm, 0 of them after its pull-back; returned True
+2026-11-22 10:40:30 - Status changed: ready: -> print_start:
+2026-11-22 10:42:34 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 91656.942512038, '#receive_time': 91656.960689288}
+2026-11-22 10:42:35 - mcu 'mcu_box1': got {'now': 3027010534, 'next_s': 270260911, 'diff': 1538217672, '#name': 'STEP-set_last_step', '#sent_time': 91657.989279205, '#receive_time': 91658.045833664}
+2026-11-22 10:42:35 - mcu 'mcu_box1': got {'oid': 1, 'clk': 270260911, '#name': 'last_step_clk', '#sent_time': 91657.989279205, '#receive_time': 91658.054260205}
+2026-11-22 10:42:35 - [MCB] STATE {'oid': 23, 'state': 2, '#name': 'MCB_STATE', '#sent_time': 91657.989279205, '#receive_time': 91658.054300455}
+2026-11-22 10:42:36 - mcu 'mcu_box1': got {'now': 3118873097, 'next_s': 270260911, 'diff': 1446355109, '#name': 'STEP-set_last_step', '#sent_time': 91659.134292831, '#receive_time': 91659.139374831}
+2026-11-22 10:48:33 - mcu 'mcu_box1': got {'oid': 23, 'stepper_oid': 1, 'state': 0, 'polarity': 0, 'pullup': 0, '#name': 'MCB_CONFIG_STEPPER', '#sent_time': 92016.387316751, '#receive_time': 92016.387903001}
+2026-11-22 10:48:33 - mcu 'mcu_box1': got {'oid': 1, 'clk': 270260911, '#name': 'last_step_clk', '#sent_time': 92016.402520751, '#receive_time': 92016.404180626}
+2026-11-22 10:48:33 - [MCB] STATE {'oid': 23, 'state': 1, '#name': 'MCB_STATE', '#sent_time': 92016.402520751, '#receive_time': 92016.404229335}

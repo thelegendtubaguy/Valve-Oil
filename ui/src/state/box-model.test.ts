@@ -25,14 +25,15 @@ function box({
   variables = {},
   status = {},
   commands = [],
+  objects = [],
   klippy = 'ready',
   lists = NO_LISTS,
-}: { controller?: boolean; variables?: Record<string, unknown>; status?: Status; commands?: string[]; klippy?: PrinterState['klippy']; lists?: Lists } = {}): BoxState {
+}: { controller?: boolean; variables?: Record<string, unknown>; status?: Status; commands?: string[]; objects?: string[]; klippy?: PrinterState['klippy']; lists?: Lists } = {}): BoxState {
   const printer: PrinterState = {
     conn: 'open',
     klippy,
     klippyMessage: '',
-    objects: [],
+    objects,
     status: {
       ...(controller ? { multi_color_controller: {} } : {}),
       save_variables: { variables: { box_count: 2, enable_box: 1, slot_sync: 'slot-1', ...variables } },
@@ -124,6 +125,22 @@ describe('Box tag, jog, tool, setting, and dryer commands', () => {
   it('saves a Box setting as 1 or 0', () => {
     expect(boxCommands.setting('enable_box', true)).toBe('SAVE_VARIABLE VARIABLE=enable_box VALUE=1')
     expect(boxCommands.setting('vo_box_spool_roll', false)).toBe('SAVE_VARIABLE VARIABLE=vo_box_spool_roll VALUE=0')
+  })
+
+  it("sends detection on insertion through QIDI's command, which also reaches RS-485 Boxes, only where box485 is configured", () => {
+    const rs485 = box({ commands: ['SET_ENABLE_RFID_READ'], objects: ['multi_color_controller', 'box485'] })
+    expect(boxCommands.setting('auto_read_rfid', true, rs485)).toBe('SET_ENABLE_RFID_READ ENABLE=1')
+    expect(boxCommands.setting('auto_read_rfid', false, rs485)).toBe('SET_ENABLE_RFID_READ ENABLE=0')
+    // QIDI's commands for the other toggles only save the variable.
+    expect(boxCommands.setting('auto_init_detect', true, rs485)).toBe('SAVE_VARIABLE VARIABLE=auto_init_detect VALUE=1')
+    expect(boxCommands.setting('auto_reload_detect', false, rs485)).toBe('SAVE_VARIABLE VARIABLE=auto_reload_detect VALUE=0')
+    // Without box485, QIDI's command would stop Klipper looking it up; before 01.01.07.01 there is no such command.
+    for (const b of [
+      box({ commands: ['SET_ENABLE_RFID_READ'], objects: ['multi_color_controller'] }),
+      box({ controller: false, objects: ['box485'] }),
+    ]) {
+      expect(boxCommands.setting('auto_read_rfid', true, b)).toBe('SAVE_VARIABLE VARIABLE=auto_read_rfid VALUE=1')
+    }
   })
 
   it('selects a tool by its number', () => {

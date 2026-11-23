@@ -401,7 +401,7 @@ class BoxFeedMotion:
         save_vars.cmd_SAVE_VARIABLE(gcmd)
 
     def _report(self, message):
-        logging.info("tltg_box_feed_motion: %s", message)
+        logging.info("vo_box_feed_motion: %s", message)
         if message in self._reported:
             return
         self._reported.add(message)
@@ -423,7 +423,7 @@ class BoxFeedMotion:
     def _set_status(self, status):
         self.status = status
         self._status_cache = None
-        logging.info("tltg_box_feed_motion: %s", status)
+        logging.info("vo_box_feed_motion: %s", status)
 
     def _handle_ready(self):
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -467,13 +467,13 @@ class BoxFeedMotion:
         if callable(lookup):
             extras.get_value_by_key = self._wrap_lookup(lookup)
         else:
-            logging.info("tltg_box_feed_motion: box_extras lookup not found; "
+            logging.info("vo_box_feed_motion: box_extras lookup not found; "
                          "hub, park, and extruder retract use QIDI's values")
         self.slots = slots
         self._set_status("active on %s, %d slots" % (build, len(slots)))
         vendor_keys = _vendor_keys(self._variables())
         if vendor_keys:
-            logging.info("tltg_box_feed_motion: vendor motion keys saved: %s",
+            logging.info("vo_box_feed_motion: vendor motion keys saved: %s",
                          vendor_keys)
 
     # -------------------------------------------------------------- wrappers
@@ -492,7 +492,7 @@ class BoxFeedMotion:
                         self._report("load arguments %r are not as traced; "
                                      "vendor motion is unchanged" % (vendor,))
             except Exception:
-                logging.exception("tltg_box_feed_motion: load profile failed")
+                logging.exception("vo_box_feed_motion: load profile failed")
             return original(*call_args, **kwargs)
         return do_home_three_steps
 
@@ -513,11 +513,11 @@ class BoxFeedMotion:
                         self._report("%s uses QIDI's value: %s"
                                      % (key, error))
                     if answer != value:
-                        logging.info("tltg_box_feed_motion: %s %s (vendor %s)",
+                        logging.info("vo_box_feed_motion: %s %s (vendor %s)",
                                      args[0], answer, value)
                         return answer
             except Exception:
-                logging.exception("tltg_box_feed_motion: %s lookup failed",
+                logging.exception("vo_box_feed_motion: %s lookup failed",
                                   args[0] if args else "?")
             return value
         return get_value_by_key
@@ -541,10 +541,10 @@ class BoxFeedMotion:
                                      % (slot, error))
                     call_args = (args[0],) + tuple(profile) + tuple(args[6:])
                     if call_args != args:
-                        logging.info("tltg_box_feed_motion: %s unload %s "
+                        logging.info("vo_box_feed_motion: %s unload %s "
                                      "(vendor %s)", slot, profile, vendor)
             except Exception:
-                logging.exception("tltg_box_feed_motion: unload profile failed")
+                logging.exception("vo_box_feed_motion: unload profile failed")
             return original(*call_args, **kwargs)
         return do_home_double_steps
 
@@ -566,7 +566,7 @@ class BoxFeedMotion:
         if error is not None:
             self._report("%s load uses vendor motion: %s" % (slot, error))
         if profile != vendor:
-            logging.info("tltg_box_feed_motion: %s load %s (vendor %s)",
+            logging.info("vo_box_feed_motion: %s load %s (vendor %s)",
                          slot, profile, vendor)
         return profile
 
@@ -651,7 +651,7 @@ class BoxFeedMotion:
             try:
                 status = self._build_status(raw or {})
             except Exception:
-                logging.exception("tltg_box_feed_motion: status failed")
+                logging.exception("vo_box_feed_motion: status failed")
                 status = self._build_status({}, "status failed; see klippy.log")
             cache = self._status_cache = (raw, status)
         return cache[1]

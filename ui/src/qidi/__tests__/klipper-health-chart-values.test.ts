@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { klipperHealthChartValues } from '../klipper-health-chart-values'
 
 describe('klipperHealthChartValues', () => {
-  it('charts nothing without tltg_klipper_health', () => {
+  it('charts nothing without vo_klipper_health', () => {
     expect(klipperHealthChartValues(undefined, undefined)).toEqual({})
   })
 

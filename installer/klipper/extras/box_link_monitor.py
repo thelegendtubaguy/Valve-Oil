@@ -160,7 +160,7 @@ class BoxLinkMonitor:
             self._rotate_if_needed()
             self._handle = open(self.path, "a", encoding="utf-8")
         except Exception:
-            logging.exception("tltg_box_link_monitor: cannot open %s", self.path)
+            logging.exception("vo_box_link_monitor: cannot open %s", self.path)
 
     def _rotate_if_needed(self):
         try:
@@ -197,7 +197,7 @@ class BoxLinkMonitor:
             if self._handle.tell() >= self.max_log_bytes:
                 self._close()
         except Exception:
-            logging.exception("tltg_box_link_monitor: write failed")
+            logging.exception("vo_box_link_monitor: write failed")
 
     # ------------------------------------------------------------------ mcus
     def _discover_mcus(self):
@@ -255,7 +255,7 @@ class BoxLinkMonitor:
                         % (label, _decode(params.get("reason", ""))),
                         durable=True)
         except Exception:
-            logging.exception("tltg_box_link_monitor: reset reason handler")
+            logging.exception("vo_box_link_monitor: reset reason handler")
 
     # --------------------------------------------------------------- capture
     def _context(self):
@@ -359,7 +359,7 @@ class BoxLinkMonitor:
         for line in chunk.splitlines():
             if not any(pattern in line for pattern in TRIGGER_PATTERNS):
                 continue
-            if "tltg_box_link" in line:
+            if "vo_box_link" in line:
                 continue
             self._write("klippy: %s" % line.strip(), durable=True)
             self._dump_box_serial()
@@ -456,7 +456,7 @@ class BoxLinkMonitor:
                 self._last_keepalive = eventtime
                 self._write("context %s" % self._context())
         except Exception:
-            logging.exception("tltg_box_link_monitor: sample failed")
+            logging.exception("vo_box_link_monitor: sample failed")
         return eventtime + self.sample_interval
 
 

@@ -11,12 +11,14 @@ import subprocess
 import tarfile
 import time
 import urllib.request
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from .errors import InstallerError
 from .models import AddonSpec, AddonsSpec, SystemKernelModuleSpec, SystemWheelSpec
+from .naming import has_marker
 from .sudo import run_sudo
 
 
@@ -30,18 +32,24 @@ ROOT = "/home/qidi/vo-addons"
 # Releases up to 26.11.18.1 installed add-ons here. 26.11.18.2 moved ROOT without moving them; move_earlier_addons
 # moves them now.
 EARLIER_ROOT = "/home/qidi/tltg-addons"
-SYSTEM_ROOT = "/usr/local/lib/tltg-addons"
+SYSTEM_ROOT = "/usr/local/lib/vo-addons"
+# Where releases before 26.11.22.3 put add-on kernel modules; move_earlier_addons moves them with their add-on.
+EARLIER_SYSTEM_ROOT = "/usr/local/lib/tltg-addons"
 MODULE_LOADER = "load-modules.sh"
 OSRELEASE = "/proc/sys/kernel/osrelease"
 KERNEL_VERSION = "/proc/sys/kernel/version"
 UNIT_DIR = "/etc/systemd/system"
 SYSTEM_PYTHON = "/usr/bin/python3"
 # Marks a package-owned add-on directory and records what it was built from.
-MARKER = ".tltg-addon.json"
+MARKER = ".vo-addon.json"
+# The same two markers as releases before 26.11.22.3 named them. Both are read; an update or move_earlier_addons
+# replaces them.
+EARLIER_MARKER = ".tltg-addon.json"
+EARLIER_DATA_MARKER = ".tltg-addon-data"
 # Marks a package-owned add-on data directory, which updates keep and removal deletes.
-DATA_MARKER = ".tltg-addon-data"
-STAGING_SUFFIX = ".tltg-staging"
-PREVIOUS_SUFFIX = ".tltg-previous"
+DATA_MARKER = ".vo-addon-data"
+STAGING_SUFFIX = ".vo-staging"
+PREVIOUS_SUFFIX = ".vo-previous"
 # A started service must stay active this long to count as running.
 # A started service counts as running once it has stayed up this long without systemd restarting it. OctoEverywhere
 # takes about 7 s on the printer to load and fail on a bad configuration, and Restart=always brings it straight back.
@@ -103,7 +111,7 @@ class AddonDefinition:
 
     @property
     def unit_marker(self) -> str:
-        return f"# tltg-optimized:addon-{self.id}\n"
+        return f"# vo:addon-{self.id}\n"
 
 
 @dataclass(frozen=True)
@@ -126,8 +134,13 @@ class AddonPaths:
         return f"{self.env}/bin/python3"
 
 
-def addon_paths(addon_id: str, base: str = ROOT) -> AddonPaths:
-    return AddonPaths(code=f"{base}/{addon_id}", data=f"{base}/{addon_id}-data", system=f"{SYSTEM_ROOT}/{addon_id}")
+def addon_paths(addon_id: str, base: str = ROOT, system_root: str = SYSTEM_ROOT) -> AddonPaths:
+    return AddonPaths(code=f"{base}/{addon_id}", data=f"{base}/{addon_id}-data", system=f"{system_root}/{addon_id}")
+
+
+def _data_marked(data: Path) -> bool:
+    """Whether a data directory carries the package's data marker, under its name now or an earlier release's."""
+    return (data / DATA_MARKER).is_file() or (data / EARLIER_DATA_MARKER).is_file()
 
 
 # OctoEverywhere's own installer also installs system packages, replaces NTP, sets the clock, and adds a Moonraker
@@ -212,9 +225,9 @@ OCTOEVERYWHERE = AddonDefinition(
 # the plugin's Janus build for QIDI's Debian, and reports the link code for Fluidd.
 OBICO_CLOUD = "https://app.obico.io"
 OBICO_CONFIG = "moonraker-obico.cfg"
-OBICO_STATUS = "tltg-status.json"
+OBICO_STATUS = "vo-status.json"
 OBICO_LOG = "/home/qidi/printer_data/logs/moonraker-obico.log"
-OBICO_LAUNCHER = "tltg_obico.py"
+OBICO_LAUNCHER = "vo_obico.py"
 
 
 def _obico_unit(paths: AddonPaths) -> str:
@@ -230,7 +243,7 @@ ConditionPathExists={paths.code}/{MARKER}
 Type=simple
 User=qidi
 WorkingDirectory={paths.app}
-Environment="TLTG_OBICO_STATUS={paths.data}/{OBICO_STATUS}"
+Environment="VO_OBICO_STATUS={paths.data}/{OBICO_STATUS}"
 Environment="MALLOC_TRIM_THRESHOLD_=65536"
 Environment="MALLOC_ARENA_MAX=2"
 ExecStart={paths.python} -m {OBICO_LAUNCHER.removesuffix(".py")} -c {paths.data}/{OBICO_CONFIG}
@@ -481,14 +494,16 @@ def kernel_supported(addon: AddonSpec, *, root: Path) -> bool:
 
 
 def read_marker(addon_id: str, *, root: Path, base: str = ROOT) -> dict[str, Any] | None:
-    path = _map(root, f"{addon_paths(addon_id, base).code}/{MARKER}")
-    try:
-        if path.is_symlink() or not path.is_file():
+    for name in (MARKER, EARLIER_MARKER):
+        path = _map(root, f"{addon_paths(addon_id, base).code}/{name}")
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) and data.get("id") == addon_id else None
+        return data if isinstance(data, dict) and data.get("id") == addon_id else None
+    return None
 
 
 def service_active(unit: str, *, run: RunFn) -> str:
@@ -520,7 +535,7 @@ def _foreign_install(definition: AddonDefinition, *, root: Path) -> bool:
     if unit.is_symlink():
         return True
     try:
-        return unit.is_file() and not unit.read_text(encoding="utf-8").startswith(definition.unit_marker)
+        return unit.is_file() and not has_marker(unit.read_text(encoding="utf-8"), definition.unit_marker)
     except OSError:
         return True
 
@@ -687,7 +702,7 @@ def remove_addon(
     if marker is not None:
         _remove_tree(_map(root, paths.code), root=root)
     data = _map(root, paths.data)
-    if (data / DATA_MARKER).is_file():
+    if _data_marked(data):
         _remove_tree(data, root=root)
     _remove_earlier_copies(addon_id, root=root, data=True)
     _remove_root_if_empty(root=root)
@@ -806,7 +821,7 @@ def earlier_addon_ids(*, root: Path = Path("/")) -> list[str]:
         addon_id
         for addon_id in DEFINITIONS
         if read_marker(addon_id, root=root, base=EARLIER_ROOT) is not None
-        or (_map(root, addon_paths(addon_id, EARLIER_ROOT).data) / DATA_MARKER).is_file()
+        or _data_marked(_map(root, addon_paths(addon_id, EARLIER_ROOT).data))
     ]
 
 
@@ -832,7 +847,7 @@ def move_earlier_addons(
             if read_marker(addon_id, root=root, base=EARLIER_ROOT) is not None
             else None,
             (_map(root, earlier.data), _map(root, paths.data))
-            if (_map(root, earlier.data) / DATA_MARKER).is_file()
+            if _data_marked(_map(root, earlier.data))
             else None,
         ]
         moves = [(source, target) for source, target in filter(None, moves) if not target.exists() and not target.is_symlink()]
@@ -847,6 +862,10 @@ def move_earlier_addons(
                 base.mkdir(parents=True, exist_ok=True)
                 for source, target in moves:
                     source.rename(target)
+                    for earlier_name, name in ((EARLIER_MARKER, MARKER), (EARLIER_DATA_MARKER, DATA_MARKER)):
+                        if (target / earlier_name).is_file() and not (target / name).exists():
+                            (target / earlier_name).rename(target / name)
+                _move_earlier_system_files(addon_id, root=root, sudo_password=sudo_password, run=run)
             if read_marker(addon_id, root=root) is not None and unit_owned(definition, root=root) and not _unit_current(definition, root=root):
                 _install_unit(definition, root=root, sudo_password=sudo_password, run=run)
                 _systemctl(["start", definition.unit], root=root, sudo_password=sudo_password, run=run, check=False)
@@ -1013,6 +1032,7 @@ def _ensure_data(definition: AddonDefinition, *, root: Path) -> None:
         raise AddonError(f"Refusing to use a symlinked data directory: {addon_paths(definition.id).data}")
     data.mkdir(parents=True, exist_ok=True)
     (data / DATA_MARKER).write_text(f"{definition.id}\n", encoding="utf-8")
+    (data / EARLIER_DATA_MARKER).unlink(missing_ok=True)
     for directory in definition.data_dirs:
         (data / directory).mkdir(parents=True, exist_ok=True)
     for relative in {*definition.settings, *(definition.defaults or {})}:
@@ -1054,7 +1074,7 @@ def _ensure_data(definition: AddonDefinition, *, root: Path) -> None:
 def unit_owned(definition: AddonDefinition, *, root: Path) -> bool:
     unit = _map(root, f"{UNIT_DIR}/{definition.unit}")
     try:
-        return not unit.is_symlink() and unit.is_file() and unit.read_text(encoding="utf-8").startswith(definition.unit_marker)
+        return not unit.is_symlink() and unit.is_file() and has_marker(unit.read_text(encoding="utf-8"), definition.unit_marker)
     except OSError:
         return False
 
@@ -1103,7 +1123,12 @@ def _install_system_files(addon: AddonSpec, *, installer_root: Path, root: Path,
 
 def _remove_system_files(definition: AddonDefinition, *, root: Path, sudo_password: str | None, run: RunFn) -> None:
     """Unload the add-on's kernel modules when nothing uses them, and delete them with their loader."""
-    paths = addon_paths(definition.id)
+    for system_root in (SYSTEM_ROOT, EARLIER_SYSTEM_ROOT):
+        _remove_system_dir(definition, system_root, root=root, sudo_password=sudo_password, run=run)
+
+
+def _remove_system_dir(definition: AddonDefinition, system_root: str, *, root: Path, sudo_password: str | None, run: RunFn) -> None:
+    paths = addon_paths(definition.id, system_root=system_root)
     directory = _map(root, paths.system)
     if not directory.is_dir() or directory.is_symlink():
         return
@@ -1116,7 +1141,7 @@ def _remove_system_files(definition: AddonDefinition, *, root: Path, sudo_passwo
                 # Refused while ZeroTier, or anything else, still holds the device; the module then stays until reboot.
                 run_sudo(["rmmod", name], run=run, password=sudo_password or "")
         _privileged(["rm", "-rf", paths.system], "Could not remove the add-on's kernel modules.", sudo_password=sudo_password, run=run)
-        run_sudo(["rmdir", SYSTEM_ROOT], run=run, password=sudo_password or "")
+        run_sudo(["rmdir", system_root], run=run, password=sudo_password or "")
 
 
 def _unit_current(definition: AddonDefinition, *, root: Path) -> bool:
@@ -1248,6 +1273,38 @@ def _remove_root_if_empty(*, root: Path) -> None:
     _remove_earlier_root_if_empty(root=root)
 
 
+def _move_earlier_system_files(addon_id: str, *, root: Path, sudo_password: str | None, run: RunFn) -> None:
+    """Move the add-on's root-owned kernel modules and loader from EARLIER_SYSTEM_ROOT, pointing the loader at their
+    new place, so the add-on keeps starting even before an update rebuilds it."""
+    earlier, paths = addon_paths(addon_id, system_root=EARLIER_SYSTEM_ROOT), addon_paths(addon_id)
+    source, target = _map(root, earlier.system), _map(root, paths.system)
+    if source.is_symlink() or not source.is_dir() or target.exists():
+        return
+    try:
+        loader = (source / MODULE_LOADER).read_text(encoding="utf-8").replace(earlier.system, paths.system)
+    except OSError:
+        loader = None
+    if _fake(root):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+        if loader is not None:
+            (target / MODULE_LOADER).write_text(loader, encoding="utf-8")
+        with suppress(OSError):
+            source.parent.rmdir()
+        return
+    message = "Could not move the add-on's kernel modules."
+    _privileged(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", SYSTEM_ROOT], message, sudo_password=sudo_password, run=run)
+    _privileged(["mv", "-T", earlier.system, paths.system], message, sudo_password=sudo_password, run=run)
+    if loader is not None:
+        staged = _map(root, addon_paths(addon_id).code) / f".{MODULE_LOADER}"
+        staged.write_text(loader, encoding="utf-8")
+        try:
+            _privileged(["install", "-o", "root", "-g", "root", "-m", "0755", str(staged), f"{paths.system}/{MODULE_LOADER}"], message, sudo_password=sudo_password, run=run)
+        finally:
+            staged.unlink(missing_ok=True)
+    run_sudo(["rmdir", EARLIER_SYSTEM_ROOT], run=run, password=sudo_password or "")
+
+
 def _remove_earlier_copies(addon_id: str, *, root: Path, data: bool) -> None:
     """Delete the add-on's package-owned directories under EARLIER_ROOT: its program, its staging and previous builds,
     and, with data, its data directory."""
@@ -1258,7 +1315,7 @@ def _remove_earlier_copies(addon_id: str, *, root: Path, data: bool) -> None:
     targets = [_map(root, earlier.code + STAGING_SUFFIX), _map(root, earlier.code + PREVIOUS_SUFFIX)]
     if read_marker(addon_id, root=root, base=EARLIER_ROOT) is not None:
         targets.append(_map(root, earlier.code))
-    if data and (_map(root, earlier.data) / DATA_MARKER).is_file():
+    if data and _data_marked(_map(root, earlier.data)):
         targets.append(_map(root, earlier.data))
     for path in targets:
         if path.parent != base:

@@ -11,8 +11,8 @@ RESTART_SERVICE = "moonraker.service"
 # (Arksine/moonraker b3f9566 and 06cdffa): usage after a filament change was charged only once the extruder passed
 # the furthest point the previous spool reached, so every Box unload's extruder pull went uncharged on the new spool,
 # and Tornado before 6.5, which QIDI ships, can drop a pinged websocket early. The ready handler also seeds the last
-# extruder position, because tltg_spoolman switches spools as soon as Klipper starts, before the toolhead reports a
-# move. A spool picked in Fluidd while a Box slot is loaded is passed to tltg_spoolman as that slot's spool.
+# extruder position, because vo_spoolman switches spools as soon as Klipper starts, before the toolhead reports a
+# move. A spool picked in Fluidd while a Box slot is loaded is passed to vo_spoolman as that slot's spool.
 IMPORT_STOCK = (
     "import tornado.websocket as tornado_ws",
     "from ..common import RequestType, HistoryFieldData",
@@ -29,7 +29,7 @@ INIT_STOCK = (
 INIT_PATCHED = (
     "        self._highest_epos: float = 0",
     "        self._last_epos: float = 0",
-    "        self._tltg_slot_tasks: set = set()",
+    "        self._vo_slot_tasks: set = set()",
     '        self._current_extruder: str = "extruder"',
 )
 PING_STOCK = (
@@ -37,7 +37,7 @@ PING_STOCK = (
     "                    ping_timeout=60.",
 )
 PING_PATCHED = (
-    "                    # tltg-optimized: Tornado before 6.5 can close a pinged websocket early",
+    "                    # vo: Tornado before 6.5 can close a pinged websocket early",
     "                    ping_interval=None if tornado_version < (6, 5) else 20.",
 )
 READY_STOCK = ("            self._highest_epos = initial_e_pos",)
@@ -57,7 +57,7 @@ SET_STOCK = (
 )
 SET_PATCHED = (
     "        self.database.insert_item(DB_NAMESPACE, ACTIVE_SPOOL_KEY, spool_id)",
-    "        # tltg-optimized: charge the new spool from the current extruder position",
+    "        # vo: charge the new spool from the current extruder position",
     "        self._highest_epos = self._last_epos",
     "        self.server.send_event(",
 )
@@ -70,22 +70,22 @@ REQUEST_STOCK = (
 REQUEST_PATCHED = (
     '            spool_id = web_request.get_int("spool_id", None)',
     "            self.set_active_spool(spool_id)",
-    "            # tltg-optimized: a spool picked while a QIDI Box slot is loaded is that slot's spool",
-    "            task = self.eventloop.create_task(self._tltg_assign_loaded_slot(spool_id))",
-    "            self._tltg_slot_tasks.add(task)",
-    "            task.add_done_callback(self._tltg_slot_tasks.discard)",
+    "            # vo: a spool picked while a QIDI Box slot is loaded is that slot's spool",
+    "            task = self.eventloop.create_task(self._vo_assign_loaded_slot(spool_id))",
+    "            self._vo_slot_tasks.add(task)",
+    "            task.add_done_callback(self._vo_slot_tasks.discard)",
     "        # For GET requests we will simply return the spool_id",
     '        return {"spool_id": self.spool_id}',
     "",
-    "    async def _tltg_assign_loaded_slot(self, spool_id: Optional[int]) -> None:",
+    "    async def _vo_assign_loaded_slot(self, spool_id: Optional[int]) -> None:",
     "        try:",
     "            result = await self.klippy_apis.query_objects(",
-    '                {"tltg_spoolman": ["loaded_slot"]}, default={}',
+    '                {"vo_spoolman": ["loaded_slot"]}, default={}',
     "            )",
-    '            if result.get("tltg_spoolman", {}).get("loaded_slot") is None:',
+    '            if result.get("vo_spoolman", {}).get("loaded_slot") is None:',
     "                return",
     "            await self.klippy_apis.run_gcode(",
-    '                f"TLTG_SPOOLMAN_SLOT SPOOL={spool_id or 0}"',
+    '                f"VO_SPOOLMAN_SLOT SPOOL={spool_id or 0}"',
     "            )",
     "        except Exception:",
     '            logging.exception("Unable to assign the spool to the loaded QIDI Box slot")',

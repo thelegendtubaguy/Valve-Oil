@@ -71,7 +71,7 @@ export function install(fake) {
 
   function publish() {
     fake.set('vo_klipper', klipperObject())
-    fake.set('tltg_printer_warnings', { warnings: warnings(fake.state.status.tltg_printer_warnings?.warnings ?? []) })
+    fake.set('vo_printer_warnings', { warnings: warnings(fake.state.status.vo_printer_warnings?.warnings ?? []) })
   }
 
   /** The switch, as POST api/klipper makes it: the choice, then Klipper restarted a moment later. */
@@ -101,7 +101,7 @@ export function install(fake) {
   })
 
   fake.http(async (req, res, path) => {
-    if (path !== '/tltg-status/api/klipper' || k.absent) return false
+    if (path !== '/vo-status/api/klipper' || k.absent) return false
     if (req.method !== 'POST') return send(res, 405, { error: 'Use POST.' })
     if (req.headers['x-valve-oil'] !== 'status') return send(res, 403, { error: 'Missing X-Valve-Oil header.' })
     let raw = ''
@@ -150,7 +150,7 @@ export function install(fake) {
   // Each scenario writes the status afresh, its own warnings with it; the fallback warning is added back.
   fake.status((st) => {
     st.vo_klipper = klipperObject()
-    st.tltg_printer_warnings = { warnings: warnings(st.tltg_printer_warnings?.warnings ?? []) }
+    st.vo_printer_warnings = { warnings: warnings(st.vo_printer_warnings?.warnings ?? []) }
   })
 
   fake.commands({

@@ -122,7 +122,7 @@ class PrinterWarningsTest(unittest.TestCase):
 
     def warnings(self, shaper, unshaped_accel=10000, log_dir=None, saved=None, extra=None):
         objects = {
-            "tltg_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper,
+            "vo_macro_status": _Status(max_accel=30000., input_shaper=lambda: shaper,
                                          saved_shaper_freq=lambda axis: (saved or {}).get(axis, 0.)),
             "gcode_macro _vo_globals": _Status(variables={"unshaped_accel": unshaped_accel}),
             **(extra or {}),
@@ -149,20 +149,20 @@ class PrinterWarningsTest(unittest.TestCase):
     def test_unsupported_box_firmware_reports(self) -> None:
         calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
         log_dir = temp_path("printer-warnings-")
-        for name in ("klippy.log", "tltg_box_firmware_box2.json", "vo_rfid_1.json"):
+        for name in ("klippy.log", "vo_box_firmware_box2.json", "vo_rfid_1.json"):
             (log_dir / name).write_text("{}")
         box, = self.warnings(calibrated, log_dir=log_dir)
         self.assertEqual((box["id"], box["level"]), ("box_firmware_unsupported_box2", "warning"))
-        self.assertIn("tltg_box_firmware_box2.json", box["message"])
-        (log_dir / "tltg_box_firmware_box2.json").unlink()
+        self.assertIn("vo_box_firmware_box2.json", box["message"])
+        (log_dir / "vo_box_firmware_box2.json").unlink()
         self.assertEqual(self.warnings(calibrated, log_dir=log_dir), [])
 
     def test_unsupported_thr_and_mainboard_reports_carry_their_issue_links(self) -> None:
         calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
         log_dir = temp_path("printer-warnings-")
         link = "https://github.com/thelegendtubaguy/valve-oil/issues/new?template=printer-support.yml&printer=QIDI%20Max%204"
-        (log_dir / "tltg_thr_firmware.json").write_text(json.dumps({"issue_url": link, "note": "Update it."}))
-        (log_dir / "tltg_mainboard_firmware.json").write_text("{}")
+        (log_dir / "vo_thr_firmware.json").write_text(json.dumps({"issue_url": link, "note": "Update it."}))
+        (log_dir / "vo_mainboard_firmware.json").write_text("{}")
         mainboard, thr = self.warnings(calibrated, log_dir=log_dir)
         self.assertEqual((thr["id"], thr["url"]), ("thr_firmware_unsupported", link))
         self.assertTrue(thr["message"].endswith(" Update it."))
@@ -172,7 +172,7 @@ class PrinterWarningsTest(unittest.TestCase):
         for url, note in (("https://example.invalid/thr", "x" * 301), ("javascript:alert(1)", ["list"]),
                           (link + "x" * 7000, "line\nbreak"), (link + " onclick", None)):
             with self.subTest(url=url[:40]):
-                (log_dir / "tltg_thr_firmware.json").write_text(json.dumps({"issue_url": url, "note": note}))
+                (log_dir / "vo_thr_firmware.json").write_text(json.dumps({"issue_url": url, "note": note}))
                 _, thr = self.warnings(calibrated, log_dir=log_dir)
                 self.assertNotIn("url", thr)
                 self.assertTrue(thr["message"].endswith("from Fluidd's Logs."))
@@ -180,7 +180,7 @@ class PrinterWarningsTest(unittest.TestCase):
     def test_calibration_saved_before_a_thr_flash_asks_for_a_new_one(self) -> None:
         calibrated = {"loaded": True, "unshaped_axes": "", "saved": True}
         log_dir = temp_path("printer-warnings-")
-        (log_dir / "tltg_input_shaper_thr_flash.json").write_text('{"shaper_freq_x": "54.4", "shaper_freq_y": "36.2"}')
+        (log_dir / "vo_input_shaper_thr_flash.json").write_text('{"shaper_freq_x": "54.4", "shaper_freq_y": "36.2"}')
         stale, = self.warnings(calibrated, log_dir=log_dir, saved={"x": 54.4, "y": 36.2})
         self.assertEqual(stale["id"], "input_shaper_after_thr_firmware")
         self.assertEqual(self.warnings(calibrated, log_dir=log_dir, saved={"x": 51.8, "y": 36.2}), [])
@@ -228,7 +228,7 @@ class PrinterWarningsTest(unittest.TestCase):
         self.assertIn("run the Valve Oil installer", release["message"])
         self.assertIn("the THR and Box 2", boards["title"])
         # Automatic updates on: why it hasn't run, read again without a restart.
-        (data / ".tltg_optimized_auto_update_enrolled").write_text("1\n")
+        (data / ".vo_auto_update_enrolled").write_text("1\n")
         check(status_file.PendingItem(kind="firmware", version="01.01.07.01", blocked_by=(status_file.Blocker.of("printing"),)),
               # The release Klipper already runs is no longer waiting, nor is an older one the last check listed
               # before an install went past it.
@@ -264,14 +264,14 @@ class PrinterWarningsTest(unittest.TestCase):
         failed = status_file.begin_run(paths, kind="automatic", step="soc", step_label="Installing QIDI firmware",
                                        firmware_update="fw-1")
         status_file.finish_run(paths, failed.id, state=status_file.FAILED, message="dpkg failed. Run ./install.sh again.")
-        (data / ".tltg_firmware_update_pending.json").write_text('{"schema": 1, "id": "fw-1", "state": "failed"}')
+        (data / ".vo_firmware_update_pending.json").write_text('{"schema": 1, "id": "fw-1", "state": "failed"}')
         alert = pending()[0]
         self.assertEqual(alert["id"], "valve_oil_firmware_update_failed")
         self.assertEqual(alert["message"], "It stopped at: Installing QIDI firmware. dpkg failed. Run ./install.sh again. "
                          + printer_warnings.CONTINUE_IT)
-        (data / ".tltg_mainboard_firmware_pending.json").write_text("{}")
+        (data / ".vo_mainboard_firmware_pending.json").write_text("{}")
         self.assertNotIn(printer_warnings.CONTINUE_IT, pending()[0]["message"])
-        for name in (".tltg_firmware_update_pending.json", ".tltg_mainboard_firmware_pending.json"):
+        for name in (".vo_firmware_update_pending.json", ".vo_mainboard_firmware_pending.json"):
             (data / name).unlink()
         # A corrupt or missing file lists nothing.
         status_file.status_path(paths).write_text('{"schema": 1, "pending": [')

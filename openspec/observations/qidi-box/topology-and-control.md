@@ -4,17 +4,17 @@ Evidence qualifiers are defined in `openspec/observations/README.md`. These obse
 
 ## Active include graph
 
-`config/printer.cfg` loads optimized macros before the vendor Box stack:
+`config/printer.cfg` loads Valve Oil macros before the vendor Box stack:
 
 ```ini
-[include tltg-optimized-macros/*.cfg]
+[include vo-macros/*.cfg]
 [include box.cfg]
 [multi_color_controller]
 ```
 
 `[include box.cfg]` creates Box MCU, slot, heater, sensor, fan, RFID, autofeed, `box_extras`, tool-wrapper, unload, and material-helper objects. `[multi_color_controller]` registers the public multi-color facade and publishes Moonraker state.
 
-Vendor names are occupied across the final Klipper config even when their include appears after optimized macros. Repository macros must not redefine vendor object or command names.
+Vendor names are occupied across the final Klipper config even when their include appears after Valve Oil macros. Repository macros must not redefine vendor object or command names.
 
 ## Vendor ownership
 
@@ -166,9 +166,9 @@ Treat concurrent vendor detection mutation as possible where the app is not Valv
 
 ## Repository-controlled integration boundary
 
-- Optimized fresh-load start delegates feeder movement to `BOX_PRINT_START`, then performs repository-owned purge/cleanup.
+- Valve Oil's fresh-load start delegates feeder movement to `BOX_PRINT_START`, then performs repository-owned purge/cleanup.
 - Retained-filament start bypasses vendor start only after physical continuity and metadata checks.
 - External-spool start avoids Box commands when the stack is absent or disabled.
 - Repository macros may wrap vendor behavior but do not replace RFID/autofeed/retry logic or redefine vendor names.
-- The only repository code that changes compiled feeder motion is `tltg_box_feed_motion`. Wherever QIDI's Box code provides the traced methods and plausible arguments, it rewrites the arguments of each slot's three-stage load home and two-stage unload home from operator saved variables. It doesn't change the load pre-stage, plain `do_home`/`do_move`, or vendor motion keys.
+- The only repository code that changes compiled feeder motion is `vo_box_feed_motion`. Wherever QIDI's Box code provides the traced methods and plausible arguments, it rewrites the arguments of each slot's three-stage load home and two-stage unload home from operator saved variables. It doesn't change the load pre-stage, plain `do_home`/`do_move`, or vendor motion keys.
 - `config/box.cfg` remains stock-mapped and sensitive; exact MCU serial identifiers are never tracked.

@@ -11,7 +11,7 @@ from .errors import InstallerError
 
 OPERATION = "fluidd_box_filament_ids"
 SERVICE_WORKER_OPERATION = "fluidd_service_worker"
-PATCH_MARKER = "/*tltg-optimized:fluidd-box-filament-ids*/"
+PATCH_MARKER = "/*vo:fluidd-box-filament-ids*/"
 
 # QIDI firmware 01.01.07.01 filament-0.4.json: ID, name, type, nozzle min/max, box min/max, vendor.
 QIDI_FILAMENTS = (
@@ -151,7 +151,7 @@ def _filas_list_patched() -> str:
         'w&&typeof w=="object"&&(d.vendor_list=new Proxy(w,{get(t,k,p){'
         'return typeof k=="string"&&!(k in t)&&n.has(k)?k:Reflect.get(t,k,p)}}));'
         'return new Proxy(d,{get(t,k,p){'
-        'if(k==="tltgFilaments"&&!(k in t))return l||(l=Object.entries(q).map(([i,f])=>({id:i,name:f[0],type:f[1],vendor:f[6]})));'
+        'if(k==="voFilaments"&&!(k in t))return l||(l=Object.entries(q).map(([i,f])=>({id:i,name:f[0],type:f[1],vendor:f[6]})));'
         'const m=typeof k=="string"&&!(k in t)&&/^fila([A-Z]+[0-9]+)$/.exec(k);'
         'if(!m)return Reflect.get(t,k,p);'
         'const f=q[m[1]];'
@@ -168,10 +168,10 @@ FILAMENT_ITEMS_STOCK = (
     'return Array.from(t)}'
 )
 FILAMENT_ITEMS_PATCHED = (
-    'get tltgCatalog(){const p=this.$store.state.printer.printer,d=this.officialFilasListDictData;'
-    'return p&&p.box485&&d&&d.tltgFilaments||null}'
-    'tltgSaveFilament(t){I.printerGcodeScript(`SAVE_VARIABLE VARIABLE=filament_slot${this.selectIndex} VALUE=\'"${t}"\'`)}'
-    'get filamentItems(){const q=this.tltgCatalog;if(q){const v=this.selectedVendor,f=q.filter(x=>x.vendor===v);'
+    'get voCatalog(){const p=this.$store.state.printer.printer,d=this.officialFilasListDictData;'
+    'return p&&p.box485&&d&&d.voFilaments||null}'
+    'voSaveFilament(t){I.printerGcodeScript(`SAVE_VARIABLE VARIABLE=filament_slot${this.selectIndex} VALUE=\'"${t}"\'`)}'
+    'get filamentItems(){const q=this.voCatalog;if(q){const v=this.selectedVendor,f=q.filter(x=>x.vendor===v);'
     'return(f.length?f:q).map(x=>x.name)}'
     + FILAMENT_ITEMS_STOCK.removeprefix('get filamentItems(){')
 )
@@ -181,7 +181,7 @@ VENDOR_ITEMS_STOCK = (
     'return Array.from(t)}'
 )
 VENDOR_ITEMS_PATCHED = (
-    'get vendorItems(){const q=this.tltgCatalog;if(q)return Array.from(new Set(q.map(x=>x.vendor)));'
+    'get vendorItems(){const q=this.voCatalog;if(q)return Array.from(new Set(q.map(x=>x.vendor)));'
     + VENDOR_ITEMS_STOCK.removeprefix('get vendorItems(){')
 )
 SELECTED_VENDOR_STOCK = (
@@ -191,9 +191,9 @@ SELECTED_VENDOR_STOCK = (
 )
 # The touchscreen stores vendor only through the filament ID, so a vendor change selects a matching filament.
 SELECTED_VENDOR_PATCHED = (
-    'set selectedVendor(t){const q=this.tltgCatalog;if(q){const c=q.find(x=>x.name===this.selectedFilament),'
+    'set selectedVendor(t){const q=this.voCatalog;if(q){const c=q.find(x=>x.name===this.selectedFilament),'
     'f=q.filter(x=>x.vendor===t),m=c&&f.find(x=>x.type===c.type)||f[0];'
-    'm&&m.name!==this.selectedFilament&&this.tltgSaveFilament(m.id);return}'
+    'm&&m.name!==this.selectedFilament&&this.voSaveFilament(m.id);return}'
     + SELECTED_VENDOR_STOCK.removeprefix('set selectedVendor(t){')
 )
 SELECTED_FILAMENT_STOCK = (
@@ -203,8 +203,8 @@ SELECTED_FILAMENT_STOCK = (
     ':I.printerGcodeScript(`SAVE_VARIABLE VARIABLE=filament_slot${this.selectIndex} VALUE="${s.replace("fila","")}"`))}'
 )
 SELECTED_FILAMENT_PATCHED = (
-    'set selectedFilament(t){const q=this.tltgCatalog;if(q){const v=this.selectedVendor,'
-    'm=q.find(x=>x.name===t&&x.vendor===v)||q.find(x=>x.name===t);m&&this.tltgSaveFilament(m.id);return}'
+    'set selectedFilament(t){const q=this.voCatalog;if(q){const v=this.selectedVendor,'
+    'm=q.find(x=>x.name===t&&x.vendor===v)||q.find(x=>x.name===t);m&&this.voSaveFilament(m.id);return}'
     + SELECTED_FILAMENT_STOCK.removeprefix('set selectedFilament(t){')
 )
 SELECTED_COLOR_STOCK = (
@@ -213,7 +213,7 @@ SELECTED_COLOR_STOCK = (
     ':I.printerGcodeScript(`SAVE_VARIABLE VARIABLE=color_slot${this.selectIndex} VALUE="${s}"`))}'
 )
 SELECTED_COLOR_PATCHED = (
-    'set selectedColor(t){if(this.tltgCatalog&&typeof t=="string"&&/^#[0-9A-Fa-f]{6}$/.test(t)){'
+    'set selectedColor(t){if(this.voCatalog&&typeof t=="string"&&/^#[0-9A-Fa-f]{6}$/.test(t)){'
     'I.printerGcodeScript(`SAVE_VARIABLE VARIABLE=color_slot${this.selectIndex} VALUE="[\'${t.slice(1).toUpperCase()}\']"`);return}'
     + SELECTED_COLOR_STOCK.removeprefix('set selectedColor(t){')
 )
@@ -265,9 +265,9 @@ BUTTON_STATUS_STOCK = (
 )
 # 01.01.07.01 publishes the Box path sensor only as multi_color_controller.box.b_endstop_state, so Unload stayed disabled.
 BUTTON_STATUS_PATCHED = (
-    'get tltgBEndstop(){const p=this.$store.state.printer.printer,e=p.box_extras,m=p.multi_color_controller;'
+    'get voBEndstop(){const p=this.$store.state.printer.printer,e=p.box_extras,m=p.multi_color_controller;'
     'return e&&e.b_endstop_state!=null?e.b_endstop_state:m&&m.box&&m.box.b_endstop_state}'
-    + BUTTON_STATUS_STOCK.replace('this.$store.state.printer.printer.box_extras.b_endstop_state', 'this.tltgBEndstop')
+    + BUTTON_STATUS_STOCK.replace('this.$store.state.printer.printer.box_extras.b_endstop_state', 'this.voBEndstop')
 )
 
 PRINT_SLOT_CHANGE_STOCK = (
@@ -295,9 +295,9 @@ BOX_MOTION_DEFINE_HEAD = "If=J9([L],If);"
 BOX_MOTION_DEFINE_TAIL = "var Nle=function(){"
 BOX_MOTION_DEFINE_STOCK = BOX_MOTION_DEFINE_HEAD + BOX_MOTION_DEFINE_TAIL
 BOX_MOTION_RENDER_STOCK = 'expression:"autoReloadDetect"}})],1)],1)],1)],1)],1)},zle=[]'
-BOX_MOTION_RENDER_PATCHED = 'expression:"autoReloadDetect"}})],1)],1)],1)],1),t(TltgBoxMotion)],1)},zle=[]'
-BOX_MOTION_START = "/*tltg-optimized:fluidd-box-motion*/"
-BOX_MOTION_END = "/*/tltg-optimized:fluidd-box-motion*/"
+BOX_MOTION_RENDER_PATCHED = 'expression:"autoReloadDetect"}})],1)],1)],1)],1),t(VoBoxMotion)],1)},zle=[]'
+BOX_MOTION_START = "/*vo:fluidd-box-motion*/"
+BOX_MOTION_END = "/*/vo:fluidd-box-motion*/"
 BOX_MOTION_SOURCE = Path(__file__).with_name("fluidd_box_motion.js")
 # Any earlier package version of the section sits between the same markers and is replaced in place.
 BOX_MOTION_DEFINE_PREVIOUS = re.compile(
@@ -326,15 +326,15 @@ def _box_motion_define_patched() -> str:
 # The Printer screen card joins the default dashboard collapsed, after the camera card. Fluidd appends new default
 # cards to saved layouts and drops cards it does not know, so a restored stock bundle forgets it.
 SCREEN_LAYOUT_STOCK = '{id:"camera-card",enabled:!0,collapsed:!1},'
-SCREEN_LAYOUT_PATCHED = SCREEN_LAYOUT_STOCK + '{id:"tltg-screen-card",enabled:!0,collapsed:!0},'
+SCREEN_LAYOUT_PATCHED = SCREEN_LAYOUT_STOCK + '{id:"vo-screen-card",enabled:!0,collapsed:!0},'
 SCREEN_COMPONENT_STOCK = "CameraCard:wre,"
-SCREEN_COMPONENT_PATCHED = SCREEN_COMPONENT_STOCK + "TltgScreenCard:TltgScreenCard,"
+SCREEN_COMPONENT_PATCHED = SCREEN_COMPONENT_STOCK + "VoScreenCard:VoScreenCard,"
 # The card is defined between the Dashboard class and its decoration, which registers it.
 SCREEN_DEFINE_HEAD = "!t.enabled}};"
 SCREEN_DEFINE_TAIL = 'L2([Ee("columnCount")],Yu.prototype,"onColumnCount",1);'
 SCREEN_DEFINE_STOCK = SCREEN_DEFINE_HEAD + SCREEN_DEFINE_TAIL
-SCREEN_START = "/*tltg-optimized:fluidd-remote-screen*/"
-SCREEN_END = "/*/tltg-optimized:fluidd-remote-screen*/"
+SCREEN_START = "/*vo:fluidd-remote-screen*/"
+SCREEN_END = "/*/vo:fluidd-remote-screen*/"
 SCREEN_SOURCE = Path(__file__).with_name("fluidd_remote_screen.js")
 SCREEN_DEFINE_PREVIOUS = re.compile(
     re.escape(SCREEN_DEFINE_HEAD + SCREEN_START) + ".*?" + re.escape(SCREEN_END + SCREEN_DEFINE_TAIL),
@@ -350,16 +350,16 @@ def _screen_define_patched() -> str:
 # The QidiBox card joins the default dashboard expanded, after the stock Box card, and hides with it when no Box
 # is configured. It is defined right after the stock Box card so it can reuse that card's views.
 QIDIBOX_LAYOUT_STOCK = '{id:"box-card",enabled:!0,collapsed:!1},'
-QIDIBOX_LAYOUT_PATCHED = QIDIBOX_LAYOUT_STOCK + '{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1},'
+QIDIBOX_LAYOUT_PATCHED = QIDIBOX_LAYOUT_STOCK + '{id:"vo-qidi-box-card",enabled:!0,collapsed:!1},'
 QIDIBOX_COMPONENT_STOCK = "BoxCard:wce,"
-QIDIBOX_COMPONENT_PATCHED = QIDIBOX_COMPONENT_STOCK + "TltgQidiBoxCard:TltgQidiBoxCard,"
+QIDIBOX_COMPONENT_PATCHED = QIDIBOX_COMPONENT_STOCK + "VoQidiBoxCard:VoQidiBoxCard,"
 QIDIBOX_HIDDEN_STOCK = 't.id==="box-card"&&!this.hasBox'
-QIDIBOX_HIDDEN_PATCHED = '(t.id==="box-card"||t.id==="tltg-qidi-box-card")&&!this.hasBox'
+QIDIBOX_HIDDEN_PATCHED = '(t.id==="box-card"||t.id==="vo-qidi-box-card")&&!this.hasBox'
 QIDIBOX_DEFINE_HEAD = "const wce=Sce.exports;"
 QIDIBOX_DEFINE_TAIL = "var xce=Object.defineProperty,"
 QIDIBOX_DEFINE_STOCK = QIDIBOX_DEFINE_HEAD + QIDIBOX_DEFINE_TAIL
-QIDIBOX_START = "/*tltg-optimized:fluidd-qidibox-card*/"
-QIDIBOX_END = "/*/tltg-optimized:fluidd-qidibox-card*/"
+QIDIBOX_START = "/*vo:fluidd-qidibox-card*/"
+QIDIBOX_END = "/*/vo:fluidd-qidibox-card*/"
 QIDIBOX_SOURCE = Path(__file__).with_name("fluidd_qidibox_card.js")
 QIDIBOX_DEFINE_PREVIOUS = re.compile(
     re.escape(QIDIBOX_DEFINE_HEAD + QIDIBOX_START) + ".*?" + re.escape(QIDIBOX_END + QIDIBOX_DEFINE_TAIL),
@@ -430,12 +430,12 @@ def patch_fluidd_bundle(text: str) -> str:
 
 # Workbox serves its precached bundle until sw.js changes, so browsers that opened Fluidd before the patch
 # kept running the stock bundle. A revision derived from the bundle patch makes them fetch every new version.
-SERVICE_WORKER_BUNDLE_ENTRY = re.compile(r'\{"revision":(?:null|"tltg-optimized-[0-9a-f]{16}"),"url":"assets/index-DlFvHGAh\.js"\}')
+SERVICE_WORKER_BUNDLE_ENTRY = re.compile(r'\{"revision":(?:null|"vo-[0-9a-f]{16}"),"url":"assets/index-DlFvHGAh\.js"\}')
 
 
 def _service_worker_bundle_entry() -> str:
     digest = hashlib.sha256("".join(patched for _, patched, _ in _steps()).encode("utf-8")).hexdigest()[:16]
-    return '{"revision":"tltg-optimized-' + digest + '","url":"assets/index-DlFvHGAh.js"}'
+    return '{"revision":"vo-' + digest + '","url":"assets/index-DlFvHGAh.js"}'
 
 
 SERVICE_WORKER_SKIP_WAITING_STOCK = 'self.addEventListener("message",s=>{s.data&&s.data.type==="SKIP_WAITING"&&self.skipWaiting()});'

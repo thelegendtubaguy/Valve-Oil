@@ -29,6 +29,12 @@
 # toolhead can be anywhere, and a bus that stopped answering won't start again
 # between two touches.
 #
+# While QIDI's UPGRADE_MOTOR updates a closed-loop driver's firmware, the
+# guard asks nothing: QIDI's G-code returns before the transfer ends, and a
+# question sent into the transfer can corrupt it. It checks cl_interface's
+# is_any_upgrading() when a move starts and before each question, and a touch
+# it can't watch homes as QIDI's does, without the guard.
+#
 # Each move logs one line with what the driver reported, so a touch that went
 # wrong can be told from one that didn't. On by default; the saved variable
 # `vo_homing_guard` set to 0 turns it off. Printers without QIDI's closed-loop
@@ -123,6 +129,9 @@ class Touch:
         self.first_reply = None
         # Why the guard stopped the move: "behind" or "silent".
         self.stopped = None
+        # A motor firmware upgrade started during the move, so the guard
+        # stopped asking.
+        self.upgrading = False
 
 
 class HomingGuard:
@@ -184,6 +193,17 @@ class HomingGuard:
             return True
         return _is_true(variables[ENABLE_VARIABLE])
 
+    def _upgrading(self):
+        """Whether QIDI is updating a closed-loop driver's firmware."""
+        upgrading = getattr(self.cl, "is_any_upgrading", None)
+        if not callable(upgrading):
+            return False
+        try:
+            return bool(upgrading())
+        except Exception:
+            logging.exception("vo_homing_guard: motor upgrade check failed")
+            return False
+
     def _axis_pos(self, name):
         try:
             return float(self.toolhead.get_position()[STEPPERS.index(name)])
@@ -212,6 +232,11 @@ class HomingGuard:
                 self.warned_no_trsync = True
                 logging.warning("vo_homing_guard: this Klipper's endstop has no"
                                 " trsync the guard can trigger; guard off")
+            return
+        if self._upgrading():
+            logging.warning("vo_homing_guard: %s homing move not watched, a"
+                            " closed-loop motor firmware upgrade is running",
+                            name.upper())
             return
         self.touch = Touch(name, trsyncs, self.reactor.monotonic())
         self.touch.start_pos = self._axis_pos(name)
@@ -246,7 +271,14 @@ class HomingGuard:
     # -------------------------------------------------------------- polling
     def _poll(self, eventtime):
         touch = self.touch
-        if touch is None or touch.stopped:
+        if touch is None or touch.stopped or touch.upgrading:
+            return self.reactor.NEVER
+        if self._upgrading():
+            # Asking now would send a question into the firmware transfer.
+            touch.upgrading = True
+            logging.warning("vo_homing_guard: stopped watching the %s homing"
+                            " move, a closed-loop motor firmware upgrade"
+                            " started", touch.name.upper())
             return self.reactor.NEVER
         if self.waiting is not None:
             sent = self.waiting[1]
@@ -296,7 +328,7 @@ class HomingGuard:
             if self.touch is not None and not self.touch.stopped:
                 self.reactor.update_timer(self.timer, self.reactor.NOW)
             return
-        if touch.stopped:
+        if touch.stopped or touch.upgrading:
             return
         now = self.reactor.monotonic()
         touch.reads += 1
@@ -357,7 +389,9 @@ class HomingGuard:
                     touch.name.upper(),
                     {"behind": "stopped by the guard",
                      "silent": "stopped by the guard, no answer"}.get(
-                         touch.stopped, "ended"),
+                         touch.stopped,
+                         "ended, unwatched after a motor upgrade started"
+                         if touch.upgrading else "ended"),
                     travel,
                     touch.reads, touch.driver.upper(), touch.unanswered, first,
                     baseline,

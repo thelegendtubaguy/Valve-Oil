@@ -155,10 +155,10 @@ function MoveBody({ homed, free, onFree }: { homed: string; free: boolean; onFre
   return (
     <div className="grid gap-3">
       <div className={`th-move ${free ? 'free' : ''}`}>
-        <div className="steprock" role="radiogroup" aria-label={t('home.toolhead.step_size')}>
+        <div className="steprock" role="group" aria-label={t('home.toolhead.step_size')}>
           <span className="cap">{t('control.z_offset.step')}</span>
           {(Object.keys(MODES) as Mode[]).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)} title={t('home.toolhead.mode_title', { mode: t(MODES[m].labelKey), small: MODES[m].small, big: MODES[m].big })}>
+            <button key={m} type="button" aria-pressed={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)} title={t('home.toolhead.mode_title', { mode: t(MODES[m].labelKey), small: MODES[m].small, big: MODES[m].big })}>
               <b>{t(MODES[m].labelKey)}</b>
               <span>
                 {MODES[m].small}/{MODES[m].big}
@@ -297,15 +297,15 @@ function ExtrudeBody() {
   }
   const off = printing || !ready || speed <= 0
   return (
-    <div className="grid gap-2.5">
+    <div className="th-extrude-fold grid min-w-0 grid-cols-1 gap-2.5">
       <BoxTools />
       <div className="th-extrude">
         <button className="btn" disabled={off} onClick={() => send(extrudeGcode(-len, speed, clientMacro))} title={t('home.toolhead.retract_title', { length: len })}>
           <ArrowUp size={14} /> {t('control.extruder.retract')}
         </button>
-        <div className="seg" role="radiogroup" aria-label={t('control.extruder.length')}>
+        <div className="seg" role="group" aria-label={t('control.extruder.length')}>
           {E_LENGTHS.map((v) => (
-            <button key={v} type="button" role="radio" aria-checked={len === v} className={len === v ? 'on' : ''} onClick={() => pickLen(v)}>
+            <button key={v} type="button" aria-pressed={len === v} className={len === v ? 'on' : ''} onClick={() => pickLen(v)}>
               {v}
             </button>
           ))}
@@ -314,7 +314,7 @@ function ExtrudeBody() {
           {t('control.extruder.extrude')} <ArrowDown size={14} />
         </button>
       </div>
-      <div className="flex items-center gap-1.5 text-[12px] text-ink-3">
+      <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-3">
         {ready ? (
           <span>{t('home.toolhead.per_press', { length: len })}</span>
         ) : (
@@ -375,8 +375,8 @@ function TuneBody() {
     )
   return (
     <div className="th-tune">
-      <span className="k">{t('home.tune.z_offset')} {reset(v.z !== 0, `SET_GCODE_OFFSET Z=0 MOVE=${+zHomed}`)}</span>
-      <div className="grid gap-1.5">
+      <span className="k th-tune-z-label">{t('home.tune.z_offset')} {reset(v.z !== 0, `SET_GCODE_OFFSET Z=0 MOVE=${+zHomed}`)}</span>
+      <div className="grid gap-1.5 th-tune-z-controls">
         <div className="th-zoff">
           <button className="btn" onClick={() => adjust(-step)} title={t('home.toolhead.closer_title', { step })}>
             {t('home.toolhead.closer')}
@@ -389,10 +389,10 @@ function TuneBody() {
             {t('home.toolhead.farther')}
           </button>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="th-chips" role="radiogroup" aria-label={t('home.tune.z_step')}>
+        <div className="flex flex-wrap items-center gap-1">
+          <div className="th-chips" role="group" aria-label={t('home.tune.z_step')}>
             {Z_STEPS.map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={step === v} className={step === v ? 'on' : ''} onClick={() => setStep(v)}>
+              <button key={v} type="button" aria-pressed={step === v} className={step === v ? 'on' : ''} onClick={() => setStep(v)}>
                 {v}
               </button>
             ))}

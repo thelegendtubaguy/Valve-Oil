@@ -20,7 +20,7 @@ Direct visible macro calls in branch slice:
 Ordered invariants:
 
 - `{% if p == 3 and printer["fan_generic chamber_circulation_fan"] is defined %}`
-- `printer.tltg_chamber_exhaust_guard.stopped`
+- `printer.vo_chamber_exhaust_guard.stopped`
 - `SET_FAN_SPEED FAN=chamber_circulation_fan SPEED={speed}`
 
 Forbidden patterns:

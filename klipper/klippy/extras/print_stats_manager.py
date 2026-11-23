@@ -63,15 +63,15 @@ class PrintStatusManager:
         self._update_status()
     
     def _handle_reset_stats(self):
-        # tltg-optimized: keep the shutdown reason; skip resets after shutdown and from within a reset
-        if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):
+        # Valve Oil: keep the shutdown reason; skip resets after shutdown and from within a reset
+        if self.printer.is_shutdown() or getattr(self, '_vo_resetting', False):
             return
         logging.info("检查到！！错误，恢复默认状态！！")
-        self._tltg_resetting = True
+        self._vo_resetting = True
         try:
             self.set_main_status('ready')
         finally:
-            self._tltg_resetting = False
+            self._vo_resetting = False
 
     def _update_status(self):
         # This method can be used to notify other components about status changes

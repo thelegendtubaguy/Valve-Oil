@@ -7,6 +7,7 @@ import { DIAGNOSTICS_RETENTION, allCards, defaultCard, loadLayout, startCollecti
 import type { SeriesBuffer } from './chart-data'
 import { DiagnosticsEditor } from './DiagnosticsEditor'
 import { StateExplorer } from './StateExplorer'
+import { FaultCheckCard } from './FaultCheck'
 import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
 
@@ -20,6 +21,7 @@ export function Diagnostics() {
   const cards = allCards(containers).filter((c) => c.enabled)
   return (
     <div className="grid grid-cols-1 gap-3.5">
+      <FaultCheckCard />
       <Card
         title={t('system.tabs.diagnostics')}
         icon={<ChartLine size={15} />}

@@ -20,7 +20,7 @@ from .sudo import SudoError, authenticate_sudo, run_sudo_or_raise
 LEGACY_RESET_FIRMWARE_TOKEN = "legacy-manual-reset"
 QIDICLIENT_SERVICE = "qidi-client.service"
 LEGACY_MARKERS = (
-    ("config/printer.cfg", "[include tltg-optimized-macros/*.cfg]"),
+    ("config/printer.cfg", "[include vo-macros/*.cfg]"),
     ("config/klipper-macros-qd/filament.cfg", "[gcode_macro OPTIMIZED_CUT_FILAMENT]"),
     ("config/klipper-macros-qd/filament.cfg", "[gcode_macro OPTIMIZED_START_PRINT_FILAMENT_PREP]"),
     ("config/klipper-macros-qd/start_end.cfg", "[gcode_macro OPTIMIZED_PRINT_START_HOME]"),
@@ -34,13 +34,13 @@ PRESERVED_CONFIG_PATHS = (
     "config/saved_variables.cfg",
 )
 PRESERVED_CONFIG_SYMLINK_PATHS = ("config/KAMP", "config/fluidd.cfg")
-REMOVED_LEGACY_PATHS = ("config/tltg-optimized-macros",)
+REMOVED_LEGACY_PATHS = ("config/vo-macros",)
 
 
 # Written by a new install before its first change and removed with its state written. Valve Oil's files with it and
 # no state are a Valve Oil install a power cut or a closed SSH session stopped, never a hand-copied one: the run that
 # wrote it had already reset any hand-copied macros, and the next install picks up where it stopped.
-INSTALL_STARTED_FILE = ".tltg_valve_oil_install_started"
+INSTALL_STARTED_FILE = ".vo_install_started"
 
 
 class LegacyManualInstallError(InstallerError):

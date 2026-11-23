@@ -9,7 +9,7 @@ from . import messages
 from .errors import InstallerError
 
 PUBLIC_DEFAULT_SUDO_PASSWORD = "qiditech"
-SUDO_PASSWORD_ENV = "TLTG_OPTIMIZED_SUDO_PASSWORD"
+SUDO_PASSWORD_ENV = "VO_SUDO_PASSWORD"
 RunFn = Callable[..., subprocess.CompletedProcess]
 
 

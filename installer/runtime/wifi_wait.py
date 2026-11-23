@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's makerbase-wlan0.service runs wpa_supplicant on wlan0. It binds to the wlan0 device but isn't ordered after
@@ -18,9 +19,9 @@ from .errors import InstallerError
 OPERATION = "wifi_wait_for_wlan0"
 RULE_OPERATION = "wifi_start_on_wlan0"
 UNIT = "makerbase-wlan0.service"
-FILE = f"/etc/systemd/system/{UNIT}.d/tltg-wait-for-wlan0.conf"
+FILE = f"/etc/systemd/system/{UNIT}.d/vo-wait-for-wlan0.conf"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:wifi-wait-for-wlan0\n"
+MARKER = "# vo:wifi-wait-for-wlan0\n"
 CONTENT = MARKER + """\
 # Starts QIDI's wpa_supplicant only once wlan0 exists, and keeps retrying instead of giving up. Installed by Valve Oil.
 [Unit]
@@ -38,12 +39,12 @@ ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", ENV{{SYSTEMD_WANTS}}+="{UNIT}"
 
 
 def patch_rule(current: str) -> str:
-    if current == "" or current.startswith(RULE_MARKER):
+    if current == "" or has_marker(current, RULE_MARKER):
         return RULE_CONTENT
     raise InstallerError(f"Existing {RULE_FILE} is unrecognized and was preserved.")
 
 
 def patch_dropin(current: str) -> str:
-    if current == "" or current.startswith(MARKER):
+    if current == "" or has_marker(current, MARKER):
         return CONTENT
     raise InstallerError(f"Existing {FILE} is unrecognized and was preserved.")

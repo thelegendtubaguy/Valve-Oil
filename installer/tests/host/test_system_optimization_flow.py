@@ -141,7 +141,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(system_root)
         boot_id = printer_root / "boot-id"
         boot_id.write_text("boot-one\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(
@@ -276,11 +276,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertTrue(paths.host_reboot_marker_path.exists())
             state = load_installed_state(printer_root / manifest.state_file)
             self.assertIn("rockchip_root_sync", state.system_ledger["restore_preimages"])
-            probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
+            probe_helper = paths.managed_klipper_root / "klippy/extras/vo_probe_test.py"
             self.assertEqual(probe_helper.read_bytes(), (REPO_ROOT / "installer/klipper/extras/probe_test.py").read_bytes())
             # Earlier builds recorded the probe helper as a host operation; loading the state drops it.
             retired = copy.deepcopy(state.system_ledger)
-            retired["restore_preimages"]["klipper_probe_signal_test"] = {"path": "/home/qidi/klipper/klippy/extras/tltg_probe_test.py", "exists": False}
+            retired["restore_preimages"]["klipper_probe_signal_test"] = {"path": "/home/qidi/klipper/klippy/extras/vo_probe_test.py", "exists": False}
             retired["outcomes"]["klipper_probe_signal_test"] = {"status": "applied", "source": "yes_install"}
             write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, retired))
             state = load_installed_state(printer_root / manifest.state_file)
@@ -294,7 +294,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertNotEqual(moonraker.read_bytes(), moonraker_before)
             self.assertIn(b"\r\n", moonraker.read_bytes())
             self.assertEqual(moonraker.stat().st_mode & 0o777, 0o640)
-            self.assertIn(b"            plateindex = self._tltg_3mf_plate_index(filename)\r\n", klippy_apis.read_bytes())
+            self.assertIn(b"            plateindex = self._vo_3mf_plate_index(filename)\r\n", klippy_apis.read_bytes())
             # Fluidd's Box slot dialog gets the filaments a file uses, for the plate a 3MF prints.
             self.assertIn("plate_index = _3mf_selected_plate_index(", metadata.read_text(encoding="utf-8"))
             self.assertIn("each plate's own filaments", metadata.read_text(encoding="utf-8"))
@@ -308,15 +308,15 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertIn(b"LOAD_FILAMENT_CONTROL", fluidd.read_bytes())
             self.assertIn(fluidd_patch.PRINT_SLOT_CHANGE_PATCHED.encode(), fluidd.read_bytes())
             self.assertIn(fluidd_patch.BOX_MOTION_START.encode(), fluidd.read_bytes())
-            self.assertIn(b"t(TltgBoxMotion)", fluidd.read_bytes())
+            self.assertIn(b"t(VoBoxMotion)", fluidd.read_bytes())
             self.assertIn(fluidd_patch.SERVICE_WORKER_OPERATION, state.system_ledger["restore_preimages"])
-            self.assertIn(b'{"revision":"tltg-optimized-', service_worker.read_bytes())
+            self.assertIn(b'{"revision":"vo-', service_worker.read_bytes())
             self.assertIn(fluidd_patch.SERVICE_WORKER_TAKEOVER_PATCHED.encode(), service_worker.read_bytes())
             self.assertIn(KLIPPER_BOX_OPERATION, state.system_ledger["restore_preimages"])
             self.assertIn(b"config.access_tracking if module == 'heater_generic'", box_config.read_bytes())
             self.assertNotIn(b"\n", box_config.read_bytes().replace(b"\r\n", b""))
             self.assertIn(KLIPPER_PRINT_STATS_OPERATION, state.system_ledger["restore_preimages"])
-            self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_tltg_resetting', False):", stats_manager.read_bytes())
+            self.assertIn(b"if self.printer.is_shutdown() or getattr(self, '_vo_resetting', False):", stats_manager.read_bytes())
             self.assertNotIn(b"\n", stats_manager.read_bytes().replace(b"\r\n", b""))
             # Klipper loads the package's C helper library as it is: it is never older than QIDI's sources, so Klipper never
             # rebuilds it from them.
@@ -332,17 +332,17 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual([path.read_text(encoding="utf-8") for path in monitor_files[1:]],
                              [box_monitor.UNIT_CONTENT, box_monitor.RULE_CONTENT])
             installed_monitor = {}
-            exec(compile(monitor_files[0].read_text(encoding="utf-8"), "tltg_box_monitor.py", "exec"), installed_monitor)
+            exec(compile(monitor_files[0].read_text(encoding="utf-8"), "vo_box_monitor.py", "exec"), installed_monitor)
             self.assertTrue(installed_monitor["app_patched"](str(qidiclient)))
             filament_config = manifest.system_optimizations.fluidd_filament_config
             filament_link = printer_root / filament_config.link
             self.assertEqual(os.readlink(filament_link), filament_config.target)
             self.assertIn(FILAMENT_CONFIG_OPERATION, state.system_ledger["restore_preimages"])
-            self.assertIn(b"TltgScreenCard:TltgScreenCard", fluidd.read_bytes())
-            self.assertIn(b'{id:"tltg-screen-card",enabled:!0,collapsed:!0}', fluidd.read_bytes())
+            self.assertIn(b"VoScreenCard:VoScreenCard", fluidd.read_bytes())
+            self.assertIn(b'{id:"vo-screen-card",enabled:!0,collapsed:!0}', fluidd.read_bytes())
             self.assertIn(fluidd_patch.QIDIBOX_START.encode(), fluidd.read_bytes())
             self.assertIn(fluidd_patch.QIDIBOX_HIDDEN_PATCHED.encode(), fluidd.read_bytes())
-            self.assertIn(b'{id:"tltg-qidi-box-card",enabled:!0,collapsed:!1}', fluidd.read_bytes())
+            self.assertIn(b'{id:"vo-qidi-box-card",enabled:!0,collapsed:!1}', fluidd.read_bytes())
             self.assertEqual(screen_unit.read_text(encoding="utf-8"), remote_screen.UNIT_CONTENT)
             self.assertEqual(screen_server.read_bytes(), remote_screen.SERVER_PAYLOAD.read_bytes())
             self.assertEqual(addons_unit.read_text(encoding="utf-8"), addons_service.UNIT_CONTENT)
@@ -383,7 +383,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 fluidd_patch.FILAS_LIST_STOCK, fluidd_patch._filas_list_patched_v1()
             ).replace(
                 fluidd_patch.BOX_MOTION_DEFINE_STOCK,
-                fluidd_patch.BOX_MOTION_DEFINE_HEAD + fluidd_patch.BOX_MOTION_START + "const TltgBoxMotion={render:h=>h()};"
+                fluidd_patch.BOX_MOTION_DEFINE_HEAD + fluidd_patch.BOX_MOTION_START + "const VoBoxMotion={render:h=>h()};"
                 + fluidd_patch.BOX_MOTION_END + fluidd_patch.BOX_MOTION_DEFINE_TAIL,
             ).replace(fluidd_patch.BOX_MOTION_RENDER_STOCK, fluidd_patch.BOX_MOTION_RENDER_PATCHED).encode()
             fluidd.write_bytes(fluidd_previous)
@@ -477,12 +477,12 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             # Serving the package Fluidd build retires QIDI's bundle patches, and Moonraker gets the speedup packages; a
             # failure first rolls both back. nginx never serves a Valve Oil UI directory the package doesn't own.
             manifest = with_valve_oil_ui(with_moonraker_speedups(with_fluidd_build(manifest)))
-            ui = system_root / "home/qidi/tltg-valve-oil-ui"
+            ui = system_root / "home/qidi/vo-valve-oil-ui"
             (ui / "private").mkdir(parents=True)
             (ui / "index.html").write_text("someone else's page\n", encoding="utf-8")
-            build = system_root / "home/qidi/tltg-fluidd"
-            previous_build = system_root / "home/qidi/tltg-fluidd.tltg-previous"
-            marker = build / ".tltg-optimized-fluidd"
+            build = system_root / "home/qidi/vo-fluidd"
+            previous_build = system_root / "home/qidi/vo-fluidd.vo-previous"
+            marker = build / ".vo-fluidd"
             speedups = system_root / moonraker_speedups.DESTINATION.lstrip("/")
             previous_speedups = system_root / moonraker_speedups.PREVIOUS.lstrip("/")
             speedups_marker = speedups / moonraker_speedups.MARKER
@@ -525,8 +525,8 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual((speedups / "uvloop/__init__.py").stat().st_mode & 0o777, 0o644)
             self.assertEqual(speedups_path.read_text(encoding="utf-8"), moonraker_speedups.PATH_CONTENT)
             self.assertEqual(klipper_speedups_path.read_text(encoding="utf-8"), moonraker_speedups.KLIPPER_PATH_CONTENT)
-            self.assertIn(b"\r\n    root /home/qidi/tltg-fluidd;\r\n    gzip_static on;\r\n", nginx_site.read_bytes())
-            self.assertIn(b"location /tltg-screen/ {\r\n", nginx_site.read_bytes())
+            self.assertIn(b"\r\n    root /home/qidi/vo-fluidd;\r\n    gzip_static on;\r\n", nginx_site.read_bytes())
+            self.assertIn(b"location /vo-screen/ {\r\n", nginx_site.read_bytes())
             self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
             self.assertNotIn(b"/valve-oil", nginx_site.read_bytes())
             self.assertEqual((ui / "index.html").read_text(encoding="utf-8"), "someone else's page\n")
@@ -561,10 +561,10 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual(speedups_marker.read_text(encoding="utf-8"), speedups_digest + "\n")
             self.assertFalse(previous_speedups.exists())
             self.assertEqual(nginx_site.read_bytes().count(b"    gzip_static on;\r\n"), 1)
-            self.assertEqual((ui / ".tltg-optimized-valve-oil-ui").read_text(encoding="utf-8"), manifest.system_optimizations.valve_oil_ui.sha256 + "\n")
+            self.assertEqual((ui / ".vo-valve-oil-ui").read_text(encoding="utf-8"), manifest.system_optimizations.valve_oil_ui.sha256 + "\n")
             self.assertEqual((ui / "index.html").stat().st_mode & 0o777, 0o644)
-            self.assertIn(b"    location ^~ /valve-oil/ {\r\n        alias /home/qidi/tltg-valve-oil-ui/;\r\n", nginx_site.read_bytes())
-            self.assertIn(b"        alias /home/qidi/tltg-valve-oil-ui/index.html;\r\n        add_header Cache-Control \"no-store\";\r\n", nginx_site.read_bytes())
+            self.assertIn(b"    location ^~ /valve-oil/ {\r\n        alias /home/qidi/vo-valve-oil-ui/;\r\n", nginx_site.read_bytes())
+            self.assertIn(b"        alias /home/qidi/vo-valve-oil-ui/index.html;\r\n        add_header Cache-Control \"no-store\";\r\n", nginx_site.read_bytes())
             self.assertNotIn(b"\n", nginx_site.read_bytes().replace(b"\r\n", b""))
             # A QIDI package that installs another reviewed build of the touchscreen app hands it to the next run, which
             # patches it and keeps that build's QIDI executable, alone, for uninstall.
@@ -677,7 +677,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         boot_id = printer_root / "boot-id"
         boot_id.write_text("boot-one\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         state_path = printer_root / manifest.state_file
@@ -771,7 +771,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(root)
         boot_id = printer_root / "boot-id"
         boot_id.write_text("boot-one\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         # A touchscreen app build nobody reviewed, the same size as a reviewed one.
@@ -951,7 +951,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(system_root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        env["VO_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         legacy = {
@@ -1028,7 +1028,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(system_root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        env["VO_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
@@ -1056,7 +1056,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertEqual(os.readlink(filament_link), "/home/qidi/operator_filaments")
         write_installed_state(printer_root / manifest.state_file, _replace_system_ledger(state, reconciled))
         (system_root / "etc/apt/sources.list").write_text("operator apt\n", encoding="utf-8")
-        probe_helper = paths.managed_klipper_root / "klippy/extras/tltg_probe_test.py"
+        probe_helper = paths.managed_klipper_root / "klippy/extras/vo_probe_test.py"
         probe_modified = probe_helper.read_bytes() + b"\n# operator modification\n"
         probe_helper.write_bytes(probe_modified)
         zram = system_root / zram_swap.DESTINATION.lstrip("/")
@@ -1082,7 +1082,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(system_root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        env["VO_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
@@ -1432,7 +1432,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(system_root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        env["VO_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
@@ -1655,7 +1655,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 state = InstalledState(
                     schema_version=1, package_id=manifest.package.id, package_version=manifest.package.version,
                     runtime_firmware="01.01.02.01", backup_label="test", installed_at="2026-11-22T00:00:00Z",
-                    managed_tree=ManagedTreeState(root="config/tltg-optimized-macros", files=()), patch_ledger=(),
+                    managed_tree=ManagedTreeState(root="config/vo-macros", files=()), patch_ledger=(),
                     system_ledger=ledger,
                 )
                 with mock.patch.object(system_optimizations, "_write_host_journal", journal):
@@ -1690,7 +1690,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid"); env[SYSTEM_ROOT_ENV] = str(root)
         boot = printer_root / "boot-id"
         boot.write_text("test-boot\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot)
+        env["VO_BOOT_ID_PATH"] = str(boot)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         return paths, load_manifest(REPO_ROOT / "installer/package.yaml"), env, root
 
@@ -1727,7 +1727,7 @@ class BootFilesFlowTests(unittest.TestCase):
         env[SYSTEM_ROOT_ENV] = str(root)
         boot_id = printer_root / "boot-id"
         boot_id.write_text("boot-one\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")

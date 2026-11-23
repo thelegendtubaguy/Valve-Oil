@@ -1,10 +1,10 @@
 // Ported from the Valve Oil Fluidd fork (GPL-3.0), src/util/vo-bed-soak.ts at
-// github.com/thelegendtubaguy/fluidd qidi@6405679, with the fork's Klipper status types for tltg_bed_soak
+// github.com/thelegendtubaguy/fluidd qidi@6405679, with the fork's Klipper status types for vo_bed_soak
 // (src/typings/klipper.d.ts) added at the end. Keep behavior in step with the fork.
 /**
- * Run files of QIDI Max 4 Optimized's bed soak test (tltg_bed_soak).
+ * Run files of Valve Oil's bed soak test (vo_bed_soak).
  *
- * Each run is a JSON Lines file in the config root's tltg_bed_soak folder: a
+ * Each run is a JSON Lines file in the config root's vo_bed_soak folder: a
  * settings line, one line per mesh, jump lines when a probe jump is confirmed,
  * and a result line once the test ends. Lengths are in mm, speeds in mm/min,
  * and times in seconds after the heaters turned on, so the cold mesh's are
@@ -12,7 +12,7 @@
  */
 
 export const BED_SOAK_ROOT = 'config'
-export const BED_SOAK_FOLDER = 'tltg_bed_soak'
+export const BED_SOAK_FOLDER = 'vo_bed_soak'
 export const BED_SOAK_PATH = `${BED_SOAK_ROOT}/${BED_SOAK_FOLDER}`
 
 /** Chart and status colours, checked against the dark card surface #28282B */
@@ -565,7 +565,7 @@ export const bedSoakHeatmapColor = (value: number, maxAbs: number, neutral: stri
   return `rgb(${mid.map((v, i) => Math.round(v + (end[i] - v) * t)).join(',')})`
 }
 
-// ---- tltg_bed_soak status, from the fork's src/typings/klipper.d.ts ----
+// ---- vo_bed_soak status, from the fork's src/typings/klipper.d.ts ----
 
 export type VoBedSoakRunState = 'idle' | 'running' | 'finished' | 'stopped' | 'failed'
 
@@ -608,7 +608,7 @@ export interface VoBedSoakLatest {
   used: boolean;
 }
 
-// QIDI Max 4 Optimized's bed soak test. Grids are in the run file, not here.
+// Valve Oil's bed soak test. Grids are in the run file, not here.
 export interface VoBedSoakState {
   state: VoBedSoakRunState;
   step: VoBedSoakStep;

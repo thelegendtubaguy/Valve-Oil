@@ -29,10 +29,10 @@ from .fs_atomic import atomic_delete, atomic_write_text
 from .sudo import SudoError, authenticate_sudo, run_sudo, sudo_command
 
 DEVICE = "/dev/block/by-name/boot"
-SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"  # system_optimizations.SYSTEM_ROOT_ENV: a test's stand-in for /
+SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"  # system_optimizations.SYSTEM_ROOT_ENV: a test's stand-in for /
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
-RECORD = ".tltg_boot_logo.json"
-BACKUP_DIR = "tltg_optimized_system_backups"
+RECORD = ".vo_boot_logo.json"
+BACKUP_DIR = "vo_system_backups"
 LOGOS = (b"logo.bmp", b"logo_kernel.bmp")
 BLOCK = 512
 BMP_HEADER = 54
@@ -205,7 +205,7 @@ class Partition:
                     handle.seek(first * BLOCK)
                     handle.write(chunk)
                 continue
-            with tempfile.NamedTemporaryFile(prefix="tltg-boot-logo-") as handle:
+            with tempfile.NamedTemporaryFile(prefix="vo-boot-logo-") as handle:
                 handle.write(chunk)
                 handle.flush()
                 result = run_sudo(["dd", f"if={handle.name}", f"of={self.path}", f"bs={BLOCK}", f"seek={first}",

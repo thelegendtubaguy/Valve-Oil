@@ -1,7 +1,7 @@
 # QIDI Box RFID tags for Valve Oil: Anycubic, Elegoo, and Bambu Lab spools,
 # and those brands' filaments in QIDI's filament database.
 #
-# At startup, catalog entries (tltg_filament_catalog) that QIDI's filament database
+# At startup, catalog entries (vo_filament_catalog) that QIDI's filament database
 # files lack are added to them. Existing entries, QIDI's or the operator's,
 # are never changed, and no entry is added whose name or ID is already used.
 #
@@ -29,8 +29,8 @@
 # its own ID, so tags for entries an operator added read the same anywhere.
 # Only blank tags and tags already holding a QIDI block are written, and each
 # write is read back. A spool on an empty slot's rollers is turned backward
-# (the slot motor drives the roller, as for tltg_box_spool_roll) through
-# tltg_box_slot_jog until its tag comes past, polling the reader after each
+# (the slot motor drives the roller, as for vo_box_spool_roll) through
+# vo_box_slot_jog until its tag comes past, polling the reader after each
 # TURN_PIECE; with filament in the slot the operator turns it by hand.
 #
 # VO_BOX_RFID_TEST is the hardware test tool behind it: it scans a reader for
@@ -58,7 +58,7 @@ import os
 import time
 
 try:
-    from .tltg_filament_catalog import CATALOG
+    from .vo_filament_catalog import CATALOG
 except ImportError:  # imported outside Klipper's extras package
     from filament_catalog import CATALOG
 
@@ -437,7 +437,7 @@ class FilamentDatabase:
                 with open(path) as handle:
                     entries = json.load(handle)
             except (OSError, ValueError):
-                logging.exception("tltg_box_rfid: cannot read %s", path)
+                logging.exception("vo_box_rfid: cannot read %s", path)
                 continue
             used = {e.get("filament_id") for e in entries.values() if hasattr(e, "get")}
             new = {name: dict(item["entry"]) for name, item in self.catalog["filaments"].items()
@@ -446,7 +446,7 @@ class FilamentDatabase:
             if not new:
                 continue
             entries.update(new)
-            temp = path + ".tltg-tmp"
+            temp = path + ".vo-tmp"
             try:
                 with open(temp, "w") as handle:
                     json.dump(entries, handle, ensure_ascii=False, indent=2)
@@ -457,13 +457,13 @@ class FilamentDatabase:
                 os.chmod(temp, mode)
                 os.replace(temp, path)
             except OSError:
-                logging.exception("tltg_box_rfid: cannot update %s", path)
+                logging.exception("vo_box_rfid: cannot update %s", path)
                 if os.path.exists(temp):
                     os.unlink(temp)
                 continue
             added[nozzle] = len(new)
         if added:
-            logging.info("tltg_box_rfid: added catalog filaments %s", added)
+            logging.info("vo_box_rfid: added catalog filaments %s", added)
         return added
 
     def entries(self):
@@ -474,7 +474,7 @@ class FilamentDatabase:
                 with open(path) as handle:
                     self.cache = (mtime, json.load(handle))
         except (OSError, ValueError):
-            logging.exception("tltg_box_rfid: cannot read %s", path)
+            logging.exception("vo_box_rfid: cannot read %s", path)
         return self.cache[1]
 
     def find(self, brand, material, kind=None):
@@ -634,7 +634,7 @@ class TagReader:
             try:
                 return self._read(oid)
             except Exception:
-                logging.exception("tltg_box_rfid: %s read failed; using QIDI's read", self.name)
+                logging.exception("vo_box_rfid: %s read failed; using QIDI's read", self.name)
                 return self.original.send(data, *args, **kwargs)
 
     def _read(self, oid):
@@ -968,7 +968,7 @@ class BoxRfid:
         def cmd_INIT_RFID_READ(gcmd):
             if started():
                 return original(gcmd)
-            logging.info("tltg_box_rfid: %s ran before QIDI's Box controller was ready; waiting for it", INIT_READ)
+            logging.info("vo_box_rfid: %s ran before QIDI's Box controller was ready; waiting for it", INIT_READ)
             deadline = self.reactor.monotonic() + INIT_READ_WAIT
 
             def retry(eventtime):
@@ -976,11 +976,11 @@ class BoxRfid:
                     return self.reactor.NEVER
                 if started():
                     gcode.run_script(INIT_READ)
-                    logging.info("tltg_box_rfid: %s ran once QIDI's Box controller was ready", INIT_READ)
+                    logging.info("vo_box_rfid: %s ran once QIDI's Box controller was ready", INIT_READ)
                 elif eventtime < deadline:
                     return eventtime + INIT_READ_POLL
                 else:
-                    logging.info("tltg_box_rfid: QIDI's Box controller still wasn't ready; %s left out", INIT_READ)
+                    logging.info("vo_box_rfid: QIDI's Box controller still wasn't ready; %s left out", INIT_READ)
                 return self.reactor.NEVER
             self.reactor.register_timer(retry, self.reactor.monotonic() + INIT_READ_POLL)
         gcode.register_command(INIT_READ, cmd_INIT_RFID_READ, desc=getattr(gcode, "gcode_help", {}).get(INIT_READ))
@@ -999,7 +999,7 @@ class BoxRfid:
             reader = TagReader(self, name.split()[-1], rfid, select, transceive, query)
             rfid.fm17550_read_card = reader
             self.readers[reader.name] = reader
-        logging.info("tltg_box_rfid: tag reading on %s", sorted(self.readers) or "no reader (stock Box firmware)")
+        logging.info("vo_box_rfid: tag reading on %s", sorted(self.readers) or "no reader (stock Box firmware)")
 
     def _write_report(self, prefix, label, report):
         report = dict(report, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
@@ -1015,12 +1015,12 @@ class BoxRfid:
             except FileExistsError:
                 continue
             except OSError:
-                logging.exception("tltg_box_rfid: cannot write %s", path)
+                logging.exception("vo_box_rfid: cannot write %s", path)
                 return None
         else:
             return None
         self.last_report = path
-        logging.info("tltg_box_rfid: wrote spool tag report %s", path)
+        logging.info("vo_box_rfid: wrote spool tag report %s", path)
         return path
 
     def _base_report(self, reader, ident):
@@ -1104,10 +1104,10 @@ class BoxRfid:
         return qidi_block(filament_id, colors) + names
 
     def _turner(self, gcmd, slot, label):
-        """tltg_box_slot_jog when SLOT's spool may be turned now, else raise."""
-        jog = self.printer.lookup_object("tltg_box_slot_jog", None)
+        """vo_box_slot_jog when SLOT's spool may be turned now, else raise."""
+        jog = self.printer.lookup_object("vo_box_slot_jog", None)
         if jog is None:
-            raise gcmd.error("Turning a spool needs tltg_box_slot_jog.")
+            raise gcmd.error("Turning a spool needs vo_box_slot_jog.")
         blocker = jog.blocker()
         if blocker is not None:
             raise gcmd.error("Slot %s not turned: %s." % (label, blocker))
@@ -1207,7 +1207,7 @@ class BoxRfid:
 
     def _slot_empty(self, slot):
         """QIDI counts the slot empty and its inlet sensor sees no filament,
-        as tltg_box_spool_roll requires before turning a spool."""
+        as vo_box_spool_roll requires before turning a spool."""
         variables = getattr(self.printer.lookup_object("save_variables", None), "allVariables", None) or {}
         name = "slot%d" % (slot,)
         if variables.get(name) != 0 or name in (variables.get("slot_sync"), variables.get("last_load_slot")):

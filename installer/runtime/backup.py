@@ -18,10 +18,17 @@ from .path_safety import (
     ensure_runtime_path_has_no_symlink_components,
     ensure_runtime_tree_has_no_symlinks,
 )
-from .naming import UNINSTALL_BACKUP_LABEL_PREFIX
+from .naming import (
+    EARLIER_INSTALL_BACKUP_LABEL_PREFIX,
+    EARLIER_UNINSTALL_BACKUP_LABEL_PREFIX,
+    UNINSTALL_BACKUP_LABEL_PREFIX,
+)
 
 
 UNKNOWN_FIRMWARE_TOKEN = "unknown-firmware"
+# The archive's list of the Klipper files saved beside the config folder.
+EXTERNAL_FILES_MANIFEST = ".vo-external-files.json"
+EARLIER_EXTERNAL_FILES_MANIFEST = ".tltg-external-files.json"
 INSTALLER_BACKUP_RETENTION = 3
 # Vendor links plus the installer-owned QIDI filament database link.
 CONFIG_BACKUP_IGNORED_SYMLINKS = ("KAMP", "fluidd.cfg", "qidi_filament_config")
@@ -106,14 +113,15 @@ def parse_installer_backup_archive(
     if created_at is None or not package_version:
         return None
 
-    prefix = f"{install_label_prefix}-"
-    uninstall_prefix = f"{UNINSTALL_BACKUP_LABEL_PREFIX}-"
-    if left.startswith(prefix):
-        kind = "install"
-        firmware_token = left[len(prefix) :]
-    elif left.startswith(uninstall_prefix):
-        kind = "uninstall"
-        firmware_token = left[len(uninstall_prefix) :]
+    for label_prefix, kind in (
+        (install_label_prefix, "install"),
+        (EARLIER_INSTALL_BACKUP_LABEL_PREFIX, "install"),
+        (UNINSTALL_BACKUP_LABEL_PREFIX, "uninstall"),
+        (EARLIER_UNINSTALL_BACKUP_LABEL_PREFIX, "uninstall"),
+    ):
+        if left.startswith(f"{label_prefix}-"):
+            firmware_token = left[len(label_prefix) + 1 :]
+            break
     else:
         return None
     if not firmware_token:
@@ -256,7 +264,7 @@ def create_config_backup(
                                     "sha256": hashlib.sha256(value).hexdigest(),
                                     "mode": stat.S_IMODE(item.stat().st_mode)})
                 archive.writestr(
-                    ".tltg-external-files.json",
+                    EXTERNAL_FILES_MANIFEST,
                     json.dumps(
                         {
                             "schema_version": 1,
@@ -291,7 +299,11 @@ def load_external_backup_entries(
             names = [info.filename for info in infos]
             if len(names) != len(set(names)):
                 raise BackupArchiveError("Backup archive contains duplicate members.")
-            manifest_name = ".tltg-external-files.json"
+            # Backups from releases before 26.11.22.3 name the same manifest .tltg-external-files.json.
+            manifest_name = next(
+                (name for name in (EXTERNAL_FILES_MANIFEST, EARLIER_EXTERNAL_FILES_MANIFEST) if name in names),
+                EXTERNAL_FILES_MANIFEST,
+            )
             if manifest_name not in names:
                 if require_manifest:
                     raise BackupArchiveError("Backup archive is missing external source metadata.")
@@ -458,7 +470,7 @@ def restore_backup_snapshot(
     printer_data_root: Path,
     source_directory: str,
 ) -> dict[str, bytes]:
-    with tempfile.TemporaryDirectory(prefix="tltg-restore-stage-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="vo-restore-stage-") as temp_dir:
         staged = stage_backup_snapshot(
             backup_zip_path=backup_zip_path,
             staging_root=Path(temp_dir),

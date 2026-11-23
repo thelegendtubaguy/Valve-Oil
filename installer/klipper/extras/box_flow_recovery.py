@@ -21,12 +21,12 @@
 # sensor empty. QIDI's unload then runs no steps and reports success, and its
 # eject heats the nozzle and pulls back whichever slot last_load_slot names.
 # For an idle printer, UNLOAD_FILAMENT_CONTROL and EJECT_FILAMENT_CONTROL of
-# the hub's slot pull that slot back with tltg_box_slot_jog's motion until
+# the hub's slot pull that slot back with vo_box_slot_jog's motion until
 # the hub sensor clears, stopping if the slot's inlet sensor empties first.
 # An unload then parks the filament in the Box and saves the slot state
 # QIDI's own slot unload saves; an eject hands over to QIDI's eject, which now
 # runs as its eject step alone. The hub's slot comes from
-# tltg_box_loaded_slot's record and last_load_slot, or is the only slot with
+# vo_box_loaded_slot's record and last_load_slot, or is the only slot with
 # filament at its inlet; anything else is refused with the reason. Whenever
 # neither QIDI nor this module would move anything, the console says why.
 #
@@ -52,7 +52,7 @@
 # M109 to the filament's highest printing temperature in their heat step, in
 # the unload step, and on retry, and their cut and unload pull back with
 # G1 E moves that Klipper's cold-extrusion check refuses. A cold flow runs
-# inside tltg_cold_cut's cold_retracts(), which lets those pull-backs through
+# inside vo_cold_cut's cold_retracts(), which lets those pull-backs through
 # and still refuses extrusion, with every M109 skipped and the flow's
 # temperature cleared, so its completion turns the nozzle off without QIDI's
 # 5 s dwell and wipe. FLOW_RETRY of a paused cold flow retries it cold. Only
@@ -93,9 +93,36 @@
 # homes the slot, which lines the clocks up again, but an unload ties the slot
 # to the extruder for its pull-back first, so the slot's steps ran up to 25 s
 # late, holding the filament while the extruder slipped on it, or all at once
-# as fast as the Box allows. Before the pull-back, with QIDI's auto-feed
-# aborted and the slot idle, the slot's step clock is now reset as a homing
+# as fast as the Box allows. Before the pull-back, with the Box's auto-feed
+# stopped and the slot idle, the slot's step clock is now reset as a homing
 # move resets it.
+#
+# Stopping auto-feed: QIDI's unload has already called box_autofeed's
+# auto_abort, which forgets the slot it armed, so a second auto_abort sends
+# nothing, and MCB_AUTO_ABORT reaches only the Box of the slot last armed.
+# Valve Oil stops a slot's auto-feed itself, on that slot's Box: it tells the
+# Box the buffer wants no feed, then aborts twice, waiting each time for the
+# Box to put a stopped feed's step clock back. QIDI's own record of the buffer
+# switch is left as the switch set it, so QIDI's next arm tells the Box what
+# the buffer really wants.
+#
+# QIDI's auto-feed arms: every time QIDI arms auto-feed (Klipper start, the
+# end of each load, print start, a tool change to the loaded slot, and
+# TIGHTEN_FILAMENT), the auto-feed of that slot's Box is now stopped this way
+# first, so an arm can no longer land inside a feed.
+#
+# Valve Oil's own slot moves: vo_box_slot_jog's moves of a slot auto-feed is
+# set up on (jogs, RFID spool turns, stranded filament pull-backs) stop it the
+# same way and reset the slot's step clock first, then arm it again as QIDI
+# last did when QIDI had it armed there, except after a pull-back out of the
+# hub, which leaves it off as QIDI's unload does.
+#
+# An unload that Valve Oil stops with filament caught at the toolhead raises
+# out of QIDI's unload, which skips QIDI's own cleanup and left the slot tied
+# to the extruder and on in Klipper's motor tracking for the whole pause,
+# while the Box switches the motor off on its own. Before the stop is
+# raised, the slot is now untied from the extruder and switched off in
+# Klipper, as QIDI's unload does after its pull-back and on its own failure.
 #
 # Cancelled parts: Klipper's exclude_object drops every move while the print
 # is inside a cancelled part, extruder-only moves included. OrcaSlicer closes
@@ -113,6 +140,17 @@
 # EXCLUDE_OBJECT_END, or a new print, ends a filament change that never sent
 # TOOL_CHANGE_END.
 #
+# Power-loss resume: QIDI's resume (SDCARD_POWER_OFF_CONTINUES_PINT_FILE)
+# cancels the saved cancelled parts again and restarts the file 4 KiB before
+# where power was lost, without the EXCLUDE_OBJECT_START of the part it
+# restarts inside. Klipper then counted the print as outside every part, and
+# a cancelled part printed again, in the air, until its EXCLUDE_OBJECT_END.
+# When parts were cancelled, the resume now finds the last part label and
+# filament change marker before its restart point, once QIDI has put the
+# toolhead back, and starts that part again, so a cancelled one stays
+# skipped; a restart inside a filament change lets its moves through as
+# above.
+#
 # External spool loads: QIDI's external-spool load flow ends with EXT_WIPE,
 # whose ExternalAdapter.wipe runs its purge and chute wipe and then returns
 # False whatever happened, in every build listed below, while a G-code error
@@ -123,9 +161,12 @@
 
 import contextlib
 import hashlib
+import inspect
 import logging
+import os
 import re
 import sys
+import threading
 
 import greenlet
 
@@ -157,12 +198,10 @@ PULLBACK_MOVES = 2
 EXTRA_PULL_MM = 20.
 TOOLHEAD_SENSOR = "filament_switch_sensor filament_switch_sensor"
 RETRACT_LINE = re.compile(r"G1 E-(\d+(?:\.\d+)?) F\d+(?:\.\d+)?$")
-# QIDI's auto-feed abort puts a running feed's saved step clock back 10 ms
-# after it; resetting the clock is only safe once that is done, in seconds.
-# SET_LIMIT_A is box_autofeed's buffer signal to the Box.
+# The Box puts a stopped feed's saved step clock back 10 ms after an abort,
+# and a feed that has just ended 10 ms after its last step; resetting or
+# re-arming is only safe once that is done, in seconds.
 FEED_ABORT_SETTLE = .1
-# QIDI's box_autofeed log line for the Box buffer switch.
-BUFFER_EVENT = "[MCB] limit_a_event: raw_state="
 # Below this share of the pulls asked for, the extruder counts as not moved.
 MOVED_SHARE = .5
 # Raising the nozzle out of a cancelled part: a relative move just above the
@@ -170,6 +209,21 @@ MOVED_SHARE = .5
 LIFT_STATE = "_vo_cancelled_part_lift"
 LIFT_SCRIPT = ("SAVE_GCODE_STATE NAME=%s\nG91\nG1 Z0.01 F1200\nG1 Z-0.01\n"
                "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE, LIFT_STATE))
+# SHA-256 of the source, line endings removed, of QIDI's power-loss resume
+# methods this was written for: Max 4 01.01.06.05 and 01.01.07.01, Plus 5
+# and Smart 5 01.01.02.01.
+POWER_LOSS_RESUME = {
+    "_set_printer_state_internal":
+        "29ac1b6742add751d9afe4ec25ac93487ae9b58d0bc3ebce0f91ef5c0c9bd6ff",
+    "cmd_SDCARD_POWER_OFF_CONTINUES_PINT_FILE":
+        "b3485fd88961ac598812c08f673d938594739751ff8dc155aab6a125d00fde7f",
+}
+# Part labels and filament change markers in a print file, and how much of
+# the file is read at a time looking back for them.
+MARK_LINE = re.compile(
+    rb"^[ \t]*(EXCLUDE_OBJECT_START|EXCLUDE_OBJECT_END|TOOL_CHANGE_START|"
+    rb"TOOL_CHANGE_END)\b[^\n]*", re.M | re.I)
+SCAN_CHUNK = 64 * 1024
 
 
 def _slot_number(slot):
@@ -177,6 +231,51 @@ def _slot_number(slot):
             and slot[4:].isdigit():
         return int(slot[4:])
     return None
+
+
+def source_hash(func):
+    try:
+        source = inspect.getsource(func)
+    except (OSError, TypeError):
+        return None
+    return hashlib.sha256(source.replace("\r", "").encode()).hexdigest()
+
+
+def marks_before(fd, pos, pause):
+    """Read back from byte POS of the print file FD for the last part label
+    before it. Returns that label's EXCLUDE_OBJECT_START line, or None when
+    it is an EXCLUDE_OBJECT_END or there is none, and whether a filament
+    change is open there. A line POS cuts counts as before it: the print
+    restarts at its rest, which can't run as a command."""
+    if pos <= 0:
+        return None, False
+    tail = os.pread(fd, SCAN_CHUNK, pos - 1)
+    newline = tail.find(b"\n")
+    hi = pos - 1 + (newline if newline >= 0 else len(tail))
+    carry = b""
+    filament_change = None
+    while hi > 0:
+        lo = max(0, hi - SCAN_CHUNK)
+        data = os.pread(fd, hi - lo, lo) + carry
+        if lo:
+            # The chunk's first line may start in the one before it.
+            cut = data.find(b"\n")
+            if cut < 0:
+                carry, hi = data, lo
+                continue
+            carry, data = data[:cut], data[cut + 1:]
+        for match in reversed(list(MARK_LINE.finditer(data))):
+            mark = match.group(1).upper()
+            if filament_change is None:
+                filament_change = mark == b"TOOL_CHANGE_START"
+            if mark == b"EXCLUDE_OBJECT_START":
+                return match.group(0).strip().decode("utf-8", "replace"), \
+                    filament_change
+            if mark == b"EXCLUDE_OBJECT_END":
+                return None, filament_change
+        hi = lo
+        pause()
+    return None, bool(filament_change)
 
 
 def slot_label(slot):
@@ -232,31 +331,6 @@ def _add(total, start, end):
     return total + start - end
 
 
-class _BufferFeeds(logging.Handler):
-    """Counts the QIDI Box buffer switch's feed triggers, which QIDI's
-    box_autofeed logs as `[MCB] limit_a_event: raw_state=0 normalized=1`
-    and its releases as `normalized=0`; every trigger makes the Box feed
-    filament forward on its own."""
-
-    def __init__(self):
-        logging.Handler.__init__(self, logging.INFO)
-        self.feeds = 0
-        self.pressed = None
-
-    def emit(self, record):
-        try:
-            message = record.getMessage()
-        except Exception:
-            return
-        if not message.startswith(BUFFER_EVENT):
-            return
-        if message.endswith("normalized=1"):
-            self.feeds += 1
-            self.pressed = True
-        elif message.endswith("normalized=0"):
-            self.pressed = False
-
-
 class _UnloadWatch:
     """A Box slot's G-code object for one unload from the toolhead: it adds
     up the extruder's pulls, notes where the toolhead sensor cleared, and
@@ -281,6 +355,8 @@ class _UnloadWatch:
         self._slot_start = None
         self._slot_end = None
         self.cleared_at = None
+        # The unload was stopped here instead of pulling again.
+        self.stopped = False
 
     @property
     def pulled(self):
@@ -296,6 +372,7 @@ class _UnloadWatch:
             return
         if any(RETRACT_LINE.match(line) for line in self._lines(script)) \
                 and self._toolhead_filament() is True:
+            self.stopped = True
             raise self._stop(self)
 
     def _run(self, run, script):
@@ -348,18 +425,6 @@ class _UnloadWatch:
         return getattr(self._gcode, name)
 
 
-def _buffer_feeds():
-    """The one buffer feed counter on Python's root logger, kept across
-    Klipper restarts, which reuse this module."""
-    root = logging.getLogger()
-    for handler in root.handlers:
-        if type(handler).__name__ == "_BufferFeeds":
-            return handler
-    handler = _BufferFeeds()
-    root.addHandler(handler)
-    return handler
-
-
 class BoxFlowRecovery:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -383,10 +448,12 @@ class BoxFlowRecovery:
         self._in_cancelled_part = None
         # Between TOOL_CHANGE_START and TOOL_CHANGE_END of a print.
         self._filament_change = False
-        # The Box buffer's feed triggers, and their count at the last unload
-        # from the toolhead.
-        self._buffer = None
+        # The Boxes' feeds counted at the last unload from the toolhead.
         self._feeds_at_unload = 0
+        # QIDI's box_autofeed, once its arms are guarded, and the arguments
+        # of QIDI's last arm of each slot.
+        self._autofeed = None
+        self._arms = {}
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("virtual_sdcard:reset_file",
                                             self._end_filament_change)
@@ -394,21 +461,26 @@ class BoxFlowRecovery:
     # ----------------------------------------------------------------- setup
     def _handle_ready(self):
         try:
+            self._guard_auto_feed_arms()
+        except Exception:
+            logging.exception("vo_box_flow_recovery: guarding QIDI's "
+                              "auto-feed arms failed")
+        try:
             self._watch_toolhead_unloads()
         except Exception:
-            logging.exception("tltg_box_flow_recovery: watching unloads from "
+            logging.exception("vo_box_flow_recovery: watching unloads from "
                               "the toolhead failed")
         try:
             self._watch_cancelled_parts()
         except Exception:
-            logging.exception("tltg_box_flow_recovery: watching cancelled "
+            logging.exception("vo_box_flow_recovery: watching cancelled "
                               "parts failed")
         controller = self.printer.lookup_object("multi_color_controller", None)
         manager = getattr(controller, "task_queue_manager", None)
         if not callable(getattr(manager, "stop", None)) \
                 or not hasattr(manager, "gcode") \
                 or not hasattr(manager, "current_task"):
-            logging.info("tltg_box_flow_recovery: inactive: QIDI Box flow "
+            logging.info("vo_box_flow_recovery: inactive: QIDI Box flow "
                          "controller not found")
             return
         self.controller = controller
@@ -425,12 +497,12 @@ class BoxFlowRecovery:
                 ("EJECT_FILAMENT_CONTROL", self.cmd_EJECT_FILAMENT_CONTROL),
                 ("T_MANAGER", self.cmd_T_MANAGER)):
             self._wrap_command(name, handler)
-        logging.info("tltg_box_flow_recovery: active")
+        logging.info("vo_box_flow_recovery: active")
 
     def _wrap_command(self, name, handler):
         original = self.gcode.register_command(name, None)
         if original is None:
-            logging.info("tltg_box_flow_recovery: %s not found", name)
+            logging.info("vo_box_flow_recovery: %s not found", name)
             return False
         self.originals[name] = original
         self.gcode.register_command(name, handler,
@@ -452,7 +524,7 @@ class BoxFlowRecovery:
         return task is not None and bool(getattr(task, "is_paused", False))
 
     def _tracker(self):
-        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
+        tracker = self.printer.lookup_object("vo_box_loaded_slot", None)
         return tracker if getattr(tracker, "slots", None) else None
 
     # ------------------------------------------------------- failed steps
@@ -476,11 +548,11 @@ class BoxFlowRecovery:
         try:
             build = self._controller_build()
         except OSError:
-            logging.exception("tltg_box_flow_recovery: reading QIDI's flow "
+            logging.exception("vo_box_flow_recovery: reading QIDI's flow "
                               "controller failed")
             return
         if build not in EXTERNAL_WIPE_FALSE_BUILDS:
-            logging.info("tltg_box_flow_recovery: external wipe left as "
+            logging.info("vo_box_flow_recovery: external wipe left as "
                          "QIDI's (build %s)", build)
             return
 
@@ -488,7 +560,7 @@ class BoxFlowRecovery:
             result = wipe(*args, **kwargs)
             return True if result is False else result
         method_map["EXT_WIPE"] = external_wipe
-        logging.info("tltg_box_flow_recovery: external wipe reports success "
+        logging.info("vo_box_flow_recovery: external wipe reports success "
                      "after its script runs")
 
     def _wrap_flow_runner(self, original, name):
@@ -496,12 +568,12 @@ class BoxFlowRecovery:
             try:
                 self._fix_external_wipe()
             except Exception:
-                logging.exception("tltg_box_flow_recovery: fixing the "
+                logging.exception("vo_box_flow_recovery: fixing the "
                                   "external wipe failed")
             try:
                 self._absolute_positioning()
             except Exception:
-                logging.exception("tltg_box_flow_recovery: switching to "
+                logging.exception("vo_box_flow_recovery: switching to "
                                   "absolute positioning failed")
             if name == "start_flow":
                 cold = self._cold_requested and self._cold_flow(
@@ -520,7 +592,7 @@ class BoxFlowRecovery:
                 try:
                     self._pause_after_error(e)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: pausing the "
+                    logging.exception("vo_box_flow_recovery: pausing the "
                                       "flow after a step error failed")
                 raise
             finally:
@@ -536,9 +608,7 @@ class BoxFlowRecovery:
         lookup_objects = getattr(self.printer, "lookup_objects", None)
         if not callable(lookup_objects):
             return
-        if self._buffer is None:
-            self._buffer = _buffer_feeds()
-            self._feeds_at_unload = self._buffer.feeds
+        self._feeds_at_unload = self._feeds() or 0
         watched = []
         for name, stepper in lookup_objects("box_stepper"):
             original = getattr(stepper, "extruder_unload_single_func", None)
@@ -549,7 +619,7 @@ class BoxFlowRecovery:
                 slot, stepper, original)
             watched.append(slot)
         if watched:
-            logging.info("tltg_box_flow_recovery: watching unloads from the "
+            logging.info("vo_box_flow_recovery: watching unloads from the "
                          "toolhead on %s", ", ".join(watched))
 
     def _extruder_position(self):
@@ -572,7 +642,23 @@ class BoxFlowRecovery:
             return None
 
     def _feeds(self):
-        return None if self._buffer is None else self._buffer.feeds
+        """How many feeds the Boxes have started, as vo_box_watch counts
+        their `MCB_STATE` 2; None without it."""
+        watch = self.printer.lookup_object("vo_box_watch", None)
+        boxes = getattr(watch, "boxes", None)
+        if not isinstance(boxes, dict):
+            return None
+        try:
+            return sum(box.feeds for box in boxes.values())
+        except Exception:
+            return None
+
+    def _buffer_switch(self):
+        """What QIDI last read from the Box buffer switch: 1 asks for a
+        feed."""
+        autofeed = self.printer.lookup_object("box_autofeed", None)
+        return {1: "pressed", 0: "released"}.get(
+            getattr(autofeed, "limit_a_state", None), "unknown")
 
     def _toolhead_filament(self):
         """The toolhead sensor: True with filament, None if unknown."""
@@ -609,6 +695,8 @@ class BoxFlowRecovery:
                 return result
             except Exception as e:
                 outcome = "raised %s: %s" % (type(e).__name__, e)
+                if watch.stopped:
+                    self._release_slot(slot, stepper)
                 raise
             finally:
                 if stepper.gcode is watch:
@@ -617,9 +705,25 @@ class BoxFlowRecovery:
                 try:
                     self._log_unload(slot, before, watch, outcome)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: logging the "
+                    logging.exception("vo_box_flow_recovery: logging the "
                                       "unload failed")
         return extruder_unload_single_func
+
+    def _release_slot(self, slot, box_stepper):
+        """After Valve Oil stopped QIDI's unload, which skips QIDI's own
+        cleanup: untie the slot from the extruder and switch its motor off
+        in Klipper, as QIDI's unload does after its pull-back and when it
+        fails itself."""
+        for name in ("sync_unbind_extruder", "disable_stepper"):
+            method = getattr(box_stepper, name, None)
+            if not callable(method):
+                continue
+            try:
+                method()
+            except Exception:
+                logging.exception("vo_box_flow_recovery: %s of %s after the "
+                                  "stopped unload failed", name,
+                                  slot_label(slot))
 
     def _reset_clock_before_sync(self, slot, box_stepper):
         """Reset the slot's step clock right before QIDI's unload ties the
@@ -627,10 +731,8 @@ class BoxFlowRecovery:
         extruder_stepper = getattr(box_stepper, "extruder_stepper", None)
         sync = getattr(extruder_stepper, "sync_to_extruder", None)
         mcu_stepper = getattr(extruder_stepper, "stepper", None)
-        autofeed = self.printer.lookup_object("box_autofeed", None)
-        abort = getattr(autofeed, "auto_abort", None)
-        if not callable(sync) or not callable(abort) or not callable(
-                getattr(mcu_stepper, "note_homing_end", None)):
+        if not callable(sync) or self._feed_device(mcu_stepper) is None \
+                or not callable(getattr(mcu_stepper, "note_homing_end", None)):
             return lambda: None
         own = "sync_to_extruder" in vars(extruder_stepper)
         done = []
@@ -639,9 +741,10 @@ class BoxFlowRecovery:
             if extruder_name and not done:
                 done.append(True)
                 try:
-                    self._reset_slot_clock(slot, abort, mcu_stepper)
+                    self._reset_slot_clock(slot, mcu_stepper,
+                                           "before the unload's pull-back")
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: resetting %s's "
+                    logging.exception("vo_box_flow_recovery: resetting %s's "
                                       "step clock failed", slot_label(slot))
             return sync(extruder_name, *args, **kwargs)
         extruder_stepper.sync_to_extruder = sync_to_extruder
@@ -656,23 +759,176 @@ class BoxFlowRecovery:
                 del extruder_stepper.sync_to_extruder
         return unhook
 
-    def _reset_slot_clock(self, slot, abort, mcu_stepper):
+    def _reset_slot_clock(self, slot, mcu_stepper, when):
+        """Stop auto-feed on the slot's Box and reset the slot's step clock,
+        once Klipper's moves are done; False if auto-feed can't be stopped,
+        which leaves the clock as it is."""
         toolhead = self.printer.lookup_object("toolhead")
         toolhead.wait_moves()
-        # QIDI's unload aborts auto-feed just before this. An abort that
-        # lands in the Box's pause between two feeds is ignored and the Box
-        # starts the next feed itself while the buffer signal says to, so
-        # that signal is cleared first, then auto-feed is aborted twice, each
-        # time waiting for the Box to put a dropped feed's clock back. No
-        # feed can be stepping the slot when its clock is reset.
-        self.gcode.run_script_from_command("SET_LIMIT_A STATE=0")
-        for _ in range(2):
-            abort()
-            self.reactor.pause(self.reactor.monotonic() + FEED_ABORT_SETTLE)
+        if not self._stop_feeds(mcu_stepper):
+            logging.info("vo_box_flow_recovery: %s step clock not reset %s: "
+                         "its Box's auto-feed can't be stopped here",
+                         slot_label(slot), when)
+            return False
         toolhead.flush_step_generation()
         mcu_stepper.note_homing_end()
-        logging.info("tltg_box_flow_recovery: %s step clock reset before the "
-                     "unload's pull-back", slot_label(slot))
+        logging.info("vo_box_flow_recovery: %s step clock reset %s",
+                     slot_label(slot), when)
+        return True
+
+    # ---------------------------------------------------- QIDI's auto-feed
+    def _feed_device(self, mcu_stepper):
+        """QIDI's auto-feed device on the Box that drives MCU_STEPPER, as
+        box_autofeed keeps one per Box MCU, or None."""
+        autofeed = self.printer.lookup_object("box_autofeed", None)
+        devices = getattr(autofeed, "_dev_by_mcu", None)
+        get_mcu = getattr(mcu_stepper, "get_mcu", None)
+        if not isinstance(devices, dict) or not callable(get_mcu):
+            return None
+        device = devices.get(get_mcu())
+        if not isinstance(device, dict) \
+                or not isinstance(device.get("oid"), int) \
+                or not all(callable(getattr(device.get(name), "send", None))
+                           for name in ("cmd_mcb_abort", "cmd_set_limit_a")):
+            return None
+        return device
+
+    def _can_wait(self):
+        # Klipper's reactor can pause anywhere on its own thread, but not in
+        # the serial reader's thread that runs MCU reply handlers.
+        return threading.current_thread() is threading.main_thread()
+
+    def _stop_feeds(self, mcu_stepper):
+        """Stop auto-feed on the Box that drives MCU_STEPPER, whatever slot
+        it is set up on, and wait until a feed it stopped has put its slot's
+        step clock back; False if it can't be done here."""
+        device = self._feed_device(mcu_stepper)
+        if device is None or not self._can_wait():
+            return False
+        oid = device["oid"]
+        # An abort that lands in the 10 ms after a feed's last step only
+        # switches the motor off, and the Box then starts the next feed
+        # itself while the buffer signal says to. So the Box is told first
+        # that the buffer wants no feed, then aborted twice, each time
+        # waiting for it to put a stopped feed's clock back. QIDI's record
+        # of the buffer switch is left alone: its next arm sends it again.
+        device["cmd_set_limit_a"].send([oid, 0])
+        for _ in range(2):
+            device["cmd_mcb_abort"].send([oid])
+            self.reactor.pause(self.reactor.monotonic() + FEED_ABORT_SETTLE)
+        return True
+
+    def _watched_box(self, mcu_stepper):
+        """vo_box_watch's record of the Box that drives MCU_STEPPER, or
+        None."""
+        watch = self.printer.lookup_object("vo_box_watch", None)
+        boxes = getattr(watch, "boxes", None)
+        try:
+            return boxes.get(mcu_stepper.get_mcu().get_name())
+        except Exception:
+            return None
+
+    def _aborted_feeds(self, mcu_stepper):
+        """How many feeds an abort has stopped on the Box of MCU_STEPPER, as
+        vo_box_watch counts the Box's MCB_ABORT replies, which the Box sends
+        only for an abort that finds a feed running."""
+        counts = getattr(self._watched_box(mcu_stepper), "unhandled", None)
+        return counts.get("MCB_ABORT", 0) if isinstance(counts, dict) else 0
+
+    def _feeding(self, mcu_stepper, stopped=False):
+        """The slot vo_box_watch has the Box of MCU_STEPPER feeding, or that
+        a feed was just STOPPED on, and the Box's number; None if no feed is
+        known to be running."""
+        box = self._watched_box(mcu_stepper)
+        if box is None or not (stopped or getattr(box, "feeding", False)):
+            return None
+        slot = (getattr(box, "slots", None) or {}).get(
+            getattr(box, "active", None))
+        return getattr(slot, "label", "unknown"), getattr(box, "number", "?")
+
+    def _guard_auto_feed_arms(self):
+        autofeed = self.printer.lookup_object("box_autofeed", None)
+        original = getattr(autofeed, "auto_start", None)
+        devices = getattr(autofeed, "_dev_by_mcu", None)
+        if not callable(original) or not isinstance(devices, dict):
+            logging.info("vo_box_flow_recovery: QIDI's Box auto-feed not "
+                         "found; its arms are left as QIDI's")
+            return
+        self._autofeed = autofeed
+
+        # Another module may wrap auto_start too; this calls whatever was
+        # there before it.
+        def auto_start(*args, **kwargs):
+            try:
+                self._before_arm(args, kwargs)
+            except Exception:
+                logging.exception("vo_box_flow_recovery: stopping auto-feed "
+                                  "before QIDI's arm failed")
+            return original(*args, **kwargs)
+        autofeed.auto_start = auto_start
+        logging.info("vo_box_flow_recovery: QIDI's auto-feed arms stop a "
+                     "running feed first")
+
+    def _before_arm(self, args, kwargs):
+        """QIDI's box_autofeed.auto_start(v, a, lmax, dir, sync_stepper) is
+        about to set auto-feed up on a slot, dropping any feed running on
+        that slot's Box without putting its step clock back: stop the feed
+        first."""
+        box_stepper = args[4] if len(args) > 4 else kwargs.get("sync_stepper")
+        slot = getattr(box_stepper, "stepper_name", None)
+        mcu_stepper = getattr(box_stepper, "stepper", None)
+        if not isinstance(slot, str):
+            return
+        self._arms[slot] = (tuple(args), dict(kwargs))
+        feeding = self._feeding(mcu_stepper)
+        aborted = self._aborted_feeds(mcu_stepper)
+        if not self._stop_feeds(mcu_stepper):
+            logging.info("vo_box_flow_recovery: QIDI armed auto-feed on %s "
+                         "without a running feed stopped first: %s",
+                         slot_label(slot),
+                         "its Box's auto-feed wasn't found"
+                         if self._can_wait() else "Klipper can't wait here")
+            return
+        # A feed that started just before the stop is known only from the
+        # Box's answer to the abort, which comes while the stop waits.
+        if feeding is None and self._aborted_feeds(mcu_stepper) > aborted:
+            feeding = self._feeding(mcu_stepper, stopped=True)
+        if feeding is not None:
+            logging.info("vo_box_flow_recovery: auto-feed was feeding slot %s "
+                         "(Box %s) when QIDI armed it on %s; the feed was "
+                         "stopped first and the Box put the slot's step clock "
+                         "back", feeding[0], feeding[1], slot_label(slot))
+
+    def hold_auto_feed(self, slot, mcu_stepper):
+        """Before Valve Oil moves SLOT's motor (vo_box_slot_jog): when QIDI's
+        auto-feed is set up on that slot, stop it and reset the slot's step
+        clock. Returns whether QIDI had it armed there, for
+        rearm_auto_feed()."""
+        autofeed = self._autofeed
+        if autofeed is None or slot not in (
+                getattr(autofeed, "bind_stepper", None),
+                getattr(autofeed, "active_slot", None)):
+            return False
+        armed = getattr(autofeed, "bind_stepper", None) == slot
+        return self._reset_slot_clock(
+            slot, mcu_stepper, "before Valve Oil moves it") and armed
+
+    def rearm_auto_feed(self, slot):
+        """After Valve Oil moved SLOT's motor: arm auto-feed on it again as
+        QIDI last did, when QIDI still has it armed there."""
+        autofeed = self._autofeed
+        arm = self._arms.get(slot)
+        if autofeed is None or getattr(autofeed, "bind_stepper", None) != slot:
+            return
+        if arm is None:
+            logging.info("vo_box_flow_recovery: auto-feed on %s left off "
+                         "after Valve Oil moved it: QIDI's arm wasn't seen; "
+                         "QIDI arms it again at its next load, print start, "
+                         "or tool change", slot_label(slot))
+            return
+        autofeed.auto_start(*arm[0], **arm[1])
+        logging.info("vo_box_flow_recovery: auto-feed on %s armed again after "
+                     "Valve Oil moved it", slot_label(slot))
 
     def _log_unload(self, slot, before, watch, outcome):
         def state(value):
@@ -688,19 +944,19 @@ class BoxFlowRecovery:
             buffer = "unknown"
         else:
             buffer = ("%d feeds before it since the last unload from the "
-                      "toolhead, %d during it, switch %s"
-                      % (before[2] - self._feeds_at_unload, feeds - before[2],
-                         {True: "pressed", False: "released"}.get(
-                             self._buffer.pressed, "not seen yet")))
+                      "toolhead, %d during it"
+                      % (before[2] - self._feeds_at_unload,
+                         feeds - before[2]))
             self._feeds_at_unload = feeds
         logging.info(
-            "tltg_box_flow_recovery: %s unload from the toolhead: toolhead "
+            "vo_box_flow_recovery: %s unload from the toolhead: toolhead "
             "sensor %s -> %s%s; hub sensor %s -> %s; extruder pulled back %s "
             "mm, %s of them after its pull-back, and moved %s; slot motor "
-            "moved %s during the pulls; Box buffer %s; %s",
+            "moved %s during the pulls; Box auto-feed %s, buffer switch %s; %s",
             slot_label(slot), state(before[0]), state(after[0]), cleared,
             state(before[1]), state(after[1]), _mm(watch.pulled), _mm(watch.extra),
-            mm(watch.moved), mm(watch.slot_moved), buffer, outcome)
+            mm(watch.moved), mm(watch.slot_moved), buffer,
+            self._buffer_switch(), outcome)
 
     def _toolhead_stuck(self, slot, watch):
         if watch.skipped:
@@ -732,7 +988,7 @@ class BoxFlowRecovery:
                             "FLOW_STOP ends it.")
             else:
                 message += ", then unload again."
-        logging.warning("tltg_box_flow_recovery: %s", message)
+        logging.warning("vo_box_flow_recovery: %s", message)
         return self.printer.command_error(message)
 
     # ------------------------------------------------------ cancelled parts
@@ -740,7 +996,7 @@ class BoxFlowRecovery:
         exclude = self.printer.lookup_object("exclude_object", None)
         in_cancelled_part = getattr(exclude, "_test_in_excluded_region", None)
         if not callable(in_cancelled_part):
-            logging.info("tltg_box_flow_recovery: cancelled parts not "
+            logging.info("vo_box_flow_recovery: cancelled parts not "
                          "watched: Klipper's exclude_object not found")
             return
         self._exclude = exclude
@@ -756,8 +1012,72 @@ class BoxFlowRecovery:
                 ("TOOL_CHANGE_START", self.cmd_TOOL_CHANGE_START),
                 ("TOOL_CHANGE_END", self.cmd_TOOL_CHANGE_END)):
             self._wrap_command(name, handler)
-        logging.info("tltg_box_flow_recovery: moves go through cancelled "
+        logging.info("vo_box_flow_recovery: moves go through cancelled "
                      "parts during filament changes and pauses")
+        self._watch_power_loss_resume()
+
+    def _watch_power_loss_resume(self):
+        sdcard = self.printer.lookup_object("virtual_sdcard", None)
+        set_state = getattr(sdcard, "_set_printer_state_internal", None)
+        if not callable(set_state):
+            return
+        for name, expected in POWER_LOSS_RESUME.items():
+            if source_hash(getattr(type(sdcard), name, None)) != expected:
+                logging.info("vo_box_flow_recovery: power-loss resume left "
+                             "as QIDI's: its %s differs from the version "
+                             "this was written for", name)
+                return
+
+        def set_printer_state(*args, **kwargs):
+            set_state(*args, **kwargs)
+            restore = getattr(sdcard, "_printer_off_power_resume", None)
+            if callable(restore):
+                sdcard._printer_off_power_resume = \
+                    lambda: self._resume_after_power_loss(sdcard, restore)
+        set_printer_state.__wrapped__ = set_state
+        sdcard._set_printer_state_internal = set_printer_state
+        logging.info("vo_box_flow_recovery: power-loss resume keeps "
+                     "cancelled parts skipped")
+
+    def _resume_after_power_loss(self, sdcard, restore):
+        """Run QIDI's restore, then put the print back inside the part and
+        filament change its file restarts in, when parts were cancelled."""
+        restore()
+        cancelled = self._exclude.get_status().get("excluded_objects")
+        if not cancelled:
+            return
+        pos = sdcard.file_position
+        try:
+            part, filament_change = marks_before(
+                sdcard.current_file.fileno(), pos,
+                lambda: self.reactor.pause(self.reactor.monotonic()))
+        except (AttributeError, OSError, ValueError):
+            logging.exception("vo_box_flow_recovery: finding the part a "
+                              "power-loss resume restarts in failed")
+            return
+        logging.info("vo_box_flow_recovery: power-loss resume restarts at "
+                     "byte %d %s%s; cancelled: %s", pos,
+                     "after %s" % (part,) if part else "outside every part",
+                     ", inside a filament change" if filament_change else "",
+                     ", ".join(cancelled))
+        if part is not None:
+            self._learn_extruder_position()
+            self.gcode.run_script_from_command(part)
+        if filament_change:
+            self._filament_change = True
+
+    def _learn_extruder_position(self):
+        """exclude_object lets the first 5 extrusions through once it starts
+        watching, to learn where the extruder is, and QIDI's resume starts it
+        again. The resume has put the extruder back, so take it as learned
+        before a cancelled part's moves would print."""
+        exclude = self._exclude
+        if getattr(exclude, "initial_extrusion_moves", 0) > 0 \
+                and getattr(exclude, "next_transform", None) is not None:
+            exclude.max_position_extruded = max(
+                exclude.max_position_extruded,
+                exclude.last_position_extruded[3])
+            exclude.initial_extrusion_moves = 0
 
     def _moves_through_cancelled_parts(self):
         return self._filament_change or self._tool_change \
@@ -784,13 +1104,13 @@ class BoxFlowRecovery:
         try:
             self.gcode.run_script_from_command(LIFT_SCRIPT)
         except Exception:
-            logging.exception("tltg_box_flow_recovery: raising the nozzle "
+            logging.exception("vo_box_flow_recovery: raising the nozzle "
                               "out of a cancelled part failed")
             try:
                 self.gcode.run_script_from_command(
                     "RESTORE_GCODE_STATE NAME=%s" % (LIFT_STATE,))
             except Exception:
-                logging.exception("tltg_box_flow_recovery: restoring the "
+                logging.exception("vo_box_flow_recovery: restoring the "
                                   "G-code state failed")
 
     def _start_moving(self, flag):
@@ -799,7 +1119,7 @@ class BoxFlowRecovery:
         part = self._cancelled_part() if self._drops_moves() else None
         setattr(self, flag, True)
         if part is not None:
-            logging.info("tltg_box_flow_recovery: filament change inside "
+            logging.info("vo_box_flow_recovery: filament change inside "
                          "cancelled part %s; its moves go through until it "
                          "ends", part)
             self._leave_cancelled_part()
@@ -839,22 +1159,22 @@ class BoxFlowRecovery:
             message = ("Box flow %s heats the nozzle: COLD=1 covers only Box "
                        "unload and eject steps, not %s."
                        % (flow_id, ", ".join(others)))
-            logging.info("tltg_box_flow_recovery: %s", message)
+            logging.info("vo_box_flow_recovery: %s", message)
             self.gcode.respond_info(message)
             return False
-        logging.info("tltg_box_flow_recovery: flow %s runs cold: %s",
+        logging.info("vo_box_flow_recovery: flow %s runs cold: %s",
                      flow_id, ", ".join(steps) or "no steps")
         return True
 
     @contextlib.contextmanager
     def _cold(self):
         """Cold retracts allowed and M109 skipped."""
-        cold_cut = self.printer.lookup_object("tltg_cold_cut", None)
+        cold_cut = self.printer.lookup_object("vo_cold_cut", None)
         with cold_cut.cold_retracts():
             heat = self.gcode.register_command("M109", None)
 
             def skip_heat(gcmd):
-                logging.info("tltg_box_flow_recovery: cold Box flow skipped "
+                logging.info("vo_box_flow_recovery: cold Box flow skipped "
                              "%s", gcmd.get_commandline())
 
             if heat is not None:
@@ -874,7 +1194,7 @@ class BoxFlowRecovery:
         if gcode_move is None or getattr(gcode_move, "absolute_coord", True):
             return
         gcode_move.absolute_coord = True
-        logging.info("tltg_box_flow_recovery: relative positioning was on; "
+        logging.info("vo_box_flow_recovery: relative positioning was on; "
                      "switched to absolute for the Box flow")
 
     def _pause_after_error(self, error):
@@ -885,7 +1205,7 @@ class BoxFlowRecovery:
                 or getattr(task, "is_cancelled", False):
             return
         task.is_paused = True
-        logging.info("tltg_box_flow_recovery: step %s raised %s: %s; flow "
+        logging.info("vo_box_flow_recovery: step %s raised %s: %s; flow "
                      "paused", step, type(error).__name__, error)
         # QIDI's own words for a failed step, which Fluidd's Box card reads.
         self.gcode.respond_info("Step %s failed. Pausing flow." % (step,))
@@ -908,7 +1228,7 @@ class BoxFlowRecovery:
                 try:
                     self._after_stop(scripts, state)
                 except Exception:
-                    logging.exception("tltg_box_flow_recovery: heater "
+                    logging.exception("vo_box_flow_recovery: heater "
                                       "handling after a flow stop failed")
             return result
         return stop
@@ -923,7 +1243,7 @@ class BoxFlowRecovery:
             else:
                 self.gcode.run_script(HEATER_OFF)
             message = "Box flow stopped. Nozzle heater off."
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         self.gcode.respond_info(message)
 
     def _stop_from_command(self):
@@ -962,7 +1282,7 @@ class BoxFlowRecovery:
                    "To load a slot, use Load on the QIDI Box card or "
                    "LOAD_FILAMENT_CONTROL SLOT=<n>."
                    % (gcmd.get("T", ""),))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
 
@@ -1004,7 +1324,7 @@ class BoxFlowRecovery:
                 else:
                     task.is_paused = True
             except Exception:
-                logging.exception("tltg_box_flow_recovery: pausing the tool "
+                logging.exception("vo_box_flow_recovery: pausing the tool "
                                   "change flow failed")
         ran_out = self._ran_out_slot(error)
         if ran_out is not None:
@@ -1023,7 +1343,7 @@ class BoxFlowRecovery:
                        % (gcmd.get("T", ""),
                           " at %s" % (step,) if step else "",
                           str(error).rstrip(".")))
-        logging.warning("tltg_box_flow_recovery: %s (%s: %s)", message,
+        logging.warning("vo_box_flow_recovery: %s (%s: %s)", message,
                         type(error).__name__, error)
         self.gcode.respond_raw("!! " + message)
         if self._print_state() == "printing":
@@ -1046,13 +1366,13 @@ class BoxFlowRecovery:
                 raise gcmd.error("Box %s not run: COLD=1 runs only while no "
                                  "print is running or paused, and a print is "
                                  "%s." % (action.lower(), state))
-            if self.printer.lookup_object("tltg_cold_cut", None) is None:
+            if self.printer.lookup_object("vo_cold_cut", None) is None:
                 raise gcmd.error("Box %s not run: COLD=1 needs "
-                                 "tltg_cold_cut." % (action.lower(),))
+                                 "vo_cold_cut." % (action.lower(),))
         try:
             plan = self._plan(action, gcmd)
         except Exception:
-            logging.exception("tltg_box_flow_recovery: %s check failed",
+            logging.exception("vo_box_flow_recovery: %s check failed",
                               action.lower())
             plan = None
         if plan is None:
@@ -1157,16 +1477,16 @@ class BoxFlowRecovery:
                                                 reason)
         if not message.endswith("."):
             message += "."
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         self.gcode.respond_info(message)
 
     def _retract(self, action, slot, reason, gcmd, original):
         tracker = self._tracker()
-        jog = self.printer.lookup_object("tltg_box_slot_jog", None)
+        jog = self.printer.lookup_object("vo_box_slot_jog", None)
         number = _slot_number(slot)
         label = slot_label(slot)
         if jog is None:
-            raise gcmd.error("Box %s of %s not run: tltg_box_slot_jog is "
+            raise gcmd.error("Box %s of %s not run: vo_box_slot_jog is "
                              "missing." % (action.lower(), label))
         if self._flow_paused():
             self._stop_from_command()
@@ -1177,19 +1497,20 @@ class BoxFlowRecovery:
         message = ("Box: %s's filament is stopped between the Box hub and "
                    "the toolhead (%s). Pulling it back out of the hub."
                    % (label, reason))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
 
         def hub_clear_or_inlet_empty():
             return tracker.hub_occupied() is False \
                 or tracker.inlets().get(slot) is False
 
+        # Like QIDI's unload, these pull-backs leave auto-feed off.
         moved, _ = jog.move(number, -MAX_HUB_RETRACT, RETRACT_SPEED,
                             until=hub_clear_or_inlet_empty,
-                            piece=RETRACT_PIECE)
+                            piece=RETRACT_PIECE, rearm=False)
         hub = tracker.hub_occupied()
         inlet = tracker.inlets().get(slot)
-        logging.info("tltg_box_flow_recovery: %s retracted %.0f mm, hub "
+        logging.info("vo_box_flow_recovery: %s retracted %.0f mm, hub "
                      "filament=%r inlet filament=%r", slot, moved, hub, inlet)
         if hub is not False:
             if inlet is False:
@@ -1214,7 +1535,7 @@ class BoxFlowRecovery:
         parked, _ = jog.move(number, -PARK_DISTANCE, RETRACT_SPEED,
                              until=lambda: tracker.inlets().get(slot)
                              is False,
-                             piece=RETRACT_PIECE)
+                             piece=RETRACT_PIECE, rearm=False)
         if tracker.inlets().get(slot) is False:
             raise gcmd.error(
                 "%s's filament left its inlet sensor %.0f mm after the Box "
@@ -1223,7 +1544,7 @@ class BoxFlowRecovery:
         tracker.save(slot, SLOT_STATE_LOADED)
         message = ("Box: unloaded %s. Its filament is parked in the Box."
                    % (label,))
-        logging.info("tltg_box_flow_recovery: %s", message)
+        logging.info("vo_box_flow_recovery: %s", message)
         gcmd.respond_info(message)
         return None
 

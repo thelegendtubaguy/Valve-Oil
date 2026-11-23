@@ -34,7 +34,8 @@ DEVICE = "/dev/ttyS4"
 UNSUPPORTED_BOOTLOADER = 3
 FELL_BACK = 4
 END_UNCONFIRMED = 5
-SERVICES = ("klipper.service", "qidi-client.service", "tltg-optimized-auto-update.timer")
+# The update check's timer, under its name before 26.11.22.3 too; either may be absent.
+SERVICES = ("klipper.service", "qidi-client.service", "vo-auto-update.timer", "tltg-optimized-auto-update.timer")
 
 
 def digest(data: bytes) -> str:
@@ -81,7 +82,7 @@ def require_ownership(idle_confirmed: bool, *, at_boot: bool = False) -> None:
             ["systemctl", "show", service, "--property=ActiveState", "--value"],
             capture_output=True, text=True, timeout=5,
         )
-        if result.returncode and service == "tltg-optimized-auto-update.timer":
+        if result.returncode and service.endswith(".timer"):
             load = subprocess.run(
                 ["systemctl", "show", service, "--property=LoadState", "--value"],
                 capture_output=True, text=True, timeout=5,

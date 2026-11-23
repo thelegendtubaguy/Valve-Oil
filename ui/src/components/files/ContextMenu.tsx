@@ -6,6 +6,8 @@ export type MenuItem = { label: ReactNode; icon?: ReactNode; onSelect: () => voi
 /** A menu at a point: the file menu, from a right-click, a tap on a row, or its ⋯ button. Kept inside the window. */
 export function ContextMenu({ x, y, items, header, onClose }: { x: number; y: number; items: MenuItem[]; header?: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  // What had focus when the menu opened (the row or its ⋯ button), so a dialog an item opens returns focus there.
+  const opener = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
   const [pos, setPos] = useState({ left: x, top: y })
   useLayoutEffect(() => {
     const el = ref.current
@@ -29,7 +31,7 @@ export function ContextMenu({ x, y, items, header, onClose }: { x: number; y: nu
         if (it === 'sep') return <div key={i} className="sep my-1" />
         const item = it as Exclude<MenuItem, 'sep' | null | false>
         return (
-          <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (onClose(), item.onSelect())}>
+          <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (opener.current?.isConnected && opener.current.focus(), onClose(), item.onSelect())}>
             {item.icon}
             {item.label}
           </button>

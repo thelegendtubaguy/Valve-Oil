@@ -118,7 +118,7 @@ class BoxStatusCopyTest(unittest.TestCase):
     every get_status."""
 
     def controller(self):
-        module = types.ModuleType("tltg_test_multi_color_controller")
+        module = types.ModuleType("vo_test_multi_color_controller")
         module.copy = copy
         source = (
             "class MultiColorController:\n"

@@ -74,6 +74,7 @@
     "empty": "Aún no hay historial de impresión.",
     "no_match": "Ningún trabajo coincide.",
     "job_actions": "Acciones del trabajo",
+    "job_actions_named": "Acciones del trabajo {{name}}",
     "details": "Detalles",
     "range": "{{from}}–{{to}} de {{total}}",
     "range_loaded": "{{from}}–{{to}} de {{total}} cargados",

@@ -13,8 +13,11 @@ from .naming import BUNDLE_ROOT_NAME
 from .sudo import SudoError, authenticate_sudo, run_sudo
 
 RunFn = Callable[..., subprocess.CompletedProcess]
-# Valve Oil names what it adds `vo-`/`vo_`; earlier releases named it `tltg`.
-INSTALLER_PREFIXES = ("tltg", ".tltg", "vo-", "vo_", ".vo-", ".vo_")
+# Valve Oil's names, and the names releases before 26.11.22.3 used, which an install moves to Valve Oil's.
+EARLIER_PREFIXES = ("tltg", ".tltg")
+INSTALLER_PREFIXES = ("vo_", "vo-", ".vo_", ".vo-", *EARLIER_PREFIXES)
+HOME_NAMES = ("vo-fluidd", "vo-valve-oil-ui", "vo-moonraker-speedups", "vo-addons", "vo-klipper")
+HOME_PREFIXES = (f".{BUNDLE_ROOT_NAME}.", ".vo-update-", *(f"{name}." for name in HOME_NAMES))
 CHOWN_BATCH = 200
 
 
@@ -35,7 +38,7 @@ def repair_installer_ownership(
     Runs started as root before the installer switched to that user left the
     files they created owned by root, so a later run could not open its lock,
     read its state, or replace its own bundle. Everything the project names
-    `tltg`, `vo-`, or `vo_` under printer_data, its config folder, the home folder (Valve Oil's Klipper among it), and
+    `vo_`, `vo-`, or earlier `tltg` under printer_data, its config folder, the home folder, and
     Klipper's extras, and the installed bundle in the home folder, belongs to that user, as an unprivileged run creates it;
     QIDI's own files are left alone. Returns the number of entries changed.
     """
@@ -77,8 +80,9 @@ def installer_entries(paths: RuntimePaths) -> list[Path]:
     roots: list[Path] = []
     for directory in (paths.printer_data_root, paths.config_root):
         roots.extend(_named_children(directory))
-    roots.extend(_named_children(paths.printer_data_root.parent, extra_prefixes=(f".{BUNDLE_ROOT_NAME}.",),
-                                 extra_names=(BUNDLE_ROOT_NAME,)))
+    # In the home folder, where other names start with vo too, only the package's own folders.
+    roots.extend(_named_children(paths.printer_data_root.parent, prefixes=EARLIER_PREFIXES + HOME_PREFIXES,
+                                 extra_names=(BUNDLE_ROOT_NAME, *HOME_NAMES)))
     extras = paths.managed_klipper_root / "klippy" / "extras"
     roots.extend(path for path in _named_children(extras) if path.name.endswith(".py"))
     entries: list[Path] = []
@@ -98,10 +102,9 @@ def _owner(path: Path) -> int | None:
         return None
 
 
-def _named_children(directory: Path, *, extra_prefixes: tuple[str, ...] = (), extra_names: tuple[str, ...] = ()) -> list[Path]:
-    """The installer's entries in `directory`: named `tltg`, `vo-`, or `vo_`, dotted or not, and in the home folder also the installed
+def _named_children(directory: Path, *, prefixes: tuple[str, ...] = INSTALLER_PREFIXES, extra_names: tuple[str, ...] = ()) -> list[Path]:
+    """The installer's entries in `directory`: named with INSTALLER_PREFIXES, and in the home folder also the installed
     bundle and its copies in progress (bootstrap.copy_bundle)."""
-    prefixes = INSTALLER_PREFIXES + extra_prefixes
     try:
         return sorted(path for path in directory.iterdir() if path.name.startswith(prefixes) or path.name in extra_names)
     except OSError:

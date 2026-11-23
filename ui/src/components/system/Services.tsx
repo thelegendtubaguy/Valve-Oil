@@ -15,8 +15,8 @@ const about = (): Record<string, string> => ({
   'klipper-mcu': t('system.services.about.klipper_mcu'),
   'qidi-client': t('system.services.about.qidi_client'),
   crowsnest: t('system.services.about.crowsnest'),
-  'tltg-remote-screen': t('system.services.about.remote_screen'),
-  'tltg-status': t('system.services.about.status'),
+  'vo-remote-screen': t('system.services.about.remote_screen'),
+  'vo-status': t('system.services.about.status'),
   'moonraker-obico': 'Obico',
   octoeverywhere: 'OctoEverywhere',
   tailscaled: 'Tailscale',
@@ -38,7 +38,7 @@ export function Services() {
         {services.length === 0 ? (
           <Empty>{loading ? t('common.loading') : t('system.services.none')}</Empty>
         ) : (
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {services.map(([name, st]) => (
               <ServiceRow key={name} name={name} active={st.active_state} sub={st.sub_state} printing={printing} locked={updating && (name === 'klipper' || name === 'moonraker')} />
             ))}
@@ -81,7 +81,7 @@ function ServiceRow({ name, active, sub, printing, locked }: { name: string; act
         </div>
         {about()[name] && <div className="mt-0.5 text-[12.5px] text-ink-3">{about()[name]}</div>}
       </div>
-      <div className="flex flex-none gap-1.5">
+      <div className="flex min-w-0 max-w-full flex-wrap gap-1.5">
         {stopped ? (
           <button className="btn btn-sm" disabled={locked || busy != null} onClick={() => act('start')}>
             {busy === 'start' ? <Spinner size={13} /> : <Play size={14} />} {t('system.services.start')}

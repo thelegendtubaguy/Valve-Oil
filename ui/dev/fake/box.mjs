@@ -1,4 +1,4 @@
-// QIDI Box extras beyond the core fake's Box: Valve Oil's turn spools while heating (tltg_box_spool_roll), spool
+// QIDI Box extras beyond the core fake's Box: Valve Oil's turn spools while heating (vo_box_spool_roll), spool
 // tags the Box read (info_from_rfid), the active tool (extrude_state), per-slot load and unload motion
 // (VO_BOX_MOTION SLOT=), and QIDI's filament list (qidi_filament_config/filament-0.4.json) that the Filaments tab
 // reads and writes back whole.
@@ -77,7 +77,7 @@ export function install(fake) {
     const v = s.save_variables.variables
     v.vo_box_spool_roll = 1
     v.extrude_state = 1
-    s.tltg_box_spool_roll = { enabled: true, rolling: null }
+    s.vo_box_spool_roll = { enabled: true, rolling: null }
     // 1A and 2B were set from their spools' tags.
     for (const [b, i] of [
       [0, 0],
@@ -86,7 +86,7 @@ export function install(fake) {
       const info = s.box_extras?.boxes?.[b]?.filament_info?.[i]
       if (info) info.info_from_rfid = 1
     }
-    const m = s.tltg_box_feed_motion
+    const m = s.vo_box_feed_motion
     if (m) {
       m.vendor_keys = []
       m.slots = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`slot${i}`, { overrides: i === 5 ? { fast_speed_1: 120, approach_speed: 20 } : {} }]))
@@ -111,7 +111,7 @@ export function install(fake) {
   }
 
   function checkMotion(p, perSlot) {
-    const m = st().tltg_box_feed_motion
+    const m = st().vo_box_feed_motion
     for (const [K, raw] of Object.entries(p)) {
       if (K === 'SLOT' || K === 'RESET') continue
       const k = K.toLowerCase()
@@ -130,7 +130,7 @@ export function install(fake) {
     const C = (cmd ?? '').toUpperCase()
     const p = Object.fromEntries(rest.filter((r) => r.includes('=')).map((r) => r.split('=')).map(([k, ...v]) => [k.toUpperCase(), v.join('=').replace(/^"|"$/g, '')]))
     if (C !== 'VO_BOX_MOTION') return false
-    const m = st().tltg_box_feed_motion
+    const m = st().vo_box_feed_motion
     if (st().print_stats.state === 'printing' || st().print_stats.state === 'paused') throw rpcError('Box motion settings can be changed while the printer is not printing')
     if (p.SLOT == null) {
       checkMotion(p, false)
@@ -148,7 +148,7 @@ export function install(fake) {
     const slots = { ...m.slots, [key]: { ...m.slots[key], overrides } }
     const next = { ...m, slots }
     refreshMotion(next)
-    set('tltg_box_feed_motion', { slots: next.slots })
+    set('vo_box_feed_motion', { slots: next.slots })
     pushConsole(`// Box motion for slot ${p.SLOT} saved.`)
     return true
   }
@@ -178,14 +178,14 @@ export function install(fake) {
       }
       if (empty.length) rolling = empty[Math.floor(tick / 8) % empty.length]
     }
-    const r = s.tltg_box_spool_roll
-    if (r && (r.enabled !== enabled || r.rolling !== rolling)) set('tltg_box_spool_roll', { enabled, rolling })
-    const m = s.tltg_box_feed_motion
+    const r = s.vo_box_spool_roll
+    if (r && (r.enabled !== enabled || r.rolling !== rolling)) set('vo_box_spool_roll', { enabled, rolling })
+    const m = s.vo_box_feed_motion
     if (m?.slots) {
       const before = JSON.stringify(m.slots)
       const copy = { ...m, slots: JSON.parse(before) }
       refreshMotion(copy)
-      if (JSON.stringify(copy.slots) !== before) set('tltg_box_feed_motion', { slots: copy.slots })
+      if (JSON.stringify(copy.slots) !== before) set('vo_box_feed_motion', { slots: copy.slots })
     }
   }, 1000)
 

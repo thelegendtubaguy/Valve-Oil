@@ -1,11 +1,11 @@
-name: Check Optimized Slicer Macros
+name: Check Slicer Macros
 
 on:
   pull_request:
   workflow_dispatch:
 
 jobs:
-  check-optimized-slicer-macros:
+  check-slicer-macros:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,5 +17,5 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Validate optimized slicer macro references
-        run: python3 scripts/check_optimized_slicer_macros.py
+      - name: Validate slicer macro references
+        run: python3 scripts/check_slicer_macros.py

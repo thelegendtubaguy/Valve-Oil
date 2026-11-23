@@ -74,6 +74,7 @@
     "empty": "No print history yet.",
     "no_match": "No jobs match.",
     "job_actions": "Job actions",
+    "job_actions_named": "Job actions for {{name}}",
     "details": "Details",
     "range": "{{from}}–{{to}} of {{total}}",
     "range_loaded": "{{from}}–{{to}} of {{total}} loaded",

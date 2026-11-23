@@ -240,6 +240,45 @@
       "run": "Run collector",
       "last_result": "Last result",
       "explorer": "Metrics explorer"
+    },
+    "check": {
+      "title": "Fault check",
+      "about": "Reads the printer's logs for the faults Valve Oil knows of, and says what each one means and what to do. It runs at low priority, so it doesn't slow a print.",
+      "period": "Logs to check",
+      "since": {
+        "start": "Since Klipper started",
+        "day": "Last 24 hours",
+        "all": "Whole log"
+      },
+      "run": "Check the logs",
+      "run_again": "Check again",
+      "download_report": "Download report",
+      "running": "Checking the printer's logs. This can take a minute.",
+      "failed": "The check couldn't finish.",
+      "unreadable": "The printer's answer isn't one this page can read.",
+      "needs_newer": "The fault check needs a newer Valve Oil. Update Valve Oil on the Updates screen to use it.",
+      "not_run": "No check has run yet.",
+      "none_found": "No known faults found.",
+      "found_one": "Found {{count}} known problem.",
+      "found_other": "Found {{count}} known problems.",
+      "reach": "Checked the logs from {{from}} to {{to}}, in the printer's time.",
+      "reach_unknown": "The check found no log lines with a time, so it can't say how far back it looked.",
+      "partial": "It read only the newest part of the log, within the check's size limit.",
+      "stopped_time": "It stopped at its time limit, so it read only the newest part of the log.",
+      "finished": "Checked {{when}}.",
+      "report_hint": "To report one, download the report and attach it to an issue. <b>Report a problem</b> on the Updates screen also puts the last report in its support bundle.",
+      "times_one": "Seen {{count}} time",
+      "times_other": "Seen {{count}} times",
+      "what_to_do": "What to do:",
+      "docs": "Read more",
+      "evidence_one": "{{count}} log line",
+      "evidence_other": "{{count}} log lines",
+      "severity": {
+        "fault": "Needs attention",
+        "fixed": "Fixed by the release installed now",
+        "repaired": "Valve Oil repaired it",
+        "info": "For reference"
+      }
     }
   },
   "explorer": {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createBuffer, klipperChartValues, mcuChartValues, pushSample } from './chart-data'
 import { collectorPath, referencedObjects } from './collectors'
 import { MAX_LINES, tailText } from './log-tail'
+import { faultReportName, parseFaultCheck } from './fault-check'
 
 describe('chart-data.ts', () => {
   describe('mcuChartValues', () => {
@@ -74,6 +75,92 @@ describe('log-tail.ts', () => {
       expect(t.lines.length).toBe(MAX_LINES)
       expect(t.lines[0]).toBe('l5')
       expect(t.truncated).toBe(true)
+    })
+  })
+})
+
+describe('fault-check.ts', () => {
+  // A finished check as installer/system/vo_status.py sends it.
+  const finding = (over: Record<string, unknown> = {}) => ({
+    id: 'box_step_clock_offset',
+    title: "A Box slot motor's step clock is off Klipper's",
+    severity: 'fixed',
+    meaning: 'The Box kept a slot motor’s step clock seconds away from Klipper’s.',
+    action: 'Nothing, on Valve Oil 26.11.22.2 or later.',
+    fixed_in: '26.11.22.2',
+    docs: 'https://github.com/thelegendtubaguy/valve-oil/blob/main/docs/troubleshooting.md#box-slot-step-clock',
+    count: 2,
+    first: '2026-11-22 09:07:58',
+    last: '2026-11-22 11:40:02',
+    details: ["Box 1 slot stepper oid 11: 23.7 s behind Klipper's"],
+    evidence: ["2026-11-22 09:07:58 - mcu 'mcu_box1': got {'oid': 11, 'clk': 4035537278, '#name': 'last_step_clk'}"],
+    ...over,
+  })
+  const done = (findings: unknown[], checked: Record<string, unknown> = {}) => ({
+    state: 'done',
+    since: 'all',
+    started_at: '2026-11-22T12:00:00Z',
+    finished_at: '2026-11-22T12:00:09Z',
+    error: null,
+    result: {
+      schema: 1,
+      checked: { since: 'all', files: [{ name: 'klippy.log', size: 2048, read_from: 0, bytes_read: 2048 }], from: '2026-11-20 08:00:00', to: '2026-11-22 11:59:59', complete: true, stopped: null, elapsed: 4.2, ...checked },
+      installed: '26.11.22.2',
+      findings,
+    },
+    report: 'Valve Oil diagnostics\n',
+  })
+
+  describe('parseFaultCheck', () => {
+    it('reads a finished check', () => {
+      const check = parseFaultCheck(done([finding()]))
+      expect(check?.state).toBe('done')
+      expect(check?.report).toBe('Valve Oil diagnostics\n')
+      expect(check?.result?.checked).toMatchObject({ from: '2026-11-20 08:00:00', to: '2026-11-22 11:59:59', complete: true, stopped: null })
+      expect(check?.result?.findings).toEqual([finding()])
+    })
+
+    it('reads no check, a running one, and a failed one', () => {
+      expect(parseFaultCheck({ state: 'idle', since: null, started_at: null, finished_at: null, error: null, result: null, report: null })?.state).toBe('idle')
+      expect(parseFaultCheck({ state: 'running', since: 'day', started_at: '2026-11-22T12:00:00Z' })).toMatchObject({ state: 'running', since: 'day', result: null })
+      expect(parseFaultCheck({ state: 'failed', error: 'The check could not be run.' })).toMatchObject({ state: 'failed', error: 'The check could not be run.', result: null })
+    })
+
+    it('is no check for a body it does not understand', () => {
+      for (const body of [null, 'done', [], {}, { state: 'paused' }]) expect(parseFaultCheck(body)).toBeNull()
+    })
+
+    it('reads no result from another schema or a malformed one', () => {
+      expect(parseFaultCheck({ ...done([finding()]), result: { ...done([]).result, schema: 2 } })?.result).toBeNull()
+      expect(parseFaultCheck({ ...done([]), result: 'nothing' })?.result).toBeNull()
+    })
+
+    it('leaves out findings without an id or a title', () => {
+      const check = parseFaultCheck(done([finding({ id: undefined }), finding({ id: 'qidi_error', title: '' }), 'qidi_error', null, finding({ id: 'kept' })]))
+      expect(check?.result?.findings.map((f) => f.id)).toEqual(['kept'])
+    })
+
+    it('reads an unknown severity as info and lists the most severe first', () => {
+      const check = parseFaultCheck(done([finding({ id: 'a', severity: 'info' }), finding({ id: 'b', severity: 'critical' }), finding({ id: 'c', severity: 'repaired' }), finding({ id: 'd', severity: 'fault' })]))
+      expect(check?.result?.findings.map((f) => [f.id, f.severity])).toEqual([['d', 'fault'], ['c', 'repaired'], ['a', 'info'], ['b', 'info']])
+    })
+
+    it('ignores unknown keys and fields of the wrong type', () => {
+      const check = parseFaultCheck({ ...done([finding({ extra: 1, count: 'two', details: ['kept', 3, null], evidence: 'one line', docs: 'javascript:alert(1)' })]), extra: true })
+      expect(check?.result?.findings[0]).toMatchObject({ count: 0, details: ['kept'], evidence: [], docs: null })
+      expect(check?.result?.findings[0]).not.toHaveProperty('extra')
+    })
+
+    it('reads a check that did not say it read the whole period as partial', () => {
+      expect(parseFaultCheck(done([], { complete: false, stopped: 'time' }))?.result?.checked).toMatchObject({ complete: false, stopped: 'time' })
+      expect(parseFaultCheck(done([], { complete: 'yes' }))?.result?.checked.complete).toBe(false)
+    })
+  })
+
+  describe('faultReportName', () => {
+    it('names the report for when the check finished, in UTC', () => {
+      expect(faultReportName('2026-11-22T12:00:09Z')).toBe('valve-oil-diagnostics-20261122T120009Z.txt')
+      expect(faultReportName(null, new Date('2026-11-22T13:04:05.678Z'))).toBe('valve-oil-diagnostics-20261122T130405Z.txt')
     })
   })
 })

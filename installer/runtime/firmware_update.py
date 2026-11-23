@@ -3,7 +3,7 @@ firmware, its boards to their pinned images, and Valve Oil to an install for the
 
 Starting it (start_firmware_update) checks the printer, copies QIDI's package from the USB drive an install was
 started from or downloads it from this project's mirror, verifies it, writes the pending record, and starts
-tltg-firmware-update.service, which runs the update detached from the session that asked for it: QIDI's package
+vo-firmware-update.service, which runs the update detached from the session that asked for it: QIDI's package
 restarts the network, which ends an SSH session. An install follows the unit's log until it finishes; the update
 check starts it and leaves it running. The unit is enabled, so a printer that lost power with the record in place
 resumes at its next boot; while the record exists no other installer operation runs (safety.FIRMWARE_UPDATE_MARKER).
@@ -62,11 +62,11 @@ from .sudo import PUBLIC_DEFAULT_SUDO_PASSWORD, SudoError, authenticate_sudo, ru
 from .system_optimizations import clear_carried_system_ledger, save_carried_system_ledger
 from .valve_oil_status import Blocker
 
-UNIT = "tltg-firmware-update.service"
+UNIT = "vo-firmware-update.service"
 SYSTEMD_DIR = Path("/etc/systemd/system")
-UNIT_MARKER = "# tltg-optimized:firmware-update-unit\n"
-RESULT_FILE = ".tltg_firmware_update_result.json"
-RECORD_LOCK_FILE = ".tltg_firmware_update.lock"
+UNIT_MARKER = "# vo:firmware-update-unit\n"
+RESULT_FILE = ".vo_firmware_update_result.json"
+RECORD_LOCK_FILE = ".vo_firmware_update.lock"
 LOG_NAME = "update.log"
 # What QIDI's package scripts print, much of it in Chinese, kept out of the update's log and the session.
 PACKAGE_LOG_NAME = "qidi-package.log"
@@ -217,7 +217,7 @@ def _write_result(paths, record: dict, *, state: str, message: str, blockers=(),
 def release_command(release: str) -> str:
     """The command that installs Valve Oil `release` (a published release) and runs its installer."""
     base = f"{REPOSITORY_URL}/releases/download/v{release}"
-    return (f'TLTG_INSTALLER_ARCHIVE_URL={base}/{ARCHIVE_NAME} /bin/bash -c "$(curl -fsSL '
+    return (f'VO_INSTALLER_ARCHIVE_URL={base}/{ARCHIVE_NAME} /bin/bash -c "$(curl -fsSL '
             f'{base}/install-latest.sh)"')
 
 
@@ -760,7 +760,7 @@ def unit_text(paths, bundle: Path) -> str:
             "Type=exec\n"
             f"User={current_user()}\n"
             f"WorkingDirectory={bundle}\n"
-            f"Environment=TLTG_OPTIMIZED_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
+            f"Environment=VO_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
             f"ExecStart={python} -I -S {bundle / 'installer/runtime/bootstrap.py'} firmware-update --plain\n\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n")
@@ -814,7 +814,7 @@ def _settled_bundle(paths) -> Path:
     return target
 
 
-# ---- the run, in tltg-firmware-update.service -----------------------------------------------------------------------
+# ---- the run, in vo-firmware-update.service -----------------------------------------------------------------------
 
 
 class _NotStarted(Exception):
@@ -1471,6 +1471,18 @@ def _restore_calibration(ctx: _Run) -> None:
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             summary = f"The saved calibration could not be restored ({type(exc).__name__}: {exc}).{where}"
         ctx.record["calibration_result"] = {"summary": summary}
+    # QIDI's postinst copies variables saved_variables.cfg lacks out of its .bak without their quotes, and Klipper
+    # won't start with a value it can't read.
+    try:
+        repaired = saved_calibration.repair_saved_variables(ctx.paths.config_root / "saved_variables.cfg")
+    except (OSError, UnicodeDecodeError) as exc:
+        note = f"saved_variables.cfg could not be checked after QIDI's package ({exc})."
+    else:
+        note = ("Repaired saved_variables.cfg values QIDI's package wrote without their quotes, which Klipper "
+                "can't read: " + ", ".join(repaired) + ".") if repaired else ""
+    if note:
+        summary = ctx.record["calibration_result"]["summary"]
+        ctx.record["calibration_result"]["summary"] = f"{summary} {note}" if summary else note
     if ctx.record["calibration_result"]["summary"]:
         ctx.reporter.line("  " + ctx.record["calibration_result"]["summary"])
     ctx.save()

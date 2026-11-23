@@ -2,7 +2,7 @@
 
 One small JSON file in printer_data, beside the automatic-update enrollment marker, outside both /tmp and the config
 folder a QIDI firmware package wipes. The update check, the firmware-update run, and "update now" write it through this
-module; Klipper's tltg_printer_warnings and the tltg-status service read it. Writes are atomic and serialized by a lock
+module; Klipper's vo_printer_warnings and the vo-status service read it. Writes are atomic and serialized by a lock
 file, so a reader never sees a partial file and two writers never lose each other's changes.
 
 Readers must accept any `schema` they know and ignore keys they don't; a change that would mislead an older reader
@@ -24,11 +24,11 @@ from .fs_atomic import atomic_write_text
 from .models import RuntimePaths
 
 SCHEMA = 1
-STATUS_FILE = ".tltg_valve_oil_status.json"
-LOCK_FILE = ".tltg_valve_oil_status.lock"
-# The steps of the install running now, or of the last one (progress.py), for the tltg-status service to show a
+STATUS_FILE = ".vo_status.json"
+LOCK_FILE = ".vo_status.lock"
+# The steps of the install running now, or of the last one (progress.py), for the vo-status service to show a
 # browser. Its own file, written by one installer at a time, so publishing a step never waits on the status lock.
-PROGRESS_FILE = ".tltg_valve_oil_progress.json"
+PROGRESS_FILE = ".vo_progress.json"
 # Readers ignore a file larger than this.
 MAX_BYTES = 262144
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
@@ -150,7 +150,7 @@ class RunInfo:
     # A RUNNING record whose process is gone, or that was written before the last boot, was interrupted.
     pid: int | None = None
     boot_id: str | None = None
-    # The tltg-status service's "update now" job that started this run, or the run it continued (begin_run).
+    # The vo-status service's "update now" job that started this run, or the run it continued (begin_run).
     job: str | None = None
     # The id of the QIDI firmware update's pending record (firmware_update.py) when this run carries one.
     firmware_update: str | None = None

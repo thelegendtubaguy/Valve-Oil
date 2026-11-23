@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's qidi-tuning.service runs /home/qidi/QIDI_Client/bin/tuning.sh, which pins processes to CPUs with taskset,
@@ -23,10 +24,10 @@ TUNING_OPERATION = "qidi_tuning_replacement"
 IRQBALANCE_OPERATION = "irqbalance_pinned_irqs"
 TUNING_UNIT = "qidi-tuning.service"
 IRQBALANCE_UNIT = "irqbalance.service"
-TUNING_FILE = f"/etc/systemd/system/{TUNING_UNIT}.d/tltg-tuning.conf"
-IRQBALANCE_FILE = f"/etc/systemd/system/{IRQBALANCE_UNIT}.d/tltg-tuning.conf"
+TUNING_FILE = f"/etc/systemd/system/{TUNING_UNIT}.d/vo-tuning.conf"
+IRQBALANCE_FILE = f"/etc/systemd/system/{IRQBALANCE_UNIT}.d/vo-tuning.conf"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:cpu-tuning\n"
+MARKER = "# vo:cpu-tuning\n"
 # Interrupt number and CPU mask pairs, in shell. The port's interrupt is listed in /proc/interrupts only while it's
 # open, so it comes from sysfs; QIDI's script matched the USB controllers by name the same way. systemd reads $$ as $.
 _IRQS = (
@@ -36,7 +37,7 @@ _IRQS = (
 TUNING_CONTENT = MARKER + f"""\
 # Replaces QIDI's tuning.sh, which ran again every 35 s, with one run that pins the toolhead serial and USB
 # interrupts to CPUs 2 and 3, each once it exists: the toolhead's once Klipper opens its port. Each service's
-# tltg-priority.conf sets its CPUs and priority. Installed by Valve Oil.
+# vo-priority.conf sets its CPUs and priority. Installed by Valve Oil.
 [Service]
 Type=simple
 RemainAfterExit=yes
@@ -58,7 +59,7 @@ CONTENT = {TUNING_OPERATION: TUNING_CONTENT, IRQBALANCE_OPERATION: IRQBALANCE_CO
 
 def patch_dropin(operation: str):
     def patch(current: str) -> str:
-        if current == "" or current.startswith(MARKER):
+        if current == "" or has_marker(current, MARKER):
             return CONTENT[operation]
         raise InstallerError(f"Existing {FILES[operation]} is unrecognized and was preserved.")
     return patch

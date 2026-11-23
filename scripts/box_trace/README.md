@@ -5,7 +5,7 @@
 ```sh
 scripts/box_trace/box_trace.sh install qidi@<printer-ip>   # copy the module, restart Klipper
 # run Box loads and unloads on the printer
-scripts/box_trace/box_trace.sh fetch qidi@<printer-ip>     # copy the log to tltg-local/box-trace/
+scripts/box_trace/box_trace.sh fetch qidi@<printer-ip>     # copy the log to vo-local/box-trace/
 scripts/box_trace/box_trace.sh remove qidi@<printer-ip>    # delete the module, restart Klipper
 ```
 

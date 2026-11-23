@@ -174,12 +174,12 @@ export function UpdatesScreen() {
   }
 
   return (
-    <div className="grid content-start gap-3.5">
+    <div className="grid grid-cols-1 content-start gap-3.5">
       <PageHeader title={t('updates.title')} />
-      <div className="grid content-start items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 content-start items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <InstallStepsCard progress={s.status?.progress ?? null} />
         <ValveOilCard s={s} view={view} />
-        <div className="grid content-start gap-3.5">
+        <div className="grid grid-cols-1 content-start gap-3.5">
           <BoardsCard view={view} />
           <InstallerLogsCard progress={s.status?.progress ?? null} />
         </div>
@@ -516,7 +516,7 @@ function UpdateProgress({ update, recoveryRequired }: { update: VoUpdateView; re
 // The report the installer leaves in Klipper's log folder for a board it can't support yet, as the printer warnings
 // name it (installer/runtime/board_firmware.py).
 const boardReportFile = (id: string) =>
-  id === 'thr' ? 'tltg_thr_firmware.json' : id === 'mcu' ? 'tltg_mainboard_firmware.json' : `tltg_box_firmware_${id}.json`
+  id === 'thr' ? 'vo_thr_firmware.json' : id === 'mcu' ? 'vo_mainboard_firmware.json' : `vo_box_firmware_${id}.json`
 
 /** What reporting a board Valve Oil can't support yet takes: the prefilled issue, what the form still asks, and the report. */
 function BoardSupport({ board, url }: { board: VoBoardView; url: string }) {
@@ -545,17 +545,17 @@ function BoardsCard({ view }: { view: VoStatusView }) {
   if (view.boards.length === 0) return null
   return (
     <Card title={t('updates.boards.title')} icon={<Cpu size={14} />}>
-      <div className="grid">
+      <div className="grid grid-cols-1">
         {view.boards.map((board, i) => {
           const explanation = boardExplanation(board)
           return (
             <div key={board.id} className={`py-2.5 ${i > 0 ? 'border-t border-line' : 'pt-0'}`}>
-              <div className="flex items-start gap-3">
+              <div className="flex flex-wrap items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{board.name}</div>
                   <div className="text-[12.5px] text-ink-3">{boardFirmwareText(board)}</div>
                 </div>
-                <span className={`pill ${BOARD_TONE[board.badge]} flex-none py-0.5!`}>{t(`updates.boards.badge.${board.badge}`)}</span>
+                <span className={`pill ${BOARD_TONE[board.badge]} max-w-full flex-none py-0.5! whitespace-normal`}>{t(`updates.boards.badge.${board.badge}`)}</span>
               </div>
               {(explanation || board.shownDetail) && (
                 <div className="mt-1.5 text-ink-2">

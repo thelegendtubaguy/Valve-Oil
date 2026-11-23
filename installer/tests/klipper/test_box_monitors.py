@@ -373,15 +373,15 @@ class Rs485Printer:
             "mcu THR": {"serial": "/dev/ttyS4"},
             "mcu mcu_box1": {"serial": BY_ID + USB_BOX},
             "box485": {"serial_port": box485_port},
-            "tltg_box485_monitor": dict(options or {}),
+            "vo_box485_monitor": dict(options or {}),
         }
-        self.load_order = ["box485", "tltg_box485_monitor"]
+        self.load_order = ["box485", "vo_box485_monitor"]
         if not box485_loads_first:
             self.load_order.reverse()
         self.plug("ttyACM0", MAINBOARD)
         self.plug("ttyACM1", USB_BOX)
         # A fresh copy each time, as in a new Klipper process: the module keeps process-wide state.
-        self.module = load_extra("box485_monitor", "extras.tltg_box485_monitor")
+        self.module = load_extra("box485_monitor", "extras.vo_box485_monitor")
         self.module.os = self.dev
         self.module.time = self.clock = WallClock()
         self.module.subprocess = Dmesg()
@@ -401,11 +401,11 @@ class Rs485Printer:
     def start(self):
         """Klipper reads printer.cfg and builds its printer objects, as at startup and at RESTART."""
         self.printer = Printer(self.logs / "klippy.log", {"save_variables": Status(variables=self.variables)})
-        loaders = {"box485": self.manager_class, "tltg_box485_monitor": self.module.load_config}
+        loaders = {"box485": self.manager_class, "vo_box485_monitor": self.module.load_config}
         for name in self.load_order:
             self.printer.objects[name] = loaders[name](Config(self.printer, self.sections, name))
         self.manager = self.printer.objects["box485"]
-        self.monitor = self.printer.objects["tltg_box485_monitor"]
+        self.monitor = self.printer.objects["vo_box485_monitor"]
         self.console, self.reactor = self.printer.gcode.console, self.printer.reactor
         self.advance, self.send_event = self.printer.advance, self.printer.send_event
 
@@ -445,7 +445,7 @@ class Rs485Printer:
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
     def report(self):
-        return json.loads((self.logs / "tltg_box485_report.json").read_text(encoding="utf-8"))
+        return json.loads((self.logs / "vo_box485_report.json").read_text(encoding="utf-8"))
 
     def shared(self):
         """Everything in the logs folder, which Fluidd serves and the operator is asked to attach to an issue."""
@@ -627,7 +627,7 @@ class Box485MonitorTest(unittest.TestCase):
         self.assertEqual(after_restart, code)
         self.assertNotEqual(elsewhere, code)
         # Fluidd serves the logs folder; what undoes the codes must not be in it.
-        self.assertEqual(sorted(os.listdir(first.logs)), ["tltg_box485_report.json", "vo_box485.log"])
+        self.assertEqual(sorted(os.listdir(first.logs)), ["vo_box485.log", "vo_box485_report.json"])
 
     def test_qidis_missing_adapter_line_reaches_klippy_log_once_an_hour_with_its_count(self) -> None:
         printer = Rs485Printer(self)
@@ -735,7 +735,7 @@ class Box485MonitorTest(unittest.TestCase):
         printer.send_event("klippy:disconnect")
 
         self.assertEqual(sorted(os.listdir(printer.logs)),
-                         ["tltg_box485_report.json", "vo_box485.log", "vo_box485.log.1"])
+                         ["vo_box485.log", "vo_box485.log.1", "vo_box485_report.json"])
         self.assertIn("earlier session", (printer.logs / "vo_box485.log.1").read_text(encoding="utf-8"))
         self.assertLess(log.stat().st_size, cap)
         self.assertIn("07070707", printer.log())
@@ -809,7 +809,7 @@ class LinkPrinter:
         self.advance, self.send_event = self.printer.advance, self.printer.send_event
         self.module = load_extra("box_link_monitor")
         self.module.subprocess = self.dmesg = Dmesg(["eth0: Link is Up - 100Mbps", USB_DISCONNECT])
-        section = "tltg_box_link_monitor"
+        section = "vo_box_link_monitor"
         self.monitor = self.module.load_config(Config(self.printer, {section: dict(options or {})}, section))
         test.addCleanup(lambda: self.send_event("klippy:disconnect"))
 
@@ -995,10 +995,10 @@ def box_chip_sensors(*mcus):
     # Klipper's temperature_sensor builds the sensor from its config section; the section stands in for it here.
     extras.temperature_sensor = types.SimpleNamespace(load_config_prefix=lambda config: config)
     configfile = types.SimpleNamespace(ConfigWrapper=SensorConfig)
-    module = load_extra("box_mcu_temperature", "extras.tltg_box_mcu_temperature",
+    module = load_extra("box_mcu_temperature", "extras.vo_box_mcu_temperature",
                         stand_ins={"extras": extras, "configfile": configfile})
     printer = Printer(objects={name: object() for name in mcus})
-    section = "tltg_box_mcu_temperature"
+    section = "vo_box_mcu_temperature"
     module.load_config(Config(printer, {section: {}}, section))
     return {name: sensor.options for name, sensor in printer.lookup_objects("temperature_sensor")}
 

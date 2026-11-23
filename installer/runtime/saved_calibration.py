@@ -16,6 +16,8 @@ afterwards, before anything reads the new config:
 """
 from __future__ import annotations
 
+import ast
+import configparser
 import glob
 import re
 from dataclasses import dataclass, field
@@ -213,3 +215,68 @@ def _restore_saved_variables(path: Path, captured: str | None) -> str | None:
     text = captured if captured.endswith("\n") or not captured else captured + "\n"
     atomic_write_text(path, text + "".join(line + "\n" for line in added))
     return "restored"
+
+
+def repair_saved_variables(path: Path) -> list[str]:
+    """Make saved_variables.cfg loadable again after QIDI's postinst, and return the names of the variables repaired.
+
+    The postinst copies each variable missing from saved_variables.cfg out of saved_variables.cfg.bak through
+    `echo $value | xargs`, which strips the value's quotes: `last_load_slot = 'slot16'` arrives as
+    `last_load_slot = slot16` and `filepath = ''` as `filepath = `. Klipper's save_variables reads the file with
+    ConfigParser and then `ast.literal_eval` of every value, and one value it can't read stops Klipper from starting
+    ("Unable to parse existing variable file"). Each value that fails that way is written back as a string: an empty
+    value as `''`, any other as the repr of its text. Every other line is left as it is, and a file ConfigParser
+    itself can't read is left alone."""
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    parser = configparser.ConfigParser()  # as QIDI's loader: interpolation and lowercased names included
+    try:
+        parser.read_string(text)
+    except configparser.Error:
+        return []
+    if not parser.has_section("Variables"):
+        return []
+    replacements = {}
+    for name in parser.options("Variables"):
+        try:
+            ast.literal_eval(parser.get("Variables", name))
+            continue
+        except configparser.Error:
+            continue  # a "%" ConfigParser can't interpolate: quoting the value doesn't help
+        except Exception:  # noqa: BLE001 - QIDI's loader fails on anything literal_eval raises
+            pass
+        raw = parser.get("Variables", name, raw=True)
+        if "\n" in raw:
+            continue  # a value continued on further lines; not what the postinst writes
+        replacements[name] = repr(raw)
+    if not replacements:
+        return []
+    lines = text.splitlines(keepends=True)
+    section = None
+    repaired = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped[0] in "#;" or line[0].isspace():
+            continue
+        if stripped.startswith("["):
+            section = stripped[1:stripped.find("]")] if "]" in stripped else None
+            continue
+        match = re.match(r"([^=:]+?)\s*([=:])", line)
+        if section != "Variables" or match is None:
+            continue
+        name = parser.optionxform(match.group(1).strip())
+        if name in replacements and name not in repaired:
+            ending = line[len(line.rstrip("\r\n")):]
+            lines[index] = f"{match.group(1)} {match.group(2)} {replacements[name]}{ending}"
+            repaired.append(name)
+    repaired_text = "".join(lines)
+    check = configparser.ConfigParser()
+    try:
+        check.read_string(repaired_text)
+        for _, value in check.items("Variables"):
+            ast.literal_eval(value)
+    except Exception:  # noqa: BLE001 - only a file Klipper loads is written
+        return []
+    atomic_write_text(path, repaired_text)
+    return repaired

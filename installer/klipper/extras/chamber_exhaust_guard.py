@@ -1,6 +1,6 @@
 # Chamber exhaust guard for Valve Oil.
 #
-# The optimized M106 leaves the chamber heater on when the exhaust fan (P3)
+# Valve Oil's M106 leaves the chamber heater on when the exhaust fan (P3)
 # turns on. The exhaust can then pull the chamber far enough below its target
 # that Klipper's verify_heater check stops the printer with "Heater chamber
 # not heating at expected rate". This module reads that check's own state each
@@ -49,11 +49,11 @@ class ChamberExhaustGuard:
         check = self.printer.lookup_object(VERIFY_HEATER, None)
         fan = self.printer.lookup_object("fan_generic " + FAN, None)
         if check is None or fan is None:
-            logging.info("tltg_chamber_exhaust_guard: no chamber heater check"
+            logging.info("vo_chamber_exhaust_guard: no chamber heater check"
                          " or exhaust fan; guard off")
             return
         if not all(hasattr(check, attr) for attr in REQUIRED):
-            logging.warning("tltg_chamber_exhaust_guard: %s has an unexpected"
+            logging.warning("vo_chamber_exhaust_guard: %s has an unexpected"
                             " layout; guard off", VERIFY_HEATER)
             return
         self.check = check
@@ -99,7 +99,7 @@ class ChamberExhaustGuard:
         try:
             self.gcode.run_script("SET_FAN_SPEED FAN=%s SPEED=0" % FAN)
         except Exception:
-            logging.exception("tltg_chamber_exhaust_guard: could not stop the"
+            logging.exception("vo_chamber_exhaust_guard: could not stop the"
                               " exhaust fan")
             self.stopping = False
             return
@@ -111,7 +111,7 @@ class ChamberExhaustGuard:
                    " expected rate'." % (
                        " for the rest of the print" if self.stopped else "",
                        temp, target, self.check.hysteresis))
-        logging.info("tltg_chamber_exhaust_guard: %s", message)
+        logging.info("vo_chamber_exhaust_guard: %s", message)
         self.gcode.respond_info(message)
 
     def get_status(self, eventtime=None):

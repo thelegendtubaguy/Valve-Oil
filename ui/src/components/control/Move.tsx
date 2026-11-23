@@ -383,7 +383,7 @@ export function ZOffsetCard() {
           <div className="section-label mb-1.5">{t('control.z_offset.step')}</div>
           <Choices value={step} options={Z_STEPS.map((v) => ({ value: v, label: `${v}` }))} onChange={setStep} />
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 min-[340px]:grid-cols-2">
           <button className="btn" onClick={() => adjust(-step)} title="SET_GCODE_OFFSET Z_ADJUST" /* i18n-ignore: a command name */>
             {t('control.z_offset.closer')}
           </button>

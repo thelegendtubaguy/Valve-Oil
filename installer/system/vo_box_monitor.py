@@ -1,7 +1,7 @@
-# tltg-optimized:box-monitor
+# vo:box-monitor
 """Valve Oil's Box monitor: writes box.cfg for the USB QIDI Boxes connected, and restarts Klipper for them when idle.
 
-Installed by Valve Oil as /usr/local/lib/tltg_box_monitor.py and run by tltg-box-monitor.service, which a udev rule
+Installed by Valve Oil as /usr/local/lib/vo_box_monitor.py and run by vo-box-monitor.service, which a udev rule
 starts when a USB Box connects or disconnects, and which also runs once at boot. Valve Oil's patch of QIDI's touchscreen
 app stops the app from writing box.cfg (installer/runtime/qidiclient_firmware_popup.py); APP_BUILDS, filled in at
 install, says where that patch is in each reviewed build, and with any other app the monitor does nothing.
@@ -31,16 +31,16 @@ SERIAL_BY_ID = "/dev/serial/by-id"
 MOONRAKER = "http://127.0.0.1:7125"
 BOX_CFG = "config/box.cfg"
 # Box serial (its /dev/serial/by-id path) to number, from 1. box.cfg lists the first MAX_BOXES connected.
-RECORD = ".tltg_box_numbers.json"
+RECORD = ".vo_box_numbers.json"
 # A Box change waiting for the printer to be idle, for Klipper's printer warnings.
-STATE = ".tltg_box_monitor.json"
+STATE = ".vo_box_monitor.json"
 # box.cfg as it was before the monitor last wrote it.
-PREVIOUS = ".tltg_box_cfg.previous"
-INSTALLER_LOCK = ".tltg_optimized_installer.lock"
+PREVIOUS = ".vo_box_cfg.previous"
+INSTALLER_LOCK = ".vo_installer.lock"
 # A firmware update, or a board operation that has to be rescued, owns the boards until it ends.
-WAIT_FOR = (".tltg_firmware_update_pending.json", ".tltg_optimized_recovery_required",
-            ".tltg_thr_firmware_pending.json", ".tltg_box_firmware_pending.json",
-            ".tltg_mainboard_firmware_pending.json")
+WAIT_FOR = (".vo_firmware_update_pending.json", ".vo_recovery_required",
+            ".vo_thr_firmware_pending.json", ".vo_box_firmware_pending.json",
+            ".vo_mainboard_firmware_pending.json")
 SCHEMA = 1
 MAX_BOXES = 5
 SETTLE_SECONDS = 5.0

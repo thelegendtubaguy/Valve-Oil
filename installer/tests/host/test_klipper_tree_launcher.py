@@ -100,7 +100,7 @@ class LauncherTests(unittest.TestCase):
             "QIDI's Klipper chosen": (lambda: self.choose("qidi"), "qidi", "qidi", "not_selected", True),
             "a choice that can't be read": (lambda: (self.data / klipper_tree.CHOICE_FILE).write_text("{", encoding="utf-8"),
                                             "qidi", "qidi", "choice_unreadable", True),
-            "a QIDI firmware update pending": (lambda: (self.data / ".tltg_firmware_update_pending.json").write_text("{}"),
+            "a QIDI firmware update pending": (lambda: (self.data / ".vo_firmware_update_pending.json").write_text("{}"),
                                                "valve_oil", "qidi", "firmware_update_pending", False),
             "an installer run holding QIDI's Klipper": (lambda: klipper_tree.hold(self.data),
                                                         "valve_oil", "qidi", "installer_hold", False),

@@ -4,7 +4,9 @@ import io
 import json
 import os
 import shutil
+import sys
 import threading
+import time
 import unittest
 from unittest import mock
 import urllib.error
@@ -18,12 +20,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from installer.runtime import progress, update_window, valve_oil_status as status_file
-from installer.tests.helpers import load_source, temp_path
+from installer.tests.helpers import FIXTURES_ROOT, REPO_ROOT, load_source, temp_path
 
 
 def _load_server():
     path = Path(__file__).resolve().parents[2] / "system/vo_status.py"
-    return load_source("tltg_status_under_test", path)
+    return load_source("vo_status_under_test", path)
 
 
 class _Process:
@@ -45,30 +47,30 @@ class StatusServiceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         server = _load_server()
-        root = temp_path("tltg-status-")
+        root = temp_path("vo-status-")
         cls.paths = type("Paths", (), {"printer_data_root": root / "printer_data"})()
         cls.paths.printer_data_root.mkdir()
         server.STATUS_FILE = status_file.status_path(cls.paths)
         server.PROGRESS_FILE = status_file.progress_path(cls.paths)
-        server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".tltg_optimized_auto_update_enrolled"
+        server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".vo_auto_update_enrolled"
         server.UPDATE_SETTINGS_FILE = update_window.settings_path(cls.paths)
         server.MACRO_GLOBALS = root / "globals.cfg"
         server.FIRMWARE_MANIFEST = root / "firmware_manifest.json"
         server.AUTO_UPDATE_TIMER = root / "missing.timer"
-        server.ADMISSION_FILE = cls.paths.printer_data_root / ".tltg_board_admission.json"
+        server.ADMISSION_FILE = cls.paths.printer_data_root / ".vo_board_admission.json"
         server.STATE_DIR = root / "cache"
         server.JOB_FILE, server.JOB_LOG, server.JOB_RC = (server.STATE_DIR / name for name in ("job.json", "job.log", "job.rc"))
-        server.BUNDLE = root / "tltg-optimized-macros"
+        server.BUNDLE = root / "vo-macros"
         server.RELEASE_METADATA = server.BUNDLE / "RELEASE_METADATA.yaml"
         server.LOGS = cls.paths.printer_data_root / "logs"
         server.CACHE = root / "valve-oil-cache"
         server.BOX_CFG = root / "box.cfg"
-        server.FIRMWARE_UPDATE_RESULT = cls.paths.printer_data_root / ".tltg_firmware_update_result.json"
+        server.FIRMWARE_UPDATE_RESULT = cls.paths.printer_data_root / ".vo_firmware_update_result.json"
         (server.BUNDLE / "installer/runtime").mkdir(parents=True)
         (server.BUNDLE / "installer/runtime/bootstrap.py").write_text("")
-        server.INSTALLER_LOCK = cls.paths.printer_data_root / ".tltg_optimized_installer.lock"
+        server.INSTALLER_LOCK = cls.paths.printer_data_root / ".vo_installer.lock"
         server.RECOVERY_FILES = {cls.paths.printer_data_root / path.name: step for path, step in server.RECOVERY_FILES.items()}
-        server.FIRMWARE_UPDATE_RECORD = cls.paths.printer_data_root / ".tltg_firmware_update_pending.json"
+        server.FIRMWARE_UPDATE_RECORD = cls.paths.printer_data_root / ".vo_firmware_update_pending.json"
         server.read_timer_property = lambda name: None
         cls.live: tuple[str, ...] | None = ()
         server.live_printer = lambda: cls.live
@@ -115,7 +117,20 @@ class StatusServiceTests(unittest.TestCase):
         server.firmware_restart_if_board_shut_down = lambda: None
         server.MACRO_GLOBALS.write_text('[gcode_macro _vo_globals]\nvariable_package_version: "26.11.11.3"\n')
         server.FIRMWARE_MANIFEST.write_text(json.dumps({"SOC": {"version": "01.01.06.02"}}))
+        # The Diagnostics check runs the bundle's checker, which waits for the test to let it go.
+        checker = server.BUNDLE / "installer/runtime/diagnostics.py"
+        shutil.copy(REPO_ROOT / "installer/runtime/diagnostics.py", server.BUNDLE / "installer/runtime/checker.py")
+        cls.checker_go = root / "checker-go"
+        checker.write_text(
+            "import os, runpy, sys, time\n"
+            f"while not os.path.exists({str(cls.checker_go)!r}):\n    time.sleep(0.01)\n"
+            "sys.argv[0] = 'checker.py'\n"
+            f"runpy.run_path({str(server.BUNDLE / 'installer/runtime/checker.py')!r}, run_name='__main__')\n")
+        server.DIAGNOSTICS = (sys.executable, "-I", str(checker))
+        server.DIAGNOSTICS_FILE = server.STATE_DIR / "diagnostics.json"
+        server.DIAGNOSTICS_REPORT = server.STATE_DIR / "diagnostics.txt"
         server.Handler.jobs = server.Jobs()
+        server.Handler.diagnostics = server.Diagnostics()
         cls.server = server
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         threading.Thread(target=cls.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
@@ -359,7 +374,7 @@ class StatusServiceTests(unittest.TestCase):
             self.assertEqual([item["code"] for item in body["update_now"]["blocked_by"]], ["printer_state_unknown"])
             # Idle, but a board's rescue has to run first, which update now names.
             type(self).live = ()
-            rescue = self.paths.printer_data_root / ".tltg_mainboard_firmware_pending.json"
+            rescue = self.paths.printer_data_root / ".vo_mainboard_firmware_pending.json"
             rescue.write_text("")
             body = self.request("/api/status", method="GET")[1]
             self.assertEqual([item["code"] for item in body["pending"][0]["blocked_by"]], ["free_space"])
@@ -370,7 +385,7 @@ class StatusServiceTests(unittest.TestCase):
             self.assertEqual(self.request("/api/status", method="GET")[1]["update_now"], {"allowed": True, "blocked_by": []})
             # An installer recovery comes first too, except while update now would continue a recorded firmware
             # update: only a board's rescue stops that (firmware_update.resume_blocker).
-            sentinel = self.paths.printer_data_root / ".tltg_optimized_recovery_required"
+            sentinel = self.paths.printer_data_root / ".vo_recovery_required"
             sentinel.write_text("")
             self.assertIn("./restore.sh", self.request("/api/status", method="GET")[1]["update_now"]["blocked_by"][0]["message"])
             self.server.FIRMWARE_UPDATE_RECORD.write_text('{"schema": 1, "id": "kept", "state": "failed"}')
@@ -486,7 +501,7 @@ class StatusServiceTests(unittest.TestCase):
             self.assertEqual(codes(switch({"use": "valve_oil"})), (409, ["printing"]))
             type(self).live = ()
             server.FIRMWARE_UPDATE_RECORD.write_text('{"schema": 1, "id": "kept", "state": "failed"}')
-            rescue = data / ".tltg_mainboard_firmware_pending.json"
+            rescue = data / ".vo_mainboard_firmware_pending.json"
             rescue.write_text("")
             self.assertEqual(codes(switch({"use": "valve_oil"})), (409, ["firmware_update_pending", "recovery_required"]))
             server.FIRMWARE_UPDATE_RECORD.unlink()
@@ -552,6 +567,41 @@ class StatusServiceTests(unittest.TestCase):
             for path in (choice, launch, ready, server.KLIPPER_LAUNCHER, server.FIRMWARE_UPDATE_RECORD):
                 path.unlink(missing_ok=True)
 
+    def test_diagnostics_check_the_logs_one_at_a_time_and_the_support_bundle_carries_the_report(self) -> None:
+        logs = self.server.LOGS
+        logs.mkdir(exist_ok=True)
+        shutil.copy(FIXTURES_ROOT / "diagnostics/step-clock-offset.log", logs / "klippy.log")
+        try:
+            self.assertEqual(self.request("/api/diagnostics", method="GET"), (200, {
+                "state": "idle", "since": None, "started_at": None, "finished_at": None, "error": None, "result": None,
+                "report": None}))
+            self.assertEqual(self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "week"}')[0], 400)
+            self.assertEqual(self.request("/api/diagnostics", body=b'{"since": "all"}')[0], 403)
+            status, check = self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "all"}')
+            self.assertEqual((status, check["state"], check["since"]), (202, "running", "all"))
+            self.assertEqual(self.request("/api/diagnostics", headers=self.GOOD, body=b'{"since": "all"}')[0], 409)
+            self.checker_go.touch()
+            for _ in range(500):
+                check = self.request("/api/diagnostics", method="GET")[1]
+                if check["state"] != "running":
+                    break
+                time.sleep(0.01)
+            self.assertEqual(check["state"], "done", check.get("error"))
+            self.assertEqual({finding["id"] for finding in check["result"]["findings"]},
+                             {"autofeed_rearmed_during_feed", "box_step_clock_offset", "unload_toolhead_sensor_stuck",
+                              "qidi_error"})
+            # The installed release (26.11.11.3) predates the fix, so the offset needs attention.
+            offset = next(f for f in check["result"]["findings"] if f["id"] == "box_step_clock_offset")
+            self.assertEqual(offset["severity"], "fault")
+            self.assertTrue(check["report"].startswith("Printer details:\nValve Oil: 26.11.11.3"))
+            with urllib.request.urlopen(self.base + "/api/support-bundle", timeout=5) as response:
+                archive = zipfile.ZipFile(io.BytesIO(response.read()))
+            self.assertEqual(archive.read("valve-oil/diagnostics.txt").decode(), check["report"])
+        finally:
+            shutil.rmtree(logs, ignore_errors=True)
+            for path in (self.server.DIAGNOSTICS_FILE, self.server.DIAGNOSTICS_REPORT, self.checker_go):
+                path.unlink(missing_ok=True)
+
 
 class UpdateNowRunTests(unittest.TestCase):
     def test_update_now_waits_for_other_installer_runs_and_reports_why(self) -> None:
@@ -562,8 +612,8 @@ class UpdateNowRunTests(unittest.TestCase):
         from installer.runtime.locking import acquire
         from installer.runtime.reporter import create_reporter
 
-        root = temp_path("tltg-update-now-")
-        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(root)})
+        root = temp_path("vo-update-now-")
+        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
         with acquire(paths.lock_path):
             finished = update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={})
         run = status_file.load_status(paths).run

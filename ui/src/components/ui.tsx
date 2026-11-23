@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { t } from '../i18n'
+
+const dialogStack: HTMLElement[] = []
+// Everything Tab can land on inside a dialog, for keeping Tab within it.
+const FOCUSABLE = 'a[href], area[href], button, input, select, textarea, summary, iframe, audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]'
 
 export function Card({ title, icon, aside, children, className = '' }: { title?: ReactNode; icon?: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -60,18 +64,64 @@ export function HoldButton({ onHold, children, holdMs = 1200, className = '', di
 }
 
 export function Dialog({ open, onClose, title, children, footer, size }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'wide' | 'full' }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  const titleId = useId()
+  onCloseRef.current = onClose
+  // Capture the opener before React commits an autoFocus field inside this dialog.
+  if (open && !triggerRef.current && document.activeElement instanceof HTMLElement) triggerRef.current = document.activeElement
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const dialog = dialogRef.current
+    if (!dialog) return
+    dialogStack.push(dialog)
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.matches(':disabled') && el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('hidden') && el.getClientRects().length > 0)
+    if (!dialog.contains(document.activeElement)) (focusable()[0] ?? dialog).focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (dialogStack[dialogStack.length - 1] !== dialog) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      // A control that uses Tab itself (the code editor's indent) has already handled it.
+      if (e.key !== 'Tab' || e.defaultPrevented) return
+      const controls = focusable()
+      if (!controls.length) {
+        e.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (!dialog.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        e.preventDefault()
+        const target = e.shiftKey ? last : first
+        target.focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      dialogStack.splice(dialogStack.lastIndexOf(dialog), 1)
+      // StrictMode re-runs this effect with the dialog still on the page; only a real close returns focus to the opener.
+      queueMicrotask(() => {
+        if (dialog.isConnected) return
+        const trigger = triggerRef.current
+        triggerRef.current = null
+        if (trigger?.isConnected) trigger.focus()
+      })
+    }
+  }, [open])
+
   if (!open) return null
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`dialog ${size ?? ''}`} role="dialog" aria-modal="true">
+    <div className="dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); onClose() } }}>
+      <div ref={dialogRef} className={`dialog ${size ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-          <div className="min-w-0 flex-1 text-[15px] font-semibold">{title}</div>
+          <div id={titleId} className="min-w-0 flex-1 text-[15px] font-semibold">{title}</div>
           <button className="iconbtn" onClick={onClose} aria-label={t('common.close')}>
             <X size={17} />
           </button>
@@ -112,10 +162,10 @@ export function Toggle({ checked, onChange, disabled, label }: { checked: boolea
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="relative inline-block h-5 w-[34px] flex-none rounded-full border-0 transition-colors disabled:opacity-45"
+      className="relative inline-block h-6 w-[34px] flex-none rounded-full border-0 transition-colors disabled:opacity-45"
       style={{ background: checked ? 'var(--accent)' : 'var(--line-strong)' }}
     >
-      <i className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all" style={{ left: checked ? 16 : 2 }} />
+      <i className="absolute top-1 h-4 w-4 rounded-full bg-white transition-all" style={{ left: checked ? 16 : 2 }} />
     </button>
   )
 }
@@ -142,23 +192,21 @@ export function SectionLabel({ children, className = '' }: { children: ReactNode
   return <div className={`section-label ${className}`}>{children}</div>
 }
 
-/** Segmented control. Options with an href render as links (screen tabs); the rest as buttons. */
+/** Segmented control. Options with an href render as links (screen navigation); the rest as buttons. */
 export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: ReactNode; href?: string; disabled?: boolean }[]; onChange?: (v: T) => void; label?: string }) {
-  return (
-    <div className="seg" role="tablist" aria-label={label}>
-      {options.map((o) =>
-        o.href ? (
-          <a key={o.value} href={o.href} role="tab" aria-selected={o.value === value} className={o.value === value ? 'on' : ''}>
-            {o.label}
-          </a>
-        ) : (
-          <button key={o.value} type="button" role="tab" aria-selected={o.value === value} disabled={o.disabled} className={o.value === value ? 'on' : ''} onClick={() => onChange?.(o.value)}>
-            {o.label}
-          </button>
-        ),
-      )}
-    </div>
+  const isNavigation = options.length > 0 && options.every((o) => o.href)
+  const controls = options.map((o) =>
+    o.href ? (
+      <a key={o.value} href={o.href} aria-current={o.value === value ? 'page' : undefined} className={o.value === value ? 'on' : ''}>
+        {o.label}
+      </a>
+    ) : (
+      <button key={o.value} type="button" aria-pressed={o.value === value} disabled={o.disabled} className={o.value === value ? 'on' : ''} onClick={() => onChange?.(o.value)}>
+        {o.label}
+      </button>
+    ),
   )
+  return isNavigation ? <nav className="seg" aria-label={label}>{controls}</nav> : <div className="seg" role="group" aria-label={label}>{controls}</div>
 }
 
 /** A row of pills where one (or, with multi, several) is picked. */
@@ -250,6 +298,8 @@ export function Spinner({ size = 16, className = '' }: { size?: number; classNam
 export function MenuButton({ button, items, align = 'right', className = 'iconbtn', label }: { button: ReactNode; items: ({ label: ReactNode; icon?: ReactNode; onSelect: () => void; danger?: boolean; disabled?: boolean } | null | false)[]; align?: 'left' | 'right'; className?: string; label?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // An item's dialog takes its opener from the focused element, and the item itself goes when the menu closes.
+  const buttonRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!open) return
     const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
@@ -260,7 +310,7 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
   }, [open])
   return (
     <div className="relative inline-flex" ref={ref}>
-      <button type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((o) => !o)}>
+      <button ref={buttonRef} type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((o) => !o)}>
         {button}
       </button>
       {open && (
@@ -268,7 +318,7 @@ export function MenuButton({ button, items, align = 'right', className = 'iconbt
           {items.filter(Boolean).map((it, i) => {
             const item = it as Exclude<typeof it, null | false>
             return (
-              <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (setOpen(false), item.onSelect())}>
+              <button key={i} type="button" role="menuitem" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={() => (buttonRef.current?.focus(), setOpen(false), item.onSelect())}>
                 {item.icon}
                 {item.label}
               </button>

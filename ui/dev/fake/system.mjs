@@ -1,5 +1,5 @@
 // System screen: host details, MCUs, services, logs, Moonraker's database and backups, connected devices, and the
-// touchscreen stream (tltg-remote-screen) at /tltg-screen/ws. Shaped like a Max 4; every identifier here is made up.
+// touchscreen stream (vo-remote-screen) at /vo-screen/ws. Shaped like a Max 4; every identifier here is made up.
 import { deflateSync } from 'node:zlib'
 
 export function install(fake) {
@@ -87,9 +87,9 @@ export function install(fake) {
   fake.addLog = addLog
   addLog('crowsnest.log', '[cs] crowsnest - A webcam Service for multiple Cams and Stream Services.\n[cs] V4L2 Control: Device /dev/video0 found\n[cs] ustreamer: Streaming on port 8080\n', 3600)
   addLog('vo_box_link.log', 'box link: connected to Box 1 (USB)\nbox link: connected to Box 2 (USB)\nbox link: heartbeat ok\n', 60)
-  addLog('tltg_boot_animation.log', 'boot animation installed\n', 86400 * 3)
+  addLog('vo_boot_animation.log', 'boot animation installed\n', 86400 * 3)
   // The report the installer leaves for a Box it can't support yet, which the updates scenario `boards` warns about.
-  addLog('tltg_box_firmware_box1.json', JSON.stringify({ board: 'Box 1', application: 'unrecognized', supported_bootloader: false, bootloader_sha256: '0'.repeat(64), application_sha256: '1'.repeat(64), version: '1.0.2' }, null, 2) + '\n', 600)
+  addLog('vo_box_firmware_box1.json', JSON.stringify({ board: 'Box 1', application: 'unrecognized', supported_bootloader: false, bootloader_sha256: '0'.repeat(64), application_sha256: '1'.repeat(64), version: '1.0.2' }, null, 2) + '\n', 600)
   setInterval(() => {
     const k = logs.get('klippy.log')
     const t = now()
@@ -245,7 +245,7 @@ export function install(fake) {
     cputime += 0.2 + Math.random() * 0.15
     if (state.status.system_stats) set('system_stats', { sysload: Math.round((0.5 + Math.random() * 0.4) * 100) / 100, cputime, memavail: 200000 + Math.round(Math.random() * 20000) })
     for (const name of Object.keys(CONSTANTS)) if (state.status[name]) set(name, { last_stats: lastStats(AWAKE[name], tick) })
-    if (tick % 5 === 0 && state.status.tltg_klipper_health) set('tltg_klipper_health', { timers: 58 + Math.floor(Math.random() * 25) })
+    if (tick % 5 === 0 && state.status.vo_klipper_health) set('vo_klipper_health', { timers: 58 + Math.floor(Math.random() * 25) })
   }, 1000)
 
   // ---- HTTP: log files, with range requests as Moonraker answers them ----
@@ -272,7 +272,7 @@ export function install(fake) {
   })
 
   // ---- the touchscreen stream ----
-  fake.websocket('/tltg-screen/ws', (ws) => onScreen(ws))
+  fake.websocket('/vo-screen/ws', (ws) => onScreen(ws))
   const touches = []
   function onScreen(ws) {
     ws.send(JSON.stringify({ type: 'hello', width: SCREEN_W, height: SCREEN_H, touch: true, touch_error: null }))

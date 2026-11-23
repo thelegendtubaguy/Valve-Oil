@@ -25,7 +25,7 @@ class VelocityLimit:
         # take whatever handler is registered.
         self.original = self.gcode.register_command("SET_VELOCITY_LIMIT", None)
         if self.original is None:
-            logging.info("tltg_velocity_limit: SET_VELOCITY_LIMIT not found")
+            logging.info("vo_velocity_limit: SET_VELOCITY_LIMIT not found")
             return
         self.gcode.register_command(
             "SET_VELOCITY_LIMIT", self.cmd_SET_VELOCITY_LIMIT,

@@ -52,7 +52,7 @@ from .thr_firmware import (
     wait_for_thr_printer_ready,
 )
 
-ADMISSION_FILE = ".tltg_board_admission.json"
+ADMISSION_FILE = ".vo_board_admission.json"
 SCHEMA_VERSION = 1
 SUBJECT = "reading the boards"
 
@@ -71,12 +71,12 @@ UNADMITTED_STATES = frozenset({UNRECOGNIZED_FIRMWARE, UNRECOGNIZED_BOOTLOADER})
 # firmware); "unrecognized"; or None when the board was not read.
 QIDI_APPLICATION = "qidi"
 
-# Printer warnings read these from Klipper's log folder; tltg_box_firmware_box<N>.json is the Box flow's own.
-LOG_REPORTS = {"thr": "tltg_thr_firmware.json", "mcu": "tltg_mainboard_firmware.json"}
-BOX_LOG_REPORT = re.compile(r"^tltg_box_firmware_box(\d+)\.json$")
+# Printer warnings read these from Klipper's log folder; vo_box_firmware_box<N>.json is the Box flow's own.
+LOG_REPORTS = {"thr": "vo_thr_firmware.json", "mcu": "vo_mainboard_firmware.json"}
+BOX_LOG_REPORT = re.compile(r"^vo_box_firmware_box(\d+)\.json$")
 # The input shaper calibration saved when a run last flashed the THR; printer warnings ask for a new calibration while
 # the saved one is still this.
-THR_SHAPER_MARKER = "tltg_input_shaper_thr_flash.json"
+THR_SHAPER_MARKER = "vo_input_shaper_thr_flash.json"
 
 ISSUE_FORM = REPOSITORY_URL + "/issues/new"
 ISSUE_TEMPLATE = "printer-support.yml"
@@ -586,7 +586,7 @@ def printer_details(paths) -> str:
     hostname, user name, address, or network name: the kernel's build string and free text are left out.
     """
     lines = []
-    state = paths.config_root / "tltg_optimized_state.yaml"
+    state = paths.config_root / "vo_state.yaml"
     try:
         text = state.read_text(encoding="utf-8")
         version = re.search(r"^  version: *'?([0-9.]+)", text, re.M).group(1)
@@ -608,7 +608,7 @@ def printer_details(paths) -> str:
         lines.append("USB Boxes in box.cfg: no box.cfg")
     release = os.uname().release
     lines.append("Kernel: " + (release if re.match(r"^[A-Za-z0-9._+-]{1,80}$", release) else "unrecognized"))
-    enrolled = paths.printer_data_root / ".tltg_optimized_auto_update_enrolled"
+    enrolled = paths.printer_data_root / ".vo_auto_update_enrolled"
     lines.append("Auto-updates: " + ("on" if enrolled.is_file() else "off"))
     try:
         lines.append("zram: " + ("on" if "zram" in Path("/proc/swaps").read_text() else "off"))
@@ -702,7 +702,7 @@ def _log_dir(paths) -> Path:
 
 
 def _log_report_name(status: BoardStatus) -> str:
-    return LOG_REPORTS.get(status.board) or f"tltg_box_firmware_box{status.board[3:]}.json"
+    return LOG_REPORTS.get(status.board) or f"vo_box_firmware_box{status.board[3:]}.json"
 
 
 def box_note(status: BoardStatus, printer) -> str | None:

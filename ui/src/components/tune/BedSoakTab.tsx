@@ -11,7 +11,7 @@ import { t } from '../../i18n'
 
 type CachedRun = { modified: number; run: BedSoakRun | null }
 
-/** Run files in config/tltg_bed_soak, from Moonraker's GET /server/files/directory. Empty until the folder exists. */
+/** Run files in config/vo_bed_soak, from Moonraker's GET /server/files/directory. Empty until the folder exists. */
 async function listRuns(): Promise<{ filename: string; modified: number }[]> {
   try {
     const r = await fetch(`${client.httpBase}/server/files/directory?path=${encodeURIComponent(BED_SOAK_PATH)}`, { cache: 'no-store' })
@@ -32,7 +32,7 @@ async function readRun(path: string): Promise<BedSoakRun | null> {
 
 /** The fork's Bed soak card: setup or the run in progress, and past runs. */
 export function BedSoakTab() {
-  const status = useObject('tltg_bed_soak') as unknown as VoBedSoakState
+  const status = useObject('vo_bed_soak') as unknown as VoBedSoakState
   const filesRev = usePrinter((s) => s.filesRev)
   const bedNow = usePrinter((s) => s.status.heater_bed?.temperature as number | undefined)
   const chamberNow = useChamberTemp()
@@ -141,7 +141,7 @@ export function BedSoakTab() {
   const stop = async () => {
     if (!(await confirm({ title: t('tune.soak.stop_title'), body: t('tune.soak.stop_body'), confirm: t('tune.soak.stop'), danger: true }))) return
     setStopping(true)
-    await attempt(() => client.call('printer.tltg_bed_soak.stop'))
+    await attempt(() => client.call('printer.vo_bed_soak.stop'))
     setStopping(false)
   }
 

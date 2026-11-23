@@ -7,7 +7,7 @@ import { t } from '../../i18n'
 import { tr } from '../../i18n/rich'
 
 // Ported from the Fluidd fork's QidiScreenCard and QidiScreenView: a live view of the printer's touchscreen from Valve
-// Oil's tltg-remote-screen service, which the printer's nginx serves at /tltg-screen/ws on the same origin as Moonraker.
+// Oil's vo-remote-screen service, which the printer's nginx serves at /vo-screen/ws on the same origin as Moonraker.
 // It connects only while this tab is shown in a visible browser tab, and the service reads the screen only while a
 // viewer is connected.
 
@@ -61,7 +61,7 @@ type Point = { x: number; y: number }
 
 /** The service accepts only same-origin connections; Moonraker's origin is the page's own on the printer. */
 function socketUrl(token: string) {
-  const url = new URL('/tltg-screen/ws', client.httpBase)
+  const url = new URL('/vo-screen/ws', client.httpBase)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   if (token) url.search = `?token=${encodeURIComponent(token)}`
   return url.toString()

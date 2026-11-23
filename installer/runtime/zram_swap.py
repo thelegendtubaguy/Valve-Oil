@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .errors import InstallerError
 from .models import SystemZramSwapSpec
+from .naming import has_marker
 
 
 # QIDI's kernel can swap but ships no zram, and its RAM is small enough that a long print with AI detection running can
@@ -13,14 +14,14 @@ from .models import SystemZramSwapSpec
 # zram and its compressor for QIDI's exact kernel build; the boot script refuses to load them on any other kernel.
 OPERATION = "zram_swap"
 UNIT_OPERATION = "zram_swap_unit"
-DESTINATION = "/usr/local/lib/tltg-zram-swap"
-STAGING = f"{DESTINATION}.tltg-staging"
-PREVIOUS = f"{DESTINATION}.tltg-previous"
-REMOVING = f"{DESTINATION}.tltg-removing"
+DESTINATION = "/usr/local/lib/vo-zram-swap"
+STAGING = f"{DESTINATION}.vo-staging"
+PREVIOUS = f"{DESTINATION}.vo-previous"
+REMOVING = f"{DESTINATION}.vo-removing"
 # Marks the directory as package-owned and records the files it was installed with.
-MARKER = ".tltg-zram-swap"
-SCRIPT = "tltg-zram-swap.sh"
-UNIT = "tltg-zram-swap.service"
+MARKER = ".vo-zram-swap"
+SCRIPT = "vo-zram-swap.sh"
+UNIT = "vo-zram-swap.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
 OSRELEASE = "/proc/sys/kernel/osrelease"
 VERSION = "/proc/sys/kernel/version"
@@ -36,7 +37,7 @@ OUTDATED = "outdated"
 FOREIGN = "foreign"
 
 # Package-created units start with a marker line so later package versions replace earlier ones.
-UNIT_MARKER = "# tltg-optimized:zram-swap\n"
+UNIT_MARKER = "# vo:zram-swap\n"
 UNIT_CONTENT = UNIT_MARKER + f"""\
 # Compressed swap in RAM (zram). Installed by Valve Oil.
 [Unit]
@@ -59,7 +60,7 @@ class ZramSwapError(InstallerError):
 
 
 def patch_unit(current: str) -> str:
-    if current == "" or current.startswith(UNIT_MARKER):
+    if current == "" or has_marker(current, UNIT_MARKER):
         return UNIT_CONTENT
     raise InstallerError(f"Existing {UNIT_FILE} is unrecognized and was preserved.")
 

@@ -106,7 +106,7 @@ describe('spoolChecks', () => {
 })
 
 describe('slotSpools', () => {
-  it("reads tltg_spoolman's spools and loaded slot, ignoring anything malformed", () => {
+  it("reads vo_spoolman's spools and loaded slot, ignoring anything malformed", () => {
     const s = slotSpools({ loaded_slot: 'slot1', spools: { slot5: 12, slot0: 1, slot16: 3, slot17: 4, slotx: 5, slot2: 0 } })!
     expect(s.loadedSlot).toBe(1)
     expect([...s.spools]).toEqual([

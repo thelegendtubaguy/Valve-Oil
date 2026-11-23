@@ -122,7 +122,7 @@ export function App() {
         <Warnings />
         {klippy !== 'ready' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
+          <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid grid-cols-1 content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
         </div>
         <MobileNav nav={NAV} route={shown} />
       </main>
@@ -295,7 +295,7 @@ function SaveConfigButton() {
   const sections = Object.keys(items ?? {})
   return (
     <button
-      className="btn btn-sm btn-primary"
+      className="btn btn-sm btn-primary mr-auto sm:mr-0"
       disabled={printing}
       title={printing ? t('app.save_config.waits') : undefined}
       onClick={async () => {
@@ -324,7 +324,7 @@ function TopBar() {
   // The model the installer detected (QIDI Max 4, Plus 5, or Smart 5), from Valve Oil's status service.
   const name = useStore(valveOil, (s) => s.status?.printer.name ?? null)
   return (
-    <div className="flex items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] md:px-[18px]" style={{ background: 'var(--page)' }}>
+    <div className="relative flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-2.5 pt-[max(10px,env(safe-area-inset-top))] sm:flex-nowrap md:px-[18px]" style={{ background: 'var(--page)' }}>
       <a href={href('home')} className="flex items-center gap-2.5 md:hidden">
         <LogoMark height={30} />
       </a>
@@ -337,16 +337,19 @@ function TopBar() {
         </>
       )}
       <StatusPill />
-      <div className="flex-1" />
-      <SaveConfigButton />
-      <MiniTemps />
-      <HealthButton />
-      <NotificationsButton />
-      <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
-        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-      </button>
+      <div className="order-1 flex-1 sm:order-none" />
+      {/* On phones this is the top bar's second row, under the logo and E-stop; the Health and Notifications popups open below it. */}
+      <div className="order-2 flex w-full items-center justify-end gap-3 sm:contents">
+        <SaveConfigButton />
+        <MiniTemps />
+        <HealthButton />
+        <NotificationsButton />
+        <button className="iconbtn" onClick={toggleTheme} aria-label={t('app.topbar.switch_theme')} title={t('app.topbar.switch_theme')}>
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
+      </div>
       <button
-        className="estop"
+        className="estop order-1 sm:order-none"
         disabled={conn !== 'open'}
         onClick={async () => {
           // Fluidd's "Confirm emergency stop" setting, shared with it.

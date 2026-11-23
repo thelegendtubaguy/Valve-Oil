@@ -134,7 +134,7 @@ For a single run, add these to `SHAPER_CALIBRATE` or `TEST_RESONANCES`:
 | `SWEEPING_ACCEL=` | `400` | Acceleration of the slow back-and-forth, in mm/s². |
 | `ACCEL_PER_HZ=` | `accel_per_hz` in `printer.cfg`, `150` on the Max 4 and the Plus 5, lowered to `147` for the newer test on the Plus 5 and `94` on the Smart 5 | How hard the toolhead shakes: acceleration in mm/s² per Hz tested. Upstream Klipper's default is 60. Applies to both tests. |
 
-QIDI's Klipper holds acceleration to `max_accel` in `printer.cfg`, and the Smart 5's newer test is held to 13000 mm/s². When the newer test would need more and the command sets none of `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, and `FREQ_END`, it runs at the largest whole `ACCEL_PER_HZ` that fits. When the command sets any of the three, the test stops before the toolhead moves or the accelerometer starts, and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `tltg_resonance_sweep: skipped`.
+QIDI's Klipper holds acceleration to `max_accel` in `printer.cfg`, and the Smart 5's newer test is held to 13000 mm/s². When the newer test would need more and the command sets none of `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, and `FREQ_END`, it runs at the largest whole `ACCEL_PER_HZ` that fits. When the command sets any of the three, the test stops before the toolhead moves or the accelerometer starts, and says so; lower `ACCEL_PER_HZ`, `SWEEPING_ACCEL`, or `FREQ_END`. If Klipper's resonance test or motion planning code isn't exactly the QIDI version this was written for, QIDI's test runs and `klippy.log` says `vo_resonance_sweep: skipped`.
 
 ## Bed soak test
 
@@ -170,6 +170,6 @@ Each mesh also shows how far the whole bed has moved up or down since the first 
 
 Stop the test with **Stop** on the card, which turns the heaters off at once, or `VO_BED_SOAK_STOP`, which waits for the mesh in progress. The test also ends if a print starts, a heater's target is changed outside the test, or homing or probing fails. When it ends, the nozzle heater turns off, the bed and chamber turn off unless you asked to keep them heating, and the mesh you had loaded before is loaded again. The test saves no mesh profile and leaves no config save pending.
 
-Each run is saved in `tltg_bed_soak/` in Fluidd's configuration files, named by start time and temperatures, for example `20261110-195948-bed100-chamber50.jsonl`. The card's **Past runs** tab lists, compares, and deletes them.
+Each run is saved in `vo_bed_soak/` in Fluidd's configuration files, named by start time and temperatures, for example `20261110-195948-bed100-chamber50.jsonl`. The card's **Past runs** tab lists, compares, and deletes them.
 
 Fluidd's Bed mesh card also marks the points that needed a retry in the last mesh measured, including print start's, while that mesh is loaded.

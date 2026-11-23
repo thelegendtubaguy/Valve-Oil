@@ -94,7 +94,7 @@ def wait_for_thr_printer_ready(paths, *, urlopen, sleep, clock, reporter=None, s
 
 # Outcomes of a THR run, as board_firmware reports them.
 CURRENT, FLASHED, FELL_BACK, NOT_ADMITTED = "current", "flashed", "fell_back", "not_admitted"
-BACKUP_DIRECTORY = ".tltg_thr_firmware_backups"
+BACKUP_DIRECTORY = ".vo_thr_firmware_backups"
 
 # Finishes, at boot, a flash that the installer started and didn't finish: the record (THR_RECOVERY_MARKER) is in place
 # from the first erase until the THR is verified. Installed and enabled before the first erase; it runs nothing while
@@ -178,7 +178,7 @@ def flash_thr_firmware(
     for service in () if services_stopped else protocol.SERVICES:
         result = run(["systemctl", "show", service, "--property=LoadState,ActiveState"], capture_output=True, text=True, timeout=5)
         values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-        if service == "tltg-optimized-auto-update.timer" and values.get("LoadState") == "not-found":
+        if service.endswith(".timer") and values.get("LoadState") == "not-found":
             continue
         if result.returncode or values.get("LoadState") != "loaded" or values.get("ActiveState") not in {"active", "inactive"}:
             raise ThrFirmwareError("Cannot establish serial service ownership: " + service)
@@ -490,13 +490,13 @@ def rescue_unit_text(paths, bundle: Path) -> str:
             "Description=Valve Oil THR firmware rescue\n"
             "DefaultDependencies=no\n"
             "After=local-fs.target\n"
-            "Before=klipper.service qidi-client.service tltg-optimized-auto-update.service\n"
+            "Before=klipper.service qidi-client.service vo-auto-update.service\n"
             f"ConditionPathExists={record}\n\n"
             "[Service]\n"
             "Type=oneshot\n"
             f"User={current_user()}\n"
             f"WorkingDirectory={bundle}\n"
-            f"Environment=TLTG_OPTIMIZED_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
+            f"Environment=VO_PRINTER_DATA_ROOT={paths.printer_data_root}\n"
             # Reach the THR inside its startup window, and give its port, still root's alone, the group udev gives it
             # later in boot.
             f"ExecStartPre=-+/usr/bin/python3 -I -S {CATCH_SCRIPT}\n"
@@ -614,6 +614,28 @@ def install_rescue_unit(paths, *, run, password) -> None:
         raise ThrFirmwareError(f"Could not enable {RESCUE_UNIT}; THR firmware was not changed.")
     # Neither install nor systemctl writes through to storage; a power cut after the first erase must find the unit.
     os.sync()
+
+
+def refresh_rescue_unit(paths, *, run, password) -> bool:
+    """Rewrite an installed rescue unit, its generator, and the catch where they still name what releases before
+    26.11.22.3 called tltg. Nothing is installed where there is no rescue unit, or while a flash is unfinished."""
+    try:
+        current = (SYSTEMD_DIR / RESCUE_UNIT).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not current.startswith(RESCUE_UNIT_MARKER) or (paths.printer_data_root / THR_RECOVERY_MARKER).exists():
+        return False
+    texts = [current]
+    for path in (GENERATOR, CATCH_SCRIPT):
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            pass
+    if not any("tltg" in text for text in texts):
+        return False
+    (paths.printer_data_root / BACKUP_DIRECTORY).mkdir(mode=0o700, exist_ok=True)
+    install_rescue_unit(paths, run=run, password=password)
+    return True
 
 
 def remove_rescue_unit(*, run, password) -> None:

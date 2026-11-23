@@ -1,5 +1,5 @@
 // Settings screen fakes: Moonraker's webcams (server.webcams.*), QIDI's LAN only mode (QIDI Moonraker's
-// server.database.config.*), Valve Oil's add-ons service at /tltg-addons/api (installer/system/vo_addons.py), and
+// server.database.config.*), Valve Oil's add-ons service at /vo-addons/api (installer/system/vo_addons.py), and
 // Fluidd's temperature presets in the database another plugin keeps in state.database.
 //
 // Pick the add-ons' state with `--addons <scenario>`, or switch at runtime with `VO_ADDONS NAME=<scenario>`:
@@ -343,9 +343,9 @@ export function install(fake) {
   }
 
   fake.http(async (req, res, path) => {
-    if (!path.startsWith('/tltg-addons/')) return false
+    if (!path.startsWith('/vo-addons/')) return false
     if (addons.absent) return send(res, 404, { error: 'Not found.' })
-    const route = path.slice('/tltg-addons/'.length).split('/').filter(Boolean)
+    const route = path.slice('/vo-addons/'.length).split('/').filter(Boolean)
     if (route[0] !== 'api') return send(res, 404, { error: 'Not found.' })
     if (req.method === 'GET') return route.length === 2 && route[1] === 'addons' ? send(res, 200, list()) : send(res, 404, { error: 'Not found.' })
     if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed.' })

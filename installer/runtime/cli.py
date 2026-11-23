@@ -10,7 +10,7 @@ from contextlib import ExitStack, contextmanager, nullcontext, suppress
 from dataclasses import replace
 from pathlib import Path
 
-from . import addons_cli, boot_path, firmware_update, install_flow, install_screen, messages, progress, safety, thr_firmware, update_window, valve_oil_status
+from . import addons_cli, boot_path, earlier_names, firmware_update, install_flow, install_screen, messages, progress, safety, thr_firmware, update_window, valve_oil_status
 from .auto_update import (
     KIND_ENV,
     LOCK_HELD_ENV,
@@ -60,7 +60,7 @@ from .box_firmware import run_box_firmware
 from .mainboard_firmware import run_mainboard_firmware
 
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
-USB_ORIGIN_ENV = "TLTG_USB_INSTALL"  # set by the USB installer for the runs it starts (usb_install.py)
+USB_ORIGIN_ENV = "VO_USB_INSTALL"  # set by the USB installer for the runs it starts (usb_install.py)
 DEFAULT_FIRMWARE_MANIFEST = Path("/home/qidi/update/firmware_manifest.json")
 DEFAULT_MOONRAKER_URL = "http://127.0.0.1:7125/printer/objects/query?print_stats"
 FIRMWARE_MODES = {"box-firmware", "mainboard-firmware"}
@@ -84,11 +84,17 @@ def main(
         print(installer_version(root), file=stream or sys.stdout)
         return 0
     if argv and argv[0] == "addons":
-        env = dict(os.environ if environ is None else environ)
+        env = _environment(environ)
         root = bundle_root or Path(__file__).resolve().parents[2]
+        addon_paths = resolve_runtime_paths(bundle_root=root, environ=env)
+        try:
+            earlier_names.migrate_when_free(addon_paths)
+        except InstallerError as exc:
+            print(exc.message, file=sys.stderr)
+            return 1
         return addons_cli.main(
             argv[1:],
-            paths=resolve_runtime_paths(bundle_root=root, environ=env),
+            paths=addon_paths,
             stream=stream,
             input_stream=input_stream,
             environ=env,
@@ -97,7 +103,7 @@ def main(
     if args.show_version:
         print(installer_version(bundle_root or Path(__file__).resolve().parents[2]), file=stream or sys.stdout)
         return 0
-    env = dict(os.environ if environ is None else environ)
+    env = _environment(environ)
     bundle_root = bundle_root or Path(__file__).resolve().parents[2]
     reporter = create_reporter(
         stream,
@@ -125,8 +131,11 @@ def main(
                        argv=" ".join(argv if argv is not None else sys.argv[1:]))
     try:
         with _survives_hangup():
-            return _dispatch(args, env=env, bundle_root=bundle_root, reporter=reporter, paths=paths,
-                             input_stream=input_stream)
+            rc = _dispatch(args, env=env, bundle_root=bundle_root, reporter=reporter, paths=paths,
+                           input_stream=input_stream)
+            if args.mode == "install" and not args.dry_run:
+                earlier_names.finish_earlier_parent_run(paths, succeeded=rc == 0)
+            return rc
     finally:
         if run_log is not None:
             run_log.close()
@@ -183,6 +192,10 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                 action="demo-tui",
             )
             return 0
+
+        # Releases before 26.11.22.3 named Valve Oil's files tltg; everything below reads them by their current names.
+        if earlier_names.migrate_when_free(paths):
+            reporter.debug(event="cli.earlier_names.moved")
 
         if args.mode in AUTO_UPDATE_SWITCH_MODES:
             # Only the enrollment marker and the window's settings change: no sudo, no lock, and the check reads them at
@@ -483,6 +496,7 @@ def _dispatch(args, *, env, bundle_root, reporter, paths, input_stream, front_en
                     input_stream=input_stream,
                     backup_path=args.backup,
                     debug=reporter.debug,
+                    environ=env,
                 )
                 reporter.debug(event="cli.complete", mode=args.mode, return_code=rc)
                 return rc
@@ -1006,18 +1020,28 @@ def _system_options_from_args(args: argparse.Namespace) -> SystemOptimizationCli
 
 
 def _lock_inherited(mode: str, environ: dict[str, str]) -> bool:
-    return mode == "install" and environ.get(LOCK_HELD_ENV) == "1"
+    # An earlier release's update check holds only its own lock, so a run it starts takes this release's.
+    return mode == "install" and environ.get(LOCK_HELD_ENV) == "1" and not earlier_names.EARLIER_PARENT
+
+
+def _environment(environ: dict[str, str] | None) -> dict[str, str]:
+    """The run's environment, with values set under earlier releases' names under the current ones; for a real run
+    the process's environment too, which the runs it starts inherit."""
+    env = earlier_names.adopt_earlier_environment(os.environ if environ is None else environ)
+    if environ is None:
+        os.environ.update({name: env[name] for name in earlier_names.EARLIER_ENVIRONMENT if name in env})
+    return env
 
 
 
 def resolve_runtime_paths(*, bundle_root: Path, environ: dict[str, str]) -> RuntimePaths:
     printer_data_root = Path(
-        environ.get("TLTG_OPTIMIZED_PRINTER_DATA_ROOT", DEFAULT_PRINTER_DATA_ROOT)
+        environ.get("VO_PRINTER_DATA_ROOT", DEFAULT_PRINTER_DATA_ROOT)
     )
     firmware_manifest_path = Path(
-        environ.get("TLTG_OPTIMIZED_FIRMWARE_MANIFEST", DEFAULT_FIRMWARE_MANIFEST)
+        environ.get("VO_FIRMWARE_MANIFEST", DEFAULT_FIRMWARE_MANIFEST)
     )
-    moonraker_url = environ.get("TLTG_OPTIMIZED_MOONRAKER_URL", DEFAULT_MOONRAKER_URL)
+    moonraker_url = environ.get("VO_MOONRAKER_URL", DEFAULT_MOONRAKER_URL)
     return RuntimePaths(
         bundle_root=bundle_root,
         installer_root=bundle_root / "installer",
@@ -1025,22 +1049,22 @@ def resolve_runtime_paths(*, bundle_root: Path, environ: dict[str, str]) -> Runt
         config_root=printer_data_root / "config",
         firmware_manifest_path=firmware_manifest_path,
         moonraker_url=moonraker_url,
-        lock_path=printer_data_root / ".tltg_optimized_installer.lock",
-        recovery_sentinel_path=printer_data_root / ".tltg_optimized_recovery_required",
+        lock_path=printer_data_root / ".vo_installer.lock",
+        recovery_sentinel_path=printer_data_root / ".vo_recovery_required",
         backup_root=printer_data_root,
         klipper_root=(
-            Path(environ["TLTG_OPTIMIZED_KLIPPER_ROOT"])
-            if "TLTG_OPTIMIZED_KLIPPER_ROOT" in environ
+            Path(environ["VO_KLIPPER_ROOT"])
+            if "VO_KLIPPER_ROOT" in environ
             else None
         ),
         host_reboot_marker_override=(
-            Path(environ["TLTG_OPTIMIZED_HOST_REBOOT_MARKER"])
-            if "TLTG_OPTIMIZED_HOST_REBOOT_MARKER" in environ
+            Path(environ["VO_HOST_REBOOT_MARKER"])
+            if "VO_HOST_REBOOT_MARKER" in environ
             else None
         ),
         boot_id_path_override=(
-            Path(environ["TLTG_OPTIMIZED_BOOT_ID_PATH"])
-            if "TLTG_OPTIMIZED_BOOT_ID_PATH" in environ
+            Path(environ["VO_BOOT_ID_PATH"])
+            if "VO_BOOT_ID_PATH" in environ
             else None
         ),
     )

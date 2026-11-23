@@ -1,6 +1,6 @@
 // Files: every Moonraker root the Files screen browses, as one in-memory tree per root. gcodes starts from the core's
 // files plus a couple of folders; config holds a made-up QIDI configuration (printer.cfg, klipper-macros-qd/,
-// tltg-optimized-macros/, box.cfg, moonraker.conf, a read-only fluidd.cfg); config_examples and docs are read-only.
+// vo-macros/, box.cfg, moonraker.conf, a read-only fluidd.cfg); config_examples and docs are read-only.
 //
 // Answers server.files.get_directory (with extended G-code metadata), list, metadata, metascan, move, copy,
 // delete_file, delete_directory, post_directory, zip (a real zip), uploads with root, path, and print, and downloads
@@ -12,11 +12,11 @@ import { crc32, deflateRawSync } from 'node:zlib'
 const dirname = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
 const basename = (p) => p.slice(p.lastIndexOf('/') + 1)
 
-const PRINTER_CFG = `# QIDI Max 4 (fake). Valve Oil's optimized macros load after QIDI's.
+const PRINTER_CFG = `# QIDI Max 4 (fake). Valve Oil's macros load after QIDI's.
 [include MCU_ID.cfg]
 [include timelapse.cfg]
 [include klipper-macros-qd/*.cfg]
-[include tltg-optimized-macros/*.cfg]
+[include vo-macros/*.cfg]
 [include box.cfg]
 
 [printer]
@@ -177,7 +177,7 @@ variable_purge_length: 40
 gcode:
 `
 
-const VO_GLOBALS = `# Valve Oil's optimized macros. Installer-managed: changes here are replaced on the next install.
+const VO_GLOBALS = `# Valve Oil's macros. Installer-managed: changes here are replaced on the next install.
 [gcode_macro _VO_GLOBALS]
 variable_version: "26.11.16.1"
 variable_heat_soak_minutes: 0
@@ -321,7 +321,7 @@ package_version: 26.11.16.1
 printer: max4
 firmware: 01.01.07.01
 installed_files:
-  - path: tltg-optimized-macros/globals.cfg
+  - path: vo-macros/globals.cfg
     sha256: 0000000000000000000000000000000000000000000000000000000000000000
 `
 
@@ -368,14 +368,14 @@ export function install(fake) {
   file('config', 'officiall_filas_list.cfg', '[filament 1]\nfilament = PLA Rapido\ntype = PLA\nmin_temp = 190\nmax_temp = 230\n', 40)
   file('config', '.moonraker.conf.bkp', MOONRAKER_CONF, 40)
   file('config', 'printer-20261117_062049.cfg', PRINTER_CFG, 0.5)
-  file('config', 'tltg_optimized_state.yaml', STATE_YAML, 1)
-  file('config', 'tltg_optimized_auto_update_state.json', '{\n  "enabled": true,\n  "last_check": "2026-11-16T22:00:00Z"\n}\n', 0.3)
+  file('config', 'vo_state.yaml', STATE_YAML, 1)
+  file('config', 'vo_auto_update_state.json', '{\n  "enabled": true,\n  "last_check": "2026-11-16T22:00:00Z"\n}\n', 0.3)
   file('config', 'klipper-macros-qd/start_end.cfg', START_END, 10)
   file('config', 'klipper-macros-qd/filament.cfg', FILAMENT_CFG, 10)
   file('config', 'klipper-macros-qd/globals.cfg', QD_GLOBALS, 10)
-  file('config', 'tltg-optimized-macros/globals.cfg', VO_GLOBALS, 1)
-  file('config', 'tltg-optimized-macros/cooling.cfg', COOLING, 1)
-  file('config', 'tltg-optimized-macros/start_print.cfg', START_END.replace('PRINT_START]', 'VO_PRINT_START]'), 1)
+  file('config', 'vo-macros/globals.cfg', VO_GLOBALS, 1)
+  file('config', 'vo-macros/cooling.cfg', COOLING, 1)
+  file('config', 'vo-macros/start_print.cfg', START_END.replace('PRINT_START]', 'VO_PRINT_START]'), 1)
   file('config', 'KAMP/Adaptive_Meshing.cfg', '[gcode_macro _KAMP_Settings]\nvariable_mesh_margin: 0\ngcode:\n', 60)
   // The core serves this one (the Box screen reads it); listed here, content left to it.
   file('config', 'qidi_filament_config/filament-0.4.json', null, 5)

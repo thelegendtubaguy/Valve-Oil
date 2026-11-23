@@ -56,7 +56,7 @@ class PowerCutRecoveryTests(unittest.TestCase):
         env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
         env[SYSTEM_ROOT_ENV] = str(root)
         (printer_root / "boot-id").write_text("boot\n", encoding="utf-8")
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(printer_root / "boot-id")
+        env["VO_BOOT_ID_PATH"] = str(printer_root / "boot-id")
         paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
         return paths, env, root
 
@@ -96,7 +96,7 @@ class PowerCutRecoveryTests(unittest.TestCase):
 
     def _assert_stock(self, paths, stock_homing: bytes) -> None:
         text = (paths.config_root / "printer.cfg").read_text(encoding="utf-8")
-        self.assertNotIn("[include tltg-optimized-macros/*.cfg]", text)
+        self.assertNotIn("[include vo-macros/*.cfg]", text)
         self.assertTrue(klipper_cfg.has_section(text, SENSOR))
         self.assertEqual((paths.managed_klipper_root / "klippy/extras/homing.py").read_bytes(), stock_homing)
         self.assertFalse((paths.printer_data_root / MANIFEST.state_file).exists())
@@ -106,7 +106,7 @@ class PowerCutRecoveryTests(unittest.TestCase):
     def test_the_next_install_finishes_an_install_stopped_anywhere(self):
         moments = {
             "before anything is changed": _written(INSTALL_STARTED_FILE),
-            "after the Klipper restart was recorded": _written(".tltg_optimized_klipper_restart_required"),
+            "after the Klipper restart was recorded": _written(".vo_klipper_restart_required"),
             "after printer.cfg was changed": _written("printer.cfg"),
             "before the state was written": _about_to_write(Path(MANIFEST.state_file).name),
             "during the system changes": _written(SYSTEM_JOURNAL),
@@ -126,7 +126,7 @@ class PowerCutRecoveryTests(unittest.TestCase):
 
     def test_the_next_uninstall_finishes_an_uninstall_stopped_anywhere(self):
         moments = {
-            "after the macros were removed": lambda path, landed: landed and Path(path).name == "tltg-optimized-macros",
+            "after the macros were removed": lambda path, landed: landed and Path(path).name == "vo-macros",
             "during the system restore": _written(SYSTEM_JOURNAL),
             "before the state was removed": _about_to_write(Path(MANIFEST.state_file).name),
         }

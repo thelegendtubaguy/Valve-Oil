@@ -173,7 +173,78 @@ Harnessed `slot_sync()` saved the owning stepper's slot name regardless of its `
 - **Static-recovered (USB Box `02.03.01.21` disassembly; `box_autofeed.so` `01.01.07.01` under the harness):** auto-feed steps the bound slot's stepper on the Box through its own `queue_step` handler. When a feed starts, the Box saves that stepper's step clock, and when the feed ends, or is aborted, it puts the saved clock and direction back and switches the slot's enable pin off without telling Klipper. The `last_step_clk` and `STEP-set_last_step` lines in `klippy.log` are those save and restore replies, which no host module handles. `MCB_AUTO_START`, `MCB_CONFIG`, and the host `auto_start` all send `mcb_config_stepper`, which resets a running feed without putting its clock back; its queued steps still run, and the next feed saves a clock taken during them. `mcb_auto_abort` during a feed clears the slot's step queue and restores the clock about 10 ms later; an abort that lands in the 10 ms between two feeds is ignored. The host `auto_start(v, a, lmax, dir, box_stepper)` sends no abort first; `slot_sync(True)` calls it with the hub defaults and `dir=1` (forward). `SET_LIMIT_A STATE=` sets the buffer signal the Box feeds on; a feed runs its full `LMAX`, and another starts while the signal stays 1.
 - **Harness-recovered:** `extruder_unload_single_func()` runs `toolhead.wait_moves()`, `box_autofeed.auto_abort()`, `sync_unbind_extruder()` on every slot, then `extruder_stepper.sync_to_extruder('extruder')` for the pull-back, with no homing of the slot first. A load homes the slot to a sensor, and Klipper's homing end resets the slot's step clock on both sides.
 - **Runtime-confirmed (operator `klippy.log`s, Max 4 `01.01.07.01`, 2026-11-20 and 2026-11-22):** in each of four unloads that stopped or failed with the toolhead sensor never clearing, after real pull-backs, a feed had started less than a second before print start re-armed auto-feed, and every later `STEP-set_last_step` of that print restored a different clock than before the re-arm: offsets of 22.1 s, 27.6 s, 43.7 s, and 36.9 s at the Box's 84 MHz. Prints whose re-arm found no feed running, or left an offset under about 2 s, unloaded normally.
+- **Runtime-confirmed (operator and project Max 4 `klippy.log`s, `01.01.07.01`, 2026-11-06 to 2026-11-22):** each `[MCB] STATE` line follows a `last_step_clk` reply naming the bound slot stepper's `oid` and the clock the Box saved; `STEP-set_last_step` carries `now`, `next_s`, and `diff` and no `oid`; each `mcb_config_stepper` is answered by an unhandled `MCB_CONFIG_STEPPER` reply naming `stepper_oid`. In the operator logs above, the re-arm's `MCB_CONFIG_STEPPER` reply came after an `MCB_STATE` 2 and before that feed's `STEP-set_last_step`, and the next clock saved for that slot was seconds away from the one before. One more operator print, on 2026-11-06, shows the same, 24.7 s off. In six other `klippy.log`s with between about a hundred and several thousand of these replies, no re-arm came during a feed.
 - **Runtime-confirmed (project Max 4, 2026-11-22, Valve Oil 26.11.22.1, slot 2 loaded to the toolhead):** `MCB_AUTO_START SLOT=slot2 V=3 A=0 LMAX=3 DIR=1`, `SET_LIMIT_A STATE=1`, then `MCB_AUTO_START` again 0.4 s into the feed (each wait followed by `M400`) moved the saved clock from `0` to a clock about 42 s off, and QIDI's unload then stopped with the toolhead sensor still detecting filament 20 mm past its 85 mm pull-back. After a Klipper restart and the same steps (about 14 s off), with the slot's step clock reset as a homing end does just before `sync_to_extruder`, the unload cleared the toolhead sensor within its 85 mm pull-back and the hub, with no Box error.
+- **Static-recovered (USB Box `02.03.01.21`, MCB timer `0x0800b718`; handlers from the command table at `0x0801127c`):** the save and restore go through the Box's own stepper commands.
+  - The feed's first chunk calls the `get_last_step_clk` handler. `set_last_step_clk` writes `next_step_time` with no check that the stepper is idle, unlike `reset_step_clock`, and replies `STEP-set_last_step`.
+  - `get_last_step_clk`, `set_last_step_clk`, `check_queue_empty`, `stepper_abort` and `get_last_step_dir` are also host commands. No QIDI host module sends them.
+  - The saved clock (`0x20000250`) and direction (`0x2000024c`) are one save per Box, not per slot. They are put back onto whichever stepper is bound when the restore runs.
+  - The feed states are:
+    - 1: armed;
+    - 2: feeding;
+    - 3: the 10 ms after the feed's steps are out, then restore, `MCB_DONE` and back to 1;
+    - 4: plan too long;
+    - 5: aborted, then restore, `MCB_ABORT` and the timer stops;
+    - 0: idle. `mcb_config` and `mcb_config_stepper` set 0 and leave the timer running.
+  - `mcb_auto_abort` during a feed calls `stepper_abort`, which frees every move queued for that stepper, Klipper's included. In state 3 it only switches the motor off, so state 3 still returns to 1 and auto-feed stays armed.
+- **Runtime-confirmed (operator `klippy.log`s 2026-11-03 to 2026-11-22 and project Max 4):** each Box has one auto-feed device (oid 22 or 23), which `mcb_config_stepper` rebinds between slots.
+- **Static-recovered:** a feed starts without checking the bound stepper's queue.
+  - When Klipper still has moves queued for that slot, the feed saves `next_step_time` from inside them and queues its steps after them.
+  - The feed's timing ignores that wait, so the restore and the motor switch-off can come while its own steps are still queued.
+  - The feed sets the stepper's next direction to its own. Klipper sends `set_next_step_dir` only when its own direction changes, so Klipper's moves queued during a feed run in the feed's direction.
+- **Runtime-confirmed (13 operator logs, 2026-10-25 to 2026-11-22):** at every auto-feed arm followed by a feed, the clock the Box reported at the arm and at the feed's save were equal, except at the known re-arm during a feed. No arm came while the slot was stepping.
+- **Runtime-confirmed (project Max 4, 2026-11-22):** during three unloads the buffer switch asked for a feed (`limit_a_event ... normalized=1`) after QIDI's abort, and the Box started none.
+- **Static-recovered:** the Box records when it last received a message from Klipper (`0x200003bc`, written at `0x0800f63e`). After 5 s without one, in any feed state, it:
+  - puts the saved clock and direction back onto the bound stepper;
+  - switches that slot's motor off;
+  - stops the auto-feed timer until the next `mcb_auto_start`.
+- **Runtime-confirmed (operator `klippy.log`s):** Klipper restarts reused an already-configured Box in 13 of 17 starts across three logs. Those restarts sent only the restart commands, including `reset_step_clock clock=0` for each Box stepper. On a 2026-11-22 restart the Box was reached 26 s after `Start printer at`, so the 5 s path runs first whenever auto-feed was armed, and the reset then clears the restored clock.
+- **Static-recovered:** the Box's step loader (`0x0800b400`) and step event (`0x0800b49c`) move a step that is already due to now plus the step pulse time. The `Stepper too far in past` shutdown (`0x0800b4f4`) can't trigger. On a Box, a slot clock behind Klipper's runs the late steps back to back instead of shutting the Box down; a clock ahead of Klipper's delays the move.
+- **Config-confirmed:** `[box_stepper slotN]` has no TMC driver section, so Klipper doesn't request both-edge stepping for the slots. They step through `next_step_time`, the clock auto-feed saves and restores.
+
+### Slot motor enable pins
+
+- **Config-confirmed:** every USB Box slot's enable pin is inverted (`!mcu_boxN:PC15`, `PC0`, `PD2`, `PC10`); the motor is on when the pin is low.
+  - Klipper configures each one as a `digital_out` with value 1, default 1 and no `max_duration`. A reconnect switches every slot off at once (`update_digital_out` is one of the restart commands).
+  - Klipper switches a motor on only when its own tracking says it is off (`stepper_enable.py`). The Max 4 does it 0.3 s early and logs `ENABLE delay: stepper=slotN`; the Plus 5 does neither.
+- **Static-recovered (USB Box `02.03.01.21`):** the auto-feed code drives the bound slot's enable pin itself, with single register stores that Klipper isn't told about. It switches the slot off:
+  - when `mcb_auto_start` arrives (`gpio_out_setup(pin, invert)`, `0x08009eb8`);
+  - when a feed ends (state 3);
+  - on every `mcb_auto_abort`, in every state (`0x0800a4f2`);
+  - when an aborted feed completes (state 5);
+  - after 5 s without a message from Klipper.
+
+  It switches the slot on only when a feed starts.
+  - `mcb_config_stepper` moves auto-feed to another slot without switching the old slot off.
+  - Klipper's queued `digital_out` changes to the same pin take effect at their scheduled clock, and the last write wins.
+- **Harness-recovered (`box_autofeed.so`, `box_stepper.so`; the same calls on Max 4 `01.01.07.01`, Plus 5 and Smart 5 `01.01.02.01`):**
+  - `auto_start` sends `mcb_config_stepper`, `mcb_query`, `set_limit_a` and `mcb_auto_start` with `invert=1`, and doesn't switch the slot off in Klipper.
+  - `auto_abort` sends `mcb_auto_abort` and calls the slot's `disable_stepper` only while `bind_stepper` names a slot, then sets it to `slot-1`, so a second call sends nothing. `MCB_AUTO_ABORT` sends the abort every time.
+  - `disable_stepper` switches the motor off in Klipper at the later of the next command time, the toolhead's last move, and one second from now.
+  - QIDI's flows end with `disable_stepper`, and each unload starts with `auto_abort`, so Klipper's tracking matches the pin through them. A G-code error raised out of the unload skips both: the slot stays synced to the extruder and on in Klipper.
+- **Runtime-confirmed (operator `klippy.log`s, Max 4 `01.01.07.01`):** every unload pull-back logs a fresh `ENABLE delay: stepper=slotN`. After an unload stopped by an error (2026-11-22 12:22:34), the slot's retry 5 min 20 s later moved the slot without a new `ENABLE delay`. No Box write was logged in between.
+
+### Who steps a slot
+
+- **Harness-recovered (`box_stepper.so`, all three printers):** each slot's stepper is added to its own inlet endstop and to the Box's shared hub (`b_endstop`) and toolhead (`e_endstop`) endstops. So every Box home:
+  - tells the Box to stop every slot on the trigger;
+  - resets every slot's step clock on both sides at the end (Klipper's `note_homing_end` for each stepper on the endstop).
+- **Config-confirmed:** on a two-Box printer, `config/box.cfg` puts the hub and toolhead endstops and the buffer pin on `mcu_box2`, so every Box home spans both Boxes' MCUs.
+- **Static-recovered (USB Box):**
+  - a stepper stopped by a trigger drops every new move (`queue_step`, `0x0800b562`) until `reset_step_clock`, so auto-feed can't refill it before Klipper's reset;
+  - a feed of one slot while another slot homes loses its steps and its clock is reset, and the feed's end then puts back the clock saved before the reset.
+- **Static-recovered:** the Box feeds only on the buffer signal Klipper relays with `set_limit_a`; it doesn't read the buffer switch itself.
+- **Harness-recovered:** `auto_start` is called without an abort first by:
+  - `INIT_BOX_STATE` at every Klipper start;
+  - the end of every load;
+  - `BOX_PRINT_START` with the slot already loaded;
+  - `T_MANAGER` for a tool on the slot already loaded;
+  - `TIGHTEN_FILAMENT`, which queues ±20 mm slot moves up to about 6 s ahead and then arms auto-feed while they are still queued.
+- **Runtime-confirmed (three operator prints, 2026-11-06 and 2026-11-22):** each re-arm that landed inside a feed was the second of its print, 33–44 s after `BOX_PRINT_START`, where the start G-code's `T` command runs after the purge.
+- **Harness-recovered:**
+  - `box_extras.so` never calls `auto_abort`, so auto-feed stays armed through pauses and after a print ends with filament loaded.
+  - The drying timer, while `box_drying_roll_enable` is on, runs `RUN_STEPPER` (50 mm back, then motor off) on all four slots of the Box from `run_script_from_command`, loaded slot included, without aborting auto-feed.
+- **Runtime-confirmed (operator `klippy.log`s):** feeds ran while paused (48 in four logs) and during bed leveling (14).
 
 ### Cold feed measurements
 

@@ -1,13 +1,13 @@
 ---
 name: qidi-firmware-release-update
-description: Investigate and implement QIDI Max 4 optimized-config updates after QIDI publishes a new firmware/default-config release. Use when a new QIDI Max 4 firmware tag, defaults commit, or Qidi-Max4-Defaults update needs review, OpenSpec planning, installer support, stock snapshot updates, validation, or optional printer install.
+description: Investigate and implement Valve Oil updates after QIDI publishes a new firmware/default-config release. Use when a new QIDI Max 4 firmware tag, defaults commit, or Qidi-Max4-Defaults update needs review, OpenSpec planning, installer support, stock snapshot updates, validation, or optional printer install.
 license: MIT
 compatibility: valve-oil repo with sibling Qidi-Max4-Defaults checkout and OpenSpec CLI.
 ---
 
 # QIDI Firmware Release Update
 
-Use this skill when QIDI publishes a new Max 4 firmware/default-config release and the optimized installer/configs need to be investigated or updated.
+Use this skill when QIDI publishes a new Max 4 firmware/default-config release and Valve Oil's installer and macros need to be investigated or updated.
 
 ## Non-negotiable project rules
 
@@ -15,7 +15,7 @@ Use this skill when QIDI publishes a new Max 4 firmware/default-config release a
 - Never add unredacted hardware identifiers. Treat `config/MCU_ID.cfg`, `config/box.cfg`, and copied printer-specific files as sensitive.
 - Do not copy `MCU_ID.cfg`, `box.cfg`, `fluidd.cfg`, or `saved_variables.cfg` into bundled stock snapshots.
 - Keep `config/` stock-mapped: stock baseline changes belong in guarded `installer/package.yaml` patches or firmware-specific stock snapshots unless a direct `config/` edit is explicitly approved.
-- Preserve existing optimized behavior unless the firmware release requires a compatibility change or the user explicitly approves a behavior change.
+- Preserve existing Valve Oil behavior unless the firmware release requires a compatibility change or the user explicitly approves a behavior change.
 - Keep OrcaSlicer and QIDI Studio packs aligned if slicer G-code changes are required; do not add QIDI Studio polar cooler controls unless explicitly requested.
 - Do not install on the printer unless the user explicitly asks.
 - Before any printer contact, follow the `qidi-max4-printer` skill active-print guard exactly.
@@ -52,7 +52,7 @@ Use this skill when QIDI publishes a new Max 4 firmware/default-config release a
    - changed files and firmware/tag/commit identifiers
    - stock behavior changes by area: motion/closed-loop, homing, pause/resume/cancel, idle, QIDI Box/runout, thermals, filament/material metadata, slicer entrypoints, installer implications
    - whether changes look firmware-coupled or cosmetic
-   - risks for current optimized behavior
+   - risks for current Valve Oil behavior
    - whether installer support needs firmware-specific variants or stock snapshots
 
 ## Branch and OpenSpec workflow
@@ -86,7 +86,7 @@ When implementation is requested:
    - firmware-specific guarded patch behavior
    - firmware-specific stock snapshot restoration
    - stock config deltas from `../Qidi-Max4-Defaults`
-   - optimized behavior decisions, including any explicit user decisions
+   - Valve Oil behavior decisions, including any explicit user decisions
    - tests and docs required
 
 4. During implementation, mark tasks complete as they are actually completed.
@@ -96,10 +96,10 @@ When implementation is requested:
 ### Firmware support and guarded patches
 
 - Add the new firmware to `installer/package.yaml firmware.supported`.
-- Existing optimized patch targets that apply to both firmware baselines usually need variants for each supported firmware.
+- Existing Valve Oil patch targets that apply to both firmware baselines usually need variants for each supported firmware.
 - New firmware-only stock options must be active only for firmware versions that ship those options. Do not require new vendor options on older firmware.
 - If a new firmware introduces options absent from older firmware, ensure runtime preflight/install applies only active patch entries for the detected firmware.
-- Keep desired optimized homing/speed values unchanged unless the user explicitly decides otherwise.
+- Keep Valve Oil's desired homing/speed values unchanged unless the user explicitly decides otherwise.
 - Treat `:` vs `=` delimiter changes as non-semantic unless evidence shows otherwise; the installer parses both.
 
 ### Stock snapshots
@@ -126,8 +126,8 @@ When implementation is requested:
 
 ### Runtime behavior changes
 
-- Review active stock macros before carrying vendor behavior into optimized macros.
-- If QIDI changes cancel ordering, compare `CANCEL_PRINT` and `VO_CANCEL_PRINT_ON_ERROR`; preserve optimized no-park/no-toolhead-move semantics unless the user approves movement.
+- Review active stock macros before carrying vendor behavior into Valve Oil's macros.
+- If QIDI changes cancel ordering, compare `CANCEL_PRINT` and `VO_CANCEL_PRINT_ON_ERROR`; preserve Valve Oil's no-park/no-toolhead-move semantics unless the user approves movement.
 - If QIDI changes filament names, update `openspec/observations/qidi-box/material-metadata.md` and tests that assert official material metadata; do not rename unrelated stock tables such as `drying.conf` unless QIDI changed them upstream.
 - If QIDI changes start-print behavior, follow the start-print path contract in `AGENTS.md` before editing start-path sources.
 
@@ -155,7 +155,7 @@ Add focused tests for:
 - legacy manual reset selects the old firmware snapshot
 - legacy manual reset selects the new firmware snapshot
 - missing firmware snapshot fails before stock files are overwritten
-- optimized cancel/error semantics if cancel ordering changed
+- Valve Oil's cancel/error semantics if cancel ordering changed
 - bundle smoke test checks all required snapshot roots
 
 Useful files:
@@ -172,7 +172,7 @@ Update the applicable authorities when behavior, installer flow, snapshot layout
 
 ```text
 openspec/specs/installer-lifecycle/spec.md
-openspec/specs/optimized-printer-behavior/spec.md
+openspec/specs/printer-behavior/spec.md
 openspec/contracts/gcode-paths/*                 # only for start-path changes
 openspec/observations/qidi-platform.md
 openspec/observations/qidi-box/*.md              # only for QIDI Box/material evidence
@@ -204,7 +204,7 @@ python3 scripts/check_gcode_paths.py
 If slicer G-code changed, run:
 
 ```bash
-python3 scripts/check_optimized_slicer_macros.py
+python3 scripts/check_slicer_macros.py
 ```
 
 ## Verification and archive
@@ -269,23 +269,23 @@ Only if the user asks to install on the printer:
    python3 scripts/build_installer_bundle.py --output-dir dist --channel dev --build-id local --smoke-test
    ```
 
-5. Transfer and extract to `/home/qidi/tltg-optimized-macros`.
+5. Transfer and extract to `/home/qidi/valve-oil`.
 6. Run a remote dry-run first:
 
    ```bash
-   ssh qidi@192.168.20.165 '/home/qidi/tltg-optimized-macros/install.sh --dry-run --plain'
+   ssh qidi@192.168.20.165 '/home/qidi/valve-oil/install.sh --dry-run --plain'
    ```
 
 7. For real install, avoid `--yes` if the user specified choices such as no auto-updates. Use explicit stdin responses or interactive input. Every install applies the OS optimizations and reboots the printer when they need it; `--keep-ai-detection` answers the only OS optimization question:
 
    ```bash
-   ssh qidi@192.168.20.165 "cd /home/qidi/tltg-optimized-macros && printf 'no\nno\n' | ./install.sh --plain --keep-ai-detection"
+   ssh qidi@192.168.20.165 "cd /home/qidi/valve-oil && printf 'no\nno\n' | ./install.sh --plain --keep-ai-detection"
    ```
 
 8. If auto-update units already exist, the installer may repair them. If the user requested no automatic updates, disable them after install:
 
    ```bash
-   ssh qidi@192.168.20.165 'cd /home/qidi/tltg-optimized-macros && ./auto-update.sh --disable-systemd'
+   ssh qidi@192.168.20.165 'cd /home/qidi/valve-oil && ./auto-update.sh --disable-systemd'
    ```
 
 9. Verify final printer state:
@@ -293,7 +293,7 @@ Only if the user asks to install on the printer:
    ```bash
    curl -fsS 'http://192.168.20.165/printer/objects/query?print_stats'
    ssh qidi@192.168.20.165 'systemctl is-active klipper moonraker --no-pager'
-   ssh qidi@192.168.20.165 'test ! -e /etc/systemd/system/tltg-optimized-auto-update.timer && test ! -e /etc/systemd/system/tltg-optimized-auto-update.service && echo auto_update=absent'
+   ssh qidi@192.168.20.165 'test ! -e /etc/systemd/system/vo-auto-update.timer && test ! -e /etc/systemd/system/vo-auto-update.service && echo auto_update=absent'
    ```
 
 10. Verify installed state file package version, detected firmware, and key runtime options changed by the release.

@@ -139,7 +139,7 @@ const level = (v: number, [warn, bad]: readonly [number, number]): Level => (v >
 function useHealthLevel(): Level {
   const disk = useDisk()
   const key = usePrinter((s) => {
-    const h = s.status.tltg_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined
+    const h = s.status.vo_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined
     const levels: Level[] = []
     if (h?.main_thread_load != null) levels.push(level(h.main_thread_load, LIMITS.klipper))
     if (h?.timers != null && h.timers > LIMITS.timers) levels.push('warn')
@@ -171,12 +171,12 @@ export function HealthButton() {
   const tone = lvl === 'bad' ? 'text-bad' : lvl === 'warn' ? 'text-warn' : ''
   const label = lvl === 'bad' ? t('app.health.bad') : lvl === 'warn' ? t('app.health.warn') : t('app.health.title')
   return (
-    <div className="relative" ref={ref}>
+    <div className="sm:relative" ref={ref}>
       <button type="button" className={`iconbtn ${tone} ${open ? 'bg-hover' : ''}`} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-label={label} title={label}>
         <Activity size={17} />
       </button>
       {open && (
-        <div className="fixed inset-x-2 top-[58px] z-50 rounded-2xl bg-surface sm:absolute sm:inset-x-auto sm:top-[calc(100%+6px)] sm:right-0 sm:w-[440px]" style={{ boxShadow: 'var(--shadow-overlay)' }} role="dialog" aria-label={t('app.health.title')}>
+        <div className="absolute inset-x-2 top-[calc(100%+6px)] z-50 rounded-2xl bg-surface sm:inset-x-auto sm:right-0 sm:w-[440px]" style={{ boxShadow: 'var(--shadow-overlay)' }} role="dialog" aria-label={t('app.health.title')}>
           <Health bare />
           <a href={href('system')} className="flex items-center justify-end gap-1 border-t border-line px-4 py-2.5 text-[12.5px] font-semibold text-accent-ink" onClick={() => setOpen(false)}>
             {t('app.nav.system')} <ChevronRight size={13} />
@@ -188,7 +188,7 @@ export function HealthButton() {
 }
 
 export function Health({ className = '', bare }: { className?: string; bare?: boolean }) {
-  const health = usePrinter((s) => s.status.tltg_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined)
+  const health = usePrinter((s) => s.status.vo_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined)
   const host = usePrinter((s) => s.host)
   const mcus = usePrinter((s) =>
     s.objects

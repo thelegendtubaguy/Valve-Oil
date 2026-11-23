@@ -39,15 +39,15 @@ class StaticBuild:
     # Updates stage the new build beside the destination and keep the replaced build until the host transaction ends.
     @property
     def staging(self) -> str:
-        return f"{self.destination}.tltg-staging"
+        return f"{self.destination}.vo-staging"
 
     @property
     def previous(self) -> str:
-        return f"{self.destination}.tltg-previous"
+        return f"{self.destination}.vo-previous"
 
     @property
     def removing(self) -> str:
-        return f"{self.destination}.tltg-removing"
+        return f"{self.destination}.vo-removing"
 
     # The build is only ever installed where nothing existed or over an earlier package build, so restoration is
     # removal.
@@ -121,15 +121,15 @@ class StaticBuild:
 FLUIDD = StaticBuild(
     operation="fluidd_build",
     name="Fluidd",
-    destination="/home/qidi/tltg-fluidd",
-    marker=".tltg-optimized-fluidd",
+    destination="/home/qidi/vo-fluidd",
+    marker=".vo-fluidd",
 )
 # Valve Oil UI, built from ui/ when the release bundle is built, and served beside Fluidd under /valve-oil/.
 VALVE_OIL_UI = StaticBuild(
     operation="valve_oil_ui",
     name="Valve Oil UI",
-    destination="/home/qidi/tltg-valve-oil-ui",
-    marker=".tltg-optimized-valve-oil-ui",
+    destination="/home/qidi/vo-valve-oil-ui",
+    marker=".vo-valve-oil-ui",
 )
 
 

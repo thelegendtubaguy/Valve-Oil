@@ -59,7 +59,7 @@ class BackgroundSaveConfig:
             try:
                 _fsync_saved(cfgname)
             except Exception as e:
-                logging.exception("tltg_background_save_config: flushing"
+                logging.exception("vo_background_save_config: flushing"
                                   " '%s' failed", cfgname)
                 gcmd.respond_raw("!! Unable to flush %s to storage: %s"
                                  % (cfgname, e))
@@ -80,7 +80,7 @@ class BackgroundSaveConfig:
         cfgname = self.printer.get_start_args()["config_file"]
         _save_thread = threading.Thread(
             target=self._save, args=(pconfig, autosave_text, cfgname),
-            name="tltg-save-config")
+            name="vo-save-config")
         _save_thread.start()
 
     def _save(self, pconfig, autosave_text, cfgname):

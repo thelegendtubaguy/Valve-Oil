@@ -1,6 +1,7 @@
 // The filament path in one row: the spool feeding it, the hub, and the toolhead sensor, the two sensors on the way.
-// Each stop lights when its sensor sees filament, and the line up to it takes the filament's colour. The external spool
-// skips the hub.
+// Each stop lights when its sensor sees filament, and the line up to it takes the filament's colour, with a glow that
+// runs from the spool towards the toolhead so filament reads as loaded whatever its colour. The external spool skips the
+// hub.
 import { Fragment } from 'react'
 import { QIDI_BOX_EXTERNAL_SLOT, type BoxState } from '../../state/box'
 import { Spool } from '../Spool'
@@ -45,8 +46,12 @@ export function FilamentRail({ box, onSelect }: { box: BoxState; onSelect: (slot
       )}
       {stops.map((s, i) => (
         <Fragment key={s.key}>
-          <span className={`fr-seg ${i < reach ? 'on' : ''}`} />
-          <span className={`fr-stop ${s.on ? 'on' : ''} ${s.skip ? 'skip' : ''}`} title={s.tip}>
+          <span className={`fr-seg ${i < reach ? 'on' : ''}`} style={{ '--i': 2 * i } as React.CSSProperties} />
+          <span
+            className={`fr-stop ${s.on ? 'on' : ''} ${s.skip ? 'skip' : ''}`}
+            style={{ '--i': 2 * i + 1 } as React.CSSProperties}
+            title={s.tip}
+          >
             <i />
             {s.label}
           </span>

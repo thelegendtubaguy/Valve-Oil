@@ -1286,7 +1286,7 @@ EXAMPLES = {
         "09:14:02  Printer: QIDI Max 4, QIDI firmware 01.01.07.01",
         f"09:14:02  Valve Oil: not installed. Installing {_VERSION}",
         "09:14:03  Printer is idle. Heaters off. 1.9 GB free",
-        f"09:14:11  Backup: backup-tltg-optimized-01.01.07.01-{_VERSION}.zip",
+        f"09:14:11  Backup: backup-vo-01.01.07.01-{_VERSION}.zip",
         "09:14:19  Macros installed: 41 files, 17 guarded patches",
         "09:14:20  Applying system changes",
         "09:14:26    zram swap: on",

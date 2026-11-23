@@ -16,14 +16,14 @@ type Tab = 'mesh' | 'soak' | 'calibrate'
 export function TuneScreen() {
   const sub = useSubPath()[0]
   const hasMesh = usePrinter((s) => 'bed_mesh' in s.status)
-  const hasSoak = usePrinter((s) => 'tltg_bed_soak' in s.status)
+  const hasSoak = usePrinter((s) => 'vo_bed_soak' in s.status)
   const tab: Tab = sub === 'soak' && hasSoak ? 'soak' : sub === 'calibrate' || !hasMesh ? 'calibrate' : 'mesh'
 
   // A bed soak mesh shown on the Bed mesh tab belongs to this screen.
   useEffect(() => () => meshPreview.set(null), [])
 
   return (
-    <div className="grid min-w-0 gap-3.5">
+    <div className="grid min-w-0 grid-cols-1 gap-3.5">
       <PageHeader title={t('tune.screen.title')}>
         <Segmented
           label={t('tune.screen.title')}

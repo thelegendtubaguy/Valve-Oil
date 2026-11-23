@@ -23,7 +23,7 @@ export function Row({ title, sub, children, wide, id }: { title: ReactNode; sub?
         <div className="font-medium">{title}</div>
         {sub && <div className="mt-0.5 text-[12.5px] text-ink-3">{sub}</div>}
       </div>
-      {children != null && <div className={wide ? 'w-full sm:w-[280px] sm:flex-none' : 'ml-auto flex flex-none flex-wrap items-center justify-end gap-2'}>{children}</div>}
+      {children != null && <div className={wide ? 'w-full sm:w-[280px] sm:flex-none' : 'ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2'}>{children}</div>}
     </div>
   )
 }

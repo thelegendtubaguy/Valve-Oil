@@ -22,23 +22,28 @@ import { jobProgress, remainingSeconds, useJob } from '../state/job'
 import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
+import { useMedia } from '../components/tune/hooks'
 import { href } from '../lib/router'
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
-
-const area = (name: string): CSSProperties => ({ gridArea: name })
 
 /**
  * Home, in four columns on a desktop. The camera spans the left two, in its own shape, with the Box and the fans and
  * lights under it; then the toolhead over the temperatures; then the print, recent files, and the macros and console,
  * folded until opened. The last card in each column stretches, so the columns end together. A tablet has two columns
- * and a phone one.
+ * under the camera, each stacking its cards straight under one another, and a phone one.
  */
 export function HomeScreen() {
   const job = useJob()
   const showJob = !!job.filename && job.state !== 'standby'
   const jobs = useHistory(500)
   const boxPresent = useBoxPresent()
+  const twoColumns = useMedia('(min-width: 768px) and (not (min-width: 100rem))')
+  const jobCard = showJob ? <JobCard /> : <ReadyCard jobs={jobs} />
+  const recent = <RecentFiles jobs={jobs} className="min-h-[240px]" />
+  const macros = <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
+  const consoleCard = <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
+  // The camera and the first cards under it keep their places in every layout, so changing layout doesn't restart them.
   return (
     <div className="deck deck-4">
       <div className="half">
@@ -47,22 +52,40 @@ export function HomeScreen() {
           <div className="col">
             {boxPresent && <BoxDeck />}
             <SpoolmanCard />
+            {twoColumns && (
+              <>
+                <ToolheadCard />
+                {jobCard}
+                {macros}
+              </>
+            )}
           </div>
           <div className="col">
             <OutputsDeck />
+            {twoColumns && (
+              <>
+                <TempsCard />
+                {recent}
+                {consoleCard}
+              </>
+            )}
           </div>
         </div>
       </div>
-      <div className="col">
-        <ToolheadCard />
-        <TempsCard />
-      </div>
-      <div className="col">
-        {showJob ? <JobCard /> : <ReadyCard jobs={jobs} />}
-        <RecentFiles jobs={jobs} className="min-h-[240px]" />
-        <MacrosDeck grow fold="vo-home-macros-open" className="min-h-[260px]" />
-        <MiniConsole noMacros fold="vo-home-console-open" className="min-h-[320px]" />
-      </div>
+      {!twoColumns && (
+        <>
+          <div className="col">
+            <ToolheadCard />
+            <TempsCard />
+          </div>
+          <div className="col">
+            {jobCard}
+            {recent}
+            {macros}
+            {consoleCard}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -199,7 +222,7 @@ export function JobCard({ style }: { style?: CSSProperties }) {
 export function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
   const last = jobs?.[0]
   return (
-    <section className="card grid content-start gap-3" style={style}>
+    <section className="card grid grid-cols-1 content-start gap-3" style={style}>
       <div>
         <div className="lbl">{t('home.ready.title')}</div>
         {last ? (
@@ -241,7 +264,7 @@ export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | nul
     return [...files].sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified)).slice(0, 20)
   }, [files, byFile])
   return (
-    <section className={`card grow ${className}`} style={area('files')}>
+    <section className={`card grow ${className}`}>
       <h3 className="card-title">
         <Folder size={14} /> {t('home.recent.title')}
         <a href={href('files')} className="aside inline-flex items-center gap-1">
@@ -328,6 +351,9 @@ function useFullScreen() {
   return { box, page, full: native || page, toggle }
 }
 
+/** The widest a camera of this shape can be and stay under the height Home's layout caps it at, if any. */
+export const camMaxWidth = (ratio: number) => `calc(var(--cam-max-h, 100000px) * ${ratio})`
+
 /** The camera's width over height: Moonraker's aspect_ratio ("4:3"), turned for a 90° or 270° rotation. */
 export function cameraRatio(cam: Webcam, measured?: number | null) {
   const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(cam.aspect_ratio ?? '')
@@ -362,7 +388,7 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
   const size = fs.page ? 'fixed inset-0 z-80' : fs.full ? 'relative' : fit ? 'relative min-w-0 rounded-[10px]' : 'relative aspect-video rounded-[10px] wide:aspect-auto wide:min-h-0 wide:flex-1'
   const ratio = cameraRatio(cam, measured)
   return (
-    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0` } : undefined} onDoubleClick={fs.toggle}>
+    <div ref={fs.box} className={`overflow-hidden bg-[#14161b] ${size}`} style={fit && !fs.full ? { aspectRatio: ratio, flex: `${ratio} 1 0`, maxWidth: camMaxWidth(ratio) } : undefined} onDoubleClick={fs.toggle}>
       {!failed ? (
         <img ref={img} src={src} alt={cam.name} className="absolute inset-0 h-full w-full object-contain" style={{ transform }} onError={() => setFailed(true)} />
       ) : (

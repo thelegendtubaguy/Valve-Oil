@@ -259,7 +259,7 @@ def check_admission(stock, patched, boot, manifest, profile):
                                           "--backup-dir", str(backup), "--printer-idle-confirmed"]) == 1
 
             def absent_timer(command, **kwargs):
-                missing = command[2] == "tltg-optimized-auto-update.timer"
+                missing = command[2].endswith(".timer")
                 output = "not-found" if "--property=LoadState" in command else "inactive"
                 return type("Result", (), {"stdout": output, "returncode": 1 if missing else 0})()
             with patch.object(tool.subprocess, "run", side_effect=absent_timer):

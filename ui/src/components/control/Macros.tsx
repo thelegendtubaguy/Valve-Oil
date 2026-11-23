@@ -75,8 +75,8 @@ export function MacroButton({ macro }: { macro: Macro }) {
   const disabled = macro.disabledWhilePrinting && printing
   const style = macro.color ? { boxShadow: `inset 4px 0 0 ${macro.color}, var(--shadow-btn)` } : undefined
   return (
-    <div className="inline-flex" title={macro.description}>
-      <button className={`btn ${fields.length ? 'rounded-r-none' : ''}`} style={style} disabled={disabled} onClick={() => send(macro.name.toUpperCase())}>
+    <div className="inline-flex max-w-full min-w-0" title={macro.description}>
+      <button className={`btn min-w-0 break-all whitespace-normal ${fields.length ? 'rounded-r-none' : ''}`} style={style} disabled={disabled} onClick={() => send(macro.name.toUpperCase())}>
         {macro.alias || macro.name}
       </button>
       {fields.length > 0 && (

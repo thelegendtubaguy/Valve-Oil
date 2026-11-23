@@ -161,23 +161,23 @@ function PresetDialog({ preset, targets, onClose, onSave }: { preset: Temperatur
         </>
       }
     >
-      <div className="grid gap-4">
-        <label className="grid gap-1.5">
+      <div className="grid grid-cols-1 gap-4">
+        <label className="grid grid-cols-1 gap-1.5">
           <span className="lbl">{t('settings.presets.name')}</span>
           {/* i18n-ignore: the placeholder is a material's name */}
           <input className="field" value={p.name} autoFocus={preset.id === -1} placeholder="PLA" onChange={(e) => setP((x) => ({ ...x, name: e.target.value }))} />
         </label>
-        <div className="grid gap-1.5">
+        <div className="grid grid-cols-1 gap-1.5">
           <span className="lbl">{t('settings.presets.targets')}</span>
-          <div className="grid divide-y divide-line rounded-[10px] px-3 shadow-[inset_0_0_0_1px_var(--line)]">
+          <div className="grid grid-cols-1 divide-y divide-line rounded-[10px] px-3 shadow-[inset_0_0_0_1px_var(--line)]">
             {shown.map((key) => {
               const v = p.values[key]
               const target = targets.find((x) => x.key === key)
               return (
-                <div key={key} className="flex items-center gap-3 py-2">
+                <div key={key} className="flex flex-wrap items-center gap-3 py-2">
                   <label className="flex min-w-0 flex-1 items-center gap-2.5">
                     <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={v.active} onChange={(e) => setValue(key, { active: e.target.checked })} />
-                    <span className="truncate font-medium">{target?.label ?? targetLabel(key)}</span>
+                    <span className="min-w-0 font-medium break-words">{target?.label ?? targetLabel(key)}</span>
                     {!target && <span className="text-[12px] text-ink-3">{t('settings.presets.not_on_printer')}</span>}
                   </label>
                   <div className="relative w-[120px] flex-none">
@@ -197,7 +197,7 @@ function PresetDialog({ preset, targets, onClose, onSave }: { preset: Temperatur
             })}
           </div>
         </div>
-        <label className="grid gap-1.5">
+        <label className="grid grid-cols-1 gap-1.5">
           <span className="lbl">{t('settings.presets.gcode')}</span>
           <textarea className="field code min-h-[70px]" rows={3} spellCheck={false} value={p.gcode ?? ''} onChange={(e) => setP((x) => ({ ...x, gcode: e.target.value }))} />
         </label>

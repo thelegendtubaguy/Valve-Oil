@@ -54,7 +54,7 @@ function ExtensionList({ value, onChange }: { value: string[]; onChange: (v: str
         {value.map((v) => (
           <span key={v} className="chip code pr-1!">
             {v}
-            <button type="button" className="iconbtn h-5! w-5!" onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
+            <button type="button" className="iconbtn h-6! w-6!" onClick={() => onChange(value.filter((x) => x !== v))} aria-label={t('settings.common.remove_named', { name: v })}>
               <X size={12} />
             </button>
           </span>

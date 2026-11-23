@@ -12,7 +12,7 @@
 
 /* State explorer tree. */
 .vo-tree { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
-.vo-tree button.vo-key { border: 0; background: none; padding: 0 2px; border-radius: 4px; color: var(--ink); font: inherit; text-align: left; }
+.vo-tree button.vo-key { border: 0; background: none; min-width: 24px; min-height: 24px; padding: 2px 4px; border-radius: 4px; color: var(--ink); font: inherit; text-align: left; }
 .vo-tree button.vo-key:hover { background: var(--hover); }
 .vo-tree .vo-num { color: var(--blue); }
 .vo-tree .vo-str { color: var(--green); }

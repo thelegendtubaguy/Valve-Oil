@@ -97,13 +97,13 @@ class BoxSpoolRoll:
         if not slots or not all(hasattr(toolhead, attr) for attr in (
                 "print_time", "last_flush_time", "min_restart_time",
                 "kin_flush_delay", "note_mcu_movequeue_activity")):
-            logging.info("tltg_box_spool_roll: inactive: QIDI Box slots or "
+            logging.info("vo_box_spool_roll: inactive: QIDI Box slots or "
                          "toolhead timing not found")
             return
         self.slots = slots
         self.toolhead = toolhead
         self.timer = self.reactor.register_timer(self._tick, self.reactor.NOW)
-        logging.info("tltg_box_spool_roll: active, %d slots", len(slots))
+        logging.info("vo_box_spool_roll: active, %d slots", len(slots))
 
     # ----------------------------------------------------------------- state
     def enabled(self):
@@ -169,7 +169,7 @@ class BoxSpoolRoll:
             if self.held is None:
                 self._roll_next(eventtime)
         except Exception:
-            logging.exception("tltg_box_spool_roll: roll failed")
+            logging.exception("vo_box_spool_roll: roll failed")
             self.pending = []
         return eventtime + CHECK_TIME
 
@@ -245,7 +245,7 @@ class BoxSpoolRoll:
         self.held = {"slot": slot, "stepper": stepper, "old_tq": old_tq,
                      "old_sk": old_sk, "end": end, "enable": enable,
                      "was_enabled": was_enabled}
-        logging.info("tltg_box_spool_roll: turning %s's spool %.0f mm",
+        logging.info("vo_box_spool_roll: turning %s's spool %.0f mm",
                      slot_label(slot), abs(DISTANCE))
 
     def _release(self, eventtime):
@@ -266,7 +266,7 @@ class BoxSpoolRoll:
                     isinstance(vendor_time, (int, float))
                     and est < vendor_time + RELEASE_MARGIN):
                 return
-            logging.info("tltg_box_spool_roll: QIDI's Box code moved %s "
+            logging.info("vo_box_spool_roll: QIDI's Box code moved %s "
                          "during its roll", slot_label(held["slot"]))
         if owns_tq:
             stepper.set_trapq(None)

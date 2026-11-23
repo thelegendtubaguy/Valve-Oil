@@ -83,7 +83,7 @@ def bump_version(repo_root: Path, version: str, *, validate: bool = True) -> lis
         )
         if match is None or match.group(1) != updated_manifest.package.version:
             raise VersionBumpError(
-                "Optimized globals package version does not match installer/package.yaml."
+                "Valve Oil globals package version does not match installer/package.yaml."
             )
 
     return changed
@@ -118,7 +118,7 @@ def _update_globals(text: str, version: str) -> str:
     )
     if count != 1:
         raise VersionBumpError(
-            "Could not update variable_package_version in optimized globals.cfg."
+            "Could not update variable_package_version in Valve Oil's globals.cfg."
         )
     return text
 

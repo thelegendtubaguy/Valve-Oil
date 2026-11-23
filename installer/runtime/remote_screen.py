@@ -6,27 +6,30 @@ from pathlib import Path
 
 from .static_build import FLUIDD, VALVE_OIL_UI
 from .errors import InstallerError
+from .naming import earlier_marker
 
 
 # The Fluidd Printer screen card connects through nginx to a package-owned screen service.
 UNIT_OPERATION = "remote_screen_unit"
 SERVER_OPERATION = "remote_screen_server"
 NGINX_OPERATION = "remote_screen_nginx"
-UNIT = "tltg-remote-screen.service"
+UNIT = "vo-remote-screen.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
-SERVER_FILE = "/usr/local/lib/tltg_remote_screen.py"
+SERVER_FILE = "/usr/local/lib/vo_remote_screen.py"
 # The site operation also serves the package Fluidd build in place of QIDI's bundle, and Valve Oil UI beside it; the
 # operation keeps its original ID.
 NGINX_SITE = "/etc/nginx/sites-available/fluidd"
 QIDI_FLUIDD_ROOT = "/home/qidi/fluidd"
 NGINX_QIDI_ROOT = f"\n    root {QIDI_FLUIDD_ROOT};\n"
 NGINX_BUILD_ROOT = f"\n    root {FLUIDD.destination};\n"
+# Where releases before 26.11.22.3 installed the package Fluidd.
+EARLIER_NGINX_BUILD_ROOT = "\n    root /home/qidi/tltg-fluidd;\n"
 # The package Fluidd ships a gzip copy of each text asset, so nginx sends it instead of compressing every request.
 NGINX_GZIP_STATIC = "    gzip_static on;\n"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_remote_screen.py"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-SERVER_MARKER = "# tltg-optimized:remote-screen-server\n"
-UNIT_MARKER = "# tltg-optimized:remote-screen-unit\n"
+SERVER_MARKER = "# vo:remote-screen-server\n"
+UNIT_MARKER = "# vo:remote-screen-unit\n"
 
 # Restarting the unit without the server, before install or after restore, is a clean no-op.
 UNIT_CONTENT = UNIT_MARKER + f"""\
@@ -56,15 +59,15 @@ PrivateTmp=yes
 WantedBy=multi-user.target
 """
 
-NGINX_START = "    # tltg-optimized:remote-screen\n"
-NGINX_END = "    # /tltg-optimized:remote-screen\n"
+NGINX_START = "    # vo:remote-screen\n"
+NGINX_END = "    # /vo:remote-screen\n"
 # The package's routes in the Fluidd site: the Printer screen card, the Add-ons settings, and the Valve Oil status
 # service (status_service). Moonraker authorizes each connection: trusted client addresses, or the card's one-shot
 # token.
 NGINX_BLOCK = NGINX_START + """\
-    location /tltg-screen/ {
-        set $tltg_screen_token $arg_token;
-        auth_request /tltg-screen-auth;
+    location /vo-screen/ {
+        set $vo_screen_token $arg_token;
+        auth_request /vo-screen-auth;
         proxy_pass http://127.0.0.1:7130/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -75,9 +78,9 @@ NGINX_BLOCK = NGINX_START + """\
         access_log off;
     }
 
-    location = /tltg-screen-auth {
+    location = /vo-screen-auth {
         internal;
-        proxy_pass http://apiserver/access/user?token=$tltg_screen_token;
+        proxy_pass http://apiserver/access/user?token=$vo_screen_token;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
         proxy_set_header Upgrade "";
@@ -87,8 +90,8 @@ NGINX_BLOCK = NGINX_START + """\
     }
 
     # Fluidd's Add-ons settings. Moonraker authorizes each request: trusted client addresses or Fluidd's login.
-    location /tltg-addons/ {
-        auth_request /tltg-addons-auth;
+    location /vo-addons/ {
+        auth_request /vo-addons-auth;
         proxy_pass http://127.0.0.1:7131/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -97,7 +100,7 @@ NGINX_BLOCK = NGINX_START + """\
         access_log off;
     }
 
-    location = /tltg-addons-auth {
+    location = /vo-addons-auth {
         internal;
         # The subrequest would otherwise keep the client's method, and POST /access/user creates a Moonraker user.
         proxy_method GET;
@@ -110,8 +113,8 @@ NGINX_BLOCK = NGINX_START + """\
     }
 
     # The Valve Oil section of Fluidd and Valve Oil UI, authorized as the Add-ons settings are.
-    location /tltg-status/ {
-        auth_request /tltg-status-auth;
+    location /vo-status/ {
+        auth_request /vo-status-auth;
         proxy_pass http://127.0.0.1:7133/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -120,7 +123,7 @@ NGINX_BLOCK = NGINX_START + """\
         access_log off;
     }
 
-    location = /tltg-status-auth {
+    location = /vo-status-auth {
         internal;
         # The subrequest would otherwise keep the client's method, and POST /access/user creates a Moonraker user.
         proxy_method GET;
@@ -131,12 +134,31 @@ NGINX_BLOCK = NGINX_START + """\
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    # The same routes under the names releases before 26.11.22.3 used, for pages loaded before an update.
+    location /tltg-screen/ {
+        rewrite ^/tltg-screen/(.*)$ /vo-screen/$1 last;
+    }
+
+    location /tltg-addons/ {
+        rewrite ^/tltg-addons/(.*)$ /vo-addons/$1 last;
+    }
+
+    location /tltg-status/ {
+        rewrite ^/tltg-status/(.*)$ /vo-status/$1 last;
+    }
 """ + NGINX_END
 NGINX_ANCHOR = "\n    location /webcam/ {\n"
-NGINX_PREVIOUS = re.compile(re.escape(NGINX_START.rstrip("\n")) + r"\r?\n.*?" + re.escape(NGINX_END.rstrip("\n")) + r"\r?\n", re.DOTALL)
+NGINX_PREVIOUS = re.compile(
+    "|".join(
+        re.escape(start.rstrip("\n")) + r"\r?\n.*?" + re.escape(end.rstrip("\n")) + r"\r?\n"
+        for start, end in ((NGINX_START, NGINX_END), (earlier_marker(NGINX_START), earlier_marker(NGINX_END)))
+    ),
+    re.DOTALL,
+)
 
-NGINX_UI_START = "    # tltg-optimized:valve-oil-ui\n"
-NGINX_UI_END = "    # /tltg-optimized:valve-oil-ui\n"
+NGINX_UI_START = "    # vo:valve-oil-ui\n"
+NGINX_UI_END = "    # /vo:valve-oil-ui\n"
 # Valve Oil UI uses hash routing, so it needs no fallback. Its page and version file are never cached, so open tabs
 # pick up an update.
 NGINX_UI_BLOCK = NGINX_UI_START + f"""\
@@ -164,7 +186,11 @@ NGINX_UI_BLOCK = NGINX_UI_START + f"""\
 """ + NGINX_UI_END
 # The block and the blank line after it.
 NGINX_UI_PREVIOUS = re.compile(
-    re.escape(NGINX_UI_START.rstrip("\n")) + r"\r?\n.*?" + re.escape(NGINX_UI_END.rstrip("\n")) + r"\r?\n(?:\r?\n)?", re.DOTALL
+    "|".join(
+        re.escape(start.rstrip("\n")) + r"\r?\n.*?" + re.escape(end.rstrip("\n")) + r"\r?\n(?:\r?\n)?"
+        for start, end in ((NGINX_UI_START, NGINX_UI_END), (earlier_marker(NGINX_UI_START), earlier_marker(NGINX_UI_END)))
+    ),
+    re.DOTALL,
 )
 
 
@@ -176,7 +202,7 @@ def server_source() -> str:
         raise InstallerError(f"Printer screen service is missing from the package: {exc}") from exc
     if not source.startswith(SERVER_MARKER):
         raise InstallerError("Printer screen service payload lacks its package marker.")
-    compile(source, "tltg_remote_screen.py", "exec")
+    compile(source, "vo_remote_screen.py", "exec")
     return source
 
 
@@ -225,6 +251,8 @@ def _patch_fluidd_and_screen(text: str, newline: str) -> str:
     # The route goes before QIDI's first webcam location and reuses its Moonraker upstream and upgrade map.
     qidi_root = NGINX_QIDI_ROOT.replace("\n", newline)
     build_root = NGINX_BUILD_ROOT.replace("\n", newline)
+    # A site an earlier release patched serves the package Fluidd from its earlier folder.
+    text = text.replace(EARLIER_NGINX_BUILD_ROOT.replace("\n", newline), build_root)
     if text.count(qidi_root) + text.count(build_root) != 1:
         raise InstallerError("Fluidd nginx site does not match the reviewed QIDI source; preserving it.")
     served = build_root + NGINX_GZIP_STATIC.replace("\n", newline)
@@ -238,7 +266,7 @@ def _patch_fluidd_and_screen(text: str, newline: str) -> str:
     if (
         not previous
         and text.count(anchor) == 1
-        and "/tltg-screen" not in text
+        and "/vo-screen" not in text
         and "proxy_pass http://apiserver/websocket;" in text
         and "$connection_upgrade" in text
     ):

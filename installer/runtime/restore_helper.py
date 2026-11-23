@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, TextIO
@@ -22,6 +24,7 @@ from .backup import (
     requires_external_backup_manifest,
     UNKNOWN_FIRMWARE_TOKEN,
 )
+from .board_guard import critical_window, detached
 from .firmware import detect_firmware, firmware_key, supported_printer
 from .manifest import source_patch_variants_for_firmware
 from .models import Manifest, RuntimePaths
@@ -29,10 +32,14 @@ from .path_safety import ensure_external_path_has_no_symlink_components
 from .process_restart import read_printer_info, write_restart_marker
 from .interaction import maybe_restart_pending_service
 from .rollback import RollbackJournal
+from .sudo import authenticate_sudo, run_sudo
 
 
 CONFIRMATION_TOKEN = "RESTORE"
 DebugFn = Callable[..., None]
+KLIPPER_SERVICE = "klipper.service"
+# Ctrl-C between stopping Klipper and starting it again would leave the printer without Klipper.
+CTRL_C_REFUSED = "A backup is being restored, so Ctrl-C is ignored until Klipper runs again."
 
 
 @dataclass(frozen=True)
@@ -56,7 +63,11 @@ def run_restore_helper(
     debug: DebugFn | None = None,
     reporter=None,
     urlopen=None,
+    run=None,
+    environ=None,
 ) -> int:
+    run = run or subprocess.run
+    environ = os.environ if environ is None else environ
     if reporter is None:
         from .reporter import PlainReporter
 
@@ -138,6 +149,87 @@ def run_restore_helper(
             **({"urlopen": urlopen} if urlopen is not None else {}),
         )
 
+    # Klipper holds every saved variable in memory and rewrites the whole saved_variables.cfg on its next save, which
+    # would undo the restored one; the restored files are written with Klipper stopped, and Klipper loads them as it
+    # starts again.
+    klipper_password = _klipper_stop_password(
+        run=run, environ=environ, reporter=reporter, input_stream=input_stream
+    )
+    started = True
+    with critical_window(reporter, CTRL_C_REFUSED) as reporter:
+        session = detached(run)
+        if klipper_password is not None:
+            reporter.line("Stopping Klipper...")
+            if run_sudo(["systemctl", "stop", KLIPPER_SERVICE], run=session, password=klipper_password,
+                        timeout=120).returncode:
+                # It may have stopped anyway; start it again rather than leave it in doubt.
+                run_sudo(["systemctl", "start", KLIPPER_SERVICE], run=session, password=klipper_password,
+                         timeout=120)
+                raise RestoreHelperError("Could not stop Klipper. Nothing was restored.")
+        try:
+            _restore_files(
+                paths=paths, manifest=manifest, selection=selection, backup_snapshot=backup_snapshot,
+                external=external, restart_targets=restart_targets, process_id=process_id,
+            )
+        finally:
+            if klipper_password is not None:
+                reporter.line("Starting Klipper...")
+                started = not run_sudo(["systemctl", "start", KLIPPER_SERVICE], run=session,
+                                       password=klipper_password, timeout=120).returncode
+                if not started:
+                    reporter.line("Klipper could not be started. Start it with: sudo systemctl start klipper")
+                    debug(event="restore.klipper_start_failed")
+    if not started:
+        raise RestoreHelperError(
+            "The backup was restored, but Klipper could not be started. Start it with: sudo systemctl start klipper"
+        )
+
+    debug(
+        event="restore.completed",
+        backup_path=selection.path,
+        restored_files=len(backup_snapshot),
+    )
+    if external:
+        activated = maybe_restart_pending_service(
+            paths=paths,
+            allowed_entries=allowed,
+            reporter=reporter,
+            input_stream=input_stream,
+            **({"urlopen": urlopen} if urlopen is not None else {}),
+        )
+        if not activated:
+            reporter.line("Source restoration completed; Klipper activation remains pending.")
+    elif klipper_password is not None:
+        reporter.line("Klipper was started again with the restored configuration.")
+    reporter.emit_restore_complete(
+        verified_path=str(paths.printer_data_root / manifest.backup.source_directory)
+    )
+    return 0
+
+
+def _klipper_stop_password(*, run, environ, reporter, input_stream) -> str | None:
+    """The sudo password to stop Klipper with, or None when its service isn't running. Asked before anything changes."""
+    result = run(["systemctl", "show", KLIPPER_SERVICE, "--property=ActiveState"],
+                 capture_output=True, text=True, timeout=10)
+    values = dict(line.split("=", 1) for line in (result.stdout or "").splitlines() if "=" in line)
+    state = values.get("ActiveState", "")
+    if result.returncode or not state:
+        raise RestoreHelperError("Could not read whether Klipper is running. Nothing was restored.")
+    if state in {"inactive", "failed"}:
+        return None
+    return authenticate_sudo(run=run, environ=environ, reporter=reporter, input_stream=input_stream)
+
+
+def _restore_files(
+    *,
+    paths: RuntimePaths,
+    manifest: Manifest,
+    selection: BackupSelection,
+    backup_snapshot,
+    external,
+    restart_targets,
+    process_id,
+) -> None:
     journal = RollbackJournal(
         paths.recovery_sentinel_path,
         printer_data_root=paths.printer_data_root,
@@ -181,26 +273,6 @@ def run_restore_helper(
             exc, backup_label=selection.label, backup_zip_path=selection.path
         )
         raise
-
-    debug(
-        event="restore.completed",
-        backup_path=selection.path,
-        restored_files=len(backup_snapshot),
-    )
-    if external:
-        activated = maybe_restart_pending_service(
-            paths=paths,
-            allowed_entries=allowed,
-            reporter=reporter,
-            input_stream=input_stream,
-            **({"urlopen": urlopen} if urlopen is not None else {}),
-        )
-        if not activated:
-            reporter.line("Source restoration completed; Klipper activation remains pending.")
-    reporter.emit_restore_complete(
-        verified_path=str(paths.printer_data_root / manifest.backup.source_directory)
-    )
-    return 0
 
 
 def _validate_external_restore_firmware(
@@ -279,7 +351,7 @@ def _validate_external_restore_targets(
 
 
 def _snapshot_source_firmware(snapshot: dict[str, bytes]) -> tuple[bool, str | None]:
-    state = snapshot.get("config/tltg_optimized_state.yaml")
+    state = snapshot.get("config/vo_state.yaml")
     if state is None:
         return False, None
     try:

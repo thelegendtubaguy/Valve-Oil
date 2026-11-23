@@ -56,10 +56,10 @@ class InstallerCompatibilityTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(self.envelope.schema_version, 2)
         self.assertEqual(len(self.envelope.allowed_patch_targets), 35)
-        self.assertEqual(len(self.envelope.source_patches), 13)
+        self.assertEqual(len(self.envelope.source_patches), 19)
         self.assertEqual(
             digest,
-            "85ce713aaf2f2213535aeac6e8f55ab1fcbf1ee9abbff33331a3d99cdfb08910",
+            "e00b632ccbd0bfe0eb27fe255ca80aa6f348daccab76156af68f46d795a62809",
         )
 
     def test_manifest_rejects_printers_that_share_an_identity(self) -> None:
@@ -429,7 +429,7 @@ def _state(
         runtime_firmware="01.01.06.03",
         backup_label="test",
         installed_at="2026-01-01T00:00:00Z",
-        managed_tree=ManagedTreeState("config/tltg-optimized-macros", ()),
+        managed_tree=ManagedTreeState("config/vo-macros", ()),
         patch_ledger=patch_ledger,
         source_patches=source_patches,
     )

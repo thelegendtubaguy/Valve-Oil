@@ -29,13 +29,13 @@ export function BedMeshTab() {
 }
 
 function useProblemPoints() {
-  return voProbeReportPoints(useObject('tltg_probe_report'))
+  return voProbeReportPoints(useObject('vo_probe_report'))
 }
 
 function MeshCard() {
   const bedMesh = useObject('bed_mesh') as BedMeshStatus
   const toolhead = useObject('toolhead')
-  const report = useObject('tltg_probe_report')
+  const report = useObject('vo_probe_report')
   const preview = useStore(meshPreview, (p) => p)
   const view = useStore(meshView, (v) => v)
   const setView = (v: Partial<MeshView>) => meshView.set((s) => ({ ...s, ...v }))
@@ -216,7 +216,7 @@ function ProblemPoints({ points, measured }: { points: VoProbeReportPoint[]; mea
 
 function ProfilesCard() {
   const bedMesh = useObject('bed_mesh') as BedMeshStatus
-  const report = useObject('tltg_probe_report')
+  const report = useObject('vo_probe_report')
   const problems = useProblemPoints()
   const { printing, busy, homed } = usePrinterFlags()
   const profiles = meshProfiles(bedMesh)

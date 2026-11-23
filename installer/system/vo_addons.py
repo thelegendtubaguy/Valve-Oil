@@ -1,4 +1,4 @@
-# tltg-optimized:addons-server
+# vo:addons-server
 """Valve Oil add-ons service for Fluidd.
 
 Lists the package's optional add-ons and installs, updates, or removes them by running the bundled addons.sh, one job
@@ -118,7 +118,7 @@ class Catalog:
 def _signature() -> tuple:
     # What `addons.sh list` reads: the package manifest, the add-on directories, their unit files, and installs made
     # outside Valve Oil in the home directory.
-    return tuple(_mtime(path) for path in (MANIFEST, ADDONS_ROOT, *ADDONS_ROOT.glob("*/.tltg-addon.json"), UNIT_DIR, HOME))
+    return tuple(_mtime(path) for path in (MANIFEST, ADDONS_ROOT, *ADDONS_ROOT.glob("*/.vo-addon.json"), UNIT_DIR, HOME))
 
 
 class Jobs:
@@ -151,12 +151,12 @@ class Jobs:
             JOB_RC.unlink(missing_ok=True)
             with JOB_LOG.open("w", encoding="utf-8") as output:
                 process = subprocess.Popen(
-                    ["/bin/sh", "-c", '"$@"; echo $? > "$TLTG_ADDONS_RC"', "sh", str(ADDONS_SH), action, addon, *options, "--plain", "--yes"],
+                    ["/bin/sh", "-c", '"$@"; echo $? > "$VO_ADDONS_RC"', "sh", str(ADDONS_SH), action, addon, *options, "--plain", "--yes"],
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
-                    env={**os.environ, "TLTG_ADDONS_RC": str(JOB_RC), "PYTHONUNBUFFERED": "1"},
+                    env={**os.environ, "VO_ADDONS_RC": str(JOB_RC), "PYTHONUNBUFFERED": "1"},
                 )
             job = {
                 "id": job_id,
@@ -306,7 +306,7 @@ def octoeverywhere_link_code() -> dict:
 OBICO_DATA = ADDONS_ROOT / "obico-data"
 OBICO_CONFIG = OBICO_DATA / "moonraker-obico.cfg"
 # Written by Valve Oil's Obico launcher while the plugin waits to be linked.
-OBICO_STATUS = OBICO_DATA / "tltg-status.json"
+OBICO_STATUS = OBICO_DATA / "vo-status.json"
 OBICO_CLOUD = "https://app.obico.io"
 
 
@@ -564,7 +564,7 @@ def busy_state(status) -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "tltg-addons"
+    server_version = "vo-addons"
     catalog: Catalog
     jobs: Jobs
 
@@ -641,7 +641,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _route(self) -> tuple[str, ...]:
-        # nginx strips its /tltg-addons/ prefix; the API lives under api/.
+        # nginx strips its /vo-addons/ prefix; the API lives under api/.
         path = self.path.split("?", 1)[0].strip("/").split("/")
         if not path or path[0] != "api":
             return ()

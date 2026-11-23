@@ -6,7 +6,7 @@
 # While Klipper's bed mesh calibrate probes, this module reads those lines
 # and keeps, for each point that needed a retry, its position, how many
 # tries it took, and how far apart the samples of its failed tries were.
-# printer.tltg_probe_report publishes them for the most recent mesh measured
+# printer.vo_probe_report publishes them for the most recent mesh measured
 # since Klipper started, and whether that mesh is the one loaded. Probing is
 # unchanged.
 
@@ -87,7 +87,7 @@ class ProbeReport:
         helper = getattr(getattr(getattr(self.bed_mesh, "bmc", None),
                                  "probe_mgr", None), "probe_helper", None)
         if helper is None or not hasattr(helper, "start_probe"):
-            logging.info("tltg_probe_report: no bed mesh probing to follow")
+            logging.info("vo_probe_report: no bed mesh probing to follow")
             return
         start_probe = helper.start_probe
 
@@ -132,7 +132,7 @@ class ProbeReport:
             try:
                 callback(dict(report))
             except Exception:
-                logging.exception("tltg_probe_report: listener failed")
+                logging.exception("vo_probe_report: listener failed")
 
     def _output(self, message):
         collector = self.collector

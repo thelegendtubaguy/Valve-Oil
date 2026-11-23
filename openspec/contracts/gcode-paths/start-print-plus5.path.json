@@ -106,7 +106,7 @@
     {
       "name": "staggered_start_settings",
       "source_macro": "OPTIMIZED_PRINT_START_HOME",
-      "condition": "all optimized starts",
+      "condition": "all Valve Oil starts",
       "slice": {
         "start": "{% set opt = printer[\"gcode_macro _vo_globals\"] %}",
         "end": "UPDATE_DELAYED_GCODE"
@@ -237,7 +237,7 @@
     {
       "name": "tool_mapping_reconciliation",
       "source_macro": "OPTIMIZED_START_PRINT_FILAMENT_PREP",
-      "condition": "all optimized starts",
+      "condition": "all Valve Oil starts",
       "slice": {
         "start": "{% set tool = params.EXTRUDER|int %}",
         "end": "{% if reuse_loaded %}"
@@ -288,6 +288,7 @@
       },
       "must_include_order": [
         "SAVE_VARIABLE VARIABLE=retained_tool VALUE={tool}",
+        "SAVE_VARIABLE VARIABLE=retained_filament_id VALUE='\"{current_filament_id}\"'",
         "OPTIMIZED_MOVE_TO_TRASH",
         "VO_WAIT_BED S={bed_target} STATUS=wait_bed_temp",
         "VO_WAIT_CHAMBER S={chamber_target} STATUS=wait_chamber_temp MINIMUM={params.CHAMBER_MIN_TEMP|default(0)|float}",
@@ -456,7 +457,7 @@
     {
       "name": "silicone_wiper_finishing_strokes",
       "source_macro": "_VO_WIPE_NOZZLE",
-      "condition": "optimized cleanup with the nozzle already at the rear wiper",
+      "condition": "Valve Oil cleanup with the nozzle already at the rear wiper",
       "slice": {
         "start": "{% set saved_accel = printer.toolhead.max_accel|float %}"
       },
@@ -488,7 +489,7 @@
     {
       "name": "chute_wipe_and_drop_dispatch",
       "source_macro": "VO_WIPE_NOZZLE_DROP",
-      "condition": "PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through the optimized chute drop",
+      "condition": "PATTERN=MIXED selects the print-start pre-scrape wipe; omitted or other values select the fast silicone wipe; both release waste through Valve Oil's chute drop",
       "slice": {
         "start": "{% if params.PATTERN|default(\"FAST\")|upper == \"MIXED\" %}"
       },
@@ -512,7 +513,7 @@
     {
       "name": "chute_waste_release",
       "source_macro": "_VO_CHUTE_DROP",
-      "condition": "nozzle at the rear wiper after an optimized wipe",
+      "condition": "nozzle at the rear wiper after a Valve Oil wipe",
       "slice": {
         "start": "{% set saved_accel = printer.toolhead.max_accel|float %}"
       },
@@ -575,7 +576,7 @@
         "start": "{% set scrape_target = params.TARGET|default(km.start_extruder_probing_temp if km.start_extruder_probing_temp > 0 else 140)|int %}"
       },
       "must_include_order": [
-        "box_available = printer.tltg_macro_status.box_available",
+        "box_available = printer.vo_macro_status.box_available",
         "VO_WAIT_HOTEND S={scrape_target} STATUS=clear_nozzle",
         "TEMPERATURE_WAIT SENSOR={printer.toolhead.extruder} MAXIMUM={scrape_maximum}",
         "{% if box_available %}",
@@ -598,7 +599,7 @@
       "source_macro": "_VO_FINISH_START_SCRAPE",
       "condition": "fresh Box or external-spool scrape complete and vendor chute cleanup object available",
       "slice": {
-        "start": "{% set box_available = printer.tltg_macro_status.box_available %}"
+        "start": "{% set box_available = printer.vo_macro_status.box_available %}"
       },
       "must_include_order": [
         "{% if box_available %}",

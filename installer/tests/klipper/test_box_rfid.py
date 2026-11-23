@@ -275,7 +275,7 @@ class Printer:
 
     def lookup_object(self, name, default=None):
         return {"gcode": self, "multi_color_controller": self.controller, "save_variables": self.save_variables,
-                "box_stepper slot7": self.slot7, "tltg_box_slot_jog": self.jog}.get(name, default)
+                "box_stepper slot7": self.slot7, "vo_box_slot_jog": self.jog}.get(name, default)
 
     def register_command(self, name, handler, desc=None):
         previous = self.commands.pop(name, None)
@@ -288,7 +288,7 @@ class Printer:
 
 
 class Jog:
-    """tltg_box_slot_jog: turns a slot in PIECE mm moves, calling UNTIL after each."""
+    """vo_box_slot_jog: turns a slot in PIECE mm moves, calling UNTIL after each."""
 
     def __init__(self, printer):
         self.printer, self.moves, self.on_turn = printer, [], None

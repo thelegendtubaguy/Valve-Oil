@@ -5,6 +5,7 @@
 // The service is asked once when the page opens and whenever Moonraker or Klipper goes away, then polled while the
 // Updates screen is open or an update is running.
 import { createStore, useStore } from '../lib/store'
+import { getRenamedItem } from '../lib/storage'
 import { client, printer } from './printer'
 import {
   parseVoKlipperAnswer,
@@ -59,15 +60,17 @@ export type ValveOilState = {
 }
 
 // The same keys as the Fluidd fork's section: both are served from the printer's one origin, so a result closed in
-// one is closed in the other.
-const DISMISSED_UPDATES_KEY = 'tltg-status.dismissed-updates'
+// one is closed in the other. Values saved under the keys' old tltg- names carry over.
+const DISMISSED_UPDATES_KEY = 'vo-status.dismissed-updates'
+const OLD_DISMISSED_UPDATES_KEY = 'tltg-status.dismissed-updates'
 const DISMISSED_UPDATES_KEPT = 20
-const UPDATING_KEY = 'tltg-status.updating-since'
+const UPDATING_KEY = 'vo-status.updating-since'
+const OLD_UPDATING_KEY = 'tltg-status.updating-since'
 const UPDATING_KEPT_MS = 6 * 60 * 60 * 1000
 
 function loadDismissed(): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(DISMISSED_UPDATES_KEY) ?? '[]')
+    const value: unknown = JSON.parse(getRenamedItem(localStorage, DISMISSED_UPDATES_KEY, OLD_DISMISSED_UPDATES_KEY) ?? '[]')
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
   } catch {
     return []
@@ -76,7 +79,7 @@ function loadDismissed(): string[] {
 
 function loadUpdating(): boolean {
   try {
-    const since = Number(sessionStorage.getItem(UPDATING_KEY))
+    const since = Number(getRenamedItem(sessionStorage, UPDATING_KEY, OLD_UPDATING_KEY))
     return Number.isFinite(since) && since > 0 && Date.now() - since < UPDATING_KEPT_MS
   } catch {
     return false
@@ -118,7 +121,7 @@ export const valveOil = createStore<ValveOilState>({
 const patch = (changes: Partial<ValveOilState>) => valveOil.set((s) => ({ ...s, ...changes }))
 
 // Valve Oil UI talks only to the Moonraker of the web server that served it. In development the dev server proxies
-// /tltg-status to the printer or the fake (vite.config.ts), so the page's own origin is used there too.
+// /vo-status to the printer or the fake (vite.config.ts), so the page's own origin is used there too.
 const apiBase = () => voStatusApiBase(import.meta.env.DEV ? location.origin : client.httpBase, location)
 
 async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: AbortSignal, body?: Record<string, unknown>) {
@@ -126,6 +129,9 @@ async function request(path: string, method: 'GET' | 'POST' = 'GET', signal?: Ab
   if (!base) throw new VoStatusRequestError(0, t('updates.status.not_connected'))
   return voStatusRequest(base, path, { method, token: null, signal, body })
 }
+
+/** Calls the status service of the page's own printer, as the Updates screen does: for the System screen's Diagnostics check. */
+export const statusRequest = request
 
 // ---- polling ----
 let watchers = 0
@@ -204,7 +210,7 @@ export function startValveOilStatus() {
     const now = s.conn === 'open' && s.klippy === 'ready'
     if (ready && !now && !timer && !abortController) poll()
     ready = now
-    const w = (s.status.tltg_printer_warnings as { warnings?: unknown } | undefined)?.warnings
+    const w = (s.status.vo_printer_warnings as { warnings?: unknown } | undefined)?.warnings
     if (w !== voWarnings) {
       const changed = JSON.stringify(valveOilWarningIds(w)) !== JSON.stringify(valveOilWarningIds(voWarnings))
       voWarnings = w

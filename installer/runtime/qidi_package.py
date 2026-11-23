@@ -33,9 +33,9 @@ from .fs_atomic import atomic_write_text, fsync_directory
 from .path_safety import ensure_external_path_has_no_symlink_components
 
 CACHE_DIRECTORY = f"{naming.CACHE_DIRECTORY}/firmware-update"  # under the printer user's home
-STAGING_DIRECTORY = ".tltg-update-staging"  # beside QIDI's update folder, so the two can be swapped by rename
-PREVIOUS_DIRECTORY = ".tltg-update-previous"  # QIDI's update folder while it is replaced without an atomic exchange
-STAGED_MARKER = ".tltg-staged.json"
+STAGING_DIRECTORY = ".vo-update-staging"  # beside QIDI's update folder, so the two can be swapped by rename
+PREVIOUS_DIRECTORY = ".vo-update-previous"  # QIDI's update folder while it is replaced without an atomic exchange
+STAGED_MARKER = ".vo-staged.json"
 MANIFEST_NAME = "firmware_manifest.json"
 CHUNK = 1 << 20
 # The SOC package's files unpack to about 4.2 times the archive (Max 4 01.01.07.01: 252 MiB of xz, 1,096 MiB of files),
@@ -53,7 +53,7 @@ UNREACHABLE, UNVERIFIED, FREE_SPACE = "mirror_unreachable", "package_unverified"
 
 # The USB installer names the drive it was started from by its mount point, normally printer_data/gcodes/USB. The
 # drive's valve-oil/ folder holds each printer's target package under the archive name package.yaml pins.
-USB_DRIVE_ENV = "TLTG_USB_DRIVE_ROOT"
+USB_DRIVE_ENV = "VO_USB_DRIVE_ROOT"
 DRIVE_FOLDER = "valve-oil"
 
 
@@ -641,7 +641,7 @@ NO_DRIVE_COPY = "no_drive_copy"  # no drive was named, or it has no copy of the 
 MISMATCH = "mismatch"  # the drive's package doesn't match its pin, or doesn't hold the file the folder's manifest names
 NOT_TARGET = "not_target"  # the printer doesn't run the target firmware, so the drive's package isn't its own
 FAILED = "failed"  # the file couldn't be written; the folder is as it was
-RESTORE_PART = ".tltg-soc-restore"  # the file in QIDI's update folder before its rename to the manifest's name
+RESTORE_PART = ".vo-soc-restore"  # the file in QIDI's update folder before its rename to the manifest's name
 RESTORE_MODE = "0644"  # what QIDI's own unzip gives it: QIDI's archives record every file as 0644
 
 

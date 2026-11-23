@@ -265,7 +265,7 @@ def check_installs(bundle_root: Path, workspace: Path, manifest) -> None:
     """Run the bundle against stand-in printers: a new install's plan, a first install, an update through each front
     end, uninstall, and the restore helper. None of it may ask this host for root."""
     install_sh = str(bundle_root / "install.sh")
-    state_file = "config/tltg_optimized_state.yaml"
+    state_file = "config/vo_state.yaml"
 
     with stand_in_printer(manifest, workspace) as (printer_root, env):
         dry_run = run_command([install_sh, "--dry-run", "--plain"], cwd=bundle_root, env=env)
@@ -336,7 +336,7 @@ def check_installs(bundle_root: Path, workspace: Path, manifest) -> None:
 
     with stand_in_printer(manifest, workspace) as (printer_root, env):
         env["TERM"] = "xterm-256color"
-        env["TLTG_OPTIMIZED_DEMO_TUI_DELAY_SECONDS"] = "0.05"
+        env["VO_DEMO_TUI_DELAY_SECONDS"] = "0.05"
         rich_demo = run_command_with_pty([install_sh, "--demo-tui"], cwd=bundle_root, env=env)
         if rich_demo.returncode != 0:
             raise SystemExit(rich_demo.stdout)
@@ -512,15 +512,28 @@ done
 printf '%s\\n' "$*" >> "$(dirname "$0")/refused"
 exit 1
 """
+SYSTEMCTL_GUARD = """#!/bin/sh
+# Stands in for systemctl while the smoke test runs the bundle: the stand-in printer runs no services, so queries say
+# each one is stopped, and any command that would change one is recorded and refused.
+case "$1" in
+    show) echo "ActiveState=inactive"; exit 0 ;;
+    is-active) echo "inactive"; exit 3 ;;
+esac
+printf 'systemctl %s\\n' "$*" >> "$(dirname "$0")/refused"
+exit 1
+"""
 
 
 def host_guard(workspace: Path) -> Path:
-    """A PATH entry whose sudo refuses every command, so a bundle run on a stand-in printer can't change this host."""
+    """A PATH entry whose sudo and systemctl refuse every command that would change this host, so a bundle run on a
+    stand-in printer can't."""
     guard = workspace / "host-guard"
     if not guard.exists():
         guard.mkdir(parents=True)
         (guard / "sudo").write_text(SUDO_GUARD, encoding="utf-8")
         (guard / "sudo").chmod(0o755)
+        (guard / "systemctl").write_text(SYSTEMCTL_GUARD, encoding="utf-8")
+        (guard / "systemctl").chmod(0o755)
     return guard
 
 

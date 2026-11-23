@@ -10,7 +10,7 @@ If the touchscreen stays on the boot logo and the printer never joins the networ
 
 Read the installer's output first. It stops before writing anything when firmware detection, preflight, printer state, or free-space checks fail, and says why. Each run also saves a log in `~/printer_data/logs`, such as `valve-oil-install-20261117-091402.log`, which the installer names when it stops; attach it when you [report a problem](#reporting-a-problem). See [Logs](install.md#logs).
 
-**`[Errno 13] Permission denied: '/home/qidi/printer_data/.tltg_optimized_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
+**`[Errno 13] Permission denied: '/home/qidi/printer_data/.vo_installer.lock'`** or **`Could not validate previous package version.`** after an earlier run with `sudo`: versions before 26.11.02.1 ran as root when started with `sudo` and left the files they created owned by root, which a later run as `qidi` couldn't open. Install the current version, with or without `sudo`; it gives those files back to `qidi` before it starts.
 
 **Klipper is stopped with an error,** such as `... is not a valid config section`:
 
@@ -21,7 +21,7 @@ Automatic updates and **Update now** don't install anything while Klipper isn't 
 
 **A new install was refused because of a board,** with `This release of Valve Oil doesn't support a board on this printer yet, so nothing was installed.`: open the prefilled support issue link the installer printed above that line, and submit it. See [Boards Valve Oil doesn't support yet](install.md#boards-valve-oil-doesnt-support-yet). If it says a Box `is listed in box.cfg but is not connected`, connect that Box, or remove it in the touchscreen's Box setup, and run the installer again.
 
-**The install or uninstall was cut off,** by a power cut, the printer restarting, or the SSH session closing: run the same command again. It finishes what the stopped run started, from wherever it stopped. An uninstall after a new install was cut off says `An earlier install stopped before it finished`: run the installer again first, then uninstall. Closing the SSH session no longer stops a run; it carries on to the end and writes only its log. If the earlier run left system changes it couldn't roll back, the next run says so, leaves them as they are, keeps the record as `~/printer_data/.tltg_optimized_system_journal.json.set-aside-<time>`, and goes on; attach that file when you [report a problem](#reporting-a-problem).
+**The install or uninstall was cut off,** by a power cut, the printer restarting, or the SSH session closing: run the same command again. It finishes what the stopped run started, from wherever it stopped. An uninstall after a new install was cut off says `An earlier install stopped before it finished`: run the installer again first, then uninstall. Closing the SSH session no longer stops a run; it carries on to the end and writes only its log. If the earlier run left system changes it couldn't roll back, the next run says so, leaves them as they are, keeps the record as `~/printer_data/.vo_system_journal.json.set-aside-<time>`, and goes on; attach that file when you [report a problem](#reporting-a-problem).
 
 **`A QIDI firmware update is in progress or did not finish; run ./install.sh to follow or finish it before anything else`:** run `~/valve-oil/install.sh`. See [A QIDI firmware update stopped part way](#a-qidi-firmware-update-stopped-part-way).
 
@@ -46,7 +46,7 @@ The installer, the printer warning, and the **Valve Oil** section in Fluidd and 
 | Reason | What to do |
 |---|---|
 | `a print is running or paused`, `a heater is set to a temperature`, or `Klipper didn't report whether the printer is idle` | Wait until the printer is idle, with every heater off, and Klipper is ready. |
-| `The firmware update needs <N> MiB free in /home/qidi.` or `there isn't enough free space on the printer` | The update already removed old logs and QIDI's leftover download. Free up more space in `/home/qidi`, such as large G-code files, timelapse videos, or old `tltg-optimized-macros-before-…zip` backups in `~/printer_data/`. `df -h /home/qidi` shows the free space. On the Max 4 the update needs about 2.1 GB. |
+| `The firmware update needs <N> MiB free in /home/qidi.` or `there isn't enough free space on the printer` | The update already removed old logs and QIDI's leftover download. Free up more space in `/home/qidi`, such as large G-code files, timelapse videos, or old `vo-macros-before-…zip` backups in `~/printer_data/`. `df -h /home/qidi` shows the free space. On the Max 4 the update needs about 2.1 GB. |
 | `The firmware package could not be downloaded from this project's mirror` or `the firmware download couldn't be reached` | Check that the printer is online and can reach `github.com`. A partial download resumes next time. |
 | `The downloaded firmware package does not match its pinned size and SHA-256.` | Try again. The bad download is deleted. If it keeps happening, [report it](#reporting-a-problem). |
 | `the update needs sudo with QIDI's default password, as automatic updates do` | The `qidi` password isn't QIDI's default, `qiditech`. The update runs without a terminal and can't ask for it. Set it back to `qiditech` with `passwd` while you update, or keep the firmware you have. |
@@ -108,7 +108,7 @@ Klipper shows this, and the touchscreen shows it under `QDC_100_005_000_001`, wh
 A factory reset isn't needed. `SAVE_CONFIG` keeps the file it replaces as `printer-YYYYMMDD_HHMMSS.cfg`, but QIDI's touchscreen app deletes those files each time it starts, so after a restart the copy to use is the one in the newest backup from a Valve Oil install or update. Over SSH, put that `printer.cfg` back and run the installer again, which puts back its own changes to the file:
 
 ```bash
-cd ~/printer_data && ls -t tltg-optimized-macros-before-*.zip | head -1
+cd ~/printer_data && ls -t vo-macros-before-*.zip | head -1
 unzip -p <that backup>.zip config/printer.cfg > config/printer.cfg
 cd ~/valve-oil && ./install.sh
 ```
@@ -127,7 +127,7 @@ To fix it without rebooting, run `sudo systemctl restart makerbase-webcam` over 
 
 ## Restore a backup
 
-Every install and uninstall saves a backup `.zip` of your configuration under `/home/qidi/printer_data/`, named `tltg-optimized-macros-before-optimize-...zip` or `tltg-optimized-macros-before-uninstall-...zip`.
+Every install and uninstall saves a backup `.zip` of your configuration under `/home/qidi/printer_data/`, named `vo-macros-before-optimize-...zip` or `vo-macros-before-uninstall-...zip`.
 
 Restore interactively over SSH:
 
@@ -140,6 +140,8 @@ Restore a specific backup:
 ```bash
 cd ~/valve-oil && ./restore.sh --backup /home/qidi/printer_data/<backup-name>.zip
 ```
+
+Restore refuses while a print is running or paused, or a heater is on. It stops Klipper, puts the backup's files back, and starts Klipper again, so Klipper loads the restored `saved_variables.cfg` instead of writing its own values back over it. Stopping Klipper needs `sudo`: restore uses QIDI's default password, `qiditech`, and asks for yours if it has been changed. If Klipper can't be stopped, nothing is restored.
 
 If restore completed and the recovery sentinel is still present, clear it with:
 
@@ -178,11 +180,78 @@ It writes `printer_data/logs/vo_box_link.log`, separate from `klippy.log` so it 
 
   `FIRMWARE_RESTART` changes `PowerOn` to `Software`, but it can't hide `IndependentWatchdog`.
 
+## Diagnostics
+
+**Diagnostics**, on the Diagnostics tab of Valve Oil UI's [System](valve-oil-ui.md#diagnostics) screen, checks the printer's `klippy.log` for faults Valve Oil knows, and says what each one means and what to do. It reads the newest part of the log, up to 48 MB, at the lowest priority, so it doesn't slow a print; it says how far back it reached. Pick how far back to look: since Klipper last started, the last 24 hours, or the whole log. **Download report** saves what it found, with the log lines that show it, to attach to an issue, and [Report a problem](#reporting-a-problem)'s support bundle carries the last report.
+
+Each finding says whether it needs you:
+
+- **Needs attention:** it happened, and the Valve Oil release installed now doesn't fix it.
+- **Fixed by the release installed now:** it happened on an earlier release.
+- **Valve Oil repaired it:** it happened, and Valve Oil repaired it each time before it failed anything.
+- **For reference:** QIDI's error codes, with the lines before each.
+
+Valve Oil also writes a `vo_box_watch:` line to `klippy.log` the moment one of the Box faults below happens, on every printer with a USB Box. To check a log someone sent, run `python3 scripts/check_klippy_log.py klippy.log` from a copy of this repository; it also takes a support bundle's zip.
+
+### Box unload stopped inside a cancelled part
+
+A filament change ran while the print was inside a part you'd cancelled, and Klipper dropped its moves, so the filament wasn't cut or pulled back and the [unload stopped](qidi-box.md#filament-caught-at-the-toolhead). Valve Oil 26.11.22.2 and later let a filament change's moves through a [cancelled part](qidi-box.md#filament-changes-inside-a-cancelled-part). On an earlier release, update Valve Oil.
+
+### Box slot step clock
+
+While printing, the Box feeds filament on its own whenever its buffer asks, timing the slot motor itself. When print start, or `MCB_AUTO_START`, turns that feeding back on while the Box is feeding, the Box keeps the slot motor's timing off from Klipper's, by up to 51 seconds, for the rest of the print. An unload's pull-back then runs that slot's motor late or in bursts, and the toolhead sensor never clears. Diagnostics names the slot and how many seconds it's off.
+
+The same happens when a Box load or unload homes another slot while the Box is feeding: every slot shares the Box's hub and toolhead sensors, so the home resets every slot's timing, and the feed's end puts back the timing from before it. Diagnostics shows that as **A slot's step clock was reset during a Box feed**.
+
+Valve Oil 26.11.22.2 and later line the slot motor's timing back up before each unload, so this needs nothing from you. Valve Oil now also stops a running feed, and lets the Box put the slot motor's timing back, before QIDI's code turns feeding back on, so the timing no longer goes off at print start. On an earlier release, update Valve Oil; until then, restarting Klipper clears it until the next print start.
+
+### The Box switched off a slot motor Klipper had on
+
+The Box switches a slot's motor on and off itself when it feeds, and switches it off when auto-feed is set up for that slot. Klipper only switches a motor on when it thinks it's off, so when the Box switched off a motor Klipper still had on, Klipper's next move of that slot runs without current and the filament doesn't move. If a load, unload, or jog of that slot didn't move the filament then, run it again: QIDI's flows switch the motor off in Klipper when they end, so the next try switches it on. [Report it](#reporting-a-problem) with the support bundle.
+
+### The Box fed a slot during a Valve Oil move
+
+The Box fed a slot, or switched its motor off, while Valve Oil was moving that slot itself: a [jog](qidi-box.md#moving-a-slot-by-hand), a spool turn, a spool tag read, or a Box load or unload move. The slot's filament may not be where either expected. Check the slot before its next load, and [report it](#reporting-a-problem) with the support bundle so it can be fixed. Valve Oil now stops the Box's feeding on a slot before it jogs, turns, or reads that slot, so this shouldn't happen on those moves any more.
+
+### The Box fed a slot while Klipper was moving it
+
+The Box's auto-feed drives a slot's motor itself, through the same step queue Klipper uses, and doesn't check whether Klipper is moving that slot. Diagnostics shows one of these:
+
+- **The Box fed a slot Klipper was moving.** A feed started while Klipper still had moves queued for that slot's motor. The feed saved the slot's [step clock](#box-slot-step-clock) from inside Klipper's moves, and Klipper's moves queued during the feed ran in the feed's direction.
+- **The Box fed a slot after auto-feed was aborted.** QIDI's code aborted auto-feed, as an unload does before it pulls the filament back, and the Box fed again anyway: it ignores an abort that lands in the 10 ms after a feed ends. Valve Oil's unloads make sure auto-feed is off before the pull-back, so this comes from QIDI's other flows.
+- **Aborting auto-feed dropped Klipper's slot moves.** The Box's abort empties the slot motor's whole step queue, so Klipper's moves still waiting in it were dropped with the feed.
+
+Check the slot's filament before its next load. If an unload or load stopped around that time, free the filament and run it again. [Report it](#reporting-a-problem) with the support bundle so it can be fixed.
+
+### Toolhead load-cell readings lost
+
+QIDI's Box load checks for filament reaching the nozzle with the toolhead's load cell, and other QIDI code reads the same load cell. When two of them ask for a reading at the same moment, the answers reach neither, and QIDI's code reads `999.9` and discards it (`Data error, discard the data value=999.9` in `klippy.log`). A load around that time can stop with `QDE_004_024`, the filament failed to enter the extruder, whether or not it did. Check the filament at the nozzle and run the load again. [Report it](#reporting-a-problem) if it recurs.
+
+### Box unload stopped with filament at the toolhead
+
+An unload pulled the filament back and the toolhead filament sensor still detected it. Something held it: at the toolhead, in the Box, or a slot motor running late. If Diagnostics also shows a [slot step clock](#box-slot-step-clock) or a [cancelled part](#box-unload-stopped-inside-a-cancelled-part), that's the cause. Otherwise see [Filament caught at the toolhead](qidi-box.md#filament-caught-at-the-toolhead).
+
+### QIDI error codes
+
+Diagnostics lists every error code QIDI's Box code reported, `Code:QDE_004_008; Message:Extruder unloading failure.` for example, with the lines before it. The Box's codes:
+
+| Code | Means |
+|---|---|
+| `QDE_004_001` | A slot didn't load to the Box hub; check the slot's filament and reload it |
+| `QDE_004_003` | A slot didn't unload; unload it again |
+| `QDE_004_005` | Load the slot named first |
+| `QDE_004_006`, `QDE_004_024` | The filament didn't reach, or enter, the extruder |
+| `QDE_004_008`, `QDE_004_009`, `QDE_004_025` | The extruder didn't unload; see [Box unload stopped with filament at the toolhead](#box-unload-stopped-with-filament-at-the-toolhead) |
+| `QDE_004_013` | The Box detected filament wrapping around a spool |
+| `QDE_004_016` | A slot ran out |
+| `QDE_004_019` | Check that the PTFE tube isn't bent |
+| `QDE_004_023` | Automatic reload after a runout failed |
+
 ## Reporting a problem
 
 Open a [GitHub issue](https://github.com/thelegendtubaguy/valve-oil/issues/new/choose) and pick the form that fits. Each form asks for the printer details below, and for the logs that show what happened.
 
-The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
+The quickest way is **Open an issue** under **Report a problem**, in the **Valve Oil** section of Fluidd's Settings or on Valve Oil UI's [Updates](valve-oil-ui.md#updates) screen. It opens the bug report form with the printer, its details, and how Valve Oil was installed already filled in, and downloads a support bundle, `valve-oil-support-<printer>-<time>.zip`, to drag into the form. The bundle holds `klippy.log` and `moonraker.log` with the last rotated copy of each, `vo_box_link.log`, the output of the last **Update now**, add-on change, and QIDI firmware update, the last [Diagnostics](#diagnostics) report, Valve Oil's update status, and the printer details. Each log is cut to its newest 16 MB. Logs can show the printer's network addresses, so look through the bundle before you attach it. It doesn't include what the installer printed when you ran it over SSH, so paste that in yourself.
 
 For a board Valve Oil doesn't support yet, use the link in the installer's output or in the board's printer warning instead: it opens the support form with the printer details and the board's report already filled in.
 
@@ -197,7 +266,7 @@ def run(*cmd):
     try: return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception as exc: return f"unavailable ({exc.__class__.__name__})"
 home = os.path.expanduser("~")
-state = os.path.join(home, "printer_data/config/tltg_optimized_state.yaml")
+state = os.path.join(home, "printer_data/config/vo_state.yaml")
 try:
     text = open(state).read()
     print("Valve Oil:", re.search(r"^  version: *'?([0-9.]+)", text, re.M).group(1),
@@ -214,10 +283,10 @@ try:
 except OSError:
     print("USB Boxes in box.cfg: no box.cfg")
 print("Kernel:", run("uname", "-rv"))
-print("Auto-updates:", "on" if os.path.isfile(os.path.join(home, "printer_data/.tltg_optimized_auto_update_enrolled")) else "off")
+print("Auto-updates:", "on" if os.path.isfile(os.path.join(home, "printer_data/.vo_auto_update_enrolled")) else "off")
 print("zram:", "on" if "zram" in open("/proc/swaps").read() else "off")
 print("AI detection:", run("systemctl", "is-active", "algo_app.service") or "unknown")
-print("THR fix backups:", "yes" if os.path.isdir(os.path.join(home, "printer_data/.tltg_thr_firmware_backups")) else "no")
+print("THR fix backups:", "yes" if os.path.isdir(os.path.join(home, "printer_data/.vo_thr_firmware_backups")) else "no")
 try:
     import urllib.request
     q = "http://127.0.0.1:7125/printer/objects/query?print_stats=state&webhooks=state,state_message"
@@ -235,8 +304,8 @@ It prints the installed Valve Oil version, QIDI's firmware versions for every bo
 - **`klippy.log`:** in Fluidd, open **Configuration**, switch the file list to **logs**, and download `klippy.log`; or copy `~/printer_data/logs/klippy.log` over SSH. Attach it right after the problem, before restarting Klipper again, since each restart starts a new log. If it's too big to attach, zip it.
 - **Installer log:** each install, update, and uninstall saves `valve-oil-<run>-<date>.log` in `~/printer_data/logs`, in the same **logs** list as `klippy.log`. The USB installer also saves it on the drive as `valve-oil-install.log`.
 - **Installer output:** copy everything the installer printed, from the command to the end. To see the log's detail as it runs, run it again with `--debug` added, for example `~/valve-oil/install.sh --debug`.
-- **Automatic update output:** `journalctl -u tltg-optimized-auto-update.service --since "2 days ago"`.
-- **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u tltg-firmware-update.service --since "2 days ago"`.
+- **Automatic update output:** `journalctl -u vo-auto-update.service --since "2 days ago"`. An update from a release before 26.11.22.3 is logged under that release's name, `tltg-optimized-auto-update.service`.
+- **QIDI firmware update output:** `~/.cache/valve-oil/firmware-update/update.log` and `qidi-package.log` beside it, and `journalctl -u vo-firmware-update.service --since "2 days ago"`.
 - **Update now output:** `~/.cache/valve-oil/status/job.log`, the log **Show log** shows in Fluidd and Valve Oil UI.
 - **`moonraker.log`:** `~/printer_data/logs/moonraker.log`, for Fluidd or file upload problems.
 - **The sliced file**, for print problems: attach the `.gcode` or `.gcode.3mf`, zipped.

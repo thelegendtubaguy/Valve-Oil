@@ -11,7 +11,7 @@ Units of measure stay as symbols in every language: `mm`, `mm/s`, `mm³/s`, `m`,
 | print (noun) | impresión | печать |
 | print (verb) | imprimir | печатать |
 | printer | impresora | принтер |
-| toolhead | cabezal | печатающая головка |
+| toolhead | cabezal | печатающая головка; голова as a short label on its own |
 | extruder | extrusor | экструдер |
 | nozzle | boquilla | сопло |
 | hotend | hotend | хотэнд |
@@ -42,8 +42,8 @@ Units of measure stay as symbols in every language: `mm`, `mm/s`, `mm³/s`, `m`,
 | heater | calentador | нагреватель |
 | target (temperature) | objetivo | цель |
 | preset | preajuste | предустановка |
-| fan | ventilador | вентилятор |
-| exhaust fan | ventilador de extracción | вытяжной вентилятор |
+| fan | ventilador | вентилятор; a fan's name listed under a fans heading leaves it out (обдув модели, вспомогательный) |
+| exhaust fan | ventilador de extracción | вытяжной вентилятор; вытяжка as a short label, вытяжной under a fans heading |
 | light | luz | подсветка |
 | macro | macro | макрос |
 | console | consola | консоль |

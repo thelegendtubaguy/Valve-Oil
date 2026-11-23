@@ -14,7 +14,7 @@ from installer.runtime import moonraker_fixes
 
 
 def load_payload():
-    spec = importlib.util.spec_from_file_location("tltg_moonraker_fixes_under_test", moonraker_fixes.MODULE_PAYLOAD)
+    spec = importlib.util.spec_from_file_location("vo_moonraker_fixes_under_test", moonraker_fixes.MODULE_PAYLOAD)
     module = importlib.util.module_from_spec(spec)
     before = list(sys.meta_path)
     try:

@@ -130,7 +130,7 @@ const parseError = (line: string): QidiBoxError | null => {
   return match ? { code: match[1], message: match[2].trim() } : null
 }
 
-// A step that raises an error instead of failing is paused by Qidi-Max-4-Optimized with QIDI's
+// A step that raises an error instead of failing is paused by Valve Oil with QIDI's
 // `Step BOX_LOAD failed. Pausing flow.`, and Klipper then reports the error, such as
 // `!! Error during homing e_endstop: Communication timeout during homing`.
 const parseRaised = (line: string | undefined): QidiBoxError | null => {
@@ -195,7 +195,7 @@ export const qidiBoxHubSensor = (printer: Record<string, any>): number | null =>
 }
 
 // Filament stopped between the hub and the toolhead, outside a print: the hub sensor sees it and the toolhead
-// sensor doesn't. Qidi-Max-4-Optimized's Unload and Eject then pull back the slot at the hub, even while a failed
+// sensor doesn't. Valve Oil's Unload and Eject then pull back the slot at the hub, even while a failed
 // flow is paused.
 export const qidiBoxStranded = (printer: Record<string, any>): boolean => {
   return printer['filament_switch_sensor filament_switch_sensor']?.filament_detected === false &&
@@ -211,7 +211,7 @@ export const qidiBoxStrandedRecovery = (printer: Record<string, any>): boolean =
   return !printer.box_extras?.box_button_state && (task == null || task.paused) && qidiBoxStranded(printer)
 }
 
-// The slot whose filament is at the hub, picked like Qidi-Max-4-Optimized's Unload and Eject: the slot it recorded
+// The slot whose filament is at the hub, picked like Valve Oil's Unload and Eject: the slot it recorded
 // at the hub or the last-loaded slot, each only while its inlet has filament, then the only slot with filament at
 // its inlet. Two different named slots can't be told apart.
 export const qidiBoxHubSlot = (printer: Record<string, any>, slots: Pick<QidiBoxSlot, 'index' | 'present'>[]): number | null => {

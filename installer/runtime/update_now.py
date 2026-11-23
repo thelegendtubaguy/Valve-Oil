@@ -1,4 +1,4 @@
-"""Update now: the run the tltg-status service starts when the operator asks Fluidd or Valve Oil UI to apply what is
+"""Update now: the run the vo-status service starts when the operator asks Fluidd or Valve Oil UI to apply what is
 waiting, whether or not automatic updates are on.
 
 The service starts it detached, in its own session, as
@@ -22,8 +22,8 @@ from .models import RuntimePaths
 from .reporter import create_reporter
 
 STOPPED = "The update stopped before it finished."
-# The tltg-status service's id for this run's job; the status file's run carries it, so the job names its run.
-JOB_ENV = "TLTG_STATUS_JOB"
+# The vo-status service's id for this run's job; the status file's run carries it, so the job names its run.
+JOB_ENV = "VO_STATUS_JOB"
 
 
 def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], urlopen=urllib.request.urlopen, run=subprocess.run) -> bool:

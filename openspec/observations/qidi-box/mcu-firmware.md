@@ -81,6 +81,12 @@ Observed timer-state behaviour (disassembled at `0x0800b780`):
 - a coast/stop state arms a fixed 10 ms (`0xCD140` ticks) dwell before finishing;
 - `mcb_auto_abort` sets state `5`.
 
+**Static-recovered.** When `mcb_auto_start` can't fit the feed in 1024 chunks of up to 128 steps, or gets `v` or `lmax` 0, it sets state 4 and leaves the timer off; only the first case replies, with `MCB_ERR`. `box_autofeed.so` (all three printers) registers its error handler for `MCB_ERROR`, a name the Box never sends, so `MCB_ERR` reaches only Klipper's default handler. With `a` 0, the slot steppers' about 235 steps per mm put the limit near an `LMAX` of 557 mm; stock feeds use 120 mm.
+
+**Static-recovered.** `mcb_query` (`0x08009dc0`) deletes the MCB timer and sets its next wake time and period, but doesn't add it back. QIDI's code sends it only between `mcb_config_stepper` and `mcb_auto_start`, which adds the timer again; `MCB_QUERY` and `MCB_CONFIG_STEPPER` replies are one to one in every operator log. An `MCB_QUERY` on its own during a feed would stop the feed without a restore.
+
+The feed states, the save and restore of the slot's step clock, and the 5 s host-silence stop are in `hardware-and-protocols.md` (Auto-feed and the slot's step clock).
+
 Registered host commands for the same module are `MCB_CONFIG`, `MCB_QUERY`, `SET_LIMIT_A`, `MCB_AUTO_START`, `MCB_AUTO_ABORT`. `MCB_AUTO_START` accepts velocity, acceleration, and maximum length per call, so the compiled motion is re-parameterisable at runtime rather than fixed.
 
 This module does not perform the primary slot load/unload motion; that motion lives in `box_stepper.so` on the host (see `hardware-and-protocols.md`).
@@ -160,7 +166,7 @@ Klipper's fault handlers fall through to a default handler that loops in place, 
 
 **Static-recovered.** The `static_string_id` enumeration is complete for the linked image: 46 reasons, ids 2 through 48.
 
-Reasons reachable from the box's own hardware surface include `ADC out of range` (the only `try_shutdown`), `Missed scheduling of next digital out event`, `Scheduled digital out event will exceed max_duration`, `Scheduled pwm event will exceed max_duration`, `Can not set soft pwm cycle ticks while updates pending`, `update_digital_out not valid with active queue`, `Move queue overflow`, `Stepper too far in past`, `Can't reset time when stepper active`, and `Can't add signal that is already active`.
+Reasons reachable from the box's own hardware surface include `ADC out of range` (the only `try_shutdown`), `Missed scheduling of next digital out event`, `Scheduled digital out event will exceed max_duration`, `Scheduled pwm event will exceed max_duration`, `Can not set soft pwm cycle ticks while updates pending`, `update_digital_out not valid with active queue`, `Stepper too far in past`, `Can't reset time when stepper active`, and `Can't add signal that is already active`.
 
 Two differences from mainline are significant:
 
@@ -168,6 +174,10 @@ Two differences from mainline are significant:
 - I2C failures no longer shut the MCU down. Mainline emits `shutdown("I2C NACK")`, `"I2C START NACK"`, `"I2C START READ NACK"`, or `"I2C Timeout"`; none of those strings exist in this image. The only two uses of the `!!warnning:%s` output are in I2C paths, carrying the literals `soft_i2c NACK` and `i2c timeout`, emitted and then ignored. Hardware I2C raises `i2c timeout` when a start condition still fails after its retries (see Stall sources below).
 
 The practical consequence is that an AHT20 or I2C bus fault on the box degrades silently instead of aborting the print, and the corresponding `verify_heater` supervision for `heater_boxN` becomes the only thing that notices.
+
+**Static-recovered.** `Move queue overflow` is an `output()` message, not a shutdown reason. `move_alloc` (`0x080095e4`) masks interrupts, and when the pool is empty it sends that output and returns NULL without unmasking them. `queue_step`, `queue_digital_out` and `queue_pwm_out` then drop the command, and interrupts stay masked until the next code that unmasks them. Mainline shuts the MCU down here. The host budgets the Box's move slots for its own commands only; auto-feed queues its chunks of up to 128 steps in the same pool. No operator `klippy.log` has a `#output: Move queue overflow` line.
+
+**Static-recovered.** `stepper_load_next` (`0x0800b400`) and the step event (`0x0800b49c`) move a step that is already due to now plus the step pulse time, so the `Stepper too far in past` shutdown (`0x0800b4f4`) can't trigger: steps scheduled in the past run back to back.
 
 ## Reset reason
 

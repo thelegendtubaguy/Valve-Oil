@@ -83,7 +83,7 @@ export function NotificationsButton() {
   const high = n.announcements.some((a) => a.priority === 'high')
   const tone = warn || high ? 'bg-accent text-on-accent' : 'bg-[var(--blue)] text-white'
   return (
-    <div className="relative" ref={ref}>
+    <div className="sm:relative" ref={ref}>
       <button type="button" className={`iconbtn ${open ? 'bg-hover text-ink' : ''}`} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-label={n.count ? t('app.notifications.title_count', { n: n.count }) : t('app.notifications.title')} title={t('app.notifications.title')}>
         <Bell size={17} />
         {n.count > 0 && <span className={`num absolute -top-0.5 -right-0.5 grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10.5px] leading-none font-bold ${tone}`} style={{ boxShadow: '0 0 0 2px var(--page)' }}>{n.count > 99 ? '99+' : n.count}</span>}
@@ -96,7 +96,7 @@ export function NotificationsButton() {
 function Panel({ n, onClose }: { n: ReturnType<typeof useNotifications>; onClose: () => void }) {
   return (
     <div
-      className="fixed inset-x-2 top-[58px] z-50 flex max-h-[calc(100dvh-140px)] flex-col overflow-hidden rounded-2xl bg-surface sm:absolute sm:inset-x-auto sm:top-[calc(100%+6px)] sm:right-0 sm:w-[420px] sm:max-h-[min(80dvh,640px)]"
+      className="absolute inset-x-2 top-[calc(100%+6px)] z-50 flex max-h-[calc(100dvh-200px)] flex-col overflow-hidden rounded-2xl bg-surface sm:inset-x-auto sm:right-0 sm:w-[420px] sm:max-h-[min(80dvh,640px)]"
       style={{ boxShadow: 'var(--shadow-overlay)' }}
       role="dialog"
       aria-label={t('app.notifications.title')}

@@ -27,7 +27,7 @@ from .errors import InstallerError
 from .naming import REPOSITORY_URL
 from .sudo import authenticate_sudo, run_sudo
 
-SYSTEM_ROOT_ENV = "TLTG_OPTIMIZED_SYSTEM_ROOT"  # system_optimizations.SYSTEM_ROOT_ENV: a test's stand-in for /
+SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"  # system_optimizations.SYSTEM_ROOT_ENV: a test's stand-in for /
 DEFAULT_PRINTER_DATA_ROOT = Path("/home/qidi/printer_data")
 RECOVERY_DOC_URL = f"{REPOSITORY_URL}/blob/main/docs/recovering-an-unbootable-printer.md"
 # Each top-level link, where it points on merged /usr, and a file only a working directory there holds: an unmerged

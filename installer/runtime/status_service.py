@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # The Valve Oil section of Fluidd and Valve Oil UI reach a package-owned status and settings service through the Fluidd
@@ -11,15 +12,15 @@ from .errors import InstallerError
 # automatic-update enrollment, and starts "update now" runs, which outlive a restart of the service.
 UNIT_OPERATION = "status_service_unit"
 SERVER_OPERATION = "status_service_server"
-UNIT = "tltg-status.service"
+UNIT = "vo-status.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
-SERVER_FILE = "/usr/local/lib/tltg_status.py"
+SERVER_FILE = "/usr/local/lib/vo_status.py"
 SERVER_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_status.py"
 LISTEN_PORT = 7133
 
 # Package-created files start with a marker line so later package versions replace earlier ones.
-SERVER_MARKER = "# tltg-optimized:status-server\n"
-UNIT_MARKER = "# tltg-optimized:status-unit\n"
+SERVER_MARKER = "# vo:status-server\n"
+UNIT_MARKER = "# vo:status-unit\n"
 
 # Restarting the unit without the server, before install or after restore, is a clean no-op. Like the add-ons
 # service, the runs it starts use sudo and write system files, so the unit has no sandboxing; KillMode=process lets a
@@ -54,12 +55,12 @@ def server_source() -> str:
         raise InstallerError(f"Status service is missing from the package: {exc}") from exc
     if not source.startswith(SERVER_MARKER):
         raise InstallerError("Status service payload lacks its package marker.")
-    compile(source, "tltg_status.py", "exec")
+    compile(source, "vo_status.py", "exec")
     return source
 
 
 def _patch_created(current: str, desired: str, marker: str, name: str) -> str:
-    if current == "" or current.startswith(marker):
+    if current == "" or has_marker(current, marker):
         return desired
     raise InstallerError(f"Existing {name} is unrecognized and was preserved.")
 

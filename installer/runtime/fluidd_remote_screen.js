@@ -2,8 +2,8 @@
 // fluidd_box_filaments.py inserts this file verbatim into the bundle's module scope just before the Dashboard view
 // registers its cards, so it may use that bundle's minified names: Xe CollapsableCard, R AppBtn, x VIcon,
 // rt Moonraker HTTP actions. Do not declare local names that shadow them. The card talks only to the package's
-// screen service through nginx at /tltg-screen/ws, and only while it is expanded in a visible tab.
-const TltgScreenCard = (() => {
+// screen service through nginx at /vo-screen/ws, and only while it is expanded in a visible tab.
+const VoScreenCard = (() => {
   const RETRY_DELAYS = [1000, 2000, 5000, 10000];
   const MOVE_INTERVAL = 30;
   const CONFIRM_CONTROL =
@@ -11,7 +11,7 @@ const TltgScreenCard = (() => {
     "Turn control on?";
 
   const View = {
-    name: "TltgScreenView",
+    name: "VoScreenView",
     props: { control: Boolean },
     data: () => ({
       state: "connecting",
@@ -62,7 +62,7 @@ const TltgScreenCard = (() => {
     methods: {
       // The service only accepts same-origin connections, so connect through the nginx serving this page.
       socketUrl(token) {
-        const url = new URL("tltg-screen/ws", window.location.origin + "/");
+        const url = new URL("vo-screen/ws", window.location.origin + "/");
         url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         if (token) url.search = "?token=" + encodeURIComponent(token);
         return url.toString();
@@ -316,10 +316,10 @@ const TltgScreenCard = (() => {
   };
 
   return {
-    name: "TltgScreenCard",
+    name: "VoScreenCard",
     data: () => ({ collapsed: true, control: false, touch: false }),
     errorCaptured(error) {
-      console.error("[tltg] Printer screen card failed", error);
+      console.error("[Valve Oil] Printer screen card failed", error);
       return false;
     },
     methods: {
@@ -362,7 +362,7 @@ const TltgScreenCard = (() => {
             icon: "$screenshot",
             lazy: false,
             draggable: true,
-            "layout-path": "dashboard.tltg-screen-card"
+            "layout-path": "dashboard.vo-screen-card"
           },
           on: { collapsed: this.onCollapsed },
           scopedSlots: {

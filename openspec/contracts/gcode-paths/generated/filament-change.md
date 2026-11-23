@@ -127,7 +127,7 @@ Direct visible macro calls in branch slice:
 
 Ordered invariants:
 
-- `printer.print_stats.state == "printing" and printer.tltg_macro_status.vendor_flow`
+- `printer.print_stats.state == "printing" and printer.vo_macro_status.vendor_flow`
 - `{% if not vendor_flow_cuts %}`
 - `_VO_CUT_FILAMENT_MOTION`
 - `{% else %}`
@@ -235,7 +235,7 @@ Ordered invariants:
 - `SAVE_GCODE_STATE NAME=vo_unload_filament_state`
 - `G90`
 - `M83`
-- `{% if printer.tltg_macro_status.vendor_flow %}`
+- `{% if printer.vo_macro_status.vendor_flow %}`
 - `UNLOAD_FILAMENT T={T}`
 - `{% else %}`
 - `CUT_FILAMENT T={T}`

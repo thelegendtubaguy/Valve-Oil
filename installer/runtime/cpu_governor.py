@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .errors import InstallerError
+from .naming import has_marker
 
 
 # QIDI's Debian cpufrequtils service sets the ondemand governor at boot, which samples every 10 ms and raises the
@@ -11,7 +12,7 @@ OPERATION = "cpu_performance"
 FILE = "/etc/default/cpufrequtils"
 SERVICE = "cpufrequtils.service"
 # Package-created files start with a marker line so later package versions replace earlier ones.
-MARKER = "# tltg-optimized:cpu-performance\n"
+MARKER = "# vo:cpu-performance\n"
 CONTENT = MARKER + """\
 # Runs the CPU at full speed. Installed by Valve Oil.
 ENABLE="true"
@@ -22,6 +23,6 @@ MIN_SPEED="0"
 
 
 def patch_defaults(current: str) -> str:
-    if current == "" or current.startswith(MARKER):
+    if current == "" or has_marker(current, MARKER):
         return CONTENT
     raise InstallerError(f"Existing {FILE} is unrecognized and was preserved.")

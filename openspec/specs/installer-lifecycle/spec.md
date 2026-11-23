@@ -13,7 +13,7 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **WHEN** installation starts on firmware declared for a printer in `installer/package.yaml`
 - **THEN** exactly one complete firmware-scoped variant is selected for every required target
 - **AND** configuration, managed-source expectations, and stock snapshots come from that printer's baseline
-- **AND** the managed macro tree is the common optimized macros plus that printer's macro folder, which provides the same macro names on every printer and no file that the common macros also provide
+- **AND** the managed macro tree is the common Valve Oil macros plus that printer's macro folder, which provides the same macro names on every printer and no file that the common macros also provide
 
 #### Scenario: Firmware naming another printer is refused
 - **WHEN** the firmware manifest's SOC file name does not carry the model prefix of a printer that lists the detected firmware under its key
@@ -35,7 +35,7 @@ The installer SHALL identify the printer from its detected supported firmware, s
 - **AND** unowned live content is preserved
 
 #### Scenario: Legacy installation is migrated conservatively
-- **WHEN** legacy optimized markers exist without valid installer state
+- **WHEN** legacy Valve Oil markers exist without valid installer state
 - **THEN** migration requires an idle printer and a validated stock snapshot for the detected firmware
 - **AND** vendor-managed, user-specific, and sensitive configuration remains preserved
 
@@ -51,7 +51,7 @@ Every installer launcher, including the release download, automatic updates, res
 
 #### Scenario: Files an earlier root run left are given back
 - **WHEN** any launcher run other than a dry run or Box firmware status starts, before it takes the installer lock or reads installer state
-- **THEN** every path named `tltg` or `.tltg` in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
+- **THEN** every path named `vo_`, `vo-`, `.vo_`, or `.vo-`, or `tltg` or `.tltg` as releases before 26.11.22.3 named them, in `printer_data`, its `config` folder, the home folder, and Klipper's `klippy/extras`, and everything below those paths, that is not owned by the `printer_data` owner is changed to that user and the user's primary group, without following symbolic links
 - **AND** QIDI's files, including root-owned ones, are not changed
 - **AND** nothing runs through sudo when every such path already belongs to the user
 - **AND** the run stops before taking the lock when sudo can't make the change
@@ -108,6 +108,8 @@ Install, reinstall, restore, and uninstall SHALL execute as serialized, idle-pri
 - **THEN** it validates printer idleness after confirmation and before replacing live runtime state, including for config-only archives
 - **AND** printing, paused, unknown, or unavailable printer state prevents live replacement
 - **AND** archived configuration and eligible external members are staged before replacing live runtime state
+- **AND** a running Klipper service is stopped before live runtime state is replaced and started again afterwards, also when the restore fails, so Klipper loads the restored saved variables instead of rewriting them from memory
+- **AND** a Klipper service that cannot be stopped prevents live replacement
 - **AND** partial failure restores the pre-restore state
 - **AND** every restored root is verified before success and recovery remains blocked until incomplete compensation is resolved
 
@@ -214,8 +216,8 @@ The installer SHALL keep an available QIDI Box usable without claiming ownership
 - **AND** a write Moonraker accepted but Klipper has not answered within 10 seconds, as while QIDI's start-up Box check holds the G-code queue, is not sent again: the operator is told the installer is waiting, and the install fails only when the live value has not appeared after 10 minutes
 - **AND** saved-variable changes are excluded from installer ownership and uninstall
 
-### Requirement: Default optimized preferences preserve operator values
-The installer SHALL initialize absent optimized saved-variable preferences to release defaults without replacing operator-controlled values.
+### Requirement: Default Valve Oil preferences preserve operator values
+The installer SHALL initialize absent Valve Oil saved-variable preferences to release defaults without replacing operator-controlled values.
 
 #### Scenario: Absent retention preference receives the installed default
 - **WHEN** install or update finds no `vo_keep_loaded_between_prints` entry in Klipper saved variables
@@ -315,12 +317,12 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 Normal install and update SHALL apply recognized Moonraker metadata optimizations independently of optional OS optimization policy, retain original source preimages, and preserve unrecognized or operator-modified source.
 
 #### Scenario: Multi-plate 3MF metadata follows the selected plate
-- **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive
+- **WHEN** Valve Oil's metadata extractor reads a `.gcode.3mf` archive
 - **THEN** G-code, metadata, and thumbnail selection use its valid selected plate index
 - **AND** missing or invalid plate metadata falls back to plate 1
 
 #### Scenario: File metadata names the filaments a print uses
-- **WHEN** the optimized metadata extractor reads a `.gcode.3mf` archive whose selected plate lists its filaments in the slice information
+- **WHEN** Valve Oil's metadata extractor reads a `.gcode.3mf` archive whose selected plate lists its filaments in the slice information
 - **THEN** `used_extruders` holds those filaments as zero-based tools, whatever the plate's `plate_N.json` lists
 - **AND** a plate without filaments in the slice information keeps the `plate_N.json` list
 - **AND** a G-code file without a `; used_extruders` line names every filament its `; filament used [mm]` footer gives a nonzero length
@@ -377,7 +379,7 @@ The installer SHALL install the package's Moonraker fixes module into QIDI's Moo
 - **AND** a file changed after install is preserved and reported
 
 ### Requirement: Moonraker speedup packages
-The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for the optimized status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
+The installer SHALL make the `msgspec` and `uvloop` packages that QIDI's Moonraker already uses when importable available to it, and the same packages to QIDI's Klipper for Valve Oil's status encoding, from pinned, checksum-verified wheels in the release bundle, without replacing anything in QIDI's Moonraker or Klipper virtualenv, and SHALL keep the change reversible.
 
 #### Scenario: Packages are added beside QIDI's virtualenv
 - **WHEN** the bundle carries the pinned wheels and QIDI's Python 3.9 Moonraker virtualenv exists
@@ -499,7 +501,7 @@ Fluidd SHALL show the bed mesh card on the Tune page and temperature sensors wit
 - **AND** a value saved from Fluidd's settings, including off, still applies
 
 ### Requirement: QIDI filament database in Fluidd
-Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying or backing up the database files. Their contents SHALL change only by the optimized configuration adding missing catalog filaments.
+Normal install and update SHALL expose QIDI's touchscreen filament database directory as `config/qidi_filament_config` in Fluidd's configuration files, independently of optional OS optimization policy, without copying or backing up the database files. Their contents SHALL change only by Valve Oil's configuration adding missing catalog filaments.
 
 #### Scenario: Link is created where the database exists
 - **WHEN** the QIDI filament database directory exists and `config/qidi_filament_config` is absent
@@ -522,7 +524,7 @@ Normal install and update SHALL expose QIDI's touchscreen filament database dire
 The update check SHALL be scheduled on every installation. Installing a release, starting a firmware update, or flashing a board unattended SHALL require durable operator enrollment; without it the check only publishes what is waiting. Unattended work SHALL use the same admission, ownership, recovery, activation, and persisted host-policy rules as direct installation, and advance release state only after successful activation.
 
 #### Scenario: Enrolled release installation is idle and integrity checked
-- **WHEN** an enrolled updater observes a new release checksum, a published release newer than the installed one, or missing or drifted optimized installation state
+- **WHEN** an enrolled updater observes a new release checksum, a published release newer than the installed one, or missing or drifted Valve Oil installation state
 - **THEN** update proceeds only while the printer is idle, with Klipper ready, no print running or paused, and every heater target 0, and after archive integrity and path safety are verified
 - **AND** missing or drifted state runs the current release installer even when its checksum is unchanged
 - **AND** the release is downloaded and unpacked under the installer's cache in the printer user's home, never `/tmp`, and nothing of the download is left once the bundle is in place or the attempt fails
@@ -534,7 +536,7 @@ The update check SHALL be scheduled on every installation. Installing a release,
 - **WHEN** release discovery fails, durable enrollment is absent, activation remains pending, or child installation fails
 - **THEN** no release is falsely recorded as installed and no reboot is scheduled
 - **AND** absent enrollment records the fetched checksum without installing whether checksum state is missing or changed
-- **AND** a matching enrolled release reports current only after critical optimized installation state passes verification
+- **AND** a matching enrolled release reports current only after critical Valve Oil installation state passes verification
 - **AND** an already-current release reconciles the OS optimizations while idle
 
 #### Scenario: Update plumbing is ownership-bound
@@ -637,11 +639,11 @@ The THR transfer SHALL require supported firmware, idle ready state, zero heater
 - **THEN** it reports the proposed THR work without service changes, serial access, or firmware backup creation
 
 ### Requirement: Package-owned Klipper extra modules
-Install and update SHALL place each bundled package-owned Klipper extra module, together with the optimized configuration section that loads it, and uninstall SHALL remove the module only when it still matches the bundled payload.
+Install and update SHALL place each bundled package-owned Klipper extra module, together with Valve Oil's configuration section that loads it, and uninstall SHALL remove the module only when it still matches the bundled payload.
 
 #### Scenario: Install places and verifies the module
 - **WHEN** install or update runs, including an automatic update and an install that skips optional OS optimizations
-- **THEN** each bundled extra module, including the probe diagnostic helper, is written atomically to its `klippy/extras/tltg_*.py` destination and verified against the bundled payload before the configuration that loads it is written
+- **THEN** each bundled extra module, including the probe diagnostic helper, is written atomically to its `klippy/extras/vo_*.py` destination and verified against the bundled payload before the configuration that loads it is written
 - **AND** an identical installed module is left unchanged
 
 #### Scenario: Changed module code needs a replacement process
@@ -656,7 +658,7 @@ Install and update SHALL place each bundled package-owned Klipper extra module, 
 
 #### Scenario: Uninstall respects modified modules
 - **WHEN** uninstall runs
-- **THEN** an installed extra module that matches the bundled payload is removed along with the optimized configuration that loads it
+- **THEN** an installed extra module that matches the bundled payload is removed along with Valve Oil's configuration that loads it
 - **AND** a modified module is left in place
 
 ### Requirement: QIDI Box motion settings in Fluidd
@@ -1097,9 +1099,9 @@ Normal install and update SHALL patch QIDI's Moonraker Spoolman component, indep
 - **THEN** its Spoolman websocket is opened without keepalive pings
 
 #### Scenario: A spool picked in Fluidd is the loaded slot's spool
-- **WHEN** a client sets the active spool through Moonraker's Spoolman endpoint and Klipper reports a loaded slot through `tltg_spoolman`
+- **WHEN** a client sets the active spool through Moonraker's Spoolman endpoint and Klipper reports a loaded slot through `vo_spoolman`
 - **THEN** Moonraker passes the spool to `VO_SPOOLMAN_SLOT` for that slot without delaying the response
-- **AND** nothing is sent to Klipper when it has no `tltg_spoolman` object or no loaded slot
+- **AND** nothing is sent to Klipper when it has no `vo_spoolman` object or no loaded slot
 
 #### Scenario: Unrecognized Spoolman sources are preserved
 - **WHEN** Moonraker's Spoolman component is missing or does not contain the reviewed source
@@ -1163,7 +1165,7 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 
 #### Scenario: Install finds a Box it doesn't support yet
 - **WHEN** an update of an existing installation leaves a USB Box unchanged because its bootloader or firmware is not admitted, or an automatic update skips it for an earlier such capture
-- **THEN** the capture's shareable summary is copied to Klipper's log folder as `tltg_box_firmware_box<N>.json`, and from Klipper's next start `tltg_printer_warnings.warnings` lists a `warning` entry for that Box that names the file and where to open a support issue
+- **THEN** the capture's shareable summary is copied to Klipper's log folder as `vo_box_firmware_box<N>.json`, and from Klipper's next start `vo_printer_warnings.warnings` lists a `warning` entry for that Box that names the file and where to open a support issue
 - **AND** the copy, and with it the warning, is removed once an install finds that Box on the bundled firmware or the Box is no longer in `box.cfg`
 
 #### Scenario: Install's Box flash fails
@@ -1171,7 +1173,7 @@ When the install's Box flow stops before any Box write, the install SHALL still 
 - **THEN** the install fails, Klipper, the touchscreen, and the automatic-update timer stay stopped, and the output names the `rescue` command
 
 ### Requirement: Optional add-ons
-The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/vo-addons/`, its systemd unit, and, for an add-on that needs a kernel module QIDI's kernel lacks, its root-owned directory under `/usr/local/lib/tltg-addons/`. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
+The package SHALL let the operator install, update, and remove the add-ons pinned in `installer/package.yaml` (`addons:`) from Fluidd or `addons.sh`, changing nothing on the host but each add-on's directories under `~/vo-addons/`, its systemd unit, and, for an add-on that needs a kernel module QIDI's kernel lacks, its root-owned directory under `/usr/local/lib/vo-addons/`. Add-ons MUST NOT install system packages, change `printer_data/config`, or add Moonraker update-manager sections.
 
 #### Scenario: An add-on installs offline into its own directories
 - **WHEN** the operator installs an add-on while no print is running or paused and Klipper is not running G-code such as a calibration, whether or not a heater is on
@@ -1346,17 +1348,39 @@ Where QIDI's firmware installs its dhcpcd exit hook that writes `/etc/resolv.con
 - **WHEN** it applies them on firmware without the hook
 - **THEN** it adds the fallback DNS servers as before, and uninstall can restore their preimages
 
+### Requirement: Earlier tltg names move to vo names
+Every installer run SHALL first move what releases before 26.11.22.3 named `tltg` in `printer_data` to its `vo` name, rewriting the paths that installed state and recovery records hold, and SHALL point `printer.cfg` at `vo-macros/`. Install and uninstall SHALL remove the earlier services, units, host files, Klipper modules, and package folders, each only when it carries the package's marker, once their replacements are in place.
+
+#### Scenario: An update from an earlier release
+- **WHEN** an install runs on a printer an earlier release left under its `tltg` names
+- **THEN** its state, records, backups, and settings move to their `vo` names, and the update proceeds from them as from this release's own
+- **AND** `printer.cfg` includes `vo-macros/*.cfg` instead of `tltg-optimized-macros/*.cfg`, and the earlier Klipper modules are removed once the macros that load the new ones are in place, within the install's rollback
+- **AND** the earlier units stop before their replacements start, except the update check's service, which may be the run that started the install, and zram swap, whose replacement keeps swap that is on
+- **AND** the earlier Fluidd, Valve Oil UI, and speedups folders are removed once nothing serves or imports them
+- **AND** what the package wrote into QIDI's and Moonraker's files under the earlier names is recognized as the package's and rewritten
+- **AND** pages loaded before the update reach `/tltg-status/`, `/tltg-addons/`, and `/tltg-screen/` at their `vo` routes
+
+#### Scenario: An earlier release's update check runs the install
+- **WHEN** an earlier release's update check or Update now starts the install, holding only the earlier installer lock and passing the earlier environment names
+- **THEN** the install takes this release's lock and reads the earlier environment names
+- **AND** it keeps the earlier run's status and update-check state under their earlier names for that run, records the run's result under the current names itself, and the next run takes what that run wrote
+
+#### Scenario: A firmware update an earlier release started
+- **WHEN** a QIDI firmware update an earlier release started hasn't finished
+- **THEN** nothing is moved, and the run says to restart the printer so that release finishes it
+
 ### Requirement: The installer lives in ~/valve-oil
-The installed bundle SHALL be the `valve-oil` folder in the printer user's home, and an install SHALL replace the `tltg-optimized-macros` folder earlier releases installed with a link to it.
+The installed bundle SHALL be the `valve-oil` folder in the printer user's home. An install SHALL replace the `tltg-optimized-macros` folder releases up to 26.11.12.2 installed with a link to it, and the next run SHALL remove that link.
 
 #### Scenario: A release is downloaded
 - **WHEN** `install-latest.sh` or an update check of this release installs a release
-- **THEN** the archive has `valve-oil/` at its root and unpacks to `~/valve-oil`, and the ownership repair covers that folder as it covers paths named `tltg`
+- **THEN** the archive has `valve-oil/` at its root and unpacks to `~/valve-oil`, and the ownership repair covers that folder as it covers the package's other paths
 - **AND** a release also publishes `tltg-optimized-macros.tar.gz` with `tltg-optimized-macros/` at its root, which the update check of releases up to 26.11.12.2 downloads and accepts
 
 #### Scenario: An install runs where an earlier release installed
 - **WHEN** an install or update, automatic ones and the install a QIDI firmware update runs included, ends successfully on a printer with a `~/tltg-optimized-macros` folder
 - **THEN** `~/valve-oil` holds the running bundle, and `~/tltg-optimized-macros` becomes a link to it once it does, so a process still running from the earlier folder reads the same files
+- **AND** the next run removes the link, since nothing runs from the earlier folder by then
 - **AND** an update check running from the earlier folder, left by an install that stopped first, still installs the release
 
 ### Requirement: Valve Oil's boot screen

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
+import os
 import sys
+import tempfile
 import threading
 import types
 import unittest
 from unittest import mock
 
 from installer.tests.helpers import REPO_ROOT, load_source
-from installer.tests.klipper_fakes import CommandError, load_extra
+from installer.tests.klipper_fakes import FEED_TIME, BoxAutoFeed, CommandError, Reactor, load_extra
 
 cold_cut = load_extra("cold_cut")
 
@@ -17,6 +20,7 @@ cold_cut = load_extra("cold_cut")
 sys.modules.setdefault("greenlet", types.SimpleNamespace(getcurrent=lambda: None))
 box_flow_recovery = load_extra("box_flow_recovery")
 exclude_object = load_source("klipper_exclude_object", REPO_ROOT / "installer/tests/fixtures/klipper_exclude_object.py")
+virtual_sdcard = load_source("klipper_virtual_sdcard", REPO_ROOT / "installer/tests/fixtures/klipper_virtual_sdcard.py")
 
 MIN_EXTRUDE_TEMP = 135.
 
@@ -458,7 +462,7 @@ class ColdBoxFlowTest(unittest.TestCase):
         controller = Controller(gcode, flow, unload_failures, unload_errors)
         printer.objects["multi_color_controller"] = controller
         config = types.SimpleNamespace(get_printer=lambda: printer)
-        printer.objects["tltg_cold_cut"] = cold_cut.ColdCut(config)
+        printer.objects["vo_cold_cut"] = cold_cut.ColdCut(config)
         printer.objects["toolhead"].get_status = lambda e: {"max_accel": 20000.}
         printer.register_event_handler = lambda event, handler: None
         recovery = box_flow_recovery.BoxFlowRecovery(config)
@@ -528,6 +532,8 @@ class BoxStepper:
     toolhead sensor detects filament, up to seven, and three attempts in all
     before QDE_004_008. The Box pulls only once the sensor is clear."""
 
+    stepper_name = "slot2"
+
     def __init__(self, printer, gcode, clears_after, pull="G1 E-10 F300"):
         self.printer = printer
         self.gcode = gcode
@@ -536,11 +542,22 @@ class BoxStepper:
         self.box_pulls = 0
         self.start = None
         self.runout_helper = self
+        # Tied to the extruder by QIDI's slot_sync, and on in Klipper's motor tracking.
+        self.sync_extruder_bind_stepper = False
+        self.enabled = False
 
     @property
     def filament_present(self):
         pulled = -sum(self.printer.moves[self.start:]) if self.start is not None else 0.
         return int(self.clears_after is None or pulled < self.clears_after)
+
+    def sync_unbind_extruder(self):
+        if self.sync_extruder_bind_stepper:
+            self.sync_extruder_bind_stepper = False
+            self.extruder_stepper.sync_to_extruder("")
+
+    def disable_stepper(self):
+        self.enabled = False
 
     def extruder_unload_single_func(self):
         self.start = len(self.printer.moves)
@@ -549,7 +566,9 @@ class BoxStepper:
         extruder_stepper = getattr(self, "extruder_stepper", None)
         if extruder_stepper is not None:
             self.printer.lookup_object("box_autofeed").auto_abort()
+            self.sync_extruder_bind_stepper = True
             extruder_stepper.sync_to_extruder("extruder")
+            self.enabled = True
         sensor = self.printer.lookup_object(box_flow_recovery.TOOLHEAD_SENSOR)
         for attempt in range(3):
             if attempt:
@@ -564,30 +583,94 @@ class BoxStepper:
             if not sensor.runout_helper.filament_present:
                 self.box_pulls += 1
                 self.printer.objects["box_extras"].b_endstop_state = 1
+                if extruder_stepper is not None:
+                    self.sync_unbind_extruder()
+                    self.disable_stepper()
                 return True
         self.gcode.run_script_from_command("MOVE_TO_TRASH\nM400")
         self.gcode.respond_info("Code:QDE_004_008; Message:Extruder unloading failure.")
+        if extruder_stepper is not None:
+            self.sync_unbind_extruder()
+            self.disable_stepper()
         return False
 
 
-class ToolheadUnloadTest(unittest.TestCase):
-    """Filament caught at the toolhead stops a Box unload 20 mm past its
-    pull-back, instead of three rounds of pull-backs, and a tool change
-    that QIDI's auto-reload bug stops says which slot ran out."""
+class BoxMcu:
+    def __init__(self, name):
+        self.name = name
+
+    def get_name(self):
+        return self.name
+
+
+class SlotStepper:
+    """Klipper's MCU_stepper of a Box slot: resetting its step clock, as a homing end does, goes to its Box."""
+
+    def __init__(self, printer, name, mcu):
+        self.printer, self.name, self.mcu = printer, name, mcu
+
+    def get_mcu(self):
+        return self.mcu
+
+    def note_homing_end(self):
+        self.printer.lookup_object("box_autofeed").reset_step_clock(self.name)
+
+
+class ExtruderStepper:
+    """QIDI's slot extruder_stepper; notes the slot's step clock on its Box whenever it is tied to the extruder."""
+
+    def __init__(self, printer, stepper):
+        self.printer, self.stepper = printer, stepper
+        self.synced = None
+        self.at_sync = []
+
+    def sync_to_extruder(self, name):
+        self.synced = name or None
+        if name:
+            autofeed = self.printer.lookup_object("box_autofeed")
+            self.at_sync.append((autofeed.offset(self.stepper.name), autofeed.device(self.stepper.name).state))
+
+
+def qidi_box(printer, stepper, reactor):
+    """QIDI's auto-feed for the slot STEPPER unloads (slot2 on Box 1) and slot5 on Box 2."""
+    box1, box2 = (BoxMcu("mcu_box%d" % number) for number in (1, 2))
+    stepper.extruder_stepper = ExtruderStepper(printer, SlotStepper(printer, "slot2", box1))
+    stepper.stepper = stepper.extruder_stepper.stepper
+    other = types.SimpleNamespace(stepper_name="slot5", stepper=SlotStepper(printer, "slot5", box2))
+    autofeed = printer.objects["box_autofeed"] = BoxAutoFeed(reactor, {"slot2": stepper, "slot5": other})
+    return autofeed, other
+
+
+def arm(autofeed, box_stepper):
+    """QIDI's slot_sync(True): arm auto-feed on the slot."""
+    autofeed.auto_start(40, 40, 18, 1, box_stepper)
+
+
+class BoxUnloadSetup:
+    """An idle printer with Valve Oil's flow recovery on QIDI's Box flows, slot2 at the toolhead."""
 
     def setUp(self) -> None:
         logging.disable(logging.CRITICAL)
         self.addCleanup(logging.disable, logging.NOTSET)
 
-    def setup(self, clears_after, print_state="standby", **stepper):
+    def setup(self, clears_after, print_state="standby", box=False, objects=None, **stepper):
         printer = Printer(260., print_state=print_state)
+        reactor = self.reactor = Reactor()
+        reactor.on_pause = lambda waketime: setattr(reactor, "now", max(reactor.now, waketime))
+        printer.get_reactor = lambda: reactor
         gcode = printer.objects["gcode"] = Dispatcher(printer)
         controller = Controller(gcode, 3)
         manager = controller.task_queue_manager
         stepper = manager.stepper = BoxStepper(printer, gcode, clears_after, **stepper)
+        if box:
+            printer.objects["toolhead"].wait_moves = lambda: None
+            printer.objects["toolhead"].flush_step_generation = lambda: None
+            self.autofeed, self.other = qidi_box(printer, stepper, reactor)
+            gcode.handlers["SET_LIMIT_A"] = self.autofeed.cmd_SET_LIMIT_A
         printer.objects["multi_color_controller"] = controller
         printer.objects[box_flow_recovery.TOOLHEAD_SENSOR] = stepper
         printer.objects["box_extras"] = types.SimpleNamespace(b_endstop_state=0)
+        printer.objects.update(objects or {})
         printer.lookup_objects = lambda prefix: [("box_stepper slot2", stepper)]
         printer.register_event_handler = lambda event, handler: None
         gcode.handlers["PAUSE"] = lambda gcmd: gcode.sent.append("PAUSED")
@@ -605,6 +688,56 @@ class ToolheadUnloadTest(unittest.TestCase):
     def unload(self, gcode):
         gcode.handlers["UNLOAD_FILAMENT_CONTROL"](FilamentCommand(SLOT=2))
 
+
+class AutoFeedArmTest(BoxUnloadSetup, unittest.TestCase):
+    """QIDI arming auto-feed on a slot whose Box is feeding, as print start's tool change does after the purge,
+    leaves the slot's step clock where Klipper has it."""
+
+    def test_qidi_arm_keeps_the_slots_step_clock_whatever_the_box_is_doing(self) -> None:
+        for name, since_feed in (("feeding", FEED_TIME / 2), ("in the 10 ms after a feed", FEED_TIME + .005),
+                                 ("between feeds", None)):
+            with self.subTest(name):
+                printer, gcode, manager, stepper = self.setup(40., box=True)
+                autofeed = self.autofeed
+                arm(autofeed, stepper)
+                autofeed.buffer(True)
+                if since_feed is None:
+                    autofeed.buffer(False)
+                    since_feed = 2 * FEED_TIME
+                self.reactor.now += since_feed
+                arm(autofeed, stepper)
+                autofeed.buffer(False)
+                self.reactor.now += 2 * FEED_TIME
+                self.assertEqual(autofeed.offset("slot2"), 0.)
+                self.assertEqual((autofeed.bind_stepper, autofeed.device("slot2").state), ("slot2", 1))
+                self.assertFalse(autofeed.box_shut_down)
+
+    def test_other_wrappers_of_qidis_arm_still_run(self) -> None:
+        printer, gcode, manager, stepper = self.setup(40., box=True)
+        autofeed, calls = self.autofeed, []
+        inner = autofeed.auto_start
+        autofeed.auto_start = lambda *args: (calls.append(args[4].stepper_name), inner(*args))[1]
+        arm(autofeed, stepper)
+        self.assertEqual(calls, ["slot2"])
+        self.assertEqual(autofeed.bind_stepper, "slot2")
+        self.assertGreater(autofeed.aborts, 0)
+
+    def test_arm_where_klipper_cant_wait_is_left_as_qidis(self) -> None:
+        # Klipper's reactor can't pause in the serial reader's thread.
+        printer, gcode, manager, stepper = self.setup(40., box=True)
+        autofeed, now = self.autofeed, self.reactor.now
+        thread = threading.Thread(target=arm, args=(autofeed, stepper))
+        thread.start()
+        thread.join()
+        self.assertEqual(autofeed.bind_stepper, "slot2")
+        self.assertEqual((autofeed.aborts, self.reactor.now), (0, now))
+
+
+class ToolheadUnloadTest(BoxUnloadSetup, unittest.TestCase):
+    """Filament caught at the toolhead stops a Box unload 20 mm past its
+    pull-back, instead of three rounds of pull-backs, and a tool change
+    that QIDI's auto-reload bug stops says which slot ran out."""
+
     def test_filament_that_clears_within_two_pulls_unloads_as_qidis_does(self) -> None:
         for clears_after, pulls in ((40., []), (95., [-10.]), (105., [-10., -10.])):
             with self.subTest(clears_after=clears_after):
@@ -615,7 +748,7 @@ class ToolheadUnloadTest(unittest.TestCase):
                 self.assertIsNone(manager.current_task)
 
     def test_caught_filament_stops_the_idle_unload_before_the_box_pulls(self) -> None:
-        printer, gcode, manager, stepper = self.setup(None)
+        printer, gcode, manager, stepper = self.setup(None, box=True)
         with self.assertRaises(CommandError) as caught:
             self.unload(gcode)
         self.assertEqual(printer.moves, [-30., -55., -10., -10.])
@@ -627,11 +760,17 @@ class ToolheadUnloadTest(unittest.TestCase):
         self.assertIn("FLOW_RETRY", message)
         self.assertTrue(manager.current_task.is_paused)
         self.assertEqual(manager.current_task.current_step, "BOX_UNLOAD")
+        # Through the pause the slot is neither tied to the extruder nor held on in Klipper, as after QIDI's own
+        # cleanup, so Klipper switches it on again for its next move.
+        self.assertIsNone(stepper.extruder_stepper.synced)
+        self.assertFalse(stepper.sync_extruder_bind_stepper)
+        self.assertFalse(stepper.enabled)
         # Freed by hand, the retry unloads it.
         stepper.clears_after = 0.
         gcode.handlers["FLOW_RETRY"](FilamentCommand())
         self.assertEqual(stepper.box_pulls, 1)
         self.assertIsNone(manager.current_task)
+        self.assertEqual(len(stepper.extruder_stepper.at_sync), 2)
 
     def test_caught_filament_in_a_tool_change_pauses_the_print(self) -> None:
         printer, gcode, manager, stepper = self.setup(None, print_state="printing")
@@ -652,35 +791,46 @@ class ToolheadUnloadTest(unittest.TestCase):
         self.assertIn("didn't move the extruder for the 105 mm", message)
         self.assertNotIn("Something is holding", message)
 
-    def test_slot_step_clock_is_reset_with_auto_feed_aborted_before_the_pull_back(self) -> None:
-        printer, gcode, manager, stepper = self.setup(40.)
-        events = []
+    def test_unload_pulls_back_with_its_slots_box_idle_and_step_clock_reset(self) -> None:
+        def feeding(autofeed, stepper, other):
+            arm(autofeed, stepper)
+            autofeed.buffer(True)
+            self.reactor.now += FEED_TIME / 2
 
-        class ExtruderStepper:
-            def __init__(self):
-                self.stepper = types.SimpleNamespace(note_homing_end=lambda: events.append("reset clock"))
+        def feed_just_ended(autofeed, stepper, other):
+            # QIDI's abort in the 10 ms after a feed's last step only switches the motor off, and the Box then
+            # starts the next feed itself while the buffer wants one.
+            arm(autofeed, stepper)
+            autofeed.buffer(True)
+            self.reactor.now += FEED_TIME + .005
 
-            def sync_to_extruder(self, name):
-                events.append("sync %s" % (name,))
+        def armed(autofeed, stepper, other):
+            arm(autofeed, stepper)
+            autofeed.buffer(False)
 
-        stepper.extruder_stepper = ExtruderStepper()
-        printer.objects["box_autofeed"] = types.SimpleNamespace(auto_abort=lambda: events.append("abort feed"))
-        printer.objects["toolhead"].wait_moves = lambda: events.append("wait moves")
-        printer.objects["toolhead"].flush_step_generation = lambda: None
-        gcode.handlers["SET_LIMIT_A"] = lambda gcmd: events.append("no feed signal" if gcmd.get("STATE") == "0" else gcmd.line)
-        real_move = printer.move
-        printer.move = lambda e: (events.append("pull"), real_move(e))
-        for unloads in (1, 2):
-            events.clear()
-            self.unload(gcode)
-            first_pull = events.index("pull")
-            self.assertEqual(events[:first_pull], ["abort feed", "wait moves", "no feed signal", "abort feed", "abort feed",
-                                                   "reset clock", "sync extruder"])
-            self.assertEqual(stepper.box_pulls, unloads)
-        # The hook is gone after the unload.
-        self.assertNotIn("sync_to_extruder", vars(stepper.extruder_stepper))
+        def other_box_set_up_last(autofeed, stepper, other):
+            # QIDI's abort, and MCB_AUTO_ABORT, then reach Box 2 while Box 1 feeds the slot being unloaded.
+            feeding(autofeed, stepper, other)
+            arm(autofeed, other)
 
-    def test_unload_log_counts_the_box_buffer_feeds_before_and_during_it(self) -> None:
+        for before in (feeding, feed_just_ended, armed, other_box_set_up_last):
+            with self.subTest(before.__name__):
+                printer, gcode, manager, stepper = self.setup(40., box=True)
+                autofeed = self.autofeed
+                before(autofeed, stepper, self.other)
+                buffer = autofeed.limit_a_state
+                self.unload(gcode)
+                self.assertEqual(stepper.box_pulls, 1)
+                # Tied to the extruder with nothing stepping it on the Box and its clock Klipper's.
+                self.assertEqual(stepper.extruder_stepper.at_sync, [(0., 0)])
+                self.assertFalse(autofeed.box_shut_down)
+                # QIDI's next arm tells the Box what the buffer switch last said.
+                self.assertEqual(autofeed.limit_a_state, buffer)
+                arm(autofeed, stepper)
+                self.assertEqual(autofeed.device("slot2").limit, buffer)
+                self.assertNotIn("sync_to_extruder", vars(stepper.extruder_stepper))
+
+    def test_unload_log_counts_the_box_feeds_before_and_during_it(self) -> None:
         logging.disable(logging.NOTSET)
         root = logging.getLogger()
         lines = []
@@ -690,12 +840,18 @@ class ToolheadUnloadTest(unittest.TestCase):
         self.addCleanup(root.removeHandler, capture)
         self.addCleanup(root.setLevel, root.level)
         root.setLevel(logging.INFO)
-        printer, gcode, manager, stepper = self.setup(40.)
-        feed = "[MCB] limit_a_event: raw_state=0 normalized=1"
-        for _ in range(3):
-            logging.info(feed)
-            logging.info("[MCB] limit_a_event: raw_state=1 normalized=0")
-        stepper.during_unload = lambda: logging.info(feed)
+        # vo_box_watch counts the feeds each Box starts; QIDI keeps what it last read from the buffer switch.
+        boxes = {"mcu_box1": types.SimpleNamespace(feeds=0), "mcu_box2": types.SimpleNamespace(feeds=0)}
+        autofeed = types.SimpleNamespace(limit_a_state=0)
+        printer, gcode, manager, stepper = self.setup(
+            40., objects={"vo_box_watch": types.SimpleNamespace(boxes=boxes), "box_autofeed": autofeed})
+        boxes["mcu_box1"].feeds += 2
+        boxes["mcu_box2"].feeds += 1
+
+        def during_unload():
+            boxes["mcu_box1"].feeds += 1
+            autofeed.limit_a_state = 1
+        stepper.during_unload = during_unload
         # Klipper makes the slot motor's steps, synced to the extruder, when the M400 after a pull runs.
         flushed = []
         real_run = gcode.run_script_from_command
@@ -707,8 +863,10 @@ class ToolheadUnloadTest(unittest.TestCase):
         self.unload(gcode)
         unloads = [line for line in lines if "1C unload from the toolhead" in line]
         self.assertIn("slot motor moved -85 mm during the pulls", unloads[0])
-        self.assertIn("3 feeds before it since the last unload from the toolhead, 1 during it, switch pressed", unloads[0])
-        self.assertIn("0 feeds before it since the last unload from the toolhead, 1 during it", unloads[1])
+        self.assertIn("Box auto-feed 3 feeds before it since the last unload from the toolhead, 1 during it, "
+                      "buffer switch pressed", unloads[0])
+        self.assertIn("Box auto-feed 0 feeds before it since the last unload from the toolhead, 1 during it",
+                      unloads[1])
 
     def test_box_code_with_other_pulls_stops_after_the_same_20_mm(self) -> None:
         printer, gcode, manager, stepper = self.setup(None, pull="G1 E-5 F600")
@@ -804,7 +962,7 @@ class MotionDispatcher(Dispatcher):
 
 class CancelledPartTest(unittest.TestCase):
     """A filament change inside a cancelled part still cuts, unloads, and purges, the print paused inside one
-    still moves, and the part's own lines stay dropped."""
+    still moves, a power-loss resume inside one keeps it skipped, and the part's own lines stay dropped."""
 
     def setUp(self) -> None:
         logging.disable(logging.CRITICAL)
@@ -840,6 +998,11 @@ class CancelledPartTest(unittest.TestCase):
             manager._run()
         run = gcode.run_script_from_command
         gcode.handlers["T_MANAGER"] = tool_change
+        # QIDI's power-loss resume, as virtual_sdcard has it.
+        sdcard = self.sdcard = object.__new__(virtual_sdcard.VirtualSD)
+        sdcard.printer, sdcard.gcode, sdcard._printer_off_power_resume = printer, gcode, None
+        printer.objects.update({"virtual_sdcard": sdcard, "gcode_move": motion,
+                                "save_variables": types.SimpleNamespace(allVariables={"profile_name": "default"})})
         config = types.SimpleNamespace(get_printer=lambda: printer)
         exclude = printer.objects["exclude_object"] = exclude_object.ExcludeObject(config)
         exclude._handle_connect()
@@ -897,6 +1060,54 @@ class CancelledPartTest(unittest.TestCase):
                               "EXCLUDE_OBJECT_START NAME=A")
                 self.send("G1 X150 Y100 E1")
                 self.assertFalse(self.went(x=150.), "printed the cancelled part")
+
+
+    def resume_after_power_loss(self, part_a):
+        """Lose power at the line `; power lost` of a print whose part A, cancelled, holds PART_A, and resume as
+        QIDI does: put the toolhead back, then restart the file 4 KiB before that line. Returns where the nozzle
+        went after the toolhead was put back."""
+        text = "\n".join([
+            "EXCLUDE_OBJECT_DEFINE NAME=A", "EXCLUDE_OBJECT_DEFINE NAME=B", "M83",
+            "EXCLUDE_OBJECT_START NAME=B", "G1 X10 Y10 Z0.2 F600", "G1 X16 E1", "EXCLUDE_OBJECT_END NAME=B",
+            "EXCLUDE_OBJECT_START NAME=A", "G1 X100 Y100", *part_a, "EXCLUDE_OBJECT_END NAME=A",
+            "EXCLUDE_OBJECT_START NAME=B", "G1 X30 Y10 Z0.4", "G1 X40 E1", "EXCLUDE_OBJECT_END NAME=B", ""])
+        lost = text.index("; power lost")
+        self.assertGreater(lost - text.index("EXCLUDE_OBJECT_START NAME=A"), 4096)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "plate_1.gcode")
+            with open(path, "w", newline="") as f:
+                f.write(text)
+            for handler in self.events["virtual_sdcard:reset_file"]:
+                handler()
+            state = {"file_position": lost, "exclude_objects": ["A"],
+                     "all_objects": [{"name": "A"}, {"name": "B"}], "gcode_position": [120., 100., 0.2, 0.]}
+            self.sdcard._set_printer_state_internal(state, state["gcode_position"], [0.] * 4, [0.] * 4)
+            with io.open(path, "r", newline="") as f:
+                self.sdcard.current_file = f
+                self.sdcard.file_position = max(lost - 4096, 0)
+                f.seek(self.sdcard.file_position)
+                self.sdcard._printer_off_power_resume()
+                self.assertEqual(self.motion.path[-1], (120., 100., 0.2))
+                restored = len(self.motion.path)
+                self.send(*f.read().split("\n"))
+        return self.motion.path[restored:]
+
+    def test_power_loss_resume_inside_a_cancelled_part_keeps_it_skipped(self) -> None:
+        part_a = ["G1 X%.1f Y100 E0.1" % (100 + i / 10) for i in range(1, 400)]
+        part_a.insert(300, "; power lost")
+        path = self.resume_after_power_loss(part_a)
+        self.assertFalse([p for p in path if 100 <= p[0] < 150], "printed the cancelled part")
+        self.assertEqual(path, [(30., 10., 0.4), (40., 10., 0.4)])
+
+    def test_power_loss_resume_inside_a_filament_change_in_a_cancelled_part_finishes_the_change(self) -> None:
+        path = self.resume_after_power_loss([
+            "G1 X101 Y100 E1", "G1 Z3.2 F1200", "TOOL_CHANGE_START F=0 T=1", "G1 E-2 F1800",
+            *("; " + "-" * 60 for _ in range(80)), "; power lost", "G1 Y403.5 F2000", "G1 E30 F300",
+            "TOOL_CHANGE_END", "G1 X130 Y100 Z0.2", "G1 X131 E1"])
+        self.assertIn((120., 403.5, 0.2), path, "never reached the waste chute")
+        self.assertIn(30., self.printer.moves)
+        self.assertFalse([p for p in path if p[0] in (130., 131.)], "printed the cancelled part")
+        self.assertEqual(path[-1], (40., 10., 0.4))
 
 
 class ExternalLoadTest(unittest.TestCase):

@@ -44,7 +44,7 @@ describe('voAddonsApiBase', () => {
     ['the page', 'http://192.168.1.166'],
     ["Moonraker's own port", 'http://192.168.1.166:7125']
   ])('uses the nginx that served Fluidd when Fluidd talks to %s', (_, apiUrl) => {
-    expect(voAddonsApiBase(apiUrl, location)).toBe('http://192.168.1.166/tltg-addons/api')
+    expect(voAddonsApiBase(apiUrl, location)).toBe('http://192.168.1.166/vo-addons/api')
   })
 
   it.each([
@@ -142,11 +142,11 @@ describe('voAddonsRequest', () => {
   it('sends the headers and body the service requires of a POST', async () => {
     respond(202, JSON.stringify({ job: runningJob }))
 
-    await voAddonsRequest('http://printer/tltg-addons/api', '/addons/octoeverywhere/install', { method: 'POST', token: 'abc' })
+    await voAddonsRequest('http://printer/vo-addons/api', '/addons/octoeverywhere/install', { method: 'POST', token: 'abc' })
 
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(url).toBe('http://printer/tltg-addons/api/addons/octoeverywhere/install')
+    expect(url).toBe('http://printer/vo-addons/api/addons/octoeverywhere/install')
     expect(init).toMatchObject({
       method: 'POST',
       body: '{}',
@@ -161,7 +161,7 @@ describe('voAddonsRequest', () => {
   it("sends a relink's server in the body", async () => {
     respond(202, JSON.stringify({ job: { ...runningJob, action: 'relink' } }))
 
-    await voAddonsRequest('http://printer/tltg-addons/api', '/addons/obico/relink', { method: 'POST', body: { server: 'http://192.168.1.10:3334' } })
+    await voAddonsRequest('http://printer/vo-addons/api', '/addons/obico/relink', { method: 'POST', body: { server: 'http://192.168.1.10:3334' } })
 
     expect(fetchMock.mock.calls[0][1].body).toBe('{"server":"http://192.168.1.10:3334"}')
   })
@@ -169,7 +169,7 @@ describe('voAddonsRequest', () => {
   it('sends no token when Fluidd has none', async () => {
     respond(200, JSON.stringify({ addons: [] }))
 
-    await voAddonsRequest('http://printer/tltg-addons/api', '/addons', { token: null })
+    await voAddonsRequest('http://printer/vo-addons/api', '/addons', { token: null })
 
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization')
   })
@@ -177,7 +177,7 @@ describe('voAddonsRequest', () => {
   it("reports the server's error text with its status", async () => {
     respond(409, JSON.stringify({ error: 'The printer is printing' }))
 
-    await expect(voAddonsRequest('http://printer/tltg-addons/api', '/addons/octoeverywhere/install', { method: 'POST' }))
+    await expect(voAddonsRequest('http://printer/vo-addons/api', '/addons/octoeverywhere/install', { method: 'POST' }))
       .rejects.toMatchObject({ status: 409, message: 'The printer is printing' })
   })
 
@@ -187,7 +187,7 @@ describe('voAddonsRequest', () => {
   ])('fails without a status when the printer %s', async (_, arrange) => {
     arrange()
 
-    const request = voAddonsRequest('http://printer/tltg-addons/api', '/addons')
+    const request = voAddonsRequest('http://printer/vo-addons/api', '/addons')
 
     await expect(request).rejects.toBeInstanceOf(VoAddonsRequestError)
     await expect(request).rejects.toMatchObject({ status: 0 })

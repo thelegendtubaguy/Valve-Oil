@@ -292,7 +292,7 @@ def clear_recovery_sentinel(
 
 
 def _snapshot_declares_source_patches(snapshot: dict[str, bytes]) -> bool:
-    state = snapshot.get("config/tltg_optimized_state.yaml")
+    state = snapshot.get("config/vo_state.yaml")
     if state is None:
         return False
     try:

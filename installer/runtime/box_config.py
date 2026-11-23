@@ -2,7 +2,7 @@
 
 Valve Oil's patch of the reviewed touchscreen app builds (qidiclient_firmware_popup.py) stops the app from writing
 box.cfg and restarting Klipper whenever the Boxes it finds change. installer/system/vo_box_monitor.py takes that over:
-a udev rule starts tltg-box-monitor.service when a USB Box connects or disconnects, and the monitor writes box.cfg in
+a udev rule starts vo-box-monitor.service when a USB Box connects or disconnects, and the monitor writes box.cfg in
 QIDI's layout, numbering each Box from a record so it keeps its slots on another port, and restarts Klipper only while
 the printer is idle. A QIDI firmware update resets box.cfg; the update writes it again before its board step, so the
 Boxes are flashed in the same run.
@@ -20,14 +20,14 @@ from .qidiclient_firmware_popup import BUILDS
 MONITOR_OPERATION = "box_monitor"
 UNIT_OPERATION = "box_monitor_unit"
 RULE_OPERATION = "box_monitor_rule"
-UNIT = "tltg-box-monitor.service"
+UNIT = "vo-box-monitor.service"
 UNIT_FILE = f"/etc/systemd/system/{UNIT}"
-MONITOR_FILE = "/usr/local/lib/tltg_box_monitor.py"
-RULE_FILE = "/etc/udev/rules.d/99-tltg-box-monitor.rules"
+MONITOR_FILE = "/usr/local/lib/vo_box_monitor.py"
+RULE_FILE = "/etc/udev/rules.d/99-vo-box-monitor.rules"
 MONITOR_PAYLOAD = Path(__file__).resolve().parents[1] / "system/vo_box_monitor.py"
-MONITOR_MARKER = "# tltg-optimized:box-monitor\n"
-UNIT_MARKER = "# tltg-optimized:box-monitor-unit\n"
-RULE_MARKER = "# tltg-optimized:box-monitor-rule\n"
+MONITOR_MARKER = "# vo:box-monitor\n"
+UNIT_MARKER = "# vo:box-monitor-unit\n"
+RULE_MARKER = "# vo:box-monitor-rule\n"
 # The monitor's data line, which the installed copy carries the reviewed app builds in.
 DATA_LINE = "APP_BUILDS = None\n"
 
@@ -85,14 +85,14 @@ def monitor_source() -> str:
 @lru_cache(maxsize=4)
 def _with_builds(builds: str) -> str:
     source = _payload().replace(DATA_LINE, f"APP_BUILDS = {builds}\n")
-    compile(source, "tltg_box_monitor.py", "exec")
+    compile(source, "vo_box_monitor.py", "exec")
     return source
 
 
 @lru_cache(maxsize=1)
 def monitor():
     """The bundled monitor as a module, for its box.cfg writer."""
-    spec = importlib.util.spec_from_file_location("tltg_box_monitor", MONITOR_PAYLOAD)
+    spec = importlib.util.spec_from_file_location("vo_box_monitor", MONITOR_PAYLOAD)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

@@ -10,7 +10,7 @@
 #   a multi_color_controller Box identity other than the USB Box's.
 # - Once detected: every frame box485 sends and receives, QIDI's RS-485 log
 #   lines, and status changes go to printer_data/logs/vo_box485.log, and a
-#   shareable summary to tltg_box485_report.json. Device chip ids and adapter
+#   shareable summary to vo_box485_report.json. Device chip ids and adapter
 #   serial numbers are replaced with salted hashes in both. Bytes that fail
 #   their CRC or don't form a frame are recorded by length only, since a
 #   damaged reply can hold a chip id where nothing here can recognize it.
@@ -36,8 +36,8 @@ import time
 
 OUTPUT_NAME = "vo_box485.log"
 ROTATED_NAME = "vo_box485.log.1"
-REPORT_NAME = "tltg_box485_report.json"
-SALT_NAME = ".tltg_box485_salt"
+REPORT_NAME = "vo_box485_report.json"
+SALT_NAME = ".vo_box485_salt"
 FIRMWARE_MANIFEST = "/home/qidi/update/firmware_manifest.json"
 ISSUES_URL = "https://github.com/thelegendtubaguy/valve-oil/issues"
 
@@ -65,7 +65,7 @@ RS485_LINE = re.compile(
 BOX_LINE = re.compile(
     r"(?i)box|slot|T_MANAGER|filament|rfid|dry|\u6599\u76d2|\u8fdb\u6599"
     r"|\u9000\u6599")
-IGNORED_LINES = ("Stats ", "tltg_box485_monitor", SPAM_MESSAGE)
+IGNORED_LINES = ("Stats ", "vo_box485_monitor", SPAM_MESSAGE)
 VENDOR_FILES = ("box485.py", "box485_multicolor.so", "box485_buffer.so",
                 "box485_rack.so", "box_protocol.so", "box2base.so",
                 "multi_color_controller.so")
@@ -248,7 +248,7 @@ class SerialTap:
             try:
                 self._vo_sink.on_bytes(direction, bytes(data))
             except Exception:
-                logging.exception("tltg_box485_monitor: frame capture failed")
+                logging.exception("vo_box485_monitor: frame capture failed")
 
     def read(self, *args, **kwargs):
         data = self._vo_serial.read(*args, **kwargs)
@@ -305,7 +305,7 @@ class RepeatSummaryFilter(logging.Filter):
             self.suppressed += 1
             return False
         if self.suppressed:
-            record.msg = ("%s (repeated %d times since %s; tltg_box485_monitor"
+            record.msg = ("%s (repeated %d times since %s; vo_box485_monitor"
                           " logs it hourly)" % (
                               SPAM_MESSAGE, self.suppressed,
                               time.strftime("%H:%M:%S",
@@ -451,13 +451,13 @@ class Box485Monitor:
             cls = box485_multicolor.Box485Manager
         except Exception as exc:
             self.patch_error = "box485_multicolor unavailable: %s" % exc
-            logging.warning("tltg_box485_monitor: %s", self.patch_error)
+            logging.warning("vo_box485_monitor: %s", self.patch_error)
             return
         original_connect = _patch_manager(cls)
         if original_connect is None:
             self.patch_error = ("Box485Manager has no connect or"
                                 " _on_reconnect_timer")
-            logging.warning("tltg_box485_monitor: %s; port guard and frame"
+            logging.warning("vo_box485_monitor: %s; port guard and frame"
                             " capture are off", self.patch_error)
             return
         self.patch = cls
@@ -503,7 +503,7 @@ class Box485Monitor:
         if not self._conflict_reported:
             self._conflict_reported = True
             logging.warning(
-                "tltg_box485_monitor: [box485] serial_port %s is the serial"
+                "vo_box485_monitor: [box485] serial_port %s is the serial"
                 " port of %s; keeping box485 from opening it",
                 self.redactor.path(port), owner)
             self._activate("box485 serial_port is a Klipper MCU port")
@@ -623,7 +623,7 @@ class Box485Monitor:
                     self._handle.close()
                     self._handle = None
             except Exception:
-                logging.exception("tltg_box485_monitor: write failed")
+                logging.exception("vo_box485_monitor: write failed")
                 self._handle = None
 
     def _rotate(self):
@@ -652,7 +652,7 @@ class Box485Monitor:
                 handle.write(text + "\n")
             os.replace(temporary, self.report_path)
         except OSError:
-            logging.exception("tltg_box485_monitor: report write failed")
+            logging.exception("vo_box485_monitor: report write failed")
         self._last_report = self.reactor.monotonic()
         return report
 
@@ -891,7 +891,7 @@ class Box485Monitor:
         self._active = True
         self._register_ids()
         if first:
-            self._write("detected: %s; tltg_box485_monitor is recording"
+            self._write("detected: %s; vo_box485_monitor is recording"
                         % reason, durable=True)
             with self._lock:
                 history = list(self._vendor_history)
@@ -918,7 +918,7 @@ class Box485Monitor:
                      " not been tested with RS-485 Boxes, buffers, or racks"
                      " yet, so it is recording what they do. Please" % reason)
         self.gcode.respond_info(
-            "%s open an issue at %s and attach tltg_box485_report.json and"
+            "%s open an issue at %s and attach vo_box485_report.json and"
             " vo_box485.log from Fluidd's logs folder." % (found, ISSUES_URL))
 
     def _handle_ready(self):
@@ -969,7 +969,7 @@ class Box485Monitor:
         try:
             self._check(eventtime)
         except Exception:
-            logging.exception("tltg_box485_monitor: sample failed")
+            logging.exception("vo_box485_monitor: sample failed")
         if self._active:
             return eventtime + SAMPLE_INTERVAL
         return eventtime + IDLE_SAMPLE_INTERVAL
@@ -980,7 +980,7 @@ class Box485Monitor:
         try:
             self._check(self.reactor.monotonic())
         except Exception:
-            logging.exception("tltg_box485_monitor: check failed")
+            logging.exception("vo_box485_monitor: check failed")
         self._write_report()
         if self._conflict is not None:
             gcmd.respond_raw(self._conflict_message())

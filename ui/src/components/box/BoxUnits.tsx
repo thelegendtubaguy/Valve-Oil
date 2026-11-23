@@ -2,7 +2,6 @@
 // and brand, and a tag mark when the Box read the spool's RFID tag. The spool says whether the slot holds filament (drawn
 // or dashed) and whether it's loaded to the toolhead (a ring, and its tool badge filled); words appear only for the
 // states it can't show, at the hub and reading a tag.
-import type { KeyboardEvent } from 'react'
 import { Droplet, Flame, RotateCw, Sun, Tag, Thermometer } from 'lucide-react'
 import { Spool } from '../Spool'
 import { useDryLeft } from '../../state/box-dry'
@@ -53,38 +52,35 @@ function BoxUnit({ box, unit, selected, onSelect, onTool, onHeater }: { box: Box
   )
 }
 
-const activate = (fn: () => void) => (e: KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), fn())
-
 function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; slot: QidiBoxSlot; selected: boolean; onSelect: (s: number) => void; onTool?: (tool: number, slot: number) => void }) {
   const status = STATUS[slotStatus(box, slot)]
   const tools = box.toolsBySlot[slot.index] ?? []
   const group = box.reloadGroups[slot.index]?.letter
   const loaded = box.loadedSlot === slot.index
   const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? t('box.slot.loaded') : null].filter(Boolean).join(' · ') : t('box.units.empty_title', { slot: slot.label })
+  // The slot's one control for keyboards and screen readers: everything the tile shows, the type and hub or tag state included.
+  const label = [title, slot.present ? (slot.type ?? t('box.units.unknown_type')) : null, box.fromTag[slot.index] ? t('box.units.from_tag') : null, status ? t(status.textKey) : null].filter(Boolean).join(' · ')
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      title={title}
-      onClick={() => onSelect(slot.index)}
-      onKeyDown={activate(() => onSelect(slot.index))}
-      className={`tile flex! cursor-pointer flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center outline-none hover:bg-hover ${selected ? 'bg-accent-tint!' : ''}`}
+      className={`tile box-selectable flex! flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center ${selected ? 'bg-accent-tint!' : ''}`}
       style={selected ? { boxShadow: 'inset 0 0 0 1.5px var(--accent)' } : undefined}
     >
       {/* The slot, its tag mark, then its tools and auto-reload group, all on the top line. */}
-      <div className="flex w-full items-center gap-0.5 pl-1">
-        <span className="text-[11px] font-bold text-ink-3">{slot.label}</span>
-        {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label={t('box.units.from_tag')} />}
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-0.5 pl-1">
+        {/* A second tap target for the same slot; the button below is the one keyboards and screen readers use. */}
+        <button type="button" tabIndex={-1} aria-hidden="true" title={title} onClick={() => onSelect(slot.index)} className="flex min-h-6 items-center gap-0.5 border-0 bg-transparent p-0 text-inherit">
+          <span className="text-[11px] font-bold text-ink-3">{slot.label}</span>
+          {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label={t('box.units.from_tag')} />}
+        </button>
         <span className="flex-1" />
         {tools.map((tool) => (
           <button
             key={tool}
             type="button"
-            className={`rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold ${loaded ? 'bg-accent text-on-accent' : 'tone-muted'}`}
+            className={`min-h-6 min-w-6 rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold ${loaded ? 'bg-accent text-on-accent' : 'tone-muted'}`}
             title={`${tool} → ${slot.label}`}
-            onClick={(e) => (e.stopPropagation(), onTool?.(Number(tool.slice(1)), slot.index))}
-            onKeyDown={(e) => e.stopPropagation()}
+            aria-label={`${tool} → ${slot.label}`}
+            onClick={() => onTool?.(Number(tool.slice(1)), slot.index)}
           >
             {tool}
           </button>
@@ -95,14 +91,16 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
           </span>
         )}
       </div>
-      <Spool slot={slot} size={50} label={false} loaded={loaded} />
-      {slot.present && (
-        <>
-          <div className="w-full truncate px-0.5 text-[14px] leading-tight font-bold">{slot.type ?? t('box.units.unknown_type')}</div>
-          <div className="w-full truncate px-0.5 text-[11.5px] leading-tight text-ink-2">{slot.vendor ?? '—'}</div>
-        </>
-      )}
-      {status && <div className={`mt-0.5 text-[10px] font-bold tracking-[0.07em] uppercase ${status.cls}`}>{t(status.textKey)}</div>}
+      <button type="button" aria-label={label} aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
+        <Spool slot={slot} size={50} label={false} loaded={loaded} />
+        {slot.present && (
+          <>
+            <span className="w-full truncate px-0.5 text-[14px] leading-tight font-bold">{slot.type ?? t('box.units.unknown_type')}</span>
+            <span className="w-full truncate px-0.5 text-[11.5px] leading-tight text-ink-2">{slot.vendor ?? '—'}</span>
+          </>
+        )}
+        {status && <span className={`mt-0.5 text-[10px] font-bold tracking-[0.07em] uppercase ${status.cls}`}>{t(status.textKey)}</span>}
+      </button>
     </div>
   )
 }
@@ -161,22 +159,19 @@ function ExternalRow({ box, slot, selected, onSelect, onTool }: { box: BoxState;
   const on = selected === slot.index
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={on}
-      onClick={() => onSelect(slot.index)}
-      onKeyDown={activate(() => onSelect(slot.index))}
-      className={`tile cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-3! px-3! py-2! outline-none hover:bg-hover ${on ? 'bg-accent-tint!' : ''}`}
+      className={`tile box-selectable grid-cols-[minmax(0,1fr)_auto] items-center gap-3! px-3! py-2! ${on ? 'bg-accent-tint!' : ''}`}
       style={on ? { boxShadow: 'inset 0 0 0 1.5px var(--accent)' } : undefined}
     >
-      <Spool slot={slot} size={30} label={false} loaded={loaded && !on} />
-      <div className="min-w-0">
-        <div className="section-label">{t('box.external_spool')}</div>
-        <div className="truncate font-semibold">{slot.name || slot.type ? [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') : <span className="text-ink-3">{t('box.units.not_set')}</span>}</div>
-      </div>
+      <button type="button" aria-pressed={on} onClick={() => onSelect(slot.index)} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left text-inherit">
+        <Spool slot={slot} size={30} label={false} loaded={loaded && !on} />
+        <span className="min-w-0">
+          <span className="section-label block">{t('box.external_spool')}</span>
+          <span className="block truncate font-semibold">{slot.name || slot.type ? [slot.vendor, slot.name ?? slot.type].filter(Boolean).join(' ') : <span className="text-ink-3">{t('box.units.not_set')}</span>}</span>
+        </span>
+      </button>
       <div className="flex items-center gap-1.5">
         {tools.map((tool) => (
-          <button key={tool} type="button" className="tone-muted rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold" onClick={(e) => (e.stopPropagation(), onTool?.(Number(tool.slice(1)), slot.index))}>
+          <button key={tool} type="button" className="tone-muted min-h-6 min-w-6 rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold" aria-label={`${tool} → ${slot.label}`} onClick={() => onTool?.(Number(tool.slice(1)), slot.index)}>
             {tool}
           </button>
         ))}

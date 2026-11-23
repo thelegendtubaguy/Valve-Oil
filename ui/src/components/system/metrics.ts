@@ -52,7 +52,7 @@ function sample() {
   if (s.klippy === 'ready') {
     const stats = s.status.system_stats
     const seconds = lastCpu ? (now - lastCpu.at) / 1000 : 0
-    pushSample(buffers.klipper, now, klipperChartValues(stats, lastCpu?.cputime ?? null, seconds, s.status.tltg_klipper_health), SYSTEM_RETENTION)
+    pushSample(buffers.klipper, now, klipperChartValues(stats, lastCpu?.cputime ?? null, seconds, s.status.vo_klipper_health), SYSTEM_RETENTION)
     lastCpu = typeof stats?.cputime === 'number' ? { cputime: stats.cputime, at: now } : null
     for (const name of s.objects) {
       if (name !== 'mcu' && !name.startsWith('mcu ')) continue

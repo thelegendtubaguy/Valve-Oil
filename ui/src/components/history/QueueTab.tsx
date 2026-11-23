@@ -144,7 +144,7 @@ export function QueueTab() {
                 </span>
                 <input
                   type="checkbox"
-                  className="h-4 w-4 flex-none accent-[var(--accent)]"
+                  className="h-6 w-6 flex-none accent-[var(--accent)]"
                   checked={on}
                   aria-label={t('history.queue.select', { name: displayName(j.filename) })}
                   onChange={() => setSelected((s) => (s.has(j.job_id) ? new Set([...s].filter((x) => x !== j.job_id)) : new Set([...s, j.job_id])))}
@@ -171,7 +171,7 @@ export function QueueTab() {
                 </span>
                 <MenuButton
                   button={<Ellipsis size={16} />}
-                  label={t('history.jobs.job_actions')}
+                  label={t('history.jobs.job_actions_named', { name: displayName(j.filename) })}
                   items={[
                     i > 0 && { label: t('history.queue.jump'), icon: <ArrowUpToLine size={15} />, onSelect: () => attempt(() => queueActions.jump(j.job_id)) },
                     { label: t('history.queue.multiply'), icon: <Copy size={15} />, onSelect: () => setMultiply([j]) },
@@ -270,7 +270,7 @@ function AddFilesDialog({ onClose }: { onClose: () => void }) {
     >
       <label className="relative mb-3 block">
         <Search size={15} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-3" />
-        <input className="field pl-8" placeholder={t('history.queue.search_files')} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+        <input className="field pl-8" placeholder={t('history.queue.search_files')} aria-label={t('history.queue.search_files')} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
       </label>
       {!files ? (
         <div className="grid place-items-center py-8">

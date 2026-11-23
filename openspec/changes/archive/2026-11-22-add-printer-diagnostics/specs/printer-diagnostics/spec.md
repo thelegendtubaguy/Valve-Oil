@@ -11,12 +11,20 @@ Valve Oil's Klipper modules SHALL write one `vo_` line to `klippy.log` when a wa
 - **WHEN** the watched fault is one Valve Oil repairs before it can fail an operation
 - **THEN** it is logged and no printer warning is raised
 
+#### Scenario: QIDI's code handles a watched reply
+- **WHEN** QIDI's code handles a Box reply the watcher reads
+- **THEN** QIDI's handler receives it as before, and the watcher neither receives it nor logs a fault from it
+
 ### Requirement: Diagnostics check
 Valve Oil UI SHALL offer a Diagnostics check that reads the printer's logs for every known fault signature within a bounded size and time, and lists each one found with what it means, what to do, and a docs link. It SHALL offer the result as a report to download. The same check SHALL run on a log file outside the printer.
 
 #### Scenario: A signature is found
 - **WHEN** an operator runs Diagnostics on a printer whose log shows a known fault
 - **THEN** the screen names the fault in plain language with what to do and a link, and the report includes the log lines that showed it
+
+#### Scenario: A fault the installed release fixes
+- **WHEN** a log shows a fault from before the installed release, which fixes it
+- **THEN** the check lists it as fixed by the installed release, apart from faults that need the operator
 
 #### Scenario: Nothing is found
 - **WHEN** no known signature appears in the logs checked

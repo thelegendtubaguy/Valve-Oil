@@ -12,7 +12,7 @@ import types
 import unittest
 from pathlib import Path
 
-from installer.tests.klipper_fakes import NEVER, CommandError, Reactor, load_extra
+from installer.tests.klipper_fakes import NEVER, BoxAutoFeed, CommandError, Reactor, load_extra
 
 # Feed distance from a slot's parked filament to each sensor, in mm. Neither is a whole number of test moves.
 HUB_AT = 35.
@@ -79,8 +79,9 @@ def load_module(name, ffi):
     force_move.calc_move_time = calc_move_time
     chelper = types.ModuleType("chelper")
     chelper.get_ffi = lambda: (ffi, ffi)
-    return load_extra(name, "extras.tltg_" + name, stand_ins={
-        "extras": extras, "extras.force_move": force_move, "chelper": chelper})
+    return load_extra(name, "extras.vo_" + name, stand_ins={
+        "extras": extras, "extras.force_move": force_move, "chelper": chelper,
+        "greenlet": types.SimpleNamespace(getcurrent=lambda: None)})
 
 
 class Stepper:
@@ -95,6 +96,7 @@ class Stepper:
         self.filament = 0.        # mm of filament past the slot's park position
         self.furthest = 0.
         self._oid, self._invert_dir = number, False
+        self.on_homing_end = None
         self._get_position_cmd = types.SimpleNamespace(
             send=lambda args: {"pos": self.get_mcu_position() + self.outside_steps})
 
@@ -128,11 +130,26 @@ class Stepper:
     def get_mcu_position(self):
         return round(self.travel / STEP_DIST)
 
+    def get_mcu(self):
+        return BOX_MCU
+
+    def note_homing_end(self):
+        self.on_homing_end()
+
+
+class BoxMcu:
+    def get_name(self):
+        return "mcu_box1"
+
+
+BOX_MCU = BoxMcu()
+
 
 class Slot:
     """QIDI's box_stepper slotN: the slot's motor and sensors, and the load and unload moves QIDI's flows call."""
 
     def __init__(self, number):
+        self.stepper_name = "slot%d" % number
         self.stepper = Stepper(number)
         self.r_endstop_state = 0    # inlet sensor: 0 with filament
         self.runout_button = 0
@@ -331,8 +348,11 @@ class GCode:
 
     def __init__(self):
         self.commands, self.responses, self.scripts = {}, [], []
+        self.gcode_help = {}
 
     def register_command(self, name, handler, desc=None):
+        if handler is None:
+            return self.commands.pop(name, None)
         self.commands[name] = handler
 
     def create_gcode_command(self, command, commandline, params):
@@ -400,7 +420,7 @@ class Box:
     """One USB QIDI Box on an idle printer: four slots with filament parked at their inlets, nothing at the hub or
     the toolhead, and the named Valve Oil modules loaded."""
 
-    def __init__(self, modules, *, variables=None, log_dir=None):
+    def __init__(self, modules, *, variables=None, log_dir=None, autofeed=False):
         self.toolhead_at = TOOLHEAD_AT
         self.moves = []
         self.queued = 0    # moves put on a motion queue, whether or not a motor still follows it
@@ -427,9 +447,14 @@ class Box:
         }
         objects.update(("box_stepper slot%d" % number, slot) for number, slot in enumerate(self.slots))
         self.printer = Printer(objects, log_dir)
+        if autofeed:
+            self.autofeed = objects["box_autofeed"] = BoxAutoFeed(
+                self.printer.reactor, ((slot.stepper_name, slot) for slot in self.slots))
+            for slot in self.slots:
+                slot.stepper.on_homing_end = lambda name=slot.stepper_name: self.autofeed.reset_step_clock(name)
         for name in modules:
-            objects["tltg_" + name] = load_module(name, Ffi(self)).load_config(Config(self.printer))
-        self.jog = objects.get("tltg_box_slot_jog")
+            objects["vo_" + name] = load_module(name, Ffi(self)).load_config(Config(self.printer))
+        self.jog = objects.get("vo_box_slot_jog")
         self.printer.send_event("klippy:ready")
         # QIDI's Box adapter registers its flow steps after Klipper is ready.
         self.controller.task_queue_manager.method_map["BOX_UNLOAD"] = self.adapter.unload_filament
@@ -710,6 +735,40 @@ class BoxSlotJogTests(QuietTestCase):
         self.assertTrue(box.enable(1).enabled)
         self.assertTrue(box.runout.sensor_enabled)
 
+    def armed_box(self):
+        """A paused print with QIDI's auto-feed armed on slot 1 (1B) and feeding it."""
+        box = Box(("box_flow_recovery", "box_slot_jog"), autofeed=True)
+        BUSY["print paused"](box)
+        box.autofeed.auto_start(40, 40, 18, 1, box.slot(1))
+        box.autofeed.buffer(True)
+        return box, box.autofeed
+
+    def test_slot_auto_feed_is_armed_on_moves_with_no_feed_and_its_clock_reset_then_is_armed_again(self):
+        box, autofeed = self.armed_box()
+        during = []
+        box.during_move[1] = lambda: during.append((autofeed.device("slot1").state, autofeed.offset("slot1")))
+        box.run("VO_BOX_SLOT_JOG SLOT=1 DISTANCE=-20")
+        self.assertEqual(during, [(0, 0.)])
+        self.assertFalse(autofeed.box_shut_down)
+        # Armed again as QIDI armed it, with QIDI's saved slot state left alone.
+        self.assertEqual(autofeed.arms, [autofeed.arms[0]] * 2)
+        self.assertEqual((autofeed.bind_stepper, autofeed.device("slot1").state), ("slot1", 2))
+        self.assertEqual(box.variables.saved, [])
+
+    def test_pull_back_out_of_the_hub_leaves_auto_feed_off_as_qidis_unload_does(self):
+        box, autofeed = self.armed_box()
+        box.jog.move(1, -20., rearm=False)
+        self.assertEqual((len(autofeed.arms), autofeed.device("slot1").state), (1, 0))
+        self.assertEqual(autofeed.offset("slot1"), 0.)
+
+    def test_other_slots_move_with_auto_feed_left_alone(self):
+        box, autofeed = self.armed_box()
+        aborts = autofeed.aborts
+        box.run("VO_BOX_SLOT_JOG SLOT=2 DISTANCE=-20")
+        self.assertEqual((autofeed.aborts, len(autofeed.arms)), (aborts, 1))
+        self.assertEqual(autofeed.device("slot1").state, 2)
+        self.assertAlmostEqual(box.slot(2).stepper.filament, -20.)
+
     def test_klipper_error_mid_jog_still_hands_the_motor_and_runout_sensor_back(self):
         box = Box(("box_slot_jog",))
         box.during_move[1] = lambda: setattr(box.toolhead, "fault", CommandError("Klipper is shutting down"))
@@ -881,6 +940,57 @@ class BoxFilamentGuardTests(QuietTestCase):
         external.set_filament_information("slot16", "#ffffff", "Mystery PETG", "Somebody")
         self.assertEqual(external.saved, {"filament_slot16": "QFG01"})
         self.assertTrue(gcode.responses)
+
+
+class BoxDryGuardTests(QuietTestCase):
+    START = {"SDCARD_PRINT_FILE": "SDCARD_PRINT_FILE FILENAME=part.gcode",
+             "power-loss resume": "SDCARD_POWER_OFF_CONTINUES_PINT_FILE STATE=e30=",
+             "M24": "M24"}
+
+    def printer(self, drying, state="standby"):
+        gcode = GCode()
+        started = []
+        for line in list(self.START.values()) + ["BOX_START_DRYING BOX=2 TEMP=65 TIME=3"]:
+            name = line.split()[0]
+            gcode.register_command(name, lambda gcmd, name=name: started.append(name))
+        boxes = [{"dry_state": 1 if number in drying else 0, "end_time": 120} for number in (1, 2)]
+        status = lambda eventtime, value: types.SimpleNamespace(get_status=lambda _eventtime: value)
+        printer = Printer({"gcode": gcode, "box_extras": status(0, {"boxes": boxes}),
+                           "print_stats": status(0, {"state": state})})
+        load_extra("box_dry_guard").load_config(Config(printer))
+        printer.send_event("klippy:ready")
+        return gcode, started
+
+    def test_no_print_starts_while_a_box_dries(self):
+        for boxes, message in (((2,), "Box 2 is drying."), ((1, 2), "Boxes 1 and 2 are drying.")):
+            for name, line in self.START.items():
+                with self.subTest(name, boxes=boxes):
+                    gcode, started = self.printer(boxes)
+                    with self.assertRaisesRegex(CommandError, message + " Stop drying before starting a print."):
+                        gcode.run_script(line)
+                    self.assertEqual(started, [])
+
+    def test_prints_start_with_no_box_drying_and_paused_prints_resume(self):
+        for name, line in self.START.items():
+            with self.subTest(name):
+                gcode, started = self.printer(())
+                gcode.run_script(line)
+                self.assertEqual(started, [line.split()[0]])
+        gcode, started = self.printer((2,), state="paused")
+        gcode.run_script("M24")
+        self.assertEqual(started, ["M24"])
+
+    def test_drying_starts_only_outside_a_print(self):
+        for state, refused in (("standby", False), ("complete", False), ("cancelled", False),
+                               ("extracting", True), ("printing", True), ("paused", True)):
+            with self.subTest(state):
+                gcode, started = self.printer((), state=state)
+                if refused:
+                    with self.assertRaisesRegex(CommandError, "Box drying can't start during a print."):
+                        gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+                else:
+                    gcode.run_script("BOX_START_DRYING BOX=2 TEMP=65 TIME=3")
+                self.assertEqual(started, [] if refused else ["BOX_START_DRYING"])
 
 
 class WithoutBoxCodeTests(QuietTestCase):

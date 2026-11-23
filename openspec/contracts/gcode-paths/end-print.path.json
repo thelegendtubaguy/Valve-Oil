@@ -141,7 +141,7 @@
         "SAVE_VARIABLE VARIABLE=retained_tool VALUE={active_tool.value}",
         "SAVE_VARIABLE VARIABLE=retained_tool_ready VALUE=1",
         "SAVE_VARIABLE VARIABLE=retained_slot VALUE='\"{active_slot}\"'",
-        "SAVE_VARIABLE VARIABLE=retained_filament_id VALUE={active_filament_id}",
+        "SAVE_VARIABLE VARIABLE=retained_filament_id VALUE='\"{active_filament_id}\"'",
         "SAVE_VARIABLE VARIABLE=retained_vendor_id VALUE={active_vendor_id}"
       ],
       "must_not_include": [

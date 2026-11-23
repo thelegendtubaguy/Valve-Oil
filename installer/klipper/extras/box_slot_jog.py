@@ -11,8 +11,16 @@
 # The slot motor is borrowed from QIDI's Box code for the move and handed
 # back afterwards, the way the cold feed measurements in
 # openspec/observations/qidi-box/hardware-and-protocols.md drove it. QIDI's
-# saved slot state is left alone; tltg_box_loaded_slot's hub record is
+# saved slot state is left alone; vo_box_loaded_slot's hub record is
 # updated as it is for QIDI's own slot motion.
+#
+# QIDI's Box auto-feed stays armed while a print is paused and steps the slot
+# it is set up on from the Box itself, saving and restoring the slot's step
+# clock around each feed. Before moving a slot auto-feed is set up on,
+# vo_box_flow_recovery stops auto-feed on that Box and resets the slot's step
+# clock, so the move runs when Klipper scheduled it and no feed steps the slot
+# during it. Afterwards auto-feed is armed again as QIDI last armed it, when
+# QIDI had it armed on that slot.
 
 import logging
 
@@ -70,7 +78,7 @@ class BoxSlotJog:
         try:
             status = obj.get_status(self.reactor.monotonic())
         except Exception:
-            logging.exception("tltg_box_slot_jog: %s get_status failed", name)
+            logging.exception("vo_box_slot_jog: %s get_status failed", name)
             return {}
         return status if hasattr(status, "get") else {}
 
@@ -168,39 +176,54 @@ class BoxSlotJog:
         return self._blocker()
 
     def move(self, slot, distance, speed=DEFAULT_SPEED, until=None,
-             piece=None):
+             piece=None, rearm=True):
         """Move slot number SLOT as VO_BOX_SLOT_JOG does, optionally in
         PIECE mm moves until UNTIL() is true, and update the hub record.
-        Return (mm moved, whether UNTIL() ended it). Raises a command error
-        if the slot is missing or QIDI's Box code takes the motor."""
+        Auto-feed armed on the slot is armed again afterwards unless REARM is
+        false. Return (mm moved, whether UNTIL() ended it). Raises a command
+        error if the slot is missing or QIDI's Box code takes the motor."""
         name = "slot%d" % slot
         stepper = getattr(self.printer.lookup_object("box_stepper " + name,
                                                      None), "stepper", None)
         if stepper is None or not hasattr(stepper, "set_stepper_kinematics"):
             raise self.printer.command_error("No QIDI Box slot %s"
                                              % slot_label(slot))
-        tracker = self.printer.lookup_object("tltg_box_loaded_slot", None)
+        tracker = self.printer.lookup_object("vo_box_loaded_slot", None)
         before = None
         if tracker is not None:
             try:
                 before = tracker.hub_occupied()
             except Exception:
-                logging.exception("tltg_box_slot_jog: hub check failed")
+                logging.exception("vo_box_slot_jog: hub check failed")
+        recovery = self.printer.lookup_object("vo_box_flow_recovery", None)
+        armed = False
+        if callable(getattr(recovery, "hold_auto_feed", None)):
+            try:
+                armed = recovery.hold_auto_feed(name, stepper)
+            except Exception:
+                logging.exception("vo_box_slot_jog: stopping auto-feed on %s "
+                                  "failed", name)
         moved, stopped, owned = self._move(stepper, distance, speed, until,
                                            piece)
         if not owned:
-            logging.warning("tltg_box_slot_jog: %s motor was taken during "
+            logging.warning("vo_box_slot_jog: %s motor was taken during "
                             "the move", name)
             raise self.printer.command_error(
                 "QIDI's Box code took slot %s's motor during the move. Run "
                 "FIRMWARE_RESTART before using the Box." % slot_label(slot))
+        if armed and rearm:
+            try:
+                recovery.rearm_auto_feed(name)
+            except Exception:
+                logging.exception("vo_box_slot_jog: arming auto-feed on %s "
+                                  "again failed", name)
         if tracker is not None:
             if until is None:
                 self.reactor.pause(self.reactor.monotonic() + HUB_SETTLE)
             try:
                 tracker.record_motion(name, before)
             except Exception:
-                logging.exception("tltg_box_slot_jog: hub record failed")
+                logging.exception("vo_box_slot_jog: hub record failed")
         return moved, stopped
 
     def cmd_VO_BOX_SLOT_JOG(self, gcmd):

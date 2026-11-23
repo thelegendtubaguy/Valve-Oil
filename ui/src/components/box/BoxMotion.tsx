@@ -1,4 +1,4 @@
-// Valve Oil's Box load and unload motion: reads tltg_box_feed_motion and edits only through VO_BOX_MOTION, as the
+// Valve Oil's Box load and unload motion: reads vo_box_feed_motion and edits only through VO_BOX_MOTION, as the
 // fork's QidiBoxMotion does. Each printer publishes its own settings (the Plus 5 has no per-slot overrides).
 import { useState } from 'react'
 import { confirm, SectionLabel } from '../ui'
@@ -49,7 +49,7 @@ type Motion = {
 const isSet = (v: unknown) => v !== null && v !== undefined
 
 export function BoxMotion() {
-  const raw = usePrinter((s) => s.status.tltg_box_feed_motion)
+  const raw = usePrinter((s) => s.status.vo_box_feed_motion)
   const printState = usePrinter((s) => s.status.print_stats?.state as string | undefined)
   const ready = usePrinter((s) => s.klippy === 'ready')
   const [open, setOpen] = useState<string | null>(null)

@@ -46,9 +46,9 @@ class _Output:
 
 
 @contextmanager
-def critical_window(reporter):
+def critical_window(reporter, refused: str = REFUSED):
     """Hold the terminal's signals off for the window; yields the reporter to use inside it. Nested windows share the
-    outermost one."""
+    outermost one. `refused` is the line Ctrl-C prints inside it."""
     global _depth
     output = reporter if isinstance(reporter, _Output) else _Output(reporter)
     if _depth or threading.current_thread() is not threading.main_thread():
@@ -61,7 +61,7 @@ def critical_window(reporter):
     previous = {number: signal.getsignal(number) for number in _SIGNALS}
 
     def refuse(signum, frame):
-        output.line(REFUSED)
+        output.line(refused)
 
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)

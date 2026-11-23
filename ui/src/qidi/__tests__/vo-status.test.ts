@@ -110,7 +110,7 @@ describe('voStatusApiBase', () => {
     ['the page', 'http://192.168.1.166'],
     ["Moonraker's own port", 'http://192.168.1.166:7125']
   ])('uses the nginx that served Fluidd when Fluidd talks to %s', (_, apiUrl) => {
-    expect(voStatusApiBase(apiUrl, location)).toBe('http://192.168.1.166/tltg-status/api')
+    expect(voStatusApiBase(apiUrl, location)).toBe('http://192.168.1.166/vo-status/api')
   })
 
   it.each([
@@ -673,12 +673,12 @@ describe('voSupportBundle', () => {
 
     vi.stubGlobal('fetch', fetch)
 
-    const bundle = await voSupportBundle('/tltg-status/api', { token: 'abc' })
+    const bundle = await voSupportBundle('/vo-status/api', { token: 'abc' })
 
     expect(bundle.name).toBe('valve-oil-support-max4-20261116T150300Z.zip')
-    expect(fetch.mock.calls[0][0]).toBe('/tltg-status/api/support-bundle')
+    expect(fetch.mock.calls[0][0]).toBe('/vo-status/api/support-bundle')
     expect(fetch.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer abc' })
-    await expect(voSupportBundle('/tltg-status/api')).rejects.toMatchObject({ status: 409, message: 'A support bundle is already being made.' })
+    await expect(voSupportBundle('/vo-status/api')).rejects.toMatchObject({ status: 409, message: 'A support bundle is already being made.' })
   })
 })
 
@@ -723,11 +723,11 @@ describe('voStatusRequest', () => {
   it('sends the headers and body the service requires of a POST', async () => {
     respond(200, JSON.stringify(base))
 
-    await voStatusRequest('http://printer/tltg-status/api', '/auto-update', { method: 'POST', token: 'abc', body: { enabled: false } })
+    await voStatusRequest('http://printer/vo-status/api', '/auto-update', { method: 'POST', token: 'abc', body: { enabled: false } })
 
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(url).toBe('http://printer/tltg-status/api/auto-update')
+    expect(url).toBe('http://printer/vo-status/api/auto-update')
     expect(init).toMatchObject({
       method: 'POST',
       body: '{"enabled":false}',
@@ -746,8 +746,8 @@ describe('voStatusRequest', () => {
     respond(202, JSON.stringify({ job }))
     respond(200, JSON.stringify(base))
 
-    await voStatusRequest('http://printer/tltg-status/api', '/update-now', { method: 'POST' })
-    await voStatusRequest('http://printer/tltg-status/api', '/status', { token: null })
+    await voStatusRequest('http://printer/vo-status/api', '/update-now', { method: 'POST' })
+    await voStatusRequest('http://printer/vo-status/api', '/status', { token: null })
 
     expect(fetchMock.mock.calls[0][1].body).toBe('{}')
     expect(fetchMock.mock.calls[1][1].body).toBeUndefined()
@@ -761,13 +761,13 @@ describe('voStatusRequest', () => {
     }))
     respond(400, JSON.stringify({ error: 'Update now takes no options.' }))
 
-    await expect(voStatusRequest('http://printer/tltg-status/api', '/update-now', { method: 'POST' }))
+    await expect(voStatusRequest('http://printer/vo-status/api', '/update-now', { method: 'POST' }))
       .rejects.toMatchObject({
         status: 409,
         message: "Update now can't start: a print is running or paused; another installer run is in progress.",
         blockedBy: [printing, { code: 'installer_busy', message: 'another installer run is in progress' }]
       })
-    await expect(voStatusRequest('http://printer/tltg-status/api', '/update-now', { method: 'POST' }))
+    await expect(voStatusRequest('http://printer/vo-status/api', '/update-now', { method: 'POST' }))
       .rejects.toMatchObject({ status: 400, blockedBy: [] })
   })
 
@@ -777,7 +777,7 @@ describe('voStatusRequest', () => {
   ])('fails without a status when the printer %s', async (_, arrange) => {
     arrange()
 
-    const request = voStatusRequest('http://printer/tltg-status/api', '/status')
+    const request = voStatusRequest('http://printer/vo-status/api', '/status')
 
     await expect(request).rejects.toBeInstanceOf(VoStatusRequestError)
     await expect(request).rejects.toMatchObject({ status: 0 })
@@ -786,7 +786,7 @@ describe('voStatusRequest', () => {
   it('fails with the status when nginx answers without JSON', async () => {
     respond(502, '<html>Bad Gateway</html>')
 
-    await expect(voStatusRequest('http://printer/tltg-status/api', '/status')).rejects.toMatchObject({ status: 502 })
+    await expect(voStatusRequest('http://printer/vo-status/api', '/status')).rejects.toMatchObject({ status: 502 })
   })
 })
 

@@ -30,7 +30,7 @@ const isVoPrinterWarning = (value: unknown): value is VoPrinterWarning => (
 )
 
 /**
- * Warnings reported by QIDI Max 4 Optimized's tltg_printer_warnings. The
+ * Warnings reported by Valve Oil's vo_printer_warnings. The
  * object is absent on printers without the package, so anything that is not
  * the expected shape yields no warnings, and malformed entries, or repeats of
  * an id, are skipped rather than hiding the rest. A board warning's issue link

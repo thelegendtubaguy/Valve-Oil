@@ -139,7 +139,7 @@
 @layer components {
   .num { font-variant-numeric: tabular-nums; }
   .card { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-card); padding: 16px; min-width: 0; }
-  .card-title { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .card-title { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--ink); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .card-title > svg { color: var(--accent-ink); }
   .card-title .aside { margin-left: auto; font-weight: 600; color: var(--ink-3); text-align: right; }
   /* Small uppercase labels over a group of controls, as in the touchscreen's "BED MESH" and "THIS PRINT". */
@@ -211,6 +211,7 @@
 
   .tile { padding: 12px 14px; border-radius: 12px; background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 4px; position: relative; min-width: 0; text-align: left; border: 0; color: inherit; font: inherit; }
   button.tile:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+  .tile.box-selectable:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
   .tile.hot { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
   .tile .v { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .tile .v small { font-size: 13px; color: var(--ink-3); font-weight: 600; }

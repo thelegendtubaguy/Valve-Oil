@@ -74,6 +74,7 @@
     "empty": "История печати пока пуста.",
     "no_match": "Нет подходящих заданий.",
     "job_actions": "Действия с заданием",
+    "job_actions_named": "Действия с заданием {{name}}",
     "details": "Подробности",
     "range": "{{from}}–{{to}} из {{total}}",
     "range_loaded": "{{from}}–{{to}} из {{total}} загруженных",

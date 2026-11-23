@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import configparser
 import hashlib
 import io
 import atexit
@@ -42,7 +44,7 @@ DRIVER_IMAGE = b"QIDI's closed-loop driver firmware 03.01.10.15" * 64
 DRIVER_PIN = ImagePin(size=len(DRIVER_IMAGE), sha256=hashlib.sha256(DRIVER_IMAGE).hexdigest())
 TARGET = "01.01.07.01"
 SOC = f"QD_MAX4_SOC_{TARGET}_20261016_Release_NA"
-CONFIG_KEPT = ("MCU_ID.cfg", "saved_variables.cfg")
+CONFIG_KEPT = ("MCU_ID.cfg", "saved_variables.cfg", "saved_variables.cfg.bak")
 # The box.cfg QIDI's package installs, with no Box.
 QIDI_BOX_CFG = b"# [include box1.cfg]\r\n# [include box2.cfg]\r\n# [include box3.cfg]\r\n# [include box4.cfg]"
 PACKAGE_SCRIPT_LINE = "停止旧版本服务"  # QIDI's preinst: "stopping the old version's services"
@@ -61,7 +63,7 @@ OPERATOR_CFG = ("[include MCU_ID.cfg]\n[extruder]\ncontrol = pid\n#pid_Kp = 20.0
 # QIDI's printer.cfg in the package, with QIDI's own SAVE_CONFIG block.
 PACKAGE_CFG = ("[include MCU_ID.cfg]\n[extruder]\ncontrol = pid\npid_Kp = 20.0\n[bed_mesh]\nspeed = 300\n\n" + BLOCK
                + "#*# [input_shaper]\n#*# shaper_type_x = ei\n#*# shaper_freq_x = 54.4\n#*#\n")
-PACKAGE_VARIABLES = "[Variables]\nz_offset = 0.0\nbox_count = 0\n"
+PACKAGE_VARIABLES = "[Variables]\nz_offset = 0.0\nbox_count = 0\nlast_load_slot = 'slot16'\nfilepath = ''\n"
 
 
 class PowerCut(BaseException):
@@ -275,7 +277,7 @@ class Printer:
         self.home = root / "home"
         data = self.home / "printer_data"
         (data / "config").mkdir(parents=True)
-        (data / "config/tltg_optimized_state.yaml").write_text("installed\n")
+        (data / "config/vo_state.yaml").write_text("installed\n")
         (data / "config/printer.cfg").write_text(OPERATOR_CFG)
         # No saved_variables.cfg.bak: QIDI's postinst then resets saved_variables.cfg to the package's defaults.
         (data / "config/saved_variables.cfg").write_text("[Variables]\nz_offset = 0.25\n")
@@ -284,7 +286,7 @@ class Printer:
         old_soc = f"QD_MAX4_SOC_{firmware}_X_NA"
         (self.update / "firmware_manifest.json").write_text(json.dumps({"SOC": {"file": old_soc, "version": firmware}}))
         (self.update / old_soc).write_bytes(b"QIDI's SOC package of the installed firmware")
-        self.bundle = self.home / "tltg-optimized-macros"
+        self.bundle = self.home / "vo-macros"
         self.bundle.mkdir()
         for name in ("installer", "firmware", "scripts"):
             (self.bundle / name).symlink_to(REPO_ROOT / name)
@@ -308,9 +310,9 @@ class Printer:
         (data / "config/box.cfg").write_text(box_config.monitor().generate(self.boxes) + "[gcode_macro T0]\ngcode:\n")
         self.box_cfg_at_boards = None
         self.paths = resolve_runtime_paths(bundle_root=self.bundle, environ={
-            "TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(data),
-            "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(self.update / "firmware_manifest.json"),
-            "TLTG_OPTIMIZED_MOONRAKER_URL": "http://moonraker.invalid/printer/objects/query?print_stats"})
+            "VO_PRINTER_DATA_ROOT": str(data),
+            "VO_FIRMWARE_MANIFEST": str(self.update / "firmware_manifest.json"),
+            "VO_MOONRAKER_URL": "http://moonraker.invalid/printer/objects/query?print_stats"})
         self.archive = package() if archive is None else archive
         max4 = next(printer for printer in MANIFEST.printers if printer.id == "max4")
         self.printer = replace(max4, target_firmware=replace(
@@ -418,9 +420,18 @@ class Printer:
                         path.unlink()
                 (config / "printer.cfg").write_text(PACKAGE_CFG)
                 (config / "box.cfg").write_bytes(QIDI_BOX_CFG)
-                (config / "saved_variables.cfg.bak").write_text(PACKAGE_VARIABLES)
                 if reset:
                     (config / "saved_variables.cfg").write_text(PACKAGE_VARIABLES)
+                else:
+                    # Otherwise it appends each variable the file lacks from the .bak as `echo $value | xargs`
+                    # leaves it, without its quotes (postinst lines 112-150).
+                    current = (config / "saved_variables.cfg").read_text()
+                    with (config / "saved_variables.cfg").open("a") as handle:
+                        for line in (config / "saved_variables.cfg.bak").read_text().splitlines()[1:]:
+                            key, _, value = line.partition("=")
+                            if f"\n{key.strip()} = " not in "\n" + current:
+                                handle.write(f"{key.strip()} = {' '.join(shlex.split(value))}\n")
+                (config / "saved_variables.cfg.bak").write_text(PACKAGE_VARIABLES)
                 self.dpkg_version = TARGET
                 return self.done(command, f"{PACKAGE_SCRIPT_LINE}\nSetting up qd-max4-system ({TARGET}) ...\n",
                                  rc=self.dpkg_rc)
@@ -450,7 +461,7 @@ class Printer:
             self.event("install", self.services["klipper.service"], self.services["qidi-client.service"],
                        self.update_firmware())
             if self.install_rc == 0:
-                (self.home / "printer_data/config/tltg_optimized_state.yaml").write_text("reinstalled\n")
+                (self.home / "printer_data/config/vo_state.yaml").write_text("reinstalled\n")
             return self.done(command, rc=self.install_rc)
         raise AssertionError(f"unexpected command {command}")
 
@@ -603,7 +614,7 @@ class Printer:
 
     def snapshot(self):
         skip = (valve_oil_status.STATUS_FILE, valve_oil_status.LOCK_FILE, firmware_update.RESULT_FILE,
-                firmware_update.RECORD_LOCK_FILE, ".tltg_optimized_installer.lock")
+                firmware_update.RECORD_LOCK_FILE, ".vo_installer.lock")
         return {str(path.relative_to(self.home)): path.read_bytes() for path in sorted(self.home.rglob("*"))
                 if path.is_file() and not path.is_symlink() and ".cache" not in path.parts and path.name not in skip}
 
@@ -629,7 +640,8 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertEqual(block, "\n#*# [input_shaper]\n#*# shaper_type_x = ei\n#*# shaper_freq_x = 51.2\n#*#\n"
                                 "#*# [extruder]\n#*# pid_kp = 25.5\n#*#\n#*# [bed_mesh default]\n#*# points =\n"
                                 "#*# \t0.1, 0.2\n#*# \t0.3, 0.4\n")
-        self.assertEqual((config / "saved_variables.cfg").read_text(), "[Variables]\nz_offset = 0.25\nbox_count = 0\n")
+        self.assertEqual((config / "saved_variables.cfg").read_text(),
+                         "[Variables]\nz_offset = 0.25\nbox_count = 0\nlast_load_slot = 'slot16'\nfilepath = ''\n")
         message = valve_oil_status.load_status(printer.paths).run.message
         self.assertIn("Restored the saved calibration from before the update: [extruder], [bed_mesh default], "
                       "[input_shaper]", message)
@@ -648,7 +660,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertFalse((printer.home / "printer_data" / CARRIED_LEDGER_FILE).exists())
         self.assertFalse(any((printer.home / name).exists() for name in (qidi_package.STAGING_DIRECTORY, qidi_package.PREVIOUS_DIRECTORY)))
         self.assertFalse(qidi_package.archive_path(printer.paths, printer.printer.target_firmware).exists())
-        self.assertEqual((printer.home / "printer_data/config/tltg_optimized_state.yaml").read_text(), "reinstalled\n")
+        self.assertEqual((printer.home / "printer_data/config/vo_state.yaml").read_text(), "reinstalled\n")
         # Klipper finds the mainboard under the name its new firmware gives it, as the touchscreen app would set it.
         self.assertIn(printer.usb_name(PATCHED_MCU), (printer.home / "printer_data/config/MCU_ID.cfg").read_text())
         status = valve_oil_status.load_status(printer.paths)
@@ -694,7 +706,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertIn("bootstrap.py firmware-update", unit)
         # What QIDI's package deletes from the config folder is kept in a restorable installer backup first.
         backup = next(printer.paths.printer_data_root.glob(MANIFEST.backup.label_prefix + "-01.01.06.03-*.zip"))
-        self.assertIn("config/tltg_optimized_state.yaml", zipfile.ZipFile(backup).namelist())
+        self.assertIn("config/vo_state.yaml", zipfile.ZipFile(backup).namelist())
         # The closed-loop drivers are updated first, X then Y, with QIDI's command, while the old Klipper runs alone:
         # the touchscreen and Moonraker are stopped and the motors off before the first transfer.
         self.assertEqual(self.driver_commands(printer), [("M84", "inactive", "inactive"),
@@ -966,6 +978,21 @@ class FirmwareUpdateTests(unittest.TestCase):
         self.assertEqual(printer.boot(), 0, printer.output.getvalue())
         self.assert_updated(printer)
 
+    def test_variables_qidi_copies_without_quotes_are_written_back_as_klipper_reads_them(self):
+        printer = Printer()
+        config = printer.home / "printer_data/config"
+        # With a .bak from QIDI's earlier firmware, the postinst adds the variables the operator's file lacks as
+        # `last_load_slot = slot16` and `filepath = `, which Klipper's save_variables can't load.
+        (config / "saved_variables.cfg.bak").write_text(PACKAGE_VARIABLES)
+        printer.start()
+        self.assert_updated(printer)
+        parser = configparser.ConfigParser()
+        parser.read_string((config / "saved_variables.cfg").read_text())
+        values = {name: ast.literal_eval(value) for name, value in parser.items("Variables")}  # as QIDI's loader
+        self.assertEqual(values, {"z_offset": 0.25, "box_count": 0, "last_load_slot": "slot16", "filepath": ""})
+        self.assertIn("Repaired saved_variables.cfg values QIDI's package wrote without their quotes, which Klipper "
+                      "can't read: last_load_slot, filepath.", valve_oil_status.load_status(printer.paths).run.message)
+
     def test_an_update_short_of_space_first_removes_old_logs_and_leftover_downloads(self):
         printer = Printer()
         printer.free, printer.reclaimable = 2 ** 20, {"journalctl": 64 * 2 ** 30}
@@ -1179,9 +1206,9 @@ class FirmwareUpdateTests(unittest.TestCase):
 
     def test_installer_hands_off_reports_dry_runs_and_falls_back_to_the_current_firmware(self):
         printer = Printer()
-        env = {"TLTG_OPTIMIZED_PRINTER_DATA_ROOT": str(printer.paths.printer_data_root),
-               "TLTG_OPTIMIZED_FIRMWARE_MANIFEST": str(printer.paths.firmware_manifest_path),
-               "TLTG_OPTIMIZED_MOONRAKER_URL": printer.paths.moonraker_url}
+        env = {"VO_PRINTER_DATA_ROOT": str(printer.paths.printer_data_root),
+               "VO_FIRMWARE_MANIFEST": str(printer.paths.firmware_manifest_path),
+               "VO_MOONRAKER_URL": printer.paths.moonraker_url}
         real_start = firmware_update.start_firmware_update
 
         def install(*arguments, mirror="ok"):
@@ -1219,7 +1246,7 @@ class FirmwareUpdateTests(unittest.TestCase):
         boot_id = printer.home / "boot_id"
         boot_id.write_text("boot-one\n")
         printer.paths = replace(printer.paths, boot_id_path_override=boot_id)
-        env["TLTG_OPTIMIZED_BOOT_ID_PATH"] = str(boot_id)
+        env["VO_BOOT_ID_PATH"] = str(boot_id)
         printer.hooks["install"] = lambda: recommend_reboot(printer.paths)
         code, installed, _, output = install()
         self.assertEqual((code, installed), (0, False), output)

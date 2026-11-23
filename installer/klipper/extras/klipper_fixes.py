@@ -859,7 +859,7 @@ class KlipperFixes:
         self.heaters = []
         if _motion_queuing_module is not None:
             # Klipper 0.14 and later: Valve Oil's Klipper already has these.
-            logging.info("tltg_klipper_fixes: not needed; this Klipper has "
+            logging.info("vo_klipper_fixes: not needed; this Klipper has "
                          "these fixes")
             return
         fixes = [
@@ -894,7 +894,7 @@ class KlipperFixes:
             ("fan and pin requests", _fix_pin_requests),
         ]
         if msgspec is None:
-            logging.info("tltg_klipper_fixes: msgspec isn't installed for "
+            logging.info("vo_klipper_fixes: msgspec isn't installed for "
                          "Klipper; status updates use json")
         else:
             fixes.append(("status encoding", lambda: _replace(
@@ -905,17 +905,17 @@ class KlipperFixes:
             try:
                 ok = fix()
             except Exception:
-                logging.exception("tltg_klipper_fixes: %s failed", name)
+                logging.exception("vo_klipper_fixes: %s failed", name)
                 ok = False
             if ok is None:
                 # Not needed on this Klipper.
                 continue
             (applied if ok else skipped).append(name)
         self.mainthread_check = "heater main-loop check" in applied
-        logging.info("tltg_klipper_fixes: applied %s", ", ".join(applied)
+        logging.info("vo_klipper_fixes: applied %s", ", ".join(applied)
                      or "none")
         if skipped:
-            logging.info("tltg_klipper_fixes: skipped %s; Klipper's code "
+            logging.info("vo_klipper_fixes: skipped %s; Klipper's code "
                          "differs from the version these fixes are for",
                          ", ".join(skipped))
         self.printer.register_event_handler("klippy:connect", self._connect)
