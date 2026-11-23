@@ -1,7 +1,7 @@
 // Chooses which filaments of an imported list to add or replace. New filaments start selected; changed ones don't,
 // as after a firmware update the change may be QIDI's.
 import { useState } from 'react'
-import { Dialog } from '../../ui'
+import { CancelButton, Dialog } from '../../ui'
 import type { QidiFilamentImportItem } from '../../../qidi/qidi-filament-config'
 import { t } from '../../../i18n'
 
@@ -18,9 +18,7 @@ export function FilamentImportDialog({ items, busy, onImport, onClose }: { items
       title={t('box.filaments.import.title')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={selected.length === 0 || busy} onClick={() => onImport(selected)}>
             {t('box.filaments.import_button')}
           </button>

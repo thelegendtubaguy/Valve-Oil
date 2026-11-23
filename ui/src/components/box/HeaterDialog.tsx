@@ -7,11 +7,13 @@
 // While it's off, Dry and Heat are two cards, and the chosen one's settings sit under them.
 import { useState, type ReactNode } from 'react'
 import { Droplet, Flame, Sun, Thermometer, TriangleAlert } from 'lucide-react'
-import { Dialog, Stepper } from '../ui'
+import { Choices, Dialog, Stepper } from '../ui'
 import { attempt } from '../toast'
+import { send } from '../control/common'
 import { boxCommands, boxHeatLimiters, boxHeaterMax, dryBlocker, type BoxState } from '../../state/box'
 import { listAnd } from '../../state/box-model'
 import { runGcode, usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
 import { startDryRun, stopDryRun, useDryLeft } from '../../state/box-dry'
 import { fmtDuration, fmtEta } from '../../lib/format'
 import { humidityLevel } from './BoxUnits'
@@ -30,14 +32,13 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
   const cfg = usePrinter((s) => (c?.heater ? s.heaterSettings[c.heater] : undefined))
   const cfgMax = cfg?.target_max_temp ?? cfg?.max_temp ?? 65
   const max = boxHeaterMax(box, boxNumber, cfgMax)
-  const inPrint = box.printState === 'printing' || box.printState === 'paused'
+  const inPrint = useJobActive()
   const [mode, setMode] = useState<Mode>(box.canDry && !inPrint ? 'dry' : 'heat')
   const [heatTo, setHeatTo] = useState<number>(c?.target && !c.drying ? c.target : Math.min(max, 45))
   const [dryTemp, setDryTemp] = useState(Math.min(DRY_TEMP, cfgMax))
   const [dryHours, setDryHours] = useState(DRY_TIME)
   const timer = useDryLeft(c)
   if (!c) return null
-  const run = (g: string) => attempt(() => runGcode(g))
   const blocked = dryBlocker(box, boxNumber)
   const limiters = boxHeatLimiters(box, boxNumber)
   const types = listAnd([...new Set(limiters.map((sl) => sl.type ?? sl.name ?? t('box.heater.filament')))])
@@ -59,11 +60,11 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
             </button>
           ) : (
             <>
-              <button className="btn btn-danger mr-auto" onClick={() => heater && run(boxCommands.heater(heater, 0))}>
+              <button className="btn btn-danger mr-auto" onClick={() => heater && send(boxCommands.heater(heater, 0))}>
                 {t('box.heater.turn_off')}
               </button>
               {heatTo !== c.target && max > 0 && (
-                <button className="btn btn-primary" onClick={() => heater && (run(boxCommands.heater(heater, heatTo)), onClose())}>
+                <button className="btn btn-primary" onClick={() => heater && (send(boxCommands.heater(heater, heatTo)), onClose())}>
                   {t('box.heater.heat_to', { temp: heatTo })}
                 </button>
               )}
@@ -101,7 +102,7 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
             {t('box.heater.dry_for', { hours: dryHours, temp: dryTemp })}
           </button>
         ) : heatLocked ? undefined : (
-          <button className="btn btn-primary" disabled={!heater || heatTo <= 0} onClick={() => heater && (run(boxCommands.heater(heater, heatTo)), onClose())}>
+          <button className="btn btn-primary" disabled={!heater || heatTo <= 0} onClick={() => heater && (send(boxCommands.heater(heater, heatTo)), onClose())}>
             {t('box.heater.heat_to', { temp: heatTo })}
           </button>
         )
@@ -146,11 +147,7 @@ export function HeaterDialog({ box, boxNumber, onClose }: { box: BoxState; boxNu
         ) : (
           <>
             <Temps label={t('box.heater.temperature')} value={heatTo} onChange={setHeatTo} max={max} />
-            {limiters.length > 0 && max < cfgMax && (
-              <div className="text-ink-3">
-                {t('box.heater.limit', { max, types, where })}
-              </div>
-            )}
+            {limiters.length > 0 && max < cfgMax && <div className="text-ink-3">{t('box.heater.limit', { max, types, where })}</div>}
           </>
         )}
       </div>
@@ -224,13 +221,7 @@ function Temps({ label, value, onChange, max }: { label: string; value: number; 
   return (
     <div className="hd-field">
       <span className="k">{label}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {TEMPS.filter((x) => x <= max).map((x) => (
-          <button key={x} type="button" className={`choice ${value === x ? 'on' : ''}`} onClick={() => onChange(x)}>
-            {x} °C
-          </button>
-        ))}
-      </div>
+      <Choices value={value} options={TEMPS.filter((x) => x <= max).map((x) => ({ value: x, label: `${x} °C` }))} onChange={onChange} />
     </div>
   )
 }

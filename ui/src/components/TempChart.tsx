@@ -9,18 +9,20 @@ const SLOTS = 8
 
 type Series = { obj: string; label: string; slot: number }
 
+const isBoxHeater = (o: string) => o.startsWith('heater_generic heater_box')
+
 /** Heaters to chart, in a stable order: nozzle, bed, chamber heaters, Box heaters. */
-function useSeries(): Series[] {
-  return usePrinter((s) => {
-    const objs = s.objects
-    const names: string[] = []
-    if (objs.includes('extruder')) names.push('extruder')
-    if (objs.includes('heater_bed')) names.push('heater_bed')
-    for (const o of objs) if (o.startsWith('heater_generic ') && !o.startsWith('heater_generic heater_box')) names.push(o)
-    for (const o of objs) if (o.startsWith('heater_generic heater_box')) names.push(o)
-    return names.slice(0, SLOTS).map((obj, i) => ({ obj, slot: i + 1, label: obj === 'extruder' ? t('app.heaters.nozzle') : obj === 'heater_bed' ? t('app.heaters.bed') : obj.startsWith('heater_generic heater_box') ? t('app.heaters.box', { n: obj.slice(-1) }) : prettyName(obj) }))
-  })
+export function heaterObjects(objs: string[]) {
+  const generic = objs.filter((o) => o.startsWith('heater_generic '))
+  return [...['extruder', 'heater_bed'].filter((o) => objs.includes(o)), ...generic.filter((o) => !isBoxHeater(o)), ...generic.filter(isBoxHeater)]
 }
+
+function useSeries(): Series[] {
+  return usePrinter((s) => heaterObjects(s.objects).slice(0, SLOTS).map((obj, i) => ({ obj, slot: i + 1, label: obj === 'extruder' ? t('app.heaters.nozzle') : obj === 'heater_bed' ? t('app.heaters.bed') : isBoxHeater(obj) ? t('app.heaters.box', { n: obj.slice(-1) }) : prettyName(obj) })))
+}
+
+/** A series' line colour, as a short stroke. */
+const swatch = (slot: number, w: number) => <svg width={w} height="4" aria-hidden><line x1="1" x2={w - 1} y1="2" y2="2" stroke={`var(--series-${slot})`} strokeWidth="2" strokeLinecap="round" /></svg>
 
 // Windows in seconds, labelled in minutes.
 const WINDOWS = [300, 600, 1200]
@@ -87,7 +89,9 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
   const bottom = Math.max(0, Math.floor(lo / step) * step)
   // A reading a little over a gridline, like a bed overshooting 100°, runs into the top padding instead of adding a step.
   const top = Math.max(bottom + 2 * step, Math.ceil((hi - step / 10) / step) * step)
-  const xAt = (i: number) => pad.l + (n <= 1 ? iw : (i / (win - 1)) * iw) + (n < win ? ((win - n) / (win - 1)) * iw : 0)
+  // Until the window fills, the history sits at its right end.
+  const offset = n < win ? ((win - n) / (win - 1)) * iw : 0
+  const xAt = (i: number) => pad.l + (n <= 1 ? iw : (i / (win - 1)) * iw) + offset
   const yAt = (v: number) => pad.t + ih - ((v - bottom) / (top - bottom)) * ih
   // About one point per 2 px, from the window rather than the samples there are, so the buckets keep their size as the
   // history fills.
@@ -106,9 +110,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
 
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
-    const x = e.clientX - r.left
-    const offset = n < win ? ((win - n) / (win - 1)) * iw : 0
-    const i = Math.round(((x - pad.l - offset) / iw) * (win - 1))
+    const i = Math.round(((e.clientX - r.left - pad.l - offset) / iw) * (win - 1))
     setHover(n && i >= 0 && i < n ? i : null)
   }
 
@@ -143,9 +145,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
                   onClick={() => setHidden((h) => new Set(h.has(x.obj) ? [...h].filter((o) => o !== x.obj) : [...h, x.obj]))}
                   className={`flex items-center gap-1.5 rounded-md border-0 bg-transparent px-1 py-0.5 text-[12px] hover:bg-hover ${off ? 'opacity-40' : ''}`}
                 >
-                  <svg width="14" height="4" aria-hidden>
-                    <line x1="1" x2="13" y1="2" y2="2" stroke={`var(--series-${x.slot})`} strokeWidth="2" strokeLinecap="round" />
-                  </svg>
+                  {swatch(x.slot, 14)}
                   <span className="text-ink-2">{x.label}</span>
                   <span className="num font-semibold text-ink">{l?.t != null ? `${Math.round(l.t)}°` : '—'}</span>
                   {l?.target ? <span className="num text-ink-3">/{Math.round(l.target)}</span> : null}
@@ -199,9 +199,7 @@ export function TempChart({ className = '', bare, hidden: hiddenProp }: { classN
               const tg = data[x.obj].targets[hover]
               return (
                 <div key={x.obj} className="flex items-center gap-1.5">
-                  <svg width="10" height="4" aria-hidden>
-                    <line x1="1" x2="9" y1="2" y2="2" stroke={`var(--series-${x.slot})`} strokeWidth="2" strokeLinecap="round" />
-                  </svg>
+                  {swatch(x.slot, 10)}
                   <b className="num">{v ? `${v.toFixed(1)}°` : '—'}</b>
                   <span className="truncate text-ink-3">
                     {x.label}

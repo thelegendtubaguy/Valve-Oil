@@ -1,20 +1,11 @@
 // A card that folds to its title. The choice is kept in the browser, per card.
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { useStored } from '../../lib/browser'
 
 export function useFold(key: string, openByDefault = false) {
-  const [open, setOpen] = useState(() => {
-    const v = localStorage.getItem(key)
-    return v == null ? openByDefault : v === '1'
-  })
-  const toggle = () =>
-    setOpen((o) => {
-      try {
-        localStorage.setItem(key, o ? '0' : '1')
-      } catch {}
-      return !o
-    })
-  return [open, toggle] as const
+  const [v, set] = useStored(key, openByDefault ? '1' : '0')
+  return [v === '1', () => set(v === '1' ? '0' : '1')] as const
 }
 
 /** The card's title as the button that folds it. */

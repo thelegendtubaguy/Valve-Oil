@@ -4,40 +4,15 @@
 import type { PrinterState } from './printer'
 import { gcode } from '../components/control/gcode'
 import { locale, t, type MessageKey } from '../i18n'
-import {
-  QIDI_BOX_EXTERNAL_SLOT,
-  qidiBoxReloadGroups,
-  qidiBoxSlotLabel,
-  qidiBoxSlotNumber,
-  qidiBoxSlots,
-  qidiBoxToolButtons,
-  type QidiBoxReloadGroups,
-  type QidiBoxToolButton,
-  type QidiBoxSlot,
-  type QidiFilament,
-  type QidiFilamentList,
-} from '../qidi/qidi-box'
-import {
-  qidiBoxHubSensor,
-  qidiBoxHubSlot,
-  qidiBoxLastError,
-  qidiBoxLoadedSlot,
-  qidiBoxStrandedRecovery,
-  qidiBoxTask,
-  qidiBoxTaskText,
-  qidiBoxWarnings,
-  QIDI_BOX_STEP_UNKNOWN,
-  type QidiBoxError,
-  type QidiBoxStepText,
-  type QidiBoxTask,
-} from '../qidi/qidi-box-task'
+import { QIDI_BOX_EXTERNAL_SLOT, qidiBoxReloadGroups, qidiBoxSlotLabel, qidiBoxSlotNumber, qidiBoxSlots, qidiBoxToolButtons, type QidiBoxReloadGroups, type QidiBoxToolButton, type QidiBoxSlot, type QidiFilament, type QidiFilamentList } from '../qidi/qidi-box'
+import { qidiBoxHubSensor, qidiBoxHubSlot, qidiBoxLastError, qidiBoxLoadedSlot, qidiBoxStrandedRecovery, qidiBoxTask, qidiBoxTaskText, qidiBoxWarnings, QIDI_BOX_STEP_UNKNOWN, type QidiBoxStepText, type QidiBoxTask } from '../qidi/qidi-box-task'
 
 /** QIDI's filament lists as read from the printer (box.ts's filamentLists store). */
 export type Lists = { legacy: QidiFilamentList | null; database: QidiFilament[] | null; databaseError: boolean }
 
 // ---- derived state ----
 /** A Box's climate. drying is QIDI's timed drying (BOX_START_DRYING); a target without it is a plain heater setting. */
-export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null; drying: boolean; dryMinutesLeft: number | null }
+export type BoxClimate = { box: number; humidity: number | null; temperature: number | null; target: number | null; heater: string | null; drying: boolean }
 
 /** Valve Oil's turn spools while heating (vo_box_spool_roll): on, and the slot it's turning now. */
 export type SpoolRoll = { enabled: boolean; rolling: string | null }
@@ -62,7 +37,6 @@ export type BoxState = {
   toolheadFilament: boolean | null
   task: QidiBoxTask | null
   taskText: string | null
-  lastError: QidiBoxError | null
   warnings: string[]
   busy: boolean
   mappingLocked: boolean
@@ -94,8 +68,6 @@ export type BoxState = {
   /** 01.01.07.01's filament database was read but lists no filaments. */
   filamentDatabaseInvalid: boolean
   flowPaused: boolean
-  /** The running step, in words; null while paused or idle. */
-  taskStep: string | null
   /** The failed step's console error, then QIDI's Box warnings. */
   problems: string[]
   spoolRoll: SpoolRoll | null
@@ -139,7 +111,6 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
       target: num(heater?.target),
       heater: heater ? heaterName : null,
       drying: Number(dry?.dry_state) === 1,
-      dryMinutesLeft: Number(dry?.dry_state) === 1 ? num(dry?.end_time) : null,
     })
   }
 
@@ -178,7 +149,6 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     toolheadFilament,
     task,
     taskText: text ? stepText(text, task?.paused ?? false) : null,
-    lastError,
     warnings,
     busy,
     mappingLocked: busy || printState === 'paused',
@@ -201,33 +171,13 @@ export function deriveBox(s: PrinterState, lists: Lists): BoxState {
     canEditFilament: hasController ? !!lists.database?.length : lists.legacy != null,
     filamentDatabaseInvalid: hasController && lists.databaseError,
     flowPaused,
-    taskStep: text && !flowPaused ? stepText(text, false) : null,
     problems: [...new Set([...(lastError ? [lastError.code ? `${lastError.message} (${lastError.code})` : lastError.message] : []), ...warnings])],
     spoolRoll: roll ? { enabled: roll.enabled === true, rolling: typeof roll.rolling === 'string' ? roll.rolling : null } : null,
   }
 }
 
 // Every step key qidiBoxStepText gives, each with a whole message for the running and the failed step.
-const STEP_KEYS = new Set([
-  'heat',
-  'heat_slot',
-  'heat_external',
-  'heat_temp',
-  'heat_temp_slot',
-  'heat_temp_external',
-  'cut',
-  'wipe',
-  'bite',
-  'load',
-  'load_slot',
-  'load_external',
-  'unload',
-  'unload_slot',
-  'unload_external',
-  'eject',
-  'eject_slot',
-  'working',
-])
+const STEP_KEYS = new Set(['heat', 'heat_slot', 'heat_external', 'heat_temp', 'heat_temp_slot', 'heat_temp_external', 'cut', 'wipe', 'bite', 'load', 'load_slot', 'load_external', 'unload', 'unload_slot', 'unload_external', 'eject', 'eject_slot', 'working'])
 
 function stepText(s: QidiBoxStepText, failed: boolean): string {
   const key = STEP_KEYS.has(s.key) ? s.key : 'working'
@@ -301,12 +251,12 @@ export function slotStatus(box: BoxState, slot: QidiBoxSlot): 'loaded' | 'hub' |
 // QIDI's Box settings are saved variables its Box modules read; vo_box_spool_roll is Valve Oil's turn spools while heating.
 export type BoxSetting = 'auto_read_rfid' | 'auto_init_detect' | 'auto_reload_detect' | 'enable_box' | 'vo_box_spool_roll'
 
+const cold = (box: BoxState) => (box.canCold && box.printState !== 'paused' ? ' COLD=1' : '')
+
 export const boxCommands = {
   load: (box: BoxState, slot: number) => (box.hasController ? gcode`LOAD_FILAMENT_CONTROL SLOT=${slot}` : gcode`E_LOAD slot=${slot}`),
-  unload: (box: BoxState, slot: number) =>
-    box.hasController ? gcode`UNLOAD_FILAMENT_CONTROL SLOT=${slot}${box.canCold && box.printState !== 'paused' ? ' COLD=1' : ''}` : gcode`E_UNLOAD slot=${slot}`,
-  eject: (box: BoxState, slot: number) =>
-    box.hasController ? gcode`EJECT_FILAMENT_CONTROL SLOT=${slot}${box.canCold && box.printState !== 'paused' ? ' COLD=1' : ''}` : gcode`E_BOX slot=${slot}`,
+  unload: (box: BoxState, slot: number) => (box.hasController ? gcode`UNLOAD_FILAMENT_CONTROL SLOT=${slot}${cold(box)}` : gcode`E_UNLOAD slot=${slot}`),
+  eject: (box: BoxState, slot: number) => (box.hasController ? gcode`EJECT_FILAMENT_CONTROL SLOT=${slot}${cold(box)}` : gcode`E_BOX slot=${slot}`),
   rfid: (box: BoxState, slot: number) => (box.hasController ? gcode`READ_RFID SLOT=${slot}` : gcode`RFID_READ SLOT=slot${slot}`),
   writeTag: (slot: number, filamentId: string, colors: string[]) => gcode`VO_BOX_RFID_WRITE SLOT=${slot} FILAMENT=${filamentId} COLORS=${colors.map((c) => c.replace('#', '').toUpperCase()).join(',')}`,
   cut: () => 'VO_CUT_FILAMENT',
@@ -315,10 +265,7 @@ export const boxCommands = {
   stop: () => 'FLOW_STOP',
   mapTool: (tool: number, slot: number) => gcode`SAVE_VARIABLE VARIABLE=value_t${tool} VALUE="'slot${slot}'"`,
   // QIDI's SET_ENABLE_AUTO_RELOAD and SET_ENABLE_INIT_READ_RFID only save their variable, so those stay direct saves.
-  setting: (name: BoxSetting, on: boolean, box?: Pick<BoxState, 'rfidViaController'>) =>
-    name === 'auto_read_rfid' && box?.rfidViaController
-      ? gcode`SET_ENABLE_RFID_READ ENABLE=${on ? 1 : 0}`
-      : gcode`SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`,
+  setting: (name: BoxSetting, on: boolean, box?: Pick<BoxState, 'rfidViaController'>) => (name === 'auto_read_rfid' && box?.rfidViaController ? gcode`SET_ENABLE_RFID_READ ENABLE=${on ? 1 : 0}` : gcode`SAVE_VARIABLE VARIABLE=${name} VALUE=${on ? 1 : 0}`),
   tool: (tool: number) => gcode`T${tool}`,
   heater: (heater: string, target: number) => gcode`SET_HEATER_TEMPERATURE HEATER=${heater.replace(/^heater_generic /, '')} TARGET=${target}`,
   // TIME is whole hours.

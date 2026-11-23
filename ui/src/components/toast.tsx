@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, X } from 'lucide-react'
 import { createStore, useStore } from '../lib/store'
 import { t } from '../i18n'
+import { errorText } from '../lib/browser'
 
 type Toast = { id: number; text: string; tone: 'error' | 'ok' }
 const toasts = createStore<Toast[]>([])
@@ -20,7 +21,7 @@ export async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   try {
     return await fn()
   } catch (e) {
-    toast(e instanceof Error ? e.message : String(e), 'error')
+    toast(errorText(e), 'error')
     return undefined
   }
 }

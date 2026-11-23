@@ -2,13 +2,12 @@
 // format the print dialog uses.
 import { useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Dialog, MenuButton } from '../ui'
+import { CancelButton, Dialog, MenuButton } from '../ui'
 import { attempt } from '../toast'
-import { boxCommands, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
+import { boxCommands, QIDI_BOX_EXTERNAL_SLOT, type BoxState } from '../../state/box'
 import { runGcode } from '../../state/printer'
+import { slotText } from './BoxTools'
 import { t } from '../../i18n'
-
-const slotText = (s: QidiBoxSlot) => `${s.label} · ${s.present ? s.name || t('box.unknown_filament') : t('box.empty')}`
 
 function Dot({ color }: { color: string | null }) {
   return <span className="inline-block h-3.5 w-3.5 flex-none rounded-full" style={{ background: color ?? 'transparent', boxShadow: 'inset 0 0 0 1px rgb(128 128 128 / 0.6)' }} />
@@ -42,9 +41,7 @@ export function ToolMapDialog({ box, open, onClose }: { box: BoxState; open: boo
           <button className="btn btn-ghost mr-auto" onClick={setDefault}>
             {t('box.tool_map.default')}
           </button>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={box.mappingLocked} onClick={save}>
             {t('common.save')}
           </button>

@@ -1,6 +1,6 @@
 // The Home control deck: the jog wheel, step sizes, temperature actions, outputs, and macros for the Home mockup.
-import { useState, type ReactNode } from 'react'
-import { ChevronDown, Fan, Footprints, House, Rabbit, Settings2, Snowflake, Turtle, Zap } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Fan, House, Settings2, Snowflake, Zap } from 'lucide-react'
 import { MenuButton, Segmented, confirm } from '../ui'
 import { objectLabel, send } from '../control/common'
 import { useJobActive } from '../../state/job'
@@ -11,6 +11,7 @@ import { attempt } from '../toast'
 import { usePrinter } from '../../state/printer'
 import { applyPreset, usePresets } from '../../state/presets'
 import { navigate } from '../../lib/router'
+import { useStored } from '../../lib/browser'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
 import { FoldTitle, useFold } from './fold'
@@ -18,27 +19,13 @@ import './deck.css'
 
 export type Mode = 'fine' | 'coarse' | 'turbo'
 /** Jog step sizes. `labelKey` is a message key, looked up when it's shown. */
-export const MODES: Record<Mode, { small: number; big: number; labelKey: MessageKey; icon: ReactNode }> = {
-  fine: { small: 0.1, big: 1, labelKey: 'home.deck.fine', icon: <Turtle size={14} /> },
-  coarse: {
-    small: 1,
-    big: 10,
-    labelKey: 'home.deck.coarse',
-    icon: <Footprints size={14} />,
-  },
-  turbo: { small: 10, big: 50, labelKey: 'home.deck.turbo', icon: <Rabbit size={14} /> },
+export const MODES: Record<Mode, { small: number; big: number; labelKey: MessageKey }> = {
+  fine: { small: 0.1, big: 1, labelKey: 'home.deck.fine' },
+  coarse: { small: 1, big: 10, labelKey: 'home.deck.coarse' },
+  turbo: { small: 10, big: 50, labelKey: 'home.deck.turbo' },
 }
 
-export function useMode() {
-  const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('vo-jog-mode') as Mode) || 'coarse')
-  const pick = (m: Mode) => {
-    setMode(m)
-    try {
-      localStorage.setItem('vo-jog-mode', m)
-    } catch {}
-  }
-  return [mode, pick] as const
-}
+export const useMode = () => useStored<Mode>('vo-jog-mode', 'coarse')
 
 // ---- jog wheel ----
 const S = 280
@@ -131,33 +118,12 @@ export function TempActions() {
             {t('control.temps.presets')} <ChevronDown size={12} />
           </>
         }
-        items={
-          presets.length
-            ? presets.map((p) => ({
-                label: p.name,
-                onSelect: () => void attempt(() => applyPreset(p)),
-              }))
-            : [
-                {
-                  label: t('control.temps.no_presets'),
-                  onSelect: () => navigate('settings'),
-                },
-              ]
-        }
+        items={presets.length ? presets.map((p) => ({ label: p.name, onSelect: () => void attempt(() => applyPreset(p)) })) : [{ label: t('control.temps.no_presets'), onSelect: () => navigate('settings') }]}
       />
       <button
         className="btn btn-sm px-2! py-0.5! text-[11.5px]"
         onClick={async () => {
-          if (
-            active &&
-            !(await confirm({
-              title: t('control.temps.cool_down_title'),
-              body: t('control.temps.cool_down_body'),
-              confirm: t('control.temps.cool_down'),
-              danger: true,
-            }))
-          )
-            return
+          if (active && !(await confirm({ title: t('control.temps.cool_down_title'), body: t('control.temps.cool_down_body'), confirm: t('control.temps.cool_down'), danger: true }))) return
           send('TURN_OFF_HEATERS')
         }}
       >
@@ -167,9 +133,8 @@ export function TempActions() {
   )
 }
 
-
 // ---- fans, pins, and lights ----
-export function OutputsDeck({ className = '' }: { className?: string }) {
+export function OutputsDeck() {
   const fans = useOutputs(FAN_TYPES)
   const pins = useOutputs(PIN_TYPES)
   const leds = useOutputs(LED_TYPES)
@@ -177,7 +142,7 @@ export function OutputsDeck({ className = '' }: { className?: string }) {
   const settable = fans.filter((o) => ['fan', 'fan_generic'].includes(typeOf(o))).sort((a, b) => rank(a) - rank(b))
   const auto = fans.filter((o) => !settable.includes(o) && typeOf(o) !== 'temperature_fan')
   return (
-    <section className={`card ${className}`}>
+    <section className="card">
       <h3 className="card-title">
         <Fan size={14} /> {t('control.screen.tab_outputs')}
       </h3>
@@ -242,10 +207,7 @@ export function MacrosDeck({ className = '' }: { className?: string }) {
                 label={t('home.deck.macro_category')}
                 value={shown?.id ?? ''}
                 onChange={setOpen}
-                options={groups.map((g) => ({
-                  value: g.id,
-                  label: g.name ?? t('control.macros.uncategorized'),
-                }))}
+                options={groups.map((g) => ({ value: g.id, label: g.name ?? t('control.macros.uncategorized') }))}
               />
             </div>
           )}

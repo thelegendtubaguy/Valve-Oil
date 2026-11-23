@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Bell, BellOff, ChevronDown, Clock, ExternalLink, Megaphone, TriangleAlert, X } from 'lucide-react'
 import { createStore, useStore } from '../lib/store'
 import { fmtAgo } from '../lib/format'
 import { client, usePrinter } from '../state/printer'
 import { attempt } from './toast'
+import { usePopup } from '../lib/browser'
 import { t, type MessageKey } from '../i18n'
 
 // The top bar's notifications, as Fluidd's bell menu: Moonraker announcements (with dismiss and snooze), and the
@@ -39,17 +40,11 @@ function setDismissed(entry_id: string, dismissed: boolean) {
   announcements.set((list) => list.map((a) => (a.entry_id === entry_id ? { ...a, dismissed, ...(dismissed ? { date_dismissed: Date.now() / 1000 } : { date_dismissed: null, dismiss_wake: null }) } : a)))
 }
 
-let started = false
-function start() {
-  if (started) return
-  started = true
-  client.onState((c) => c === 'open' && loadAnnouncements())
-  if (client.state === 'open') loadAnnouncements()
-  client.on('notify_announcement_update', (p) => announcements.set(((p[0] as { entries?: Announcement[] })?.entries ?? []) as Announcement[]))
-  client.on('notify_announcement_dismissed', (p) => setDismissed(String((p[0] as { entry_id: string })?.entry_id), true))
-  client.on('notify_announcement_wake', (p) => setDismissed(String((p[0] as { entry_id: string })?.entry_id), false))
-}
-start()
+client.onState((c) => c === 'open' && loadAnnouncements())
+if (client.state === 'open') loadAnnouncements()
+client.on('notify_announcement_update', (p) => announcements.set(((p[0] as { entries?: Announcement[] })?.entries ?? []) as Announcement[]))
+client.on('notify_announcement_dismissed', (p) => setDismissed(String((p[0] as { entry_id: string })?.entry_id), true))
+client.on('notify_announcement_wake', (p) => setDismissed(String((p[0] as { entry_id: string })?.entry_id), false))
 
 const dismiss = (entry_id: string, wake_time?: number) => attempt(() => client.call('server.announcements.dismiss', wake_time ? { entry_id, wake_time } : { entry_id }))
 
@@ -69,16 +64,7 @@ const EMPTY_S: string[] = []
 /** The bell in the top bar, with a count, opening the list. */
 export function NotificationsButton() {
   const n = useNotifications()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('keydown', esc)
-    return () => (window.removeEventListener('pointerdown', close), window.removeEventListener('keydown', esc))
-  }, [open])
+  const { open, setOpen, ref } = usePopup()
   const warn = n.klipper.length + n.moonraker.length > 0
   const high = n.announcements.some((a) => a.priority === 'high')
   const tone = warn || high ? 'bg-accent text-on-accent' : 'bg-[var(--blue)] text-white'

@@ -14,7 +14,7 @@ import { slotByIndex, useBox, QIDI_BOX_EXTERNAL_SLOT } from '../../state/box'
 import { href } from '../../lib/router'
 import { t } from '../../i18n'
 
-export function BoxDeck({ className = '' }: { className?: string }) {
+export function BoxDeck() {
   const box = useBox()
   const [selected, setSelected] = useState<number | null>(null)
   const [mapOpen, setMapOpen] = useState(false)
@@ -28,7 +28,7 @@ export function BoxDeck({ className = '' }: { className?: string }) {
   const slot = slotByIndex(box, current)
   const onTool = (_tool: number, s: number) => (box.mappingLocked ? setSelected(s) : setMapOpen(true))
   return (
-    <section className={`card ${className}`}>
+    <section className="card">
       <h3 className="card-title">
         <BoxIcon size={14} />
         QIDI Box
@@ -46,7 +46,7 @@ export function BoxDeck({ className = '' }: { className?: string }) {
       </h3>
       <div className="grid gap-3">
         {box.task && <Operation box={box} />}
-        <BoxUnits box={box} selected={current} onSelect={setSelected} onTool={onTool} onHeater={setHeater} stack />
+        <BoxUnits box={box} selected={current} onSelect={setSelected} onTool={onTool} onHeater={setHeater} />
         <FilamentRail box={box} onSelect={setSelected} />
         {!box.flowPaused &&
           box.warnings.map((w) => (
@@ -57,7 +57,7 @@ export function BoxDeck({ className = '' }: { className?: string }) {
       </div>
       {slot && (
         <div className="deck-sec">
-          <SlotPanel box={box} slot={slot} bare />
+          <SlotPanel box={box} slot={slot} />
         </div>
       )}
       <ToolMapDialog box={box} open={mapOpen} onClose={() => setMapOpen(false)} />

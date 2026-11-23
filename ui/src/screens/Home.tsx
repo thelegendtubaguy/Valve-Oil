@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Camera, ChevronRight, Folder, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { HoldButton } from '../components/ui'
 import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
@@ -16,7 +16,7 @@ import { BoxDeck } from '../components/home-deck/BoxDeck'
 import { ToolheadCard } from '../components/home-deck/ToolheadCard'
 import { TempsCard } from '../components/home-deck/TempsCard'
 import { attempt } from '../components/toast'
-import { client, onKlippyReady, runGcode, usePrinter } from '../state/printer'
+import { client, onKlippyReady, runGcode, useConnected } from '../state/printer'
 import { useBoxPresent } from '../state/box'
 import { jobProgress, remainingSeconds, useJob } from '../state/job'
 import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
@@ -91,7 +91,9 @@ export function HomeScreen() {
 }
 
 // ---- the current or last job ----
-export function JobCard({ style }: { style?: CSSProperties }) {
+const CHIP = 'chip cursor-pointer border-0 hover:bg-hover'
+
+export function JobCard() {
   const job = useJob()
   const meta = useFileMeta(job.filename)
   const [tune, setTune] = useState(false)
@@ -109,10 +111,10 @@ export function JobCard({ style }: { style?: CSSProperties }) {
     error: t('home.job.error'),
     standby: '',
   }[job.state]
-  const fill = finished ? (job.state === 'complete' ? 1 : p) : p
+  const fill = job.state === 'complete' ? 1 : p
 
   return (
-    <section className="card grid content-start gap-3.5 @container" style={style}>
+    <section className="card grid content-start gap-3.5 @container">
       <div className="flex gap-3.5">
         <div className="relative grid h-[104px] w-[104px] flex-none place-items-center overflow-hidden rounded-xl bg-inset shadow-[inset_0_0_0_1px_var(--line)]">
           {thumb ? (
@@ -183,19 +185,18 @@ export function JobCard({ style }: { style?: CSSProperties }) {
             </HoldButton>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              {t('home.job.speed', { pct: Math.round(job.speedFactor * 100) })}
-            </button>
-            <button className="chip cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
-              {t('home.job.flow', { pct: Math.round(job.extrudeFactor * 100) })}
-            </button>
-            <button className="chip num cursor-pointer border-0 hover:bg-hover" onClick={() => setTune(true)}>
+            {[t('home.job.speed', { pct: Math.round(job.speedFactor * 100) }), t('home.job.flow', { pct: Math.round(job.extrudeFactor * 100) })].map((label, i) => (
+              <button key={i} className={CHIP} onClick={() => setTune(true)}>
+                {label}
+              </button>
+            ))}
+            <button className={`num ${CHIP}`} onClick={() => setTune(true)}>
               Z {job.zOffset >= 0 ? '+' : ''}
               {job.zOffset.toFixed(3)}
             </button>
             <span className="flex-1" />
-            <ExcludeObjectsButton className="chip cursor-pointer border-0 hover:bg-hover" />
-            <PauseAtLayerButton className="chip cursor-pointer border-0 hover:bg-hover" />
+            <ExcludeObjectsButton className={CHIP} />
+            <PauseAtLayerButton className={CHIP} />
           </div>
         </>
       ) : (
@@ -219,10 +220,10 @@ export function JobCard({ style }: { style?: CSSProperties }) {
 }
 
 // ---- between prints ----
-export function ReadyCard({ style, jobs }: { style?: CSSProperties; jobs: HistoryJob[] | null }) {
+export function ReadyCard({ jobs }: { jobs: HistoryJob[] | null }) {
   const last = jobs?.[0]
   return (
-    <section className="card grid grid-cols-1 content-start gap-3" style={style}>
+    <section className="card grid grid-cols-1 content-start gap-3">
       <div>
         <div className="lbl">{t('home.ready.title')}</div>
         {last ? (
@@ -309,7 +310,7 @@ export type Webcam = { name: string; enabled: boolean; service: string; stream_u
 /** Moonraker's enabled cameras that stream, in its order. */
 export function useWebcams(): Webcam[] {
   const [cams, setCams] = useState<Webcam[]>([])
-  const ready = usePrinter((s) => s.conn === 'open')
+  const ready = useConnected()
   useEffect(() => {
     if (!ready) return
     const load = () =>
@@ -319,9 +320,7 @@ export function useWebcams(): Webcam[] {
         .catch(() => setCams([]))
     load()
     const off = onKlippyReady(load)
-    return () => {
-      off()
-    }
+    return () => void off()
   }, [ready])
   return cams
 }

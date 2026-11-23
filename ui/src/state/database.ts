@@ -26,24 +26,18 @@ export async function postItem<T>(namespace: string, key: string, value: T): Pro
 
 export async function deleteItem(namespace: string, key: string): Promise<void> {
   await client.call('server.database.delete_item', { namespace, key })
-  cache.set((c) => {
-    const next = { ...c }
-    delete next[`${namespace}:${key}`]
-    return next
-  })
+  cache.set((c) => without(`${namespace}:${key}`, c))
 }
 
 /** Reads a key again, for a value another browser may have changed since this page loaded it. */
 export async function reloadItem(namespace: string, key: string): Promise<void> {
   const v = await getItem<unknown>(namespace, key)
-  cache.set((c) => {
-    const next = { ...c }
-    if (v === undefined) delete next[`${namespace}:${key}`]
-    else next[`${namespace}:${key}`] = v
-    return next
-  })
+  const id = `${namespace}:${key}`
+  cache.set((c) => (v === undefined ? without(id, c) : { ...c, [id]: v }))
 }
 
+/** The cache without one key. */
+const without = (id: string, { [id]: _gone, ...rest }: Record<string, unknown>) => rest
 const cache = createStore<Record<string, unknown>>({})
 const loading = new Set<string>()
 const loaded = createStore<Record<string, true>>({})
@@ -58,10 +52,7 @@ function load(namespace: string, key: string) {
     client
       .call<{ value: unknown }>('server.database.get_item', { namespace, key })
       .then((r) => cache.set((c) => ({ ...c, [id]: r.value })))
-      .then(
-        () => true,
-        (e) => e instanceof RpcError && e.code === 404,
-      )
+      .then(() => true, (e) => e instanceof RpcError && e.code === 404)
       .then((done) => {
         loading.delete(id)
         if (done) loaded.set((l) => ({ ...l, [id]: true }))

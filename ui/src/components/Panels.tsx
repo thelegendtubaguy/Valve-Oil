@@ -1,22 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Activity, ChevronRight } from 'lucide-react'
 import { href } from '../lib/router'
-import { client, usePrinter } from '../state/printer'
+import { client, useConnected, usePrinter } from '../state/printer'
 import { fmtDuration, prettyName } from '../lib/format'
+import { usePopup } from '../lib/browser'
+import { KV } from './ui'
 import { t } from '../i18n'
 
 /** Filament length as Fluidd reads it: mm under a metre, then metres. */
 export function fmtLength(mm: number) {
   return mm < 1000 ? `${Math.round(mm)} mm` : t('app.units.m', { n: (mm / 1000).toFixed(2) })
-}
-
-function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
-  return (
-    <div className="row-k">
-      <span className="k">{k}</span>
-      <span className="v">{v}</span>
-    </div>
-  )
 }
 
 // ---- printer health ----
@@ -51,16 +44,7 @@ function useHealthLevel(): Level {
 /** Health in the top bar: an icon that turns orange or red when a reading crosses its limit, and the readings on click. */
 export function HealthButton() {
   const lvl = useHealthLevel()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (e: Event) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('pointerdown', close)
-    window.addEventListener('keydown', esc)
-    return () => (window.removeEventListener('pointerdown', close), window.removeEventListener('keydown', esc))
-  }, [open])
+  const { open, setOpen, ref } = usePopup()
   const tone = lvl === 'bad' ? 'text-bad' : lvl === 'warn' ? 'text-warn' : ''
   const label = lvl === 'bad' ? t('app.health.bad') : lvl === 'warn' ? t('app.health.warn') : t('app.health.title')
   return (
@@ -70,7 +54,7 @@ export function HealthButton() {
       </button>
       {open && (
         <div className="absolute inset-x-2 top-[calc(100%+6px)] z-50 rounded-2xl bg-surface sm:inset-x-auto sm:right-0 sm:w-[440px]" style={{ boxShadow: 'var(--shadow-overlay)' }} role="dialog" aria-label={t('app.health.title')}>
-          <Health bare />
+          <Health />
           <a href={href('system')} className="flex items-center justify-end gap-1 border-t border-line px-4 py-2.5 text-[12.5px] font-semibold text-accent-ink" onClick={() => setOpen(false)}>
             {t('app.nav.system')} <ChevronRight size={13} />
           </a>
@@ -80,7 +64,8 @@ export function HealthButton() {
   )
 }
 
-export function Health({ className = '', bare }: { className?: string; bare?: boolean }) {
+/** The health readings, in the top bar's popup. */
+function Health() {
   const health = usePrinter((s) => s.status.vo_klipper_health as { main_thread_load?: number | null; timers?: number } | undefined)
   const host = usePrinter((s) => s.host)
   const mcus = usePrinter((s) =>
@@ -97,21 +82,21 @@ export function Health({ className = '', bare }: { className?: string; bare?: bo
   const disk = useDisk()
   const mem = host?.memory ? 1 - host.memory.available / host.memory.total : null
   return (
-    <section className={bare ? `px-4 pt-3 pb-3 ${className}` : `card ${className}`}>
+    <section className="px-4 pt-3 pb-3">
       <h3 className="card-title">
         <Activity size={14} /> {t('app.health.title')}
       </h3>
       <div className="rows-2">
-        {health?.main_thread_load != null && <Row k="Klipper" v={<LevelBar v={health.main_thread_load} limits={LIMITS.klipper} />} />}
-        {health?.timers != null && <Row k={t('app.health.timers')} v={<span className={health.timers > LIMITS.timers ? 'text-warn' : ''}>{health.timers}</span>} />}
-        {host?.cpu != null && <Row k={t('app.health.host_cpu')} v={<LevelBar v={host.cpu / 100} limits={LIMITS.cpu} />} />}
-        {mem != null && <Row k={t('app.health.memory')} v={<LevelBar v={mem} limits={LIMITS.mem} />} />}
-        {host?.cpuTemp != null && <Row k={t('app.health.host_temp')} v={`${Math.round(host.cpuTemp)} °C`} />}
-        {disk && <Row k={t('app.health.free_space')} v={<span className={disk.free / disk.total < LIMITS.freeShare ? 'text-warn' : ''}>{t('app.units.gb', { n: (disk.free / 1024 ** 3).toFixed(1) })}</span>} />}
+        {health?.main_thread_load != null && <KV k="Klipper"><LevelBar v={health.main_thread_load} limits={LIMITS.klipper} /></KV>}
+        {health?.timers != null && <KV k={t('app.health.timers')}><span className={health.timers > LIMITS.timers ? 'text-warn' : ''}>{health.timers}</span></KV>}
+        {host?.cpu != null && <KV k={t('app.health.host_cpu')}><LevelBar v={host.cpu / 100} limits={LIMITS.cpu} /></KV>}
+        {mem != null && <KV k={t('app.health.memory')}><LevelBar v={mem} limits={LIMITS.mem} /></KV>}
+        {host?.cpuTemp != null && <KV k={t('app.health.host_temp')}>{`${Math.round(host.cpuTemp)} °C`}</KV>}
+        {disk && <KV k={t('app.health.free_space')}><span className={disk.free / disk.total < LIMITS.freeShare ? 'text-warn' : ''}>{t('app.units.gb', { n: (disk.free / 1024 ** 3).toFixed(1) })}</span></KV>}
         {sensors.map((t) => (
-          <Row key={t.name} k={t.name} v={t.t != null ? `${Math.round(t.t)} °C` : '—'} />
+          <KV key={t.name} k={t.name}>{t.t != null ? `${Math.round(t.t)} °C` : '—'}</KV>
         ))}
-        {host?.uptime != null && <Row k={t('app.health.up_for')} v={fmtDuration(host.uptime)} />}
+        {host?.uptime != null && <KV k={t('app.health.up_for')}>{fmtDuration(host.uptime)}</KV>}
       </div>
       {mcus.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]" title={t('app.health.mcu_load_hint')}>
@@ -151,7 +136,7 @@ function LevelBar({ v, limits: [warn, bad] }: { v: number; limits: readonly [num
 function useDisk(): Disk | null {
   const [disk, setDisk] = useState<Disk | null>(null)
   const rev = usePrinter((s) => s.filesRev)
-  const ready = usePrinter((s) => s.conn === 'open')
+  const ready = useConnected()
   useEffect(() => {
     if (!ready) return
     client

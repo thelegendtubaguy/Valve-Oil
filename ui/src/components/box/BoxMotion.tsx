@@ -7,6 +7,8 @@ import { runGcode, usePrinter } from '../../state/printer'
 import { gcode } from '../control/gcode'
 import { t, type MessageKey } from '../../i18n'
 import { tr } from '../../i18n/rich'
+import { useJobActive } from '../../state/job'
+import { errorText } from '../../lib/browser'
 
 // Fallback for module versions that don't publish their fields.
 const FIELDS = ['fast_length', 'fast_speed_1', 'fast_speed_2', 'approach_speed', 'load_accel', 'unload_speed_1', 'unload_speed_2', 'unload_accel', 'unload_extruder_length']
@@ -50,7 +52,7 @@ const isSet = (v: unknown) => v !== null && v !== undefined
 
 export function BoxMotion() {
   const raw = usePrinter((s) => s.status.vo_box_feed_motion)
-  const printState = usePrinter((s) => s.status.print_stats?.state as string | undefined)
+  const printing = useJobActive()
   const ready = usePrinter((s) => s.klippy === 'ready')
   const [open, setOpen] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
@@ -59,7 +61,7 @@ export function BoxMotion() {
 
   const motion = raw != null && typeof raw === 'object' ? (raw as Motion) : null
   const active = !!(motion?.active && motion.settings && motion.vendor && motion.limits)
-  const locked = pending || printState === 'printing' || printState === 'paused' || !ready
+  const locked = pending || printing || !ready
 
   if (!motion) return null
 
@@ -129,7 +131,7 @@ export function BoxMotion() {
       await runGcode(script)
       setDrafts(({ [scope]: _, ...rest }) => rest)
     } catch (e) {
-      setErrors((x) => ({ ...x, [scope]: e instanceof Error ? e.message : String(e) }))
+      setErrors((x) => ({ ...x, [scope]: errorText(e) }))
     }
     setPending(false)
   }
@@ -197,14 +199,27 @@ export function BoxMotion() {
     })
   }
   const slotErrors = (key: string) =>
-    (
-      [
-        ['box.motion.load_error', slots[key]?.load],
-        ['box.motion.unload_error', slots[key]?.unload],
-      ] as const
-    )
-      .filter(([, p]) => p?.state === 'error' && p.error)
-      .map(([k, p]) => t(k, { error: String(p?.error) }))
+    ([['box.motion.load_error', slots[key]?.load], ['box.motion.unload_error', slots[key]?.unload]] as const).filter(([, p]) => p?.state === 'error' && p.error).map(([k, p]) => t(k, { error: String(p?.error) }))
+  // A scope's fields, the reason its last change was refused, and its Reset and Apply.
+  const editor = (scope: string, hint: string, reset: string, resetScript: string, ask: string) => (
+    <>
+      <div className="text-[12.5px] text-ink-3">{hint}</div>
+      {fields(scope)}
+      {errors[scope] && (
+        <div className="tone-bad rounded-lg px-3 py-2 text-ink" role="alert">
+          {errors[scope]}
+        </div>
+      )}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run(scope, resetScript, ask)}>
+          {reset}
+        </button>
+        <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges(scope)} onClick={() => apply(scope)}>
+          {t('common.apply')}
+        </button>
+      </div>
+    </>
+  )
 
   return (
     <div className="grid gap-2.5">
@@ -219,21 +234,7 @@ export function BoxMotion() {
             </div>
           ))}
           {locked && !pending && <div className="text-[12.5px] text-ink-3">{t('box.motion.locked')}</div>}
-          <div className="text-[12.5px] text-ink-3">{t('box.motion.global_hint')}</div>
-          {fields('global')}
-          {errors.global && (
-            <div className="tone-bad rounded-lg px-3 py-2 text-ink" role="alert">
-              {errors.global}
-            </div>
-          )}
-          <div className="flex flex-wrap justify-end gap-2">
-            <button className="btn btn-sm btn-ghost" disabled={locked} onClick={() => run('global', 'VO_BOX_MOTION RESET=1', t('box.motion.reset_all_confirm'))}>
-              {t('box.motion.reset')}
-            </button>
-            <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges('global')} onClick={() => apply('global')}>
-              {t('common.apply')}
-            </button>
-          </div>
+          {editor('global', t('box.motion.global_hint'), t('box.motion.reset'), 'VO_BOX_MOTION RESET=1', t('box.motion.reset_all_confirm'))}
           {slotKeys.length > 0 && (
             <div className="grid">
               {slotKeys.map((key) => (
@@ -251,27 +252,7 @@ export function BoxMotion() {
                     </div>
                   ))}
                   {open === key && (
-                    <div className="mt-2.5 grid gap-2.5">
-                      <div className="text-[12.5px] text-ink-3">{t('box.motion.slot_hint')}</div>
-                      {fields(key)}
-                      {errors[key] && (
-                        <div className="tone-bad rounded-lg px-3 py-2 text-ink" role="alert">
-                          {errors[key]}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          disabled={locked}
-                          onClick={() => run(key, `VO_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, t('box.motion.reset_slot_confirm', { slot: qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0) }))}
-                        >
-                          {t('box.motion.reset_slot')}
-                        </button>
-                        <button className="btn btn-sm btn-primary" disabled={locked || !hasChanges(key)} onClick={() => apply(key)}>
-                          {t('common.apply')}
-                        </button>
-                      </div>
-                    </div>
+                    <div className="mt-2.5 grid gap-2.5">{editor(key, t('box.motion.slot_hint'), t('box.motion.reset_slot'), `VO_BOX_MOTION SLOT=${qidiBoxSlotNumber(key)} RESET=1`, t('box.motion.reset_slot_confirm', { slot: qidiBoxSlotLabel(qidiBoxSlotNumber(key) ?? 0) }))}</div>
                   )}
                 </div>
               ))}

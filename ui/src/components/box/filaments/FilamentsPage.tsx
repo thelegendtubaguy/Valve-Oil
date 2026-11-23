@@ -2,10 +2,12 @@
 // file and writes it back whole, so an edit made elsewhere in the meantime, such as in the config editor, is kept.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, Download, Pencil, Plus, RefreshCw, Search, Trash2, TriangleAlert, Upload } from 'lucide-react'
-import { Card, confirm, Empty, Spinner } from '../../ui'
+import { Card, confirm, Empty, Loading } from '../../ui'
 import { attempt, toast } from '../../toast'
 import { readText, writeText } from '../../../state/files'
-import { client, usePrinter } from '../../../state/printer'
+import { client } from '../../../state/printer'
+import { useJobActive } from '../../../state/job'
+import { errorText, saveBlob } from '../../../lib/browser'
 import { useBox } from '../../../state/box'
 import { useDbItem, FLUIDD } from '../../../state/database'
 import {
@@ -43,7 +45,7 @@ type Imported = { config: QidiFilamentConfig; items: QidiFilamentImportItem[] }
 
 export function FilamentsPage() {
   const box = useBox()
-  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
+  const printing = useJobActive()
   const [uiSettings] = useDbItem<{ general?: { instanceName?: string } }>(FLUIDD, 'uiSettings', {})
   const [config, setConfig] = useState<QidiFilamentConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -90,7 +92,7 @@ export function FilamentsPage() {
       setRestartNeeded(true)
       return true
     } catch (e) {
-      toast(e instanceof InvalidFilamentConfig ? t('box.filaments.invalid') : t('box.filaments.save_failed', { error: e instanceof Error ? e.message : String(e) }), 'error')
+      toast(e instanceof InvalidFilamentConfig ? t('box.filaments.invalid') : t('box.filaments.save_failed', { error: errorText(e) }), 'error')
       return false
     } finally {
       setBusy(false)
@@ -101,9 +103,7 @@ export function FilamentsPage() {
     if (!config) return
     const baseKey = qidiFilamentBaseKey(config, 'PLA')
     const base = baseKey != null ? rows.find((r) => r.key === baseKey) : undefined
-    setEditor({
-      draft: { vendor: '', name: '', id: (base && nextQidiFilamentId(config, base.id)) ?? '', type: base?.type ?? '', nozzleMin: base?.nozzleMin ?? null, nozzleMax: base?.nozzleMax ?? null, boxMax: base?.boxMax ?? 0, chamber: base?.chamber ?? 0, support: false },
-    })
+    setEditor({ draft: { vendor: '', name: '', id: (base && nextQidiFilamentId(config, base.id)) ?? '', type: base?.type ?? '', nozzleMin: base?.nozzleMin ?? null, nozzleMax: base?.nozzleMax ?? null, boxMax: base?.boxMax ?? 0, chamber: base?.chamber ?? 0, support: false } })
   }
   const edit = ({ key, ...draft }: QidiFilamentRow) => setEditor({ draft, previousKey: key })
   // The copy's name goes into QIDI's filament list, which the touchscreen shows: keep it English. i18n-ignore
@@ -125,15 +125,7 @@ export function FilamentsPage() {
   const exportList = async () => {
     try {
       const text = serializeQidiFilamentConfig(await readConfig())
-      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `qidi-filaments-${uiSettings.general?.instanceName || location.hostname}.json`
-      document.body.append(a)
-      a.click()
-      a.remove()
-      // Deferred, as revoking right after the click can cancel the download.
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      saveBlob(new Blob([text], { type: 'application/json' }), `qidi-filaments-${uiSettings.general?.instanceName || location.hostname}.json`)
     } catch {
       toast(t('box.filaments.export_failed'), 'error')
     }
@@ -159,6 +151,25 @@ export function FilamentsPage() {
     if (canRestartScreen) attempt(() => client.call('machine.services.restart', { service: QIDI_CLIENT_SERVICE }))
     await attempt(() => client.call('printer.restart'))
     setRestartNeeded(false)
+  }
+
+  // Edit, Duplicate, and Remove for a row.
+  const actions = (r: QidiFilamentRow) => {
+    const name = [r.vendor, r.name].filter(Boolean).join(' ')
+    const buttons = [
+      { run: edit, icon: <Pencil size={14} />, title: t('common.edit'), label: t('box.filaments.edit_named', { name }) },
+      { run: duplicate, icon: <Copy size={14} />, title: t('box.filaments.duplicate'), label: t('box.filaments.duplicate_named', { name }) },
+      { run: remove, icon: <Trash2 size={14} />, title: t('common.remove'), label: t('box.filaments.remove_named', { name }) },
+    ]
+    return (
+      <span className="inline-flex">
+        {buttons.map((b) => (
+          <button key={b.title} className="iconbtn" disabled={busy} onClick={() => b.run(r)} title={b.title} aria-label={b.label}>
+            {b.icon}
+          </button>
+        ))}
+      </span>
+    )
   }
 
   const off = config == null || busy
@@ -213,9 +224,7 @@ export function FilamentsPage() {
           </div>
         </div>
         {loading && !config ? (
-          <div className="grid place-items-center py-10">
-            <Spinner size={22} />
-          </div>
+          <Loading size={22} />
         ) : !config ? (
           <Empty>{t('box.filaments.none')}</Empty>
         ) : shown.length === 0 ? (
@@ -252,9 +261,7 @@ export function FilamentsPage() {
                       <td className="num whitespace-nowrap">{r.boxMax ? `${r.boxMax} °C` : <span className="text-ink-3">{t('box.filaments.no_heating')}</span>}</td>
                       <td className="num whitespace-nowrap">{r.chamber ? `${r.chamber} °C` : <span className="text-ink-3">–</span>}</td>
                       <td>{r.support && <Check size={15} className="text-good" aria-label={t('box.filaments.support')} />}</td>
-                      <td className="whitespace-nowrap text-right">
-                        <RowActions name={[r.vendor, r.name].filter(Boolean).join(' ')} busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
-                      </td>
+                      <td className="whitespace-nowrap text-right">{actions(r)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -271,7 +278,7 @@ export function FilamentsPage() {
                       {[r.type, r.id, `${r.nozzleMin}–${r.nozzleMax} °C`, r.boxMax ? t('box.filaments.box_temp', { temp: r.boxMax }) : t('box.filaments.no_heating'), r.support ? t('box.filaments.support') : null].filter(Boolean).join(' · ')}
                     </div>
                   </div>
-                  <RowActions name={[r.vendor, r.name].filter(Boolean).join(' ')} busy={busy} onEdit={() => edit(r)} onDuplicate={() => duplicate(r)} onRemove={() => remove(r)} />
+                  {actions(r)}
                 </div>
               ))}
             </div>
@@ -282,21 +289,5 @@ export function FilamentsPage() {
       {config && editor && <FilamentEditDialog config={config} initial={editor.draft} previousKey={editor.previousKey} sourceKey={editor.sourceKey} busy={busy} onSave={save} onClose={() => setEditor(null)} />}
       {imported && <FilamentImportDialog items={imported.items} busy={busy} onImport={doImport} onClose={() => setImported(null)} />}
     </div>
-  )
-}
-
-function RowActions({ name, busy, onEdit, onDuplicate, onRemove }: { name: string; busy: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void }) {
-  return (
-    <span className="inline-flex">
-      <button className="iconbtn" disabled={busy} onClick={onEdit} title={t('common.edit')} aria-label={t('box.filaments.edit_named', { name })}>
-        <Pencil size={14} />
-      </button>
-      <button className="iconbtn" disabled={busy} onClick={onDuplicate} title={t('box.filaments.duplicate')} aria-label={t('box.filaments.duplicate_named', { name })}>
-        <Copy size={14} />
-      </button>
-      <button className="iconbtn" disabled={busy} onClick={onRemove} title={t('common.remove')} aria-label={t('box.filaments.remove_named', { name })}>
-        <Trash2 size={14} />
-      </button>
-    </span>
   )
 }

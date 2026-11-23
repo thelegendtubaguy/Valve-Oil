@@ -89,14 +89,7 @@ export function FilamentPicker({ database, value, onChange, disabled }: { databa
       <PillRow label={t('box.picker.material')} options={types} value={shownType} onChange={pickType} disabled={disabled} />
       <PillRow label={t('box.picker.brand')} options={vendors} value={vendor} onChange={pickVendor} show={6} disabled={disabled} />
       {filaments.length > 1 && (
-        <PillRow
-          label={t('box.picker.filament')}
-          options={filaments.map((f) => f.id)}
-          value={current?.id ?? null}
-          onChange={onChange}
-          disabled={disabled}
-          render={(id) => shortName(database.find((f) => f.id === id)!)}
-        />
+        <PillRow label={t('box.picker.filament')} options={filaments.map((f) => f.id)} value={current?.id ?? null} onChange={onChange} disabled={disabled} render={(id) => shortName(database.find((f) => f.id === id)!)} />
       )}
     </div>
   )
@@ -111,18 +104,7 @@ export function ColorSwatches({ value, onChange, palette = FILAMENT_PALETTE, cus
   return (
     <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('box.picker.color')}>
       {palette.map((c) => (
-        <button
-          key={c}
-          type="button"
-          role="radio"
-          aria-checked={picked === c}
-          aria-label={c}
-          title={c}
-          disabled={disabled}
-          onClick={() => onChange(c)}
-          className="rounded-full border-0 p-0 disabled:opacity-45"
-          style={{ width: size, height: size, background: c, boxShadow: ring(picked === c) }}
-        />
+        <button key={c} type="button" role="radio" aria-checked={picked === c} aria-label={c} title={c} disabled={disabled} onClick={() => onChange(c)} className="rounded-full border-0 p-0 disabled:opacity-45" style={{ width: size, height: size, background: c, boxShadow: ring(picked === c) }} />
       ))}
       {custom && (
         <span className="relative">

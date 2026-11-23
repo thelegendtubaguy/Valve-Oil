@@ -47,11 +47,7 @@ export function FilamentRail({ box, onSelect }: { box: BoxState; onSelect: (slot
       {stops.map((s, i) => (
         <Fragment key={s.key}>
           <span className={`fr-seg ${i < reach ? 'on' : ''}`} style={{ '--i': 2 * i } as React.CSSProperties} />
-          <span
-            className={`fr-stop ${s.on ? 'on' : ''} ${s.skip ? 'skip' : ''}`}
-            style={{ '--i': 2 * i + 1 } as React.CSSProperties}
-            title={s.tip}
-          >
+          <span className={`fr-stop ${s.on ? 'on' : ''} ${s.skip ? 'skip' : ''}`} style={{ '--i': 2 * i + 1 } as React.CSSProperties} title={s.tip}>
             <i />
             {s.label}
           </span>

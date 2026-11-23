@@ -1,7 +1,7 @@
 // Adds, duplicates, or edits a filament in QIDI's list. A new filament copies the settings the dialog doesn't show,
 // such as QIDI's drying presets, from the filament it duplicates, or else from a filament of the same type.
 import { useId, useMemo, useState, type ReactNode } from 'react'
-import { Dialog, Toggle } from '../../ui'
+import { CancelButton, Dialog, Toggle } from '../../ui'
 import { QIDI_FILAMENT_ID_PATTERN, qidiFilamentBaseKey, qidiFilamentIdOwner, qidiFilamentKey, type QidiFilamentConfig, type QidiFilamentDraft } from '../../../qidi/qidi-filament-config'
 import { t } from '../../../i18n'
 
@@ -39,9 +39,7 @@ export function FilamentEditDialog({ config, initial, previousKey, sourceKey, bu
       title={previousKey != null ? t('box.slot.edit_filament') : t('box.filaments.edit.add_title')}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={!valid || busy} onClick={save}>
             {t('common.save')}
           </button>
@@ -90,9 +88,7 @@ function Field({ label, error, hint, className = '', children }: { label: string
   const id = useId()
   return (
     <div className={`grid min-w-0 content-start gap-1 ${className}`}>
-      <label htmlFor={id} className="lbl">
-        {label}
-      </label>
+      <label htmlFor={id} className="lbl">{label}</label>
       {children(id)}
       {(error || hint) && <span className={`text-[11.5px] ${error ? 'text-bad' : 'text-ink-3'}`}>{error ?? hint}</span>}
     </div>

@@ -3,7 +3,7 @@
 // Earlier firmware saves numeric filament, vendor, and color IDs from officiall_filas_list.cfg.
 import { useMemo, useState } from 'react'
 import { Nfc } from 'lucide-react'
-import { Dialog } from '../ui'
+import { CancelButton, Dialog } from '../ui'
 import { Spool } from '../Spool'
 import { attempt } from '../toast'
 import { useStore } from '../../lib/store'
@@ -11,6 +11,7 @@ import { normalizeQidiColor } from '../../qidi/qidi-box'
 import { boxCommands, filamentLists, slotActions, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
 import { ColorSwatches, FilamentPicker, PillRow } from './FilamentPicker'
+import { send } from '../control/common'
 import { t } from '../../i18n'
 
 export function FilamentDialog({ box, slot, onClose }: { box: BoxState; slot: QidiBoxSlot; onClose: () => void }) {
@@ -66,13 +67,11 @@ export function FilamentDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
       footer={
         <>
           {slot.index !== QIDI_BOX_EXTERNAL_SLOT && (
-            <button className="btn mr-auto" disabled={!a.rfid} title={t('box.filament_dialog.read_tag_title')} onClick={() => (attempt(() => runGcode(boxCommands.rfid(box, slot.index))), onClose())}>
+            <button className="btn mr-auto" disabled={!a.rfid} title={t('box.filament_dialog.read_tag_title')} onClick={() => (send(boxCommands.rfid(box, slot.index)), onClose())}>
               <Nfc size={15} /> {t('box.filament_dialog.read_tag')}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
+          <CancelButton onClick={onClose} />
           <button className="btn btn-primary" disabled={busy || filament == null} onClick={save}>
             {t('common.save')}
           </button>

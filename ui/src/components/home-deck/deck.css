@@ -26,6 +26,8 @@
   .deck > .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .deck .grow { flex: 1 1 0; min-height: auto; display: flex; flex-direction: column; }
   .deck .grow > .grow-body { flex: 1 1 0; min-height: 0; overflow: auto; contain: size; }
+  /* In four columns the last card of each column stretches, so the columns end together. */
+  .half-cols > .col > .card:last-child:not(.folded), .deck > .col > .card:last-child:not(.folded) { flex-grow: 1; }
 }
 
 /* The left half: the camera across two columns, two columns of cards under it. */
@@ -36,12 +38,12 @@
   .deck > .half { grid-column: span 2; }
   .half-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
-/* Below the four columns the macros scroll in a box of their own. In them the last card of each column stretches, so
-   the columns end together. */
-@media not (min-width: 100rem) { .deck .grow > .grow-body { max-height: 340px; overflow: auto; } }
-/* Below the four columns the camera spans the screen, so it stops at about half the screen's height, keeping its shape. */
-@media not (min-width: 100rem) { .deck { --cam-max-h: min(55vh, 480px); } }
-@media (min-width: 100rem) { .half-cols > .col > .card:last-child:not(.folded), .deck > .col > .card:last-child:not(.folded) { flex-grow: 1; } }
+/* Below the four columns the macros scroll in a box of their own, and the camera spans the screen, so it stops at about
+   half the screen's height, keeping its shape. */
+@media not (min-width: 100rem) {
+  .deck .grow > .grow-body { max-height: 340px; overflow: auto; }
+  .deck { --cam-max-h: min(55vh, 480px); }
+}
 
 /* Mockup B's toolhead card. */
 .th .card-title { margin-bottom: 10px; }
@@ -68,7 +70,7 @@
 .th-move { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px; align-items: center; gap: 10px; }
 .th-move .jw { max-width: 280px; justify-self: center; }
 .zrock { display: flex; flex-direction: column; gap: 2px; align-self: stretch; justify-content: center; }
-.zrock .cap { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; padding: 2px 0; }
+.zrock .cap, .steprock .cap { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; padding: 2px 0; }
 .zrock button { display: flex; align-items: center; justify-content: center; gap: 3px; height: 34px; border: 0; background: var(--inset); color: var(--ink-2); font-size: 12px; font-weight: 700; }
 .zrock button:nth-of-type(1) { border-radius: 10px 10px 3px 3px; }
 .zrock button:nth-of-type(5) { border-radius: 3px 3px 10px 10px; }
@@ -124,7 +126,6 @@
 
 /* Left of the wheel: the step sizes, stacked like the Z column, and the no-homing switch under them. */
 .steprock { display: flex; flex-direction: column; gap: 2px; align-self: stretch; }
-.steprock .cap { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; padding: 2px 0; }
 .steprock > button { display: grid; justify-items: center; gap: 0; padding: 6px 2px; border: 0; background: var(--inset); color: var(--ink-3); line-height: 1.15; }
 .steprock > button b { font-size: 12px; font-weight: 700; }
 .steprock > button span { font-size: 10.5px; }
@@ -132,17 +133,16 @@
 .steprock > button:nth-of-type(3) { border-radius: 3px 3px 10px 10px; }
 .steprock > button:hover { color: var(--ink); background: var(--hover-2); }
 .steprock > button.on { background: var(--accent-tint); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.steprock > button.nohome { display: grid; justify-items: center; gap: 2px; padding: 8px 2px; border-radius: 10px; background: none; color: var(--red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 45%, transparent); font-size: 11px; font-weight: 700; }
+.steprock > button:is(.nohome, .homeall, .motoroff) { display: grid; justify-items: center; gap: 2px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.steprock > button.nohome { padding: 8px 2px; background: none; color: var(--red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 45%, transparent); }
 .steprock > button.nohome:hover:not(:disabled) { background: var(--red-tint); }
 .steprock > button.nohome.on { background: var(--red); color: var(--surface); box-shadow: none; }
-.steprock > button.nohome:disabled { opacity: 0.45; }
-.steprock > button.homeall { display: grid; justify-items: center; gap: 2px; padding: 8px 2px; margin-bottom: 4px; border-radius: 10px; background: var(--surface); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 11px; font-weight: 700; }
+.steprock > button.homeall { padding: 8px 2px; margin-bottom: 4px; background: var(--surface); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .steprock > button.homeall:hover:not(:disabled) { background: var(--hover-2); }
 .steprock > button.homeall.need { background: var(--accent); color: var(--on-accent); box-shadow: none; }
-.steprock > button.homeall:disabled { opacity: 0.45; }
-.steprock > button.motoroff { display: grid; justify-items: center; gap: 2px; margin-top: 4px; padding: 7px 2px; border-radius: 10px; background: none; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 11px; font-weight: 700; }
+.steprock > button.motoroff { margin-top: 4px; padding: 7px 2px; background: none; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .steprock > button.motoroff:hover:not(:disabled) { background: var(--hover-2); color: var(--ink); }
-.steprock > button.motoroff:disabled { opacity: 0.45; }
+.steprock > button:is(.nohome, .homeall, .motoroff):disabled { opacity: 0.45; }
 
 /* Mockup B's temperatures card. */
 .tc { display: flex; flex-direction: column; }

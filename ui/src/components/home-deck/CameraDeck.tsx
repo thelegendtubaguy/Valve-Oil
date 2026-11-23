@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Check, ChevronDown, Columns2, X } from 'lucide-react'
 import { MenuButton, Segmented } from '../ui'
 import { LivePreview } from '../gcode-preview/LivePreview'
-import { usePrinter } from '../../state/printer'
+import { useJobActive } from '../../state/job'
+import { readLocal, saveLocal, useStored } from '../../lib/browser'
 import { t } from '../../i18n'
 import { CameraView, camMaxWidth, cameraRatio, useWebcams, type Webcam } from '../../screens/Home'
 
@@ -12,7 +13,7 @@ const KEY = 'vo-home-cams'
 
 function saved(): string[] {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? '[]')
+    const v = JSON.parse(readLocal(KEY) ?? '[]')
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
   } catch {
     return []
@@ -21,20 +22,12 @@ function saved(): string[] {
 
 export function CameraDeck() {
   const cams = useWebcams()
-  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
+  const printing = useJobActive()
   const [names, setNames] = useState<string[]>(saved)
-  const [view, setView] = useState<'camera' | 'layers'>(() => (localStorage.getItem('vo-home-view') === 'layers' ? 'layers' : 'camera'))
+  const [view, pickView] = useStored<'camera' | 'layers'>('vo-home-view', 'camera')
   const save = (n: string[]) => {
     setNames(n)
-    try {
-      localStorage.setItem(KEY, JSON.stringify(n))
-    } catch {}
-  }
-  const pickView = (v: 'camera' | 'layers') => {
-    setView(v)
-    try {
-      localStorage.setItem('vo-home-view', v)
-    } catch {}
+    saveLocal(KEY, JSON.stringify(n))
   }
 
   // The cameras shown: the saved ones that still exist, at most two and no repeats, else the first camera.

@@ -19,13 +19,13 @@ import {
 } from 'lucide-react'
 import { href, useRoute, type Route } from './lib/router'
 import { client, runGcode, usePrinter } from './state/printer'
-import { useJob, jobProgress } from './state/job'
+import { useJob, useJobActive, jobProgress } from './state/job'
 import { useBoxBusy, useBoxPresent } from './state/box'
 import { useWarnings } from './state/warnings'
 import { Toasts, attempt } from './components/toast'
 import { UploadsPanel } from './components/Upload'
 import { BedScrewsDialog, ManualProbeDialog } from './components/tune/HelperDialogs'
-import { AskHost, Spinner, confirm } from './components/ui'
+import { AskHost, Loading, confirm } from './components/ui'
 import { LogoMark } from './components/Logo'
 import { NotificationsButton } from './components/Notifications'
 import { HealthButton } from './components/Panels'
@@ -95,7 +95,7 @@ export function App() {
   if (shown === 'updates') body = <UpdatesScreen />
   else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
   else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
-  else body = <Suspense fallback={<div className="grid place-items-center py-16"><Spinner size={24} /></div>}>{SCREENS[shown]()}</Suspense>
+  else body = <Suspense fallback={<Loading className="py-16" size={24} />}>{SCREENS[shown]()}</Suspense>
 
   const cockpit = shown === 'home' && conn === 'open' && klippy === 'ready'
   return (
@@ -236,20 +236,8 @@ function StatusPill() {
 
 /** Klipper's state in the top bar's pill. */
 function klippyPill(klippy: string) {
-  switch (klippy) {
-    case 'startup':
-      return t('app.status.klipper_startup')
-    case 'error':
-      return t('app.status.klipper_error')
-    case 'shutdown':
-      return t('app.status.klipper_shutdown')
-    case 'disconnected':
-      return t('app.status.klipper_disconnected')
-    case 'unknown':
-      return t('app.status.klipper_unknown')
-    default:
-      return t('app.status.klipper_state', { state: klippy })
-  }
+  const known: Record<string, string> = { startup: t('app.status.klipper_startup'), error: t('app.status.klipper_error'), shutdown: t('app.status.klipper_shutdown'), disconnected: t('app.status.klipper_disconnected'), unknown: t('app.status.klipper_unknown') }
+  return known[klippy] ?? t('app.status.klipper_state', { state: klippy })
 }
 
 /** Nozzle, bed, and chamber at a glance, amber while heating, as across the top of the touchscreen. */
@@ -290,7 +278,7 @@ function MiniTemps() {
 function SaveConfigButton() {
   const pending = usePrinter((s) => !!s.status.configfile?.save_config_pending && s.klippy === 'ready')
   const items = usePrinter((s) => s.status.configfile?.save_config_pending_items as Record<string, unknown> | undefined)
-  const printing = usePrinter((s) => ['printing', 'paused'].includes(s.status.print_stats?.state))
+  const printing = useJobActive()
   if (!pending) return null
   const sections = Object.keys(items ?? {})
   return (
@@ -380,32 +368,11 @@ function Warnings() {
             <b>{w.title}</b>
             {w.message && <span className="text-ink-2"> {w.message}</span>}
             {/* A board's issue link (checked by voPrinterWarnings). */}
-            {w.url && (
-              <>
-                {' '}
-                <a href={w.url} target="_blank" rel="noopener noreferrer" className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  {t('app.warnings.support_issue')}
-                </a>
-              </>
-            )}
+            {w.url && more(w.url, t('app.warnings.support_issue'), true)}
             {/* Valve Oil's update warnings, and a board it can't support yet, whose Boards entry says what to report. */}
-            {(w.id.startsWith('valve_oil_') || w.id.includes('_firmware_unsupported')) && route !== 'updates' && (
-              <>
-                {' '}
-                <a href={href('updates')} className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  {t('app.details')}
-                </a>
-              </>
-            )}
+            {(w.id.startsWith('valve_oil_') || w.id.includes('_firmware_unsupported')) && route !== 'updates' && more(href('updates'), t('app.details'))}
             {/* QIDI's Klipper runs although Valve Oil's is chosen: the Klipper settings try again or go back. */}
-            {w.id === 'vo_klipper_fallback' && route !== 'settings' && (
-              <>
-                {' '}
-                <a href={href('settings', 'klipper')} className="font-semibold whitespace-nowrap text-accent-ink underline">
-                  {t('app.details')}
-                </a>
-              </>
-            )}
+            {w.id === 'vo_klipper_fallback' && route !== 'settings' && more(href('settings', 'klipper'), t('app.details'))}
           </div>
         </div>
       ))}
@@ -413,13 +380,22 @@ function Warnings() {
   )
 }
 
-function NotReady({ title, detail, children }: { title: string; detail?: string; children?: ReactNode }) {
+/** A link after a warning's text; an external one opens in a new tab. */
+const more = (to: string, text: string, external?: boolean) => (
+  <>
+    {' '}
+    <a href={to} target={external ? '_blank' : undefined} rel={external ? 'noopener noreferrer' : undefined} className="font-semibold whitespace-nowrap text-accent-ink underline">
+      {text}
+    </a>
+  </>
+)
+
+function NotReady({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="mx-auto mt-[8vh] grid w-full max-w-[560px] justify-items-center gap-3 p-6 text-center">
       <LogoMark height={84} />
       <div className="mt-2 text-[20px] font-bold">{title}</div>
-      {detail && <div className="whitespace-pre-line text-ink-2">{detail}</div>}
-      {children && <div className="mt-3 flex flex-wrap justify-center gap-2">{children}</div>}
+      <div className="whitespace-pre-line text-ink-2">{detail}</div>
     </div>
   )
 }
@@ -493,6 +469,3 @@ function KlippyStrip() {
     </div>
   )
 }
-
-// Re-exported for screens that need to send G-code with console logging.
-export { runGcode }

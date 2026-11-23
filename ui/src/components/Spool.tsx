@@ -6,19 +6,20 @@ import { t } from '../i18n'
 const isDark = () => document.documentElement.classList.contains('dark')
 
 /** A spool drawn at (cx, cy) inside an SVG: filament color, winding rings, and the slot label on the hub. */
-export function SpoolGlyph({ slot, cx, cy, r, selected, loaded, label = true }: { slot: Pick<QidiBoxSlot, 'label' | 'present' | 'color' | 'reading'>; cx: number; cy: number; r: number; selected?: boolean; loaded?: boolean; label?: boolean }) {
+export function SpoolGlyph({ slot, cx, cy, r, loaded, label = true }: { slot: Pick<QidiBoxSlot, 'label' | 'present' | 'color' | 'reading'>; cx: number; cy: number; r: number; loaded?: boolean; label?: boolean }) {
   const gid = useId()
   const fs = Math.max(8, Math.round(r * 0.42))
+  const text = (weight: number, fill: string) =>
+    label && (
+      <text x={cx} y={cy + fs * 0.36} textAnchor="middle" fontSize={fs} fontWeight={weight} fill={fill}>
+        {slot.label}
+      </text>
+    )
   if (!slot.present || !slot.color) {
     return (
       <g>
         <circle cx={cx} cy={cy} r={r - 2} fill="none" stroke={slot.present ? 'var(--ink-3)' : 'var(--line-strong)'} strokeWidth={1.5} strokeDasharray={slot.present ? undefined : '4 4'} />
-        {label && (
-          <text x={cx} y={cy + fs * 0.36} textAnchor="middle" fontSize={fs} fontWeight={650} fill="var(--ink-3)">
-            {slot.label}
-          </text>
-        )}
-        {selected && <circle cx={cx} cy={cy} r={r + 2} fill="none" stroke="var(--accent)" strokeWidth={2} />}
+        {text(650, 'var(--ink-3)')}
         {slot.reading && <ReadingRing cx={cx} cy={cy} r={r + 1} />}
       </g>
     )
@@ -39,12 +40,8 @@ export function SpoolGlyph({ slot, cx, cy, r, selected, loaded, label = true }: 
         <circle key={i} cx={cx} cy={cy} r={r * 0.44 + i * (r * 0.11)} fill="none" stroke={light ? '#0002' : '#fff2'} />
       ))}
       <circle cx={cx} cy={cy} r={r * 0.38} fill="var(--surface)" />
-      {label && (
-        <text x={cx} y={cy + fs * 0.36} textAnchor="middle" fontSize={fs} fontWeight={700} fill="var(--ink)">
-          {slot.label}
-        </text>
-      )}
-      {(selected || loaded) && <circle cx={cx} cy={cy} r={r + 1} fill="none" stroke="var(--accent)" strokeWidth={selected ? 2.5 : 1.5} strokeDasharray={selected ? undefined : '3 3'} />}
+      {text(700, 'var(--ink)')}
+      {loaded && <circle cx={cx} cy={cy} r={r + 1} fill="none" stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="3 3" />}
       {slot.reading && <ReadingRing cx={cx} cy={cy} r={r + 1} />}
     </g>
   )
@@ -58,11 +55,11 @@ function ReadingRing({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   )
 }
 
-export function Spool({ slot, size = 44, selected, loaded, label }: { slot: Pick<QidiBoxSlot, 'label' | 'present' | 'color' | 'reading'>; size?: number; selected?: boolean; loaded?: boolean; label?: boolean }) {
+export function Spool({ slot, size = 44, loaded, label }: { slot: Pick<QidiBoxSlot, 'label' | 'present' | 'color' | 'reading'>; size?: number; loaded?: boolean; label?: boolean }) {
   const pad = 3
   return (
     <svg width={size + pad * 2} height={size + pad * 2} viewBox={`${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`} aria-hidden className="flex-none overflow-visible">
-      <SpoolGlyph slot={slot} cx={size / 2} cy={size / 2} r={size / 2} selected={selected} loaded={loaded} label={label} />
+      <SpoolGlyph slot={slot} cx={size / 2} cy={size / 2} r={size / 2} loaded={loaded} label={label} />
     </svg>
   )
 }

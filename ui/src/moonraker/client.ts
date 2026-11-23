@@ -1,13 +1,10 @@
 // Minimal Moonraker JSON-RPC websocket client with reconnect.
 import { t } from '../i18n'
+import { readLocal, saveLocal } from '../lib/browser'
 
 export type ConnectionState = 'connecting' | 'open' | 'closed'
 
-type Pending = {
-  resolve: (value: unknown) => void
-  reject: (error: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 
 export class RpcError extends Error {
   readonly code: number
@@ -115,10 +112,7 @@ export class MoonrakerClient {
       else p.resolve(msg.result)
       return
     }
-    if (msg.method) {
-      const set = this.handlers.get(msg.method)
-      if (set) for (const fn of set) fn(msg.params ?? [])
-    }
+    if (msg.method) for (const fn of this.handlers.get(msg.method) ?? []) fn(msg.params ?? [])
   }
 }
 
@@ -127,14 +121,9 @@ export function resolveMoonrakerOrigin(): string {
   const q = new URLSearchParams(location.search).get('moonraker')
   if (q) {
     const origin = q.includes('://') ? q : `http://${q}`
-    try {
-      localStorage.setItem('vo-moonraker', origin)
-    } catch {}
+    saveLocal('vo-moonraker', origin)
     return origin
   }
-  try {
-    const saved = localStorage.getItem('vo-moonraker')
-    if (saved && import.meta.env.DEV) return saved
-  } catch {}
-  return location.origin
+  const saved = readLocal('vo-moonraker')
+  return saved && import.meta.env.DEV ? saved : location.origin
 }

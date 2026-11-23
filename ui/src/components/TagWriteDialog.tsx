@@ -1,6 +1,6 @@
 // Write a filament to the RFID tag on a Box slot's spool (VO_BOX_RFID_WRITE), so the Box sets the slot from it
 // whenever the spool is loaded.
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { CircleAlert, CircleCheck, Hand, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react'
 import { Dialog } from './ui'
 import { Spool } from './Spool'
@@ -12,6 +12,7 @@ import { ColorSwatches, FilamentPicker } from './box/FilamentPicker'
 import { BoxScene } from './box/BoxScene'
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
+import { errorText } from '../lib/browser'
 
 export type TagJob = {
   run: number
@@ -33,17 +34,21 @@ export type TagJob = {
 function refusal(layout: string, reason?: string) {
   const brands: Record<string, string> = { anycubic: 'Anycubic', elegoo: 'Elegoo', creality: 'Creality', tigertag: 'TigerTag', opentag3d: 'OpenTag3D' }
   if (brands[layout]) return t('box.tag.refusal_brand', { brand: brands[layout] })
-  switch (layout) {
-    case 'bambu':
-      return t('box.tag.refusal_bambu')
-    case 'locked':
-      return t('box.tag.refusal_locked')
-    case 'unsupported':
-      return t('box.tag.refusal_unsupported')
-    default:
-      // The printer's reason, in English.
-      return reason ? t('box.tag.refusal_reason', { reason }) : t('box.tag.refusal_unknown')
-  }
+  const known: Record<string, string> = { bambu: t('box.tag.refusal_bambu'), locked: t('box.tag.refusal_locked'), unsupported: t('box.tag.refusal_unsupported') }
+  // Otherwise the printer's reason, in English.
+  return known[layout] ?? (reason ? t('box.tag.refusal_reason', { reason }) : t('box.tag.refusal_unknown'))
+}
+
+const BOLD = { b: (x: ReactNode) => <b>{x}</b> }
+
+/** How the write ended, in its tone. */
+function Outcome({ tone, icon, children }: { tone: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className={`${tone} mt-4 flex items-start gap-2.5 rounded-lg px-3 py-2.5`}>
+      {icon}
+      <span className="text-ink">{children}</span>
+    </div>
+  )
 }
 
 export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: QidiBoxSlot; onClose: () => void }) {
@@ -91,7 +96,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
       if (closed.current) toast(t('box.tag.written_toast', { slot: slot.label, filament: filament.name }))
     } catch (e) {
       setPhase('failed')
-      setMessage(e instanceof Error ? e.message : String(e))
+      setMessage(errorText(e))
       if (closed.current) toast(t('box.tag.failed_toast', { slot: slot.label }), 'error')
     }
   }
@@ -114,13 +119,9 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         title={title}
         footer={
           phase === 'running' ? (
-            <button className="btn" onClick={close}>
-              {t('box.tag.hide')}
-            </button>
+            <button className="btn" onClick={close}>{t('box.tag.hide')}</button>
           ) : phase === 'done' ? (
-            <button className="btn btn-primary" onClick={close}>
-              {t('common.done')}
-            </button>
+            <button className="btn btn-primary" onClick={close}>{t('common.done')}</button>
           ) : (
             <>
               <button className="btn" onClick={close}>
@@ -142,24 +143,14 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         </div>
         {phase === 'running' && <Progress job={mine} turns={turns} />}
         {phase === 'done' && (
-          <div className="tone-good mt-4 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
-            <CircleCheck size={17} className="mt-px flex-none" />
-            <span className="text-ink">{tr('box.tag.done', { filament: filament?.name ?? '' }, { b: (x) => <b>{x}</b> })}</span>
-          </div>
+          <Outcome tone="tone-good" icon={<CircleCheck size={17} className="mt-px flex-none" />}>
+            {tr('box.tag.done', { filament: filament?.name ?? '' }, BOLD)}
+          </Outcome>
         )}
         {phase === 'failed' && (
-          <div className="tone-bad mt-4 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
-            <CircleAlert size={17} className="mt-px flex-none" />
-            <span className="text-ink">
-              {notFound ? (
-                tr('box.tag.not_found', {}, { b: (x) => <b>{x}</b> })
-              ) : failure ? (
-                tr('box.tag.not_written', { reason: failure }, { b: (x) => <b>{x}</b> })
-              ) : (
-                message
-              )}
-            </span>
-          </div>
+          <Outcome tone="tone-bad" icon={<CircleAlert size={17} className="mt-px flex-none" />}>
+            {notFound ? tr('box.tag.not_found', {}, BOLD) : failure ? tr('box.tag.not_written', { reason: failure }, BOLD) : message}
+          </Outcome>
         )}
       </Dialog>
     )
@@ -190,13 +181,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
           <div className="flex flex-wrap items-center gap-1.5">
             {colors.map((c, i) => (
               <span key={i} className="relative">
-                <button
-                  type="button"
-                  aria-label={t('box.tag.color_n', { n: i + 1 })}
-                  onClick={() => setPicked(i)}
-                  className="h-8 w-8 rounded-full border-0"
-                  style={{ background: c, boxShadow: picked === i ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'inset 0 0 0 1px oklch(0 0 0 / .25)' }}
-                />
+                <button type="button" aria-label={t('box.tag.color_n', { n: i + 1 })} onClick={() => setPicked(i)} className="h-8 w-8 rounded-full border-0" style={{ background: c, boxShadow: picked === i ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'inset 0 0 0 1px oklch(0 0 0 / .25)' }} />
                 {colors.length > 1 && picked === i && (
                   <button
                     type="button"
@@ -231,9 +216,7 @@ export function TagWriteDialog({ box, slot, onClose }: { box: BoxState; slot: Qi
         </div>
         <div className="tone-muted flex items-start gap-2.5 rounded-lg px-3 py-2.5">
           {turns ? <RotateCcw size={16} className="mt-0.5 flex-none" /> : <Hand size={16} className="mt-0.5 flex-none" />}
-          <span className="text-ink-2">
-            {turns ? t('box.tag.turns_hint') : t('box.tag.hand_hint')}
-          </span>
+          <span className="text-ink-2">{turns ? t('box.tag.turns_hint') : t('box.tag.hand_hint')}</span>
         </div>
       </div>
     </Dialog>

@@ -4,9 +4,12 @@
 // Boxes, so those aren't offered.
 import { Card } from '../ui'
 import { attempt } from '../toast'
-import { boxCommands, useBox, type BoxState } from '../../state/box'
+import { boxCommands, useBox, type BoxState, type QidiBoxSlot } from '../../state/box'
 import { runGcode, usePrinter } from '../../state/printer'
 import { t } from '../../i18n'
+
+/** A slot's label and what it holds. */
+export const slotText = (s: QidiBoxSlot) => `${s.label} · ${s.present ? s.name || t('box.unknown_filament') : t('box.empty')}`
 
 function useToolButtons(box: BoxState) {
   const commands = usePrinter((s) => s.commands)
@@ -31,7 +34,7 @@ export function BoxTools({ box: given }: { box?: BoxState }) {
           type="button"
           disabled={disabled}
           aria-pressed={active}
-          title={`${slot.label} · ${slot.present ? slot.name || t('box.unknown_filament') : t('box.empty')}`}
+          title={slotText(slot)}
           onClick={() => attempt(() => runGcode(boxCommands.tool(tool)))}
           className={`btn px-1.5! ${active ? 'tool-on disabled:opacity-100!' : ''}`}
         >
@@ -44,13 +47,12 @@ export function BoxTools({ box: given }: { box?: BoxState }) {
 }
 
 /** BoxTools in a card titled Tools, for the Control screen. Renders nothing when there are no tools. */
-export function BoxToolsCard({ box, className = '' }: { box?: BoxState; className?: string }) {
-  const own = useBox()
-  const b = box ?? own
-  if (useToolButtons(b).length === 0) return null
+export function BoxToolsCard() {
+  const box = useBox()
+  if (useToolButtons(box).length === 0) return null
   return (
-    <Card title={t('box.tools.title')} className={className} aside={b.printState === 'printing' ? t('box.tools.unavailable_printing') : undefined}>
-      <BoxTools box={b} />
+    <Card title={t('box.tools.title')} aside={box.printState === 'printing' ? t('box.tools.unavailable_printing') : undefined}>
+      <BoxTools box={box} />
     </Card>
   )
 }
