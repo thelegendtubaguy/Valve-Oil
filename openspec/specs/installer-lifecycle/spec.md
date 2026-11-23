@@ -872,6 +872,21 @@ The reviewed patched builds of QIDI's touchscreen executable SHALL keep its P2P 
 - **WHEN** QIDI's P2P server pushes forwarding or remote log pull options
 - **THEN** they are ignored, and a pushed server list is still applied
 
+### Requirement: Touchscreen filament match compares filament types
+The reviewed patched builds of QIDI's touchscreen executable SHALL label each Box slot and the external spool with the `filament_type` Klipper publishes for it, so a print's filament match offers every loaded slot whose type is the file's filament type, while the slot's filament name stays as QIDI reads it. The patch travels with the firmware notice patch.
+
+#### Scenario: A slot's filament name doesn't start with its type
+- **WHEN** a loaded Box slot or the external spool holds a filament of the file's type whose name doesn't start with that type as a separate word, such as Generic PLA+, Polymaker PLA-HT, or Elegoo Rapid PLA+ for a PLA file
+- **THEN** the filament match offers the slot and labels it with the type
+
+#### Scenario: A slot of another type
+- **WHEN** a loaded slot's filament type differs from the file's, such as PLA-CF or ABS for a PLA file
+- **THEN** the filament match greys the slot out, as QIDI's app does
+
+#### Scenario: The slot's filament changes
+- **WHEN** a slot's filament changes while the touchscreen app runs, from the touchscreen, Fluidd, a spool tag, or `SAVE_VARIABLE`
+- **THEN** the slot's label follows the new filament's type, and the slot's edit screen preselects the slot's filament by vendor and full name
+
 ### Requirement: Klipper C helper library carries upstream fixes
 Normal install and update SHALL replace a reviewed build of QIDI's Klipper C helper library, `klippy/chelper/c_helper.so`, with the package's build of the same Klipper sources with upstream's later fixes for expired pressure advance entries, trsync timeout extension, step queue appends far in the future, and serial queue pipe descriptors, independently of optional OS optimization policy, with the same preservation and restoration as the other guarded host patches.
 

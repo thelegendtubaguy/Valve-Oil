@@ -91,6 +91,14 @@ QIDI's phone app still reaches the printer on the same network. Away from it, fo
 
 The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
 
+## Touchscreen greying out filament of the right type
+
+When you start a print on the touchscreen, the **Match filament** screen lets you pick only a Box slot or the external spool whose filament type is the file's. QIDI's touchscreen app took a slot's type from the first word of its filament's name instead of the filament's type. That works for QIDI's names, such as PLA Basic, but for a PLA file it greyed out Generic PLA+, Anycubic PLA+ read from a spool tag, Polymaker PLA-HT, and Elegoo Rapid PLA+, which Fluidd and QIDI Studio offered (issue #380).
+
+The touchscreen now uses the filament's type as Klipper reports it, for Match filament and for the type it shows over each slot. Those slots show **PLA** and can be picked for a PLA file, and a slot of another type, such as PLA-CF or ABS, is still greyed out. A slot's edit screen still shows the filament's full name.
+
+The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
+
 ## Fixes from newer Klipper
 
 QIDI's Klipper is upstream Klipper from August 2024 with QIDI's changes. These later upstream fixes are applied to it when Klipper starts:
