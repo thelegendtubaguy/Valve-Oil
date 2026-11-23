@@ -136,6 +136,7 @@ PROC_LOCKS = Path("/proc/locks")
 TIMER_OBJECT = "/org/freedesktop/systemd1/unit/vo_2dauto_2dupdate_2etimer"
 NEXT_CHECK_CACHE_SECONDS = 30.0
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+PROC_UPTIME = Path("/proc/uptime")
 STATE_DIR = HOME / ".cache/valve-oil/status"
 JOB_FILE = STATE_DIR / "job.json"
 JOB_LOG = STATE_DIR / "job.log"
@@ -240,14 +241,20 @@ class RequestError(Exception):
 
 
 class Jobs:
-    """The update-now run this service started last: one at a time, its output kept in JOB_LOG."""
+    """The update-now run this service started last: one at a time, its output kept in JOB_LOG.
+
+    The job file outlives a reboot, so a job is running only while its process is, in the boot it started in: after a
+    power cut its process ID can belong to something else, which would leave the printer updating for good."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         job = self._read()
         if job and job.get("state") == "running":
-            threading.Thread(target=self._watch, args=(job["id"], job.get("pid")), daemon=True).start()
+            if _job_this_boot(job):
+                threading.Thread(target=self._watch, args=(job["id"], job.get("pid")), daemon=True).start()
+            else:
+                self._finish(job["id"])
 
     def current(self, run: dict | None = None) -> dict | None:
         """The last job; `run` is the status file's run, which names the job that started or continued it."""
@@ -274,7 +281,7 @@ class Jobs:
 
     def busy(self) -> bool:
         job = self._read()
-        return bool(job and job.get("state") == "running" and _alive(job.get("pid")))
+        return bool(job and job.get("state") == "running" and _job_this_boot(job) and _alive(job.get("pid")))
 
     def start(self, status: dict) -> dict:
         with self._lock:
@@ -290,7 +297,7 @@ class Jobs:
                 log(f"Update now failed to start: {exc}")
                 raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "Valve Oil's installer could not be started.") from exc
             self._write({"id": job_id, "state": "running", "started_at": _now(), "finished_at": None, "pid": process.pid,
-                         "run_id": None})
+                         "boot_id": _boot_id(), "run_id": None})
             threading.Thread(target=self._wait, args=(job_id, process), daemon=True).start()
             log("Started update now")
             return self.current()
@@ -1243,15 +1250,31 @@ def _can_continue(record_id: str | None) -> bool:
             and record.get("state") == "failed" and record.get("continuable") is not False)
 
 
+def _boot_id() -> str | None:
+    try:
+        return BOOT_ID.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
 def _run_active(run: dict) -> bool:
     if run.get("state") != "running":
         return False
     pid = run.get("pid")
+    return run.get("boot_id") == _boot_id() and isinstance(pid, int) and _alive(pid)
+
+
+def _job_this_boot(job: dict) -> bool:
+    """Whether an update-now job started since the printer last started. A job an earlier release of this service
+    recorded has no boot ID, so its start time is compared with the boot's."""
+    if "boot_id" in job:
+        return job["boot_id"] == _boot_id()
     try:
-        boot_id = BOOT_ID.read_text(encoding="utf-8").strip() or None
-    except OSError:
-        boot_id = None
-    return run.get("boot_id") == boot_id and isinstance(pid, int) and _alive(pid)
+        started = datetime.strptime(str(job.get("started_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt_timezone.utc)
+        booted = time.time() - float(PROC_UPTIME.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return True
+    return started.timestamp() >= booted
 
 
 def _installed_release() -> str | None:

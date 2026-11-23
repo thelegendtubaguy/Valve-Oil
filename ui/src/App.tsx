@@ -366,8 +366,10 @@ function TopBar() {
 }
 
 function Warnings() {
-  const warnings = useWarnings()
   const route = useRoute()
+  // Klipper's word that an update is running repeats the update banner, or on Updates its card.
+  const running = useUpdateRunning()
+  const warnings = useWarnings().filter((w) => !(running && w.id === 'valve_oil_update_running'))
   if (!warnings.length) return null
   return (
     <div className="grid gap-1.5 border-b border-line bg-page px-3.5 py-2 md:px-[18px]">

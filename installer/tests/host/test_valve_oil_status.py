@@ -267,6 +267,37 @@ class StatusServiceTests(unittest.TestCase):
         status_file.remove_status(self.paths)
         self.assertIsNone(reported())
 
+    def test_an_update_now_job_from_before_a_reboot_is_not_running(self) -> None:
+        # The job file outlives a power cut; after it, the job's process ID can belong to something else that is running.
+        root = self.paths.printer_data_root.parent
+        boot_id, uptime = root / "boot_id", root / "uptime"
+        boot_id.write_text("boot-2\n")
+        uptime.write_text("600.0 1200.0\n")
+        alive = os.getpid()
+        records = (
+            {"boot_id": "boot-1", "started_at": "2026-11-23T08:00:00Z"},
+            # Recorded by an earlier release of the service, without the boot it started in.
+            {"started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600))},
+        )
+        try:
+            with mock.patch.object(self.server, "BOOT_ID", boot_id), mock.patch.object(self.server, "PROC_UPTIME", uptime):
+                for record in records:
+                    self.server.JOB_FILE.write_text(json.dumps(
+                        {"id": "job-1", "state": "running", "finished_at": None, "pid": alive, "run_id": None, **record}))
+                    jobs = self.server.Jobs()
+                    self.assertFalse(jobs.busy())
+                    self.assertEqual(jobs.current()["state"], "failed")
+                    self.assertFalse(self.request("/api/status", method="GET")[1]["busy"])
+                # A job started in this boot runs while its process does.
+                self.server.JOB_FILE.write_text(json.dumps(
+                    {"id": "job-2", "state": "running", "started_at": "2026-11-23T08:00:00Z", "finished_at": None,
+                     "pid": alive, "boot_id": "boot-2", "run_id": None}))
+                self.assertTrue(self.server.Handler.jobs.busy())
+                self.assertTrue(self.request("/api/status", method="GET")[1]["busy"])
+        finally:
+            for path in (self.server.JOB_FILE, self.server.JOB_LOG):
+                path.unlink(missing_ok=True)
+
     def test_status_reports_pending_work_and_update_now_runs_once(self) -> None:
         status_file.record_check(
             self.paths,

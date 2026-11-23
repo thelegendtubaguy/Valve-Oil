@@ -4,9 +4,13 @@
 //
 // The service is asked once when the page opens and whenever Moonraker or Klipper goes away, then polled while the
 // Updates screen is open or an update is running.
+//
+// While an update runs, a service that doesn't answer is taken to be restarting for it. Klipper's vo_printer_warnings
+// reads the same run record as the service and says while a run is going, so once Klipper has been ready for a while
+// without saying so, the page stops waiting: the update stopped (its own warning says so) or ended unseen.
 import { createStore, useStore } from '../lib/store'
 import { getRenamedItem } from '../lib/storage'
-import { client, printer } from './printer'
+import { client, printer, type PrinterState } from './printer'
 import {
   parseVoKlipperAnswer,
   parseVoStatus,
@@ -67,6 +71,10 @@ const DISMISSED_UPDATES_KEPT = 20
 const UPDATING_KEY = 'vo-status.updating-since'
 const OLD_UPDATING_KEY = 'tltg-status.updating-since'
 const UPDATING_KEPT_MS = 6 * 60 * 60 * 1000
+// How long the service goes unanswered, and Klipper ready without an update running, before the page stops waiting.
+// Long enough for Update now's installer to start and record its run, and for Klipper to read it.
+export const KLIPPER_QUIET_MS = 60 * 1000
+const UPDATE_RUNNING_WARNING = 'valve_oil_update_running'
 
 function loadDismissed(): string[] {
   try {
@@ -164,12 +172,26 @@ function applyStatus(status: VoStatus) {
   saveUpdating(status.busy)
 }
 
+/** Since when Klipper has been ready and saying no update is running; null while it can't say or says one is. */
+let klipperQuietSince: number | null = null
+
+function klipperSeesUpdate(s: PrinterState): boolean | null {
+  if (s.conn !== 'open' || s.klippy !== 'ready') return null
+  const warnings = (s.status.vo_printer_warnings as { warnings?: unknown } | undefined)?.warnings
+  // QIDI's Klipper, and a Klipper without Valve Oil's macros, can't say.
+  return Array.isArray(warnings) ? valveOilWarningIds(warnings).includes(UPDATE_RUNNING_WARNING) : null
+}
+
 function onPollFailed() {
   const s = valveOil.get()
   const failures = s.failures + 1
   const now = Date.now()
   const outcome = voStatusPollFailure({ hasStatus: s.status != null, failures, updating: updating(s) })
-  if (outcome === 'reconnecting') patch({ failures, now, reconnectingSince: s.reconnectingSince ?? now })
+  const quiet = (since: number | null) => since != null && now - since >= KLIPPER_QUIET_MS
+  if (outcome === 'reconnecting' && quiet(s.reconnectingSince) && quiet(klipperQuietSince)) {
+    patch({ failures, now, status: null, unavailable: true, reconnectingSince: null, expectUpdate: false })
+    saveUpdating(false)
+  } else if (outcome === 'reconnecting') patch({ failures, now, reconnectingSince: s.reconnectingSince ?? now })
   else if (outcome === 'unavailable') patch({ failures, now, status: null, unavailable: true, reconnectingSince: null })
   else patch({ failures, now })
 }
@@ -205,11 +227,13 @@ export function startValveOilStatus() {
   // The warnings reach the page at once, so when Valve Oil's warnings change, the status is asked for again, and the
   // Updates screen agrees with the banner that led there.
   let voWarnings: unknown = undefined
+  if (klipperSeesUpdate(printer.get()) === false) klipperQuietSince = Date.now()
   printer.subscribe(() => {
     const s = printer.get()
     const now = s.conn === 'open' && s.klippy === 'ready'
     if (ready && !now && !timer && !abortController) poll()
     ready = now
+    klipperQuietSince = klipperSeesUpdate(s) === false ? (klipperQuietSince ?? Date.now()) : null
     const w = (s.status.vo_printer_warnings as { warnings?: unknown } | undefined)?.warnings
     if (w !== voWarnings) {
       const changed = JSON.stringify(valveOilWarningIds(w)) !== JSON.stringify(valveOilWarningIds(voWarnings))
@@ -392,6 +416,8 @@ export function shownUpdate(view: VoStatusView | null, dismissed: string[]): VoU
 }
 
 /** Whether an update is running, or the printer went quiet during one: what the app shell warns about. */
+export const updateRunning = (s: ValveOilState) => s.status?.busy === true || (s.expectUpdate && s.reconnectingSince != null)
+
 export function useUpdateRunning(): boolean {
-  return useStore(valveOil, (s) => s.status?.busy === true || (s.expectUpdate && s.reconnectingSince != null))
+  return useStore(valveOil, updateRunning)
 }
