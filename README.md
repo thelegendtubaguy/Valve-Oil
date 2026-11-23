@@ -18,8 +18,6 @@ If you want to help support content like this, consider subscribing on YouTube, 
 
 ## Supported printers
 
-The maintainer owns these printers and tests each release on them.
-
 | Printer | QIDI firmware |
 |---|---|
 | QIDI Max 4 | `01.01.06.03`, `01.01.06.04`, `01.01.06.05`, `01.01.07.01` |
@@ -28,7 +26,7 @@ The maintainer owns these printers and tests each release on them.
 
 ### Community-supported printers
 
-These printers are supported by their owners: the maintainer doesn't have one, so releases ship without being tested on them. The installer tells you when your printer is one of them. [What community support means, and how to add a printer →](docs/community-printers.md)
+These printers are supported by their owners and releases may ship without being tested on them. The installer tells you when your printer is one of them. [What community support means, and how to add a printer →](docs/community-printers.md)
 
 None yet.
 
