@@ -24,7 +24,8 @@ export function CameraDeck() {
   const cams = useWebcams()
   const printing = useJobActive()
   const [names, setNames] = useState<string[]>(saved)
-  const [view, pickView] = useStored<'camera' | 'layers'>('vo-home-view', 'camera')
+  const [stored, pickView] = useStored<'camera' | 'layers'>('vo-home-view', 'camera')
+  const view = stored === 'layers' ? 'layers' : 'camera'
   const save = (n: string[]) => {
     setNames(n)
     saveLocal(KEY, JSON.stringify(n))

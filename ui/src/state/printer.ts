@@ -69,12 +69,12 @@ export function usePrinter<S>(selector: (s: PrinterState) => S): S {
   return useStore(printer, selector)
 }
 
-/** Status of one Klipper object, or an empty object when it doesn't exist. */
 export const useConnected = () => usePrinter((s) => s.conn === 'open')
 
 /** Whether Klipper knows a G-code command. */
 export const useHasCommand = (name: string) => usePrinter((s) => s.commands.includes(name.toUpperCase()))
 
+/** Status of one Klipper object, or an empty object when it doesn't exist. */
 export function useObject(name: string) {
   return usePrinter((s) => s.status[name] ?? EMPTY)
 }

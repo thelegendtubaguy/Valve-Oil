@@ -25,7 +25,10 @@ export const MODES: Record<Mode, { small: number; big: number; labelKey: Message
   turbo: { small: 10, big: 50, labelKey: 'home.deck.turbo' },
 }
 
-export const useMode = () => useStored<Mode>('vo-jog-mode', 'coarse')
+export function useMode() {
+  const [mode, pick] = useStored<Mode>('vo-jog-mode', 'coarse')
+  return [mode || 'coarse', pick] as const
+}
 
 // ---- jog wheel ----
 const S = 280
