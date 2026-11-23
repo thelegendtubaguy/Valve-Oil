@@ -1405,6 +1405,7 @@ Every installer run SHALL first move what releases before 26.11.22.3 named `tltg
 - **AND** the earlier units stop before their replacements start, except the update check's service, which may be the run that started the install, and zram swap, whose replacement keeps swap that is on
 - **AND** the earlier Fluidd, Valve Oil UI, and speedups folders are removed once nothing serves or imports them
 - **AND** what the package wrote into QIDI's and Moonraker's files under the earlier names is recognized as the package's and rewritten
+- **AND** an update whose host changes fail, or whose rollback a later run replays, puts those files back as the earlier release wrote them
 - **AND** pages loaded before the update reach `/tltg-status/`, `/tltg-addons/`, and `/tltg-screen/` at their `vo` routes
 
 #### Scenario: An earlier release's update check runs the install

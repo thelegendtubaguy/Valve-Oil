@@ -16,7 +16,7 @@ from unittest import mock
 
 from installer.runtime import boot_path, install_flow, messages, system_optimizations
 from installer.runtime import fluidd_box_filaments as fluidd_patch
-from installer.runtime import moonraker_allowed_services, moonraker_used_extruders
+from installer.runtime import moonraker_allowed_services, moonraker_spoolman, moonraker_used_extruders
 from installer.runtime import moonraker_speedups
 from installer.runtime import addons_service
 from installer.runtime import auto_update, status_service
@@ -1381,6 +1381,56 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         self.assertFalse(_journal_path(paths).exists())
         for relative in intact:
             self.assertEqual((access / relative).read_bytes(), (Path(gifs["backup_dir"]) / relative).read_bytes())
+
+    def test_an_update_from_an_earlier_release_s_patches_rolls_back_to_them(self):
+        # Issue #390: releases before 26.11.22.3 wrote the same patches under tltg names. An update whose host changes
+        # failed could neither roll them back nor, at every later run, replay the rollback it left pending.
+        paths, manifest, env, root = self._host_context()
+        files = {
+            moonraker_spoolman.OPERATION: (moonraker_spoolman.FILE, "moonraker_spoolman.py"),
+            KLIPPER_PRINT_STATS_OPERATION: ("/home/qidi/klipper/klippy/extras/print_stats_manager.py", "klipper_print_stats_manager.py"),
+        }
+        earlier = {}
+        for operation_id, (path, fixture) in files.items():
+            patched = system_optimizations.GUARDED_FILE_PATCHES[operation_id].patch((FIXTURES_ROOT / fixture).read_text(encoding="utf-8"))
+            earlier[path] = patched.replace("# vo:", "# tltg-optimized:").replace("vo_", "tltg_").replace("VO_", "TLTG_").encode("utf-8")
+            self.assertNotEqual(earlier[path], patched.encode("utf-8"))
+            target = root / path.lstrip("/")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(earlier[path])
+        calls = {"fail_apply": True, "fail_restore": True}
+        base_run = fake_host_run(root)
+        def run(command, **kwargs):
+            actual = command[4:] if command[:4] == ["sudo", "-S", "-p", ""] else command
+            if actual == ["systemctl", "disable", "--now", "bluetooth"] and calls["fail_apply"]:
+                return CompletedProcess(command, 1, stdout="failed")
+            if actual in (["systemctl", "enable", "xl2tpd"], ["systemctl", "start", "xl2tpd"], ["systemctl", "enable", "--now", "xl2tpd"]) and calls["fail_restore"]:
+                return CompletedProcess(command, 1, stdout="failed")
+            return base_run(command, **kwargs)
+        def apply():
+            ledger = {"policy": {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}, "restore_preimages": {}, "actions": []}
+            selected = ("service_xl2tpd", *files, "service_bluetooth")
+            with mock.patch.object(system_optimizations, "_selected_operation_ids", return_value=selected):
+                apply_system_optimizations(paths=paths, spec=manifest.system_optimizations, ledger=ledger, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, source="test", block_qidi_updates=True, run=run, urlopen=moonraker_urlopen())
+        recover = lambda: recover_pending_system_optimization(paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(), environ=env, run=run, urlopen=moonraker_urlopen())
+
+        # A rollback that only a service stops leaves the journal, and the next run replays it past both files.
+        with self.assertRaises(SystemOptimizationRecoveryError) as failed:
+            apply()
+        self.assertNotIn("does not match the reviewed QIDI source", failed.exception.message)
+        self.assertNotIn("changed during the transaction", failed.exception.message)
+        calls["fail_restore"] = False
+        self.assertTrue(recover())
+        self.assertFalse(_journal_path(paths).exists())
+        for path, content in earlier.items():
+            self.assertEqual((root / path.lstrip("/")).read_bytes(), content)
+
+        # A rollback that finishes puts the earlier release's patches back at once.
+        with self.assertRaises(SystemOptimizationApplyError):
+            apply()
+        self.assertFalse(_journal_path(paths).exists())
+        for path, content in earlier.items():
+            self.assertEqual((root / path.lstrip("/")).read_bytes(), content)
 
     def test_rockchip_drift_journal_never_replays_after_interrupt(self):
         paths, manifest, env, root = self._installed_host_context()

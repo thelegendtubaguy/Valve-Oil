@@ -209,9 +209,11 @@ class _GuardedFilePatch:
     binary: Any = None
 
     def patched(self, text: str, *, spec: SystemOptimizationsSpec, root: Path) -> str:
+        return self.patched_with(text, **(self.patch_options(spec, root) if self.patch_options is not None else {}))
+
+    def patched_with(self, text: str, **options: Any) -> str:
         # A release before 26.11.22.3 wrote the same changes under tltg names.
-        text = earlier_names.current_text(text)
-        return self.patch(text, **(self.patch_options(spec, root) if self.patch_options is not None else {}))
+        return self.patch(earlier_names.current_text(text), **options)
 
 
 # Patches admit only reviewed vendor sources; patch(text) returns text unchanged once applied.
@@ -3238,7 +3240,7 @@ def _restore_guarded_file_preimage(operation_id: str, preimage: dict[str, Any], 
     for options in guarded.patch_variants:
         # A variant the package never makes from this original, such as a drop-in on an unrecognized unit.
         with suppress(InstallerError):
-            expected.append(guarded.patch((original or b"").decode("utf-8"), **options).encode("utf-8"))
+            expected.append(guarded.patched_with((original or b"").decode("utf-8"), **options).encode("utf-8"))
     if not target.is_file() or target.read_bytes() not in (original, *expected):
         raise SystemOptimizationRecoveryError(f"{guarded.label} changed during the transaction; preserving it for recovery.")
     _restore_guarded_file(guarded, preimage, paths=paths, root=root, sudo_password=sudo_password, run=run, restarts=restarts)
