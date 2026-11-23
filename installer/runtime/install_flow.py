@@ -86,6 +86,7 @@ class Overview:
     legacy_manual_install: bool  # hand-copied configs that the install resets to QIDI's first
     boards: tuple[str, ...] = ()  # boards that get firmware: "Toolhead", "mainboard", "Box 1", ...
     questions: tuple[Question, ...] = ()
+    community_supported: bool = False  # releases aren't tested on this printer (PrinterSpec.support)
 
     @property
     def turns_box_support_on(self) -> bool:
@@ -162,6 +163,7 @@ def plan_install(paths, manifest, *, environ, system_options: SystemOptimization
         legacy_manual_install=detect_legacy_manual_install(paths=paths, manifest=manifest) is not None,
         boards=boards,
         questions=tuple(questions),
+        community_supported=printer.community_supported,
     )
 
 
@@ -214,6 +216,9 @@ def ask_in_terminal(overview: Overview, *, reporter, input_stream) -> Answers:
     """Ask the questions, show the summary, and return the answers once the operator confirms it.
 
     Quitting at the summary raises OperationCancelled before anything has changed."""
+    if overview.community_supported:
+        reporter.line(messages.COMMUNITY_PRINTER_NOTICE.format(printer=overview.printer_name))
+        reporter.line("")
     values: dict[str, bool] = {}
     for question in overview.questions:
         values[question.id] = prompt_yes(reporter=reporter, input_stream=input_stream, question=question.title,
@@ -225,6 +230,8 @@ def ask_in_terminal(overview: Overview, *, reporter, input_stream) -> Answers:
     reporter.line(messages.INSTALL_SUMMARY_HEADER)
     for label, value in summary_rows(overview, answers):
         reporter.line(f"  {label}: {value}")
+    if overview.community_supported:
+        reporter.line(f"  Printer support: {messages.COMMUNITY_PRINTER_SUMMARY}")
     if not prompt_yes(reporter=reporter, input_stream=input_stream, question=messages.INSTALL_SUMMARY_PROMPT,
                       instruction=messages.INSTALL_SUMMARY_PROMPT_INSTRUCTION):
         reporter.debug(event="install.summary.declined")

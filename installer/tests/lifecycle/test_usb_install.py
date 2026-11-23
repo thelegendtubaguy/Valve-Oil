@@ -131,6 +131,40 @@ class UsbInstallTests(unittest.TestCase):
         self.assertEqual(session.loop(), usb_install.DONE)
         self.assertEqual(self.ui.names()[1], "up_to_date")
 
+    def test_a_community_supported_printer_is_named_before_anything_runs(self):
+        def printer_row(screen):
+            return [row for row in dict(screen[1])["rows"] if row[0] == "Printer"]
+
+        for community in (True, False):
+            with self.subTest(community=community):
+                # The touchscreen: a new install says what community support means before the questions; Back
+                # returns to the first screen. The update screen marks the printer.
+                taps = ["start", "back", "start", "ok", "yes", "yes", "install"] if community else \
+                    ["start", "yes", "yes", "install"]
+                session = self.session(taps, found=overview(community_supported=community))
+                self.assertEqual(session.loop(), usb_install.DONE)
+                self.assertEqual(self.ui.names()[1:6], ["found", "confirm", "found", "confirm", "question"]
+                                 if community else ["found", "question", "question", "ready", "installing"])
+                self.assertEqual(printer_row(self.ui.screens[1]), [("Printer", "QIDI Max 4", "community-supported")]
+                                 if community else [("Printer", "QIDI Max 4")])
+
+                update = overview(installed_version="26.1.1.1", new_install=False, questions=(),
+                                  community_supported=community)
+                session = self.session(["update"], found=update)
+                self.assertEqual(session.loop(), usb_install.DONE)
+                self.assertEqual(len(printer_row(self.ui.screens[1])), int(community))
+
+                # The terminal: the notice before the questions, and a line in the summary.
+                output = io.StringIO()
+                install_flow.ask_in_terminal(overview(community_supported=community, questions=()),
+                                             reporter=create_reporter(stream=output, prefer_plain=True),
+                                             input_stream=io.StringIO("yes\n"))
+                text = output.getvalue()
+                self.assertEqual("community-supported printer" in text, community)
+                self.assertEqual("Printer support:" in text, community)
+                if community:
+                    self.assertLess(text.index("community-supported printer"), text.index("Install now?"))
+
     def test_a_failed_step_is_named_and_its_log_is_on_the_drive(self):
         def fail(front_end):
             raise RuntimeError("Moonraker did not come back")

@@ -12,7 +12,7 @@ SSH into your printer as `qidi@<your printer's ip>` and run:
 
 Running it with `sudo` works the same: the installer switches to `qidi` and asks for `sudo` itself when it needs it, so every file it writes belongs to `qidi` either way. The same goes for `restore.sh`, `auto-update.sh`, and `box-firmware.sh`.
 
-The installer checks which printer it's on and its firmware (see [Supported printers](../README.md#supported-printers)), the printer's state, and free space before writing anything, and makes a backup of your configuration first.
+The installer checks which printer it's on and its firmware (see [Supported printers](../README.md#supported-printers)), the printer's state, and free space before writing anything, and makes a backup of your configuration first. On a [community-supported printer](community-printers.md), it says that releases aren't tested on it: over SSH before its questions and in its summary, and on the touchscreen beside the printer's name, with a screen of its own before a new install's questions. It needs Python 3.9 on the printer, which every supported printer has, and stops at once on an older Python.
 
 A new install needs a printer that works on QIDI's firmware as it is: when Klipper isn't ready, such as stopped with a config error, the installer says so with Klipper's error and installs nothing. Fix the error first. See [Klipper is stopped with an error](troubleshooting.md#the-installer-stopped).
 

@@ -26,4 +26,5 @@
 
 - [What the installer changes](under-the-hood.md)
 - [Changelog](../CHANGELOG.md)
+- [Community-supported printers](community-printers.md): what they are, and what adding a printer takes
 - [Help test releases](../TESTING.md) and [run the dev branch](../DEVELOPMENT.md)

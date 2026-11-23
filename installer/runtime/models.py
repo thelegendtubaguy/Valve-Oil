@@ -250,6 +250,13 @@ class PrinterSpec:
     firmware_key_prefix: str = ""
     # QIDI's update folder for each package of each listed firmware, in name order (installer/usb/).
     restore_sets: tuple[RestoreSet, ...] = ()
+    # "official": the maintainer owns one and tests each release on it. "community": the maintainer can't test on
+    # it, so releases ship untested there; the installer says so and the README lists it apart.
+    support: str = "official"
+
+    @property
+    def community_supported(self) -> bool:
+        return self.support == "community"
 
     def firmware_key(self, soc_version: str) -> str:
         return self.firmware_key_prefix + soc_version

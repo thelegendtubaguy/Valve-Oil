@@ -233,7 +233,7 @@ class Session:
     # ---- screens before the run --------------------------------------------------------------------------------------
 
     def _new_install(self, overview):
-        rows = [("Printer", overview.printer_name)]
+        rows = [self._printer_row(overview)]
         if overview.firmware_update:
             rows.append(("QIDI firmware", f"{overview.firmware}", f"updated to {overview.target_firmware} first"))
             text = (f"This Valve Oil runs on QIDI firmware {overview.target_firmware}, so the installer updates the "
@@ -245,16 +245,31 @@ class Session:
         if overview.box_count:
             rows.append(("QIDI Box", f"{overview.box_count} connected"))
         rows.append(("Valve Oil", "Not installed"))
-        tapped = self._ask_screen("found", ("quit", "start"), title=f"Install Valve Oil {overview.package_version}",
-                                  rows=rows, text=text, firmware_first=overview.firmware_update)
-        if tapped == "quit":
-            return None
-        return self._questions(overview, overview.questions)
+        while True:
+            tapped = self._ask_screen("found", ("quit", "start"),
+                                      title=f"Install Valve Oil {overview.package_version}", rows=rows, text=text,
+                                      firmware_first=overview.firmware_update)
+            if tapped == "quit":
+                return None
+            if not overview.community_supported or self._community_notice(overview):
+                return self._questions(overview, overview.questions)
+
+    def _community_notice(self, overview) -> bool:
+        """A new install on a community-supported printer says what that means first. False goes back."""
+        tapped = self._ask_screen("confirm", ("back", "ok"), title="Community-supported printer", ok_label="Continue",
+                                  text=[f"The {overview.printer_name} is community-supported: Valve Oil isn't tested "
+                                        "on it before each release.",
+                                        "A release can reach it with problems the officially supported printers "
+                                        "don't have. Please report what you find at "
+                                        "github.com/thelegendtubaguy/valve-oil/issues."])
+        return tapped == "ok"
 
     def _update_available(self, overview):
         rows = [("Installed", overview.installed_version),
                 ("On this drive", overview.package_version, "newer"),
                 ("Settings kept", self._settings_text(overview))]
+        if overview.community_supported:
+            rows.insert(0, self._printer_row(overview))
         tapped = self._ask_screen("update", ("settings", "update", "quit"), title="Update available", rows=rows,
                                   text="Your settings and configuration are kept. Your configuration is backed up "
                                        "first.")
@@ -282,6 +297,12 @@ class Session:
         if tapped == "settings":
             return self._questions(overview, self._settings_questions(overview))
         return install_flow.Answers()
+
+    @staticmethod
+    def _printer_row(overview):
+        if overview.community_supported:
+            return ("Printer", overview.printer_name, "community-supported")
+        return ("Printer", overview.printer_name)
 
     def _settings_questions(self, overview):
         questions = [install_flow.QUESTIONS[install_flow.AUTO_UPDATES]]

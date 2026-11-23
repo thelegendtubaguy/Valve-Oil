@@ -14,8 +14,36 @@ from installer.runtime.compatibility import load_supported_upgrade_sources, vali
 from installer.runtime.manifest import load_manifest
 
 
+README_OFFICIAL = "## Supported printers"
+README_COMMUNITY = "### Community-supported printers"
+
+
+def _readme_table(text: str, start: str, end: str) -> dict[str, str]:
+    """A README section's printer table, printer to firmware column; an empty dict for "None yet."."""
+    section = text.split(start, 1)[1].split(end, 1)[0]
+    rows = [line for line in section.splitlines() if line.startswith("| ")][1:]  # without the header row
+    return {cells[0]: cells[1] for cells in ([cell.strip() for cell in row.strip("|").split("|")] for row in rows)}
+
+
+def check_readme_printers(manifest, readme: str) -> None:
+    """The README lists each printer in its support level's table, with the QIDI firmware it supports."""
+    for heading in (README_OFFICIAL, README_COMMUNITY):
+        if heading not in readme:
+            raise SystemExit(f"README.md is missing its '{heading}' section")
+    tables = {
+        "official": _readme_table(readme, README_OFFICIAL, README_COMMUNITY),
+        "community": _readme_table(readme, README_COMMUNITY, "\n## "),
+    }
+    for support, listed in tables.items():
+        expected = {printer.display_name: ", ".join(f"`{printer.soc_version(key)}`" for key in printer.firmware)
+                    for printer in manifest.printers if printer.support == support}
+        if listed != expected:
+            raise SystemExit(f"README.md's {support} printers {listed} don't match installer/package.yaml: {expected}")
+
+
 def main() -> int:
     manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+    check_readme_printers(manifest, (REPO_ROOT / "README.md").read_text(encoding="utf-8"))
     compatibility = load_supported_upgrade_sources(
         REPO_ROOT / "installer/supported_upgrade_sources.yaml"
     )
