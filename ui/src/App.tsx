@@ -69,10 +69,6 @@ const NAV_END: NavItem[] = [
   { route: 'updates', labelKey: 'app.nav.updates', icon: <RefreshCw size={I} /> },
 ]
 
-// Screens that only make sense with Klipper running. The rest need only Moonraker, so the configuration can be fixed
-// and the logs read while Klipper is stopped, and Updates needs neither.
-const NEEDS_KLIPPER: Route[] = ['home', 'filaments', 'control', 'tune']
-
 const SCREENS: Record<Route, () => ReactNode> = {
   home: () => <HomeScreen />,
   files: () => <FilesScreen />,
@@ -91,7 +87,10 @@ export function App() {
   const conn = usePrinter((s) => s.conn)
   const klippy = usePrinter((s) => s.klippy)
   const boxPresent = useBoxPresent()
-  const klippyMessage = usePrinter((s) => s.klippyMessage)
+  // Klipper has answered on this page before, or on the last one in this browser (its saved state), with its objects
+  // and the commands it knows, which decide some buttons (Cut, In and Out). Both stay through a restart.
+  const hadKlipper = usePrinter((s) => s.objects.length > 0 && s.commands.length > 0)
+  const connLost = usePrinter((s) => s.connLost)
   const shown: Route = route === 'filaments' && !boxPresent && klippy === 'ready' ? 'home' : route
   // Uninstalling removes Valve Oil UI itself, so nothing else on the page is used until it ends.
   const uninstalling = useUninstallShown()
@@ -99,18 +98,21 @@ export function App() {
   let body: ReactNode
   // Updates talks to Valve Oil's status service, not Moonraker, so it stays up while an update restarts Moonraker.
   if (shown === 'updates') body = <UpdatesScreen />
-  else if (conn !== 'open') body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
-  else if (klippy === 'unknown' && NEEDS_KLIPPER.includes(shown)) body = <NotReady title={t('common.loading')} detail={klippyMessage} />
-  else if (klippy !== 'ready' && NEEDS_KLIPPER.includes(shown)) body = <KlippyNotReady />
+  // On a fresh page with the printer's last state saved, the screens draw from it while the connection opens.
+  else if (conn !== 'open' && !(conn === 'connecting' && !connLost && hadKlipper)) body = <NotReady title={conn === 'connecting' ? t('app.conn.connecting') : t('app.conn.unreachable')} detail={t('app.conn.trying', { url: client.wsUrl })} />
+  // On a fresh page, wait for Klipper's first answer, so the screen doesn't draw empty and then rearrange itself.
+  else if (klippy === 'unknown' && !hadKlipper) body = <Loading className="py-16" size={24} />
+  // Every other screen stays up while Klipper restarts or is stopped, as in Fluidd: it shows what Klipper last
+  // reported, the camera keeps running, and the strip above says what Klipper is doing.
   else body = <Suspense fallback={<Loading className="py-16" size={24} />}>{SCREENS[shown]()}</Suspense>
 
-  const cockpit = shown === 'home' && conn === 'open' && klippy === 'ready'
+  const cockpit = shown === 'home' && (conn === 'open' || (conn === 'connecting' && !connLost && hadKlipper)) && (klippy !== 'unknown' || hadKlipper)
   if (uninstalling) return <UninstallScreen />
   return (
     <div className="flex h-full">
       <aside className="rail hidden md:flex">
         <a href={href('home')} className="mb-2 grid place-items-center pt-1 pb-1" title="Valve Oil" aria-label={t('app.nav.home')}>
-          <LogoMark height={46} />
+          <LogoMark height={40} />
         </a>
         {NAV.map((n) => (
           <RailItem key={n.route} item={n} on={shown === n.route} />
@@ -128,7 +130,7 @@ export function App() {
         <TopBar />
         <UpdateBanner />
         <Warnings />
-        {klippy !== 'ready' && klippy !== 'unknown' && conn === 'open' && !NEEDS_KLIPPER.includes(shown) && shown !== 'updates' && <KlippyStrip />}
+        {klippy !== 'ready' && klippy !== 'unknown' && conn === 'open' && shown !== 'updates' && <KlippyStrip />}
         <div className="min-h-0 flex-1 overflow-auto">
           <div className={cockpit ? 'h-full p-3.5 pb-24 md:p-[18px] md:pb-[18px]' : `mx-auto grid grid-cols-1 content-start gap-3.5 p-3.5 pb-24 md:p-[18px] md:pb-[18px] ${shown === 'system' ? '' : 'max-w-[1500px]'}`}>{body}</div>
         </div>
@@ -432,66 +434,53 @@ function klippyTitle(klippy: string) {
   return klippy === 'startup' ? t('app.klippy.starting') : klippy === 'shutdown' ? t('app.klippy.stopped') : klippy === 'error' ? t('app.klippy.error') : t('app.klippy.not_running')
 }
 
-/** Klipper's own reason, in plain sight, with the one button that usually gets it back. */
-function KlippyNotReady() {
-  const klippy = usePrinter((s) => s.klippy)
-  const message = usePrinter((s) => s.klippyMessage)
-  // Valve Oil stops and restarts Klipper itself while it updates; a restart from here could interrupt a board flash.
-  const updating = useUpdateRunning()
-  return (
-    <div className="mx-auto mt-[4vh] grid w-full max-w-[760px] gap-4">
-      <h1 className="m-0 text-[24px] font-bold">{klippyTitle(klippy)}</h1>
-      {message && (
-        <div className="rounded-2xl px-4 py-3.5" style={{ boxShadow: 'inset 0 0 0 1px var(--crimson)', background: 'var(--red-tint)' }}>
-          <div className="text-[15px] font-semibold whitespace-pre-line text-bad [overflow-wrap:anywhere]">{message}</div>
-        </div>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {klippy !== 'startup' && !updating && (
-          <>
-            <button className="btn btn-primary btn-lg" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>
-              <RefreshCw size={16} /> {t('app.klippy.firmware_restart')}
-            </button>
-            <button className="btn btn-lg" onClick={() => attempt(() => client.call('printer.restart'))}>
-              {t('app.klippy.restart')}
-            </button>
-          </>
-        )}
-        <a className="btn btn-lg" href={href('files', 'config')}>
-          {t('app.klippy.edit_config')}
-        </a>
-        <a className="btn btn-lg" href={href('console')}>
-          {t('app.nav.console')}
-        </a>
-        <a className="btn btn-lg" href={href('system', 'logs')}>
-          {t('app.klippy.logs')}
-        </a>
-      </div>
-    </div>
-  )
-}
-
-/** Above screens that work without Klipper: says it's stopped, with the restarts. */
+/** Above every screen but Updates while Klipper isn't ready: what it's doing and why, with the restarts. */
 function KlippyStrip() {
   const klippy = usePrinter((s) => s.klippy)
   const message = usePrinter((s) => s.klippyMessage)
   const updating = useUpdateRunning()
+  const [all, setAll] = useState(false)
+  // One line of Klipper's reason, so the strip keeps its height through a restart: Klipper's own start message is
+  // three lines after a blank one. A longer reason, such as a configuration error, opens with Show all.
+  const lines = message.split('\n').map((l) => l.trim()).filter(Boolean)
   return (
     <div className="border-b border-line bg-page px-3.5 py-2 md:px-[18px]">
       <div className="tone-bad flex flex-wrap items-center gap-2.5 rounded-xl px-3 py-2">
         <TriangleAlert size={16} className="flex-none" />
-        <div className="min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">
-          <b>{klippyTitle(klippy)}</b> {message && <span className="text-ink-2">{message.split('\n')[0]}</span>}
+        {/* Two lines even without a reason, so the strip doesn't change height as a restart moves on. */}
+        <div className="min-h-[calc(2lh+2px)] min-w-0 flex-1 text-ink [overflow-wrap:anywhere]">
+          <b>{klippyTitle(klippy)}</b>
+          {lines.length > 0 && (
+            <div className={`mt-0.5 flex gap-2 text-ink-2 ${all ? 'items-end' : 'items-baseline'}`}>
+              <div className={`min-w-0 ${all ? 'max-h-40 overflow-auto whitespace-pre-line' : 'truncate'}`}>{all ? lines.join('\n') : lines[0]}</div>
+              {lines.length > 1 && (
+                <button className="flex-none border-0 bg-transparent p-0 text-[12.5px] font-semibold whitespace-nowrap text-ink underline" onClick={() => setAll(!all)}>
+                  {all ? t('app.klippy.message_less') : t('app.klippy.message_all')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        {klippy !== 'startup' && !updating && (
-          <>
-            <button className="btn btn-sm" onClick={() => attempt(() => client.call('printer.restart'))}>
-              {t('app.klippy.restart')}
-            </button>
-            <button className="btn btn-sm btn-primary" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>
-              {t('app.klippy.firmware_restart')}
-            </button>
-          </>
+        {klippy !== 'startup' && (
+          <div className="flex flex-wrap gap-1.5">
+            {/* Valve Oil stops and restarts Klipper itself while it updates; a restart from here could interrupt a board flash. */}
+            {!updating && (
+              <>
+                <button className="btn btn-sm" onClick={() => attempt(() => client.call('printer.restart'))}>
+                  {t('app.klippy.restart')}
+                </button>
+                <button className="btn btn-sm btn-primary" onClick={() => attempt(() => client.call('printer.firmware_restart'))}>
+                  {t('app.klippy.firmware_restart')}
+                </button>
+              </>
+            )}
+            <a className="btn btn-sm" href={href('files', 'config')}>
+              {t('app.klippy.edit_config')}
+            </a>
+            <a className="btn btn-sm" href={href('system', 'logs')}>
+              {t('app.klippy.logs')}
+            </a>
+          </div>
         )}
       </div>
     </div>

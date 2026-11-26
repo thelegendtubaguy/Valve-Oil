@@ -272,14 +272,16 @@
   .shimmer { background: linear-gradient(90deg, var(--ink-2) 0%, var(--ink) 40%, var(--ink-2) 80%); background-size: 200% 100%;
     -webkit-background-clip: text; background-clip: text; color: transparent; animation: vo-tshim 1.8s linear infinite; }
   .spin { animation: vo-spin 1s linear infinite; }
+  .spin-slow { animation: vo-spin 3s linear infinite; }
 
-  /* Left rail, as on the touchscreen: an icon over its name, amber when it's the screen you're on. */
-  .rail { width: 128px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 12px 8px 10px; overflow-y: auto; }
-  .rail-item { position: relative; min-width: max-content; min-height: 58px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-    color: var(--ink-3); font-size: 11px; font-weight: 650; text-align: center; line-height: 1.1; padding: 6px 8px; }
+  /* Left rail, as on the touchscreen: an icon over its name, amber when it's the screen you're on. As narrow as the
+     longest name allows (Russian's Обновления, 75 px). */
+  .rail { width: 88px; flex: none; background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 10px 4px; overflow-y: auto; }
+  .rail-item { position: relative; min-width: max-content; min-height: 54px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--ink-3); font-size: 11px; font-weight: 650; text-align: center; line-height: 1.1; padding: 6px 2px; }
   .rail-item:hover { color: var(--ink); background: var(--hover); }
   .rail-item.on { color: var(--accent-ink); background: var(--accent-tint); }
-  .rail-item .badge { position: absolute; top: 6px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--rail); }
+  .rail-item .badge { position: absolute; top: 6px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--rail); }
   /* Kept for screens that still link with it. */
 
   .wordmark { font-weight: 800; letter-spacing: 0.16em; font-size: 13px; }

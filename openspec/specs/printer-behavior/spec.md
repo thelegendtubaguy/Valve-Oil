@@ -960,7 +960,7 @@ The optional X/Y step-loss monitor SHALL stay inert until its saved variable ena
 - **THEN** the monitor sends nothing to the drivers
 
 ### Requirement: X/Y homing guard
-On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop an X or Y homing touch whose motor falls behind before its driver reports the end of the axis, and QIDI's closed-loop homing SHALL back off and touch again, homing X first when Y is stopped twice. The guard SHALL be on unless its saved variable turns it off, and SHALL send only the position-error query, and only to the other X/Y motor's driver.
+On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop an X or Y homing touch whose motor falls behind before its driver reports the end of the axis, and QIDI's closed-loop homing SHALL back off and touch again, homing X first when Y is stopped twice. The guard SHALL be on unless its saved variable turns it off, and during a homing move SHALL send only the position-error query, and only to the other X/Y motor's driver.
 
 #### Scenario: Touches are no longer than the axis
 - **WHEN** a closed-loop X or Y touch starts
@@ -1002,10 +1002,29 @@ On printers with QIDI's closed-loop X/Y drivers, the X/Y homing guard SHALL stop
 - **WHEN** the saved variable `vo_homing_guard` is false, the move homes Z or probes, or the printer has no QIDI closed-loop X/Y drivers
 - **THEN** the guard sends the drivers nothing and homing behaves as without it
 
-#### Scenario: Motor firmware upgrade running
+#### Scenario: Motor firmware upgrade starts during a touch
 - **WHEN** QIDI's `cl_interface` reports a closed-loop motor firmware upgrade in progress (`is_any_upgrading()`) as an X or Y homing move starts, or before any position-error query during the move
 - **THEN** the guard sends the drivers nothing more during that move and doesn't stop it for unanswered queries
 - **AND** `klippy.log` gets one line for the move saying the guard isn't watching it because a motor upgrade is running
+
+### Requirement: X/Y homing arm check
+On printers with QIDI's closed-loop X/Y drivers, while the X/Y homing guard is on, an X or Y homing touch SHALL start only once the drivers have confirmed QIDI's arm frames, asking the homing driver only while the toolhead is at rest.
+
+#### Scenario: Touch starts once the drivers are armed
+- **WHEN** the guard is on and QIDI's homing arms the drivers for an X or Y touch (`SET_HOMING_STATE` 1 on both X/Y drivers, `SET_HOMING_MODE` 1 on the homing driver)
+- **THEN** the touch starts only after both drivers have acknowledged the homing state and the homing driver has acknowledged the homing mode
+- **AND** on driver firmware `03.01.10.15`, only after the homing driver reports its end-of-axis detector armed and started since the arm, with no detection since
+- **AND** a homing driver still armed from an earlier touch is disarmed (`SET_HOMING_MODE` 2) before the arm
+- **AND** `klippy.log` gets one line saying the axis was armed and how long the drivers took to reply
+
+#### Scenario: Drivers don't confirm the arm
+- **WHEN** that confirmation doesn't come within the wait
+- **THEN** homing arms once more and the console says the driver didn't confirm homing mode and is being armed again
+- **AND** when the second arm isn't confirmed either, homing fails before the toolhead moves, with an error that names the axis and what was missing and asks to check the motor cables
+
+#### Scenario: Motor firmware upgrade running at the arm
+- **WHEN** QIDI's `cl_interface` reports a closed-loop motor firmware upgrade in progress as QIDI's homing arms the drivers for an X or Y touch
+- **THEN** homing fails before the toolhead moves, with an error saying a motor firmware upgrade is running
 
 ### Requirement: QIDI RS-485 device evidence
 Valve Oil's configuration SHALL detect QIDI RS-485 Boxes, buffers, and racks, and evidence that one was attached, without changing how QIDI's code talks to them. Once detected, it SHALL record RS-485 frames in both directions, QIDI's RS-485 log lines, and status changes outside `klippy.log`, keep a shareable report current, and ask once per Klipper start for an issue. Chip ids and USB serial numbers SHALL be salted hashes. `VO_RS_BOX_REPORT` SHALL write the report on demand.

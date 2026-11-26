@@ -7,7 +7,7 @@ package:
   # moves to this id (earlier_names).
   id: valve-oil
   display_name: Valve Oil
-  version: "26.11.23.3"
+  version: "26.11.25.1"
 # Each firmware version belongs to exactly one printer; patch variants are keyed by firmware version.
 # target_firmware is the QIDI firmware this release brings the printer to: its newest listed firmware, downloaded only
 # from this project's mirror release and checked against the archive's size and SHA-256. Every other listed firmware
@@ -391,34 +391,34 @@ install:
       variants:
         - firmware: "01.01.06.03"
           expected_sha256: "89428b465b7f3d62bd8b65b3155b8aa8e93cd917f59779e40a246b5d89ff8d71"
-          desired_sha256: "47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c"
+          desired_sha256: "b6e823c7ae1071487c5fe24046ba5b07a40d9acb7886d49fc5a1b3a8a9e6d2b7"
         - firmware: "01.01.06.04"
           expected_sha256: "ff0439f8b9e702537f66c16508f7b0a137b27cff51eb653aa951172d3e5184a0"
-          desired_sha256: "47e091f4cd1ec52c474e5b7bada1a12959a4dc3507dbdaa6e77e7b2f74ba656c"
+          desired_sha256: "b6e823c7ae1071487c5fe24046ba5b07a40d9acb7886d49fc5a1b3a8a9e6d2b7"
         - firmware: "01.01.06.04"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         - firmware: "01.01.06.05"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         - firmware: "01.01.07.01"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         - firmware: "01.01.07.02"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         - firmware: "01.01.02.01"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         - firmware: "01.01.02.02"
           source: "klipper/qidi/homing-sync-reset.py"
           expected_sha256: "0310d9ed0a838b2a7ecff8cd2ec15488b1ae3d8f165a458addd16d8366a60761"
-          desired_sha256: "24e9fac4539fee710f5e761a046717f275476cc5de23c87df390ae65e7822565"
+          desired_sha256: "e3e8cc72da51717024d83c1c33570b18dca52eb38500653f831ef1761ae33380"
         # The Smart 5's homing.py has no closed-loop homing scripts; only the 1 s dwell before each X/Y home shortens.
         - firmware: "smart5-01.01.02.01"
           source: "klipper/qidi/homing-smart5.py"

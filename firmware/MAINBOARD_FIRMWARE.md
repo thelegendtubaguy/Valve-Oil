@@ -37,7 +37,7 @@ Run these from the unpacked installer folder (`~/valve-oil`) over SSH:
 
 The script:
 
-1. Reads the mainboard's bootloader and firmware through Klipper's connection to it, and admits them only if both match a validated build exactly.
+1. Reads the mainboard's bootloader and firmware through Klipper's connection to it, and admits them only if both match a validated build exactly. The one exception is a bootloader byte the manifest declares inert for its build, which that build never reads or runs: the IRQ 24 interrupt vector's byte at `0x080000A2`, which interrupt the bootloader never enables. A bootloader that differs from a validated build only there is admitted as that build, and `report.json` names the build as `bootloader_build`.
 2. Saves the read-back under `~/printer_data/.vo_mainboard_firmware_backups/`.
 3. Builds the patched image from the mainboard's own stock firmware, flashes it, reads it back, and checks it matches exactly, with the bootloader unchanged. Once the services stop, closing the SSH session or pressing Ctrl-C doesn't stop it.
 
@@ -74,4 +74,4 @@ python3 scripts/check_mcu_firmware.py --stock-image QD_MAX4_MCU_02.01.01.12_2026
 
 `--predecessor-image QD_MAX4_MCU_02.01.01.11_20260402.bin` (repeat it for each predecessor the manifest lists) checks each predecessor's size and hash, that its own data dictionary reports its version, and that the transfer tool admits it as a board's firmware, finds it in a snapshot, and never programs it.
 
-With a captured bootloader of either admitted build, it runs the transfer tool against that bootloader's own code: stock and patched transfers, lost acknowledgements, a resident bootloader, an unacknowledged first packet, and a non-erasing identity probe. No bootloader binary is shipped in the repository.
+With a captured bootloader of an admitted build, it runs the transfer tool against that bootloader's own code: stock and patched transfers, lost acknowledgements, a resident bootloader, an unacknowledged first packet, and a non-erasing identity probe. For a build with inert bytes, it also checks the manifest names the capture's own value at each, that the tool admits other values there as that build and refuses any other changed byte, and runs the same transfers on those variants. No bootloader binary is shipped in the repository.

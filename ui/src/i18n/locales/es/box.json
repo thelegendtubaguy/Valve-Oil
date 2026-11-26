@@ -71,6 +71,7 @@
       "high": "Humedad alta"
     },
     "from_tag": "Leído de la etiqueta RFID de la bobina",
+    "turning": "Girando su bobina",
     "unknown_type": "Desconocido",
     "empty_title": "{{slot}} · Vacía",
     "reload_group": "Grupo de recarga automática {{group}}",

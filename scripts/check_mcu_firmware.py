@@ -22,7 +22,11 @@ a snapshot, and never programs it.
 bootloader's own code (clock, GPIO, and USB core stubbed; CDC packets injected
 into its class buffer; the GD32 flash controller's page erase modelled at
 register level): stock and patched transfers, lost acknowledgements, a
-resident bootloader, an unacknowledged packet 0, and a non-erasing probe.
+resident bootloader, an unacknowledged packet 0, and a non-erasing probe. For
+each of the build's inert bytes, it checks the manifest names the backup's own
+value, that the tool admits the bootloader with other values there as the same
+build and refuses any other changed byte, and runs the transfers on those
+variants too.
 
 Requires firmware/check-requirements.txt. No binaries are shipped; pass your own.
 """
@@ -73,6 +77,9 @@ BOOTLOADER_HOOKS = {
         stubs=(0x0800030C, 0x08003308, 0x08002724, 0x08000438, 0x08002894, 0x08000E38, 0x08000E74, 0x08002908),
         sent_check=0x08000E38, device=0x200003F8, polls_per_ms=10, packet_fill=0x00),
 }
+# The same code as d180a22c: only the IRQ 24 vector's inert byte at 0xA2 differs (issue #424).
+BOOTLOADER_HOOKS["5faba2064e6e794074de9d9e5a1b3c42a295aeb92b49ec3bbd258a210722b867"] = BOOTLOADER_HOOKS[
+    "d180a22cbe4155c1a3355e1016de78938fb13b257c2e8a0b8105c8d0ad8dfee2"]
 FLASH_END = 0x08080000
 PAGE = 0x1000
 FMC = 0x40023C00
@@ -323,8 +330,8 @@ def check_parser(stock: bytes, patched: bytes, manifest: dict) -> None:
 # ---- bootloader emulation --------------------------------------------------
 
 class Board:
-    def __init__(self, boot: bytes, app_region: bytes):
-        self.hooks = hooks = BOOTLOADER_HOOKS[digest(boot)]
+    def __init__(self, boot: bytes, app_region: bytes, hooks: dict):
+        self.hooks = hooks
         self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         for base, size in ((0x08000000, 0x80000), (0x1FFF0000, 0x10000), (0x20000000, 0x40000),
                            (0x40000000, 0x30000), (0x50000000, 0x40000), (0xE0000000, 0x100000)):
@@ -465,12 +472,13 @@ class EmulatedPort:
 
 def check_transfers(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -> None:
     profile = tool.bootloader_profile(boot, manifest)
+    hooks = BOOTLOADER_HOOKS[profile["sha256"]]
     padded = (len(stock) + 1023) // 1024 * 1024
-    fill = bytes([BOOTLOADER_HOOKS[digest(boot)].get("packet_fill", 0xFF)]) * (padded - len(stock))
+    fill = bytes([hooks.get("packet_fill", 0xFF)]) * (padded - len(stock))
     installed = stock + fill
 
     def board(app_region=installed):
-        b = Board(boot, app_region)
+        b = Board(boot, app_region, hooks)
         b.tick(600)
         return b
 
@@ -517,6 +525,30 @@ def check_transfers(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -
     print("transfer: non-erasing probe returns to the application OK")
 
 
+def check_inert_bytes(boot: bytes, stock: bytes, patched: bytes, manifest: dict) -> None:
+    profile = tool.bootloader_profile(boot, manifest)
+    if digest(boot) != profile["sha256"]:
+        return  # a variant itself; its build's own backup checks the declared values
+    for entry in profile.get("inert_bytes", ()):
+        offset, value = int(entry["offset"], 0), bytes.fromhex(entry["value"])[0]
+        require(boot[offset] == value, f"inert byte {entry['offset']}: the manifest's value is not the build's own")
+        for other in (0x20, value ^ 0xFF):
+            variant = bytearray(boot)
+            variant[offset] = other
+            # Admitted as the build, or as a bootloader the manifest names that runs the build's code.
+            build = tool.admitted_bootloader(bytes(variant), manifest)
+            require(build is not None and BOOTLOADER_HOOKS[build] is BOOTLOADER_HOOKS[profile["sha256"]],
+                    f"inert byte {entry['offset']} = {other:#04x}: not admitted as its build")
+            print(f"inert byte {entry['offset']} = {other:#04x}: admitted as {build[:8]}; transfers:")
+            check_transfers(bytes(variant), stock, patched, manifest)
+    inert = {int(entry["offset"], 0) for entry in profile.get("inert_bytes", ())}
+    for offset in sorted({0x00, 0x04, 0xA0, 0xA3, 0x200, len(boot) - 1} - inert):
+        variant = bytearray(boot)
+        variant[offset] ^= 0x01
+        require(tool.admitted_bootloader(bytes(variant), manifest) is None, f"byte {offset:#x} changed: admitted")
+    print("inert bytes: any other changed byte is refused OK")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stock-image", type=Path, required=True)
@@ -526,6 +558,8 @@ def main() -> int:
     args = parser.parse_args()
     try:
         manifest = load_manifest()
+        require({entry["sha256"] for entry in manifest["bootloaders"]} <= set(BOOTLOADER_HOOKS),
+                "an admitted bootloader has no emulation profile")
         stock = args.stock_image.read_bytes()
         patched = check_image(stock, manifest)
         check_parser(stock, patched, manifest)
@@ -533,8 +567,9 @@ def main() -> int:
             check_predecessors([path.read_bytes() for path in args.predecessor_image], stock, manifest)
         if args.bootloader_backup:
             boot = args.bootloader_backup.read_bytes()
-            require(digest(boot) in BOOTLOADER_HOOKS, "bootloader backup is not an admitted build")
+            require(tool.admitted_bootloader(boot, manifest) is not None, "bootloader backup is not an admitted build")
             check_transfers(boot, stock, patched, manifest)
+            check_inert_bytes(boot, stock, patched, manifest)
     except CheckFailed as failure:
         print(f"Mainboard firmware check failed: {failure}", file=sys.stderr)
         return 1

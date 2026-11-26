@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Camera, ChevronRight, Folder, Layers, Pause, Play, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
-import { HoldButton } from '../components/ui'
+import { HoldButton, confirm } from '../components/ui'
 import { SpoolmanCard } from '../components/spoolman/SpoolmanCard'
 import { FileRow } from '../components/FileCard'
 import { DropZone } from '../components/Upload'
@@ -20,10 +20,10 @@ import { attempt } from '../components/toast'
 import { client, onKlippyReady, runGcode, useConnected } from '../state/printer'
 import { useBoxPresent } from '../state/box'
 import { jobProgress, remainingSeconds, useJob } from '../state/job'
-import { thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
+import { fileHistory, thumbnailUrl, useFileMeta, useFiles, useHistory, type HistoryJob } from '../state/files'
 import { displayName, fmtAgo, fmtDuration, fmtEta } from '../lib/format'
 import { normalizeQidiColor } from '../qidi/qidi-box'
-import { useMedia } from '../lib/browser'
+import { readLocal, saveLocal, useMedia } from '../lib/browser'
 import { href } from '../lib/router'
 import { t } from '../i18n'
 import { tr } from '../i18n/rich'
@@ -93,6 +93,13 @@ export function HomeScreen() {
 
 // ---- the current or last job ----
 const CHIP = 'chip cursor-pointer border-0 hover:bg-hover'
+
+const cancelPrint = () => attempt(() => client.call('printer.print.cancel'))
+
+// Holding Cancel cancels at once; a tap asks first, so a press that doesn't know about holding isn't ignored.
+async function confirmCancel() {
+  if (await confirm({ title: t('home.job.cancel_confirm_title'), body: t('home.job.cancel_confirm_body'), confirm: t('home.job.cancel_confirm'), dismiss: t('home.job.keep_printing'), danger: true })) cancelPrint()
+}
 
 export function JobCard() {
   const job = useJob()
@@ -181,7 +188,7 @@ export function JobCard() {
             <button className="btn btn-lg px-2!" onClick={() => setTune(true)}>
               <SlidersHorizontal size={14} /> {t('home.job.tune')}
             </button>
-            <HoldButton className="btn-lg px-2!" onHold={() => attempt(() => client.call('printer.print.cancel'))}>
+            <HoldButton className="btn-lg px-2!" onHold={cancelPrint} onTap={confirmCancel}>
               <X size={14} /> {tr('home.job.cancel_hold', {}, { hint: (c) => <span className="hidden text-[11.5px] font-medium opacity-80 @min-[400px]:inline">{c}</span> })}
             </HoldButton>
           </div>
@@ -239,6 +246,9 @@ export function ReadyCard({ jobs }: { jobs: HistoryJob[] | null }) {
             </div>
             <ReprintButton filename={last.filename} small />
           </div>
+        ) : jobs === null ? (
+          // Until history arrives, the room the last print takes, so the card doesn't grow as the page loads.
+          <div className="mt-1 h-[39px]" aria-hidden="true" />
         ) : (
           <div className="mt-1 text-ink-2">{t('home.ready.empty')}</div>
         )}
@@ -248,23 +258,25 @@ export function ReadyCard({ jobs }: { jobs: HistoryJob[] | null }) {
   )
 }
 
+const RECENT_ROWS_KEY = 'vo-home-recent-rows'
+// A FileRow's height; the list is capped at 340 px in the narrower layouts.
+const RECENT_ROW_PX = 52
+
 export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | null; className?: string }) {
   const files = useFiles()
   const [open, setOpen] = useState<string | null>(null)
-  const byFile = useMemo(() => {
-    const m = new Map<string, { last: HistoryJob; count: number }>()
-    for (const j of jobs ?? []) {
-      const e = m.get(j.filename)
-      if (!e) m.set(j.filename, { last: j, count: j.status === 'completed' ? 1 : 0 })
-      else if (j.status === 'completed') e.count++
-    }
-    return m
-  }, [jobs])
   const recent = useMemo(() => {
     if (!files) return []
-    const lastUsed = (p: string, mod: number) => Math.max(byFile.get(p)?.last.start_time ?? 0, mod)
-    return [...files].sort((a, b) => lastUsed(b.path, b.modified) - lastUsed(a.path, a.modified)).slice(0, 20)
-  }, [files, byFile])
+    const historyOf = fileHistory(jobs)
+    const rows = files.map((f) => ({ ...f, history: historyOf(f.path, f.modified) }))
+    const lastUsed = (f: (typeof rows)[number]) => Math.max(f.history?.last.start_time ?? 0, f.modified)
+    return rows.sort((a, b) => lastUsed(b) - lastUsed(a)).slice(0, 20)
+  }, [files, jobs])
+  // Until the list arrives, the card keeps the room its rows took last time, so the cards under it don't move.
+  useEffect(() => {
+    if (files) saveLocal(RECENT_ROWS_KEY, String(recent.length))
+  }, [files, recent.length])
+  const reserved = files ? undefined : Math.min(Number(readLocal(RECENT_ROWS_KEY)) || 0, 20) * RECENT_ROW_PX
   return (
     <section className={`card grow ${className}`}>
       <h3 className="card-title">
@@ -273,9 +285,9 @@ export function RecentFiles({ jobs, className = '' }: { jobs: HistoryJob[] | nul
           {t('home.recent.all')} <ChevronRight size={13} />
         </a>
       </h3>
-      <div className="grow-body -mx-1.5 max-wide:max-h-[340px] max-wide:overflow-auto">
+      <div className="grow-body -mx-1.5 max-wide:max-h-[340px] max-wide:overflow-auto" style={reserved ? { minHeight: Math.min(reserved, 340) } : undefined}>
         {recent.map((f) => (
-          <FileRow key={f.path} path={f.path} last={byFile.get(f.path)?.last} count={byFile.get(f.path)?.count ?? 0} onOpen={() => setOpen(f.path)} />
+          <FileRow key={f.path} path={f.path} last={f.history?.last} count={f.history?.count ?? 0} onOpen={() => setOpen(f.path)} />
         ))}
         {files && files.length === 0 && <div className="px-1.5 text-ink-3">{t('home.recent.none')}</div>}
       </div>
@@ -308,16 +320,34 @@ function ReprintButton({ filename, small }: { filename: string; small?: boolean 
 // ---- camera ----
 export type Webcam = { name: string; enabled: boolean; service: string; stream_url: string; snapshot_url: string; flip_horizontal: boolean; flip_vertical: boolean; rotation: number; aspect_ratio?: string }
 
-/** Moonraker's enabled cameras that stream, in its order. */
+const WEBCAMS_KEY = 'vo-webcams'
+
+function savedWebcams(): Webcam[] {
+  try {
+    const v = JSON.parse(readLocal(WEBCAMS_KEY) ?? '[]')
+    return Array.isArray(v) ? v.filter((c) => c && typeof c.name === 'string' && typeof c.stream_url === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Moonraker's enabled cameras that stream, in its order. It starts from the list this browser last read, so after a
+ * reload the camera card is there from the start rather than arriving and pushing the cards below it down.
+ */
 export function useWebcams(): Webcam[] {
-  const [cams, setCams] = useState<Webcam[]>([])
+  const [cams, setCams] = useState<Webcam[]>(savedWebcams)
   const ready = useConnected()
   useEffect(() => {
     if (!ready) return
     const load = () =>
       client
         .call<{ webcams: Webcam[] }>('server.webcams.list')
-        .then((r) => setCams(r.webcams.filter((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url))))
+        .then((r) => {
+          const list = r.webcams.filter((w) => w.enabled !== false && /mjpeg|uv4l|ipstream|stream/i.test(w.service + w.stream_url))
+          saveLocal(WEBCAMS_KEY, JSON.stringify(list))
+          setCams(list)
+        })
         .catch(() => setCams([]))
     load()
     const off = onKlippyReady(load)
@@ -373,7 +403,9 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
   const failures = useRef(0)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The stream's own size, once its first frame arrives, so the card takes the camera's shape without letterboxing.
-  const [measured, setMeasured] = useState<number | null>(null)
+  // The shape last measured in this browser comes first, so a reload doesn't change the card's height.
+  const shapeKey = `vo-camera-shape:${cam.stream_url}`
+  const [measured, setMeasured] = useState<number | null>(() => Number(readLocal(shapeKey)) || null)
   const img = useRef<HTMLImageElement>(null)
   const clearRetry = () => {
     if (retryTimer.current) clearTimeout(retryTimer.current)
@@ -399,7 +431,9 @@ export function CameraView({ cam, toggle, fit, name }: { cam: Webcam; toggle?: R
     const t = setInterval(() => {
       const el = img.current
       if (el?.naturalWidth && el.naturalHeight) {
-        setMeasured(el.naturalWidth / el.naturalHeight)
+        const shape = el.naturalWidth / el.naturalHeight
+        saveLocal(shapeKey, String(shape))
+        setMeasured(shape)
         clearInterval(t)
       }
     }, 250)

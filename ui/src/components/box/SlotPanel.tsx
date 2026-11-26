@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Flame, Nfc, Pencil, RefreshCw, Tag } from 'lucide-react'
 import { Spool } from '../Spool'
+import { SLOT_SPOOL } from './BoxUnits'
 import { send } from '../control/common'
 import { TagWriteDialog, WriteTagIcon } from '../TagWriteDialog'
 import { boxCommands, externalSpoolLoads, reloadText, slotActions, slotOverline, QIDI_BOX_EXTERNAL_SLOT, type BoxState, type QidiBoxSlot } from '../../state/box'
@@ -106,7 +107,8 @@ export function SlotPanel({ box, slot }: { box: BoxState; slot: QidiBoxSlot }) {
   return (
     <section>
       <div className="flex items-start gap-3">
-        <Spool slot={slot} size={56} label={false} loaded={box.loadedSlot === slot.index} />
+        {/* 44 px with its ring, as tall as the two lines beside it, and the same size as the slots' spools. */}
+        <Spool slot={slot} size={SLOT_SPOOL} label={false} loaded={box.loadedSlot === slot.index} />
         <div className="min-w-0 flex-1">
           <div className="section-label truncate">{slotOverline(box, slot)}</div>
           {/* The filament's name is its edit button: material, brand, and color. */}

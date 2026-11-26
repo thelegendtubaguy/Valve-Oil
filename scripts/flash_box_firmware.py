@@ -86,11 +86,39 @@ def application_sizes(manifest: dict) -> list[int]:
     return [spec["size"], *sorted({entry["size"] for entry in known_images(spec).values()} - {spec["size"]})]
 
 
+def without_inert_bytes(data: bytes, profile: dict) -> bytes:
+    """The bootloader with each of the profile's inert bytes put back to the build's own value. An inert byte is one
+    the build never reads or runs, such as a vector of an interrupt it never enables, so a board whose bootloader
+    differs from the build only there runs the same code."""
+    restored = bytearray(data)
+    for entry in profile.get("inert_bytes", ()):
+        offset, value = int(entry["offset"], 0), bytes.fromhex(entry["value"])
+        if len(value) != 1 or not 0 <= offset < BOOTLOADER_BYTES:
+            raise ValueError("Invalid inert bootloader byte in the manifest")
+        restored[offset] = value[0]
+    return bytes(restored)
+
+
 def bootloader_profile(data: bytes, manifest: dict) -> dict:
+    """The admitted build a bootloader is: the profile with its exact hash, else the one it matches once that
+    profile's inert bytes are put back."""
+    if len(data) != BOOTLOADER_BYTES:
+        raise ValueError("Unrecognized bootloader")
     for profile in manifest["bootloaders"]:
-        if len(data) == BOOTLOADER_BYTES and digest(data) == profile["sha256"]:
+        if digest(data) == profile["sha256"]:
+            return profile
+    for profile in manifest["bootloaders"]:
+        if profile.get("inert_bytes") and digest(without_inert_bytes(data, profile)) == profile["sha256"]:
             return profile
     raise ValueError("Unrecognized bootloader")
+
+
+def admitted_bootloader(data: bytes, manifest: dict) -> str | None:
+    """The SHA-256 of the admitted build a bootloader is, or None."""
+    try:
+        return bootloader_profile(data, manifest)["sha256"]
+    except ValueError:
+        return None
 
 
 def load_backup(directory: Path, manifest: dict) -> tuple[bytes, bytes]:
@@ -300,7 +328,7 @@ def application_session(tty: str, manifest: dict, *, application: bool = True, r
             boot = block(0x08000000, 0x08000000 + BOOTLOADER_BYTES)
             region = b""
             if application:
-                supported = any(digest(boot) == p["sha256"] for p in manifest["bootloaders"])
+                supported = admitted_bootloader(boot, manifest) is not None
                 # Admitted boards: the largest admitted image plus its 1 KiB padding; otherwise the whole region.
                 length = ((max(application_sizes(manifest)) + 1023) // 1024 + 1) * 1024 if supported else board.application_region
                 region = block(APPLICATION_BASE, APPLICATION_BASE + length)
@@ -338,10 +366,12 @@ def save_snapshot(directory: Path, boot: bytes, region: bytes, manifest: dict, *
     sizes = application_sizes(manifest)
     size = next((size for size in sizes if image_identity(region[:size], manifest)), sizes[0])
     app = region[:size]
-    supported = any(len(boot) == BOOTLOADER_BYTES and digest(boot) == p["sha256"] for p in manifest["bootloaders"])
+    build = admitted_bootloader(boot, manifest)
+    supported = build is not None
     identity = image_identity(app, manifest)
     padded = (size + 1023) // 1024 * 1024
     report = {"bootloader_sha256": digest(boot), "supported_bootloader": supported,
+              **({"bootloader_build": build} if supported and build != digest(boot) else {}),
               "application_sha256": digest(app), "application": identity or "unrecognized",
               "application_padding": sorted(set(region[size:padded])),
               "bootloader_page_sha256": [digest(boot[offset:offset + 2048]) for offset in range(0, len(boot), 2048)],

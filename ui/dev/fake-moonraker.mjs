@@ -60,7 +60,8 @@ const FILES = [
   { path: 'calibration/flow_cube.gcode', est: 900, types: 'PLA', colors: ['#2F6BFF'], used: [0], hue: 200 },
 ]
 const now = () => Date.now() / 1000
-const fileEntries = FILES.map((f, i) => ({ path: f.path, modified: now() - 3600 * (i * 9 + 2), size: 400000 + i * 233000, permissions: 'rw' }))
+// Older than the seeded print history (back to 140 days), as on a printer: a file is printed after it's uploaded.
+const fileEntries = FILES.map((f, i) => ({ path: f.path, modified: now() - 150 * 86400 - 3600 * (i * 9 + 2), size: 400000 + i * 233000, permissions: 'rw' }))
 
 function metadata(path) {
   const f = FILES.find((x) => x.path === path)
@@ -606,7 +607,7 @@ function rpcError(message) {
 const handlers = {
   'server.connection.identify': () => ({ connection_id: 1 }),
   'server.info': () => ({ klippy_connected: true, klippy_state: state.klippy, components: ['history', 'webcam', 'file_manager', 'announcements', 'job_queue', 'timelapse', 'machine', 'proc_stats', 'database', 'extensions'], registered_directories: ['config', 'logs', 'gcodes', 'timelapse', 'timelapse_frames', 'config_examples', 'docs'], warnings: [], moonraker_version: 'fake' }),
-  'printer.info': () => ({ state: state.klippy, state_message: state.klippy === 'ready' ? 'Printer is ready' : 'Klipper is restarting', hostname: 'fake-max4', software_version: 'v0.12-fake' }),
+  'printer.info': () => ({ state: state.klippy, state_message: KLIPPY_MESSAGES[state.klippy] ?? 'Klipper is restarting', hostname: 'fake-max4', software_version: 'v0.12-fake' }),
   'printer.objects.list': () => ({ objects: [...Object.keys(state.status), 'gcode', 'configfile'] }),
   'printer.objects.subscribe': (p, ws) => {
     subs.set(ws, p.objects)
@@ -686,8 +687,8 @@ const handlers = {
     pushConsole('!! Shutdown due to M112 command')
     return 'ok'
   },
-  'printer.restart': () => 'ok',
-  'printer.firmware_restart': () => 'ok',
+  'printer.restart': () => (klipperRestart(5), 'ok'),
+  'printer.firmware_restart': () => (klipperRestart(5), 'ok'),
 }
 
 let uptime = 86400 * 3 + 5000
@@ -1074,12 +1075,20 @@ function startUninstall(keep) {
   return vo.job
 }
 
-// Klipper restarts while Valve Oil installs; Moonraker too while QIDI's package installs.
+// What Klipper says in each state, word for word, blank first line included.
+const KLIPPY_MESSAGES = {
+  ready: 'Printer is ready',
+  startup: '\nPrinter is not ready\nThe klippy host software is attempting to connect. Please\nretry in a few moments.',
+  shutdown: "MCU 'mcu' shutdown: Timer too close\nThis often indicates the host computer is overloaded. Check\nfor other processes consuming excessive CPU time, high swap\nusage, disk errors, overheating, unstable voltage, or\nsimilar system problems on the host computer.\nOnce the underlying issue is corrected, use the\n\"FIRMWARE_RESTART\" command to reset the firmware, reload the\nconfig, and restart the host software.\nPrinter is shutdown",
+}
+
+// Klipper restarts while Valve Oil installs, or from Restart Klipper and Firmware restart; Moonraker too while QIDI's
+// package installs.
 function klipperRestart(seconds) {
-  // Stopped, as the installer stops it, then starting for the last second.
+  // Stopped, as the installer stops it, then starting for the rest.
   state.klippy = 'disconnected'
   broadcast('notify_klippy_disconnected', [])
-  setTimeout(() => (state.klippy = 'startup'), (seconds - 1) * 1000)
+  setTimeout(() => (state.klippy = 'startup'), 1000)
   setTimeout(() => {
     state.klippy = 'ready'
     broadcast('notify_klippy_ready', [])

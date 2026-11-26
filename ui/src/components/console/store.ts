@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { createStore, useStore } from '../../lib/store'
-import { client, hostClockOffset, printer, pushConsole, replaceConsoleHistory, runGcode, useConnected, usePrinter, type ConsoleLine } from '../../state/printer'
+import { afterKlipperAnswers, client, hostClockOffset, printer, pushConsole, replaceConsoleHistory, runGcode, useConnected, usePrinter, type ConsoleLine } from '../../state/printer'
 import { FLUIDD, useDbItem } from '../../state/database'
 import { CONSOLE_RETENTION, EXTRA_KNOWN, addToHistory, fromStore, normalizeFilter, visibleEntries, type ConsoleEntry, type ConsoleFilter } from './model'
 
@@ -82,6 +82,12 @@ async function loadStore(active: ConsoleLifecycle) {
   const pending: PendingEntry[] = []
   active.pending = pending
   try {
+    // Lines that arrive meanwhile wait in `pending`; the history comes after Klipper's state, which draws the screens.
+    const wait = afterKlipperAnswers()
+    if (wait) {
+      await wait
+      if (lifecycle !== active || active.loadRevision !== loadRevision) return
+    }
     const r = await client.call<{ gcode_store: { message: string; time: number; type: string }[] }>('server.gcode_store', { count: CONSOLE_RETENTION })
     if (lifecycle !== active || active.loadRevision !== loadRevision) return
     const entries = fromStore(r.gcode_store, nextId)

@@ -71,7 +71,9 @@
     "firmware_restart": "Reiniciar firmware",
     "restart": "Reiniciar Klipper",
     "edit_config": "Editar configuración",
-    "logs": "Registros"
+    "logs": "Registros",
+    "message_all": "Mostrar todo",
+    "message_less": "Mostrar menos"
   },
   "notifications": {
     "title": "Notificaciones",

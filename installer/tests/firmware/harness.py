@@ -182,9 +182,15 @@ def synthetic_manifest(name):
         earlier = predecessor_image(stock)
         spec["predecessors"] = [{"version": spec["predecessors"][0]["version"], "size": len(earlier),
                                  "sha256": hashlib.sha256(earlier).hexdigest()}]
-    boot = bytes(range(256)) * 128
+    boot = bytearray(range(256)) * 128
     if "bootloaders" in manifest:
-        manifest["bootloaders"] = [{"sha256": hashlib.sha256(boot).hexdigest(), "identity_reply": "0112"}]
+        # The stand-in keeps the inert bytes the manifest's first build declares, holding the build's own values.
+        inert = manifest["bootloaders"][0].get("inert_bytes", [])
+        for entry in inert:
+            boot[int(entry["offset"], 0)] = bytes.fromhex(entry["value"])[0]
+        manifest["bootloaders"] = [{"sha256": hashlib.sha256(boot).hexdigest(), "identity_reply": "0112",
+                                    **({"inert_bytes": inert} if inert else {})}]
+    boot = bytes(boot)
     return manifest, stock, boot
 
 

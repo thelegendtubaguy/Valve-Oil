@@ -432,6 +432,36 @@ class MainboardFirmwareFlowTests(UsbBoardFlowCases, unittest.TestCase):
             self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
             self.assertEqual(printer.transfers, [("mcu", False)])
 
+    def test_a_bootloader_differing_from_an_admitted_build_only_in_an_inert_byte_is_flashed_and_rescued(self):
+        # Issue #424: a Max 4 mainboard bootloader that is an admitted build with one byte of an unused interrupt
+        # vector changed. Any other changed byte still leaves the mainboard as it is.
+        inert = [int(entry["offset"], 0) for entry in harness.synthetic_manifest("max4-mcu-valve-oil-v1.json")[0]
+                 ["bootloaders"][0]["inert_bytes"]]
+        self.assertIn(0xA2, inert)
+        for offset, admitted in ((0xA2, True), (0xA3, False), (0x200, False)):
+            with self.subTest(offset=hex(offset)):
+                paths, printer, reporter = self.fixture("stock", failure="transfer")
+                boot = bytearray(printer.boot)
+                boot[offset] = 0x20 if boot[offset] != 0x20 else 0x21
+                printer.boot = bytes(boot)
+                marker = paths.printer_data_root / self.marker
+                if not admitted:
+                    self.assertEqual(self.execute(paths, printer, reporter, "install"), 0)
+                    self.assertEqual((printer.transfers, printer.states), ([], printer.original))
+                    self.assertIn("not changed:", reporter.stream.getvalue())
+                    continue
+                with self.assertRaises(self.error):
+                    self.execute(paths, printer, reporter, "install")
+                self.assertEqual(printer.transfers, [("mcu", False)])
+                report = json.loads(next(paths.printer_data_root.glob(f"{self.backups}/*/before/report.json")).read_text())
+                self.assertEqual((report["supported_bootloader"], report["bootloader_build"]),
+                                 (True, printer.manifest["bootloaders"][0]["sha256"]))
+                # Rescue flashes through the same bootloader from its backup.
+                self.assertEqual(self.execute(paths, printer, reporter, "rescue"), 0)
+                self.assertEqual((printer.transfers[-1], self.identity(printer)), (("mcu", True), "stock"))
+                self.assertEqual(printer.states, printer.original)
+                self.assertFalse(marker.exists())
+
     def test_qidi_predecessor_is_replaced_only_once_the_printer_runs_the_target_firmware(self):
         # On QIDI firmware whose Klipper expects 02.01.01.11, the mainboard is left as it is: read by its reported
         # version, or by readback when the caller stopped the services.
@@ -565,7 +595,8 @@ BOX_SERIAL = "usb-Klipper_stm32f401xc_SECRETSERIAL0042-if00"
 class Boards(harness.Host):
     """A printer whose THR, mainboard, and USB Boxes answer the board tools' read-only snapshots, behind Moonraker.
 
-    Each board is (bootloader, application): bootloader "admitted" or "unknown"; application "stock", "patched",
+    Each board is (bootloader, application): bootloader "admitted", "inert" (an admitted build with an inert byte
+    changed, which the tool names by the build it matched), or "unknown"; application "stock", "patched",
     "unknown", or a QIDI version string: the manifest's predecessor image of that version, or an image the manifests
     don't have ("<version>+modified", or a version without a predecessor).
     """
@@ -597,7 +628,8 @@ class Boards(harness.Host):
         bootloaders = (sorted(thr_bootloaders.ADMITTED_BOOTLOADERS) if kind == "thr"
                        else [entry["sha256"] for entry in BOARD_MANIFESTS[kind]["bootloaders"]])
         return {"bootloader_sha256": bootloaders[0] if boot == "admitted" else UNKNOWN,
-                "supported_bootloader": boot == "admitted",
+                **({"bootloader_build": bootloaders[0]} if boot == "inert" else {}),
+                "supported_bootloader": boot in ("admitted", "inert"),
                 "application_sha256": spec.get(app + "_sha256") or next(
                     (entry["sha256"] for entry in spec.get("predecessors", ()) if entry["version"] == app), UNKNOWN),
                 # A firmware someone built themselves names the build machine in its version and build strings.
@@ -816,7 +848,8 @@ class BoardAdmissionTests(unittest.TestCase):
         self.assertFalse((paths.printer_data_root / "logs/vo_thr_firmware.json").exists())
 
     def test_admitted_boards_get_their_pinned_images_without_a_question_and_current_ones_are_left_alone(self):
-        paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("admitted", "stock"),
+        # The mainboard's bootloader is admitted by the build it matched after its inert bytes (issue #424).
+        paths, printer, reporter = self.fixture({"thr": ("admitted", "stock"), "mcu": ("inert", "stock"),
                                                  "box1": ("admitted", "patched"), "box2": ("admitted", "stock")})
         board_printer, admission = self.preflight(paths, printer, reporter)
         self.assertTrue(admission.admitted and block_qidi_package_updates(admission))

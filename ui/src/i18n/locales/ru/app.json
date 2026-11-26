@@ -71,7 +71,9 @@
     "firmware_restart": "Перезапуск прошивки",
     "restart": "Перезапустить Klipper",
     "edit_config": "Изменить конфигурацию",
-    "logs": "Журналы"
+    "logs": "Журналы",
+    "message_all": "Показать всё",
+    "message_less": "Свернуть"
   },
   "notifications": {
     "title": "Уведомления",

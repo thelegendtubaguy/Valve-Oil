@@ -2,7 +2,7 @@
 // and brand, and a tag mark when the Box read the spool's RFID tag. The spool says whether the slot holds filament (drawn
 // or dashed) and whether it's loaded to the toolhead (a ring, and its tool badge filled); words appear only for the
 // states it can't show, at the hub and reading a tag.
-import { Droplet, Flame, RotateCw, Sun, Tag, Thermometer } from 'lucide-react'
+import { Droplet, Flame, Sun, Tag, Thermometer } from 'lucide-react'
 import { Spool } from '../Spool'
 import { useDryLeft } from '../../state/box-dry'
 import { fmtDuration } from '../../lib/format'
@@ -55,37 +55,49 @@ function BoxUnit({ box, unit, selected, onSelect, onTool, onHeater }: { box: Box
   )
 }
 
+// The same size as the picked slot's spool above the slots (SlotPanel), so no slot's spool looks bigger than it.
+export const SLOT_SPOOL = 38
+
 function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; slot: QidiBoxSlot; selected: boolean } & Omit<Handlers, 'selected' | 'onHeater'>) {
   const status = STATUS[slotStatus(box, slot)]
   const tools = box.toolsBySlot[slot.index] ?? []
   const group = box.reloadGroups[slot.index]?.letter
   const loaded = box.loadedSlot === slot.index
+  // The Box turning this slot's spool while it heats shows on the spool itself, which turns, rather than on the Box's
+  // line above, where it came and went every few seconds and pushed the heater button onto a line of its own.
+  const turning = box.spoolRoll?.rolling === slot.label
   const title = slot.present ? [slot.label, slot.vendor, slot.name, loaded ? t('box.slot.loaded') : null].filter(Boolean).join(' · ') : t('box.units.empty_title', { slot: slot.label })
   // The slot's one control for keyboards and screen readers: supplement its visible text with the slot identity and tag state.
-  const details = [title, box.fromTag[slot.index] ? t('box.units.from_tag') : null].filter(Boolean).join(' · ')
+  const details = [title, box.fromTag[slot.index] ? t('box.units.from_tag') : null, turning ? t('box.units.turning') : null].filter(Boolean).join(' · ')
   return (
-    <div className={`tile box-selectable flex! flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center ${selected ? 'bg-accent-tint!' : ''}`} style={selected ? SELECTED : undefined}>
-      {/* The slot, its tag mark, then its tools and auto-reload group, all on the top line. */}
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-0.5 pl-1">
+    <div className={`tile box-selectable flex! flex-col items-center gap-0.5! px-1! pt-1.5! pb-2! text-center @container ${selected ? 'bg-accent-tint!' : ''}`} style={selected ? SELECTED : undefined}>
+      {/* The slot and its tag mark at the left of the top line, its tools and auto-reload group at the right. Where the
+          tile is wide enough, 100 px (92 inside its padding) for a two-digit tool beside the spool, they sit in the
+          top corners, the tag mark under the slot and the group under the tools, and the spool comes up between. */}
+      <div className="pointer-events-none flex w-full min-w-0 flex-wrap items-center gap-0.5 pl-1 *:pointer-events-auto @min-[92px]:absolute @min-[92px]:inset-x-0 @min-[92px]:top-1.5 @min-[92px]:z-1 @min-[92px]:flex-nowrap @min-[92px]:items-start @min-[92px]:px-1.5">
         {/* A second tap target for the same slot; the button below is the one keyboards and screen readers use. */}
-        <button type="button" tabIndex={-1} aria-hidden="true" title={title} onClick={() => onSelect(slot.index)} className="flex min-h-6 items-center gap-0.5 border-0 bg-transparent p-0 text-inherit">
+        <button type="button" tabIndex={-1} aria-hidden="true" title={title} onClick={() => onSelect(slot.index)} className="flex min-h-6 items-center gap-0.5 border-0 bg-transparent p-0 text-inherit @min-[92px]:flex-col @min-[92px]:items-start @min-[92px]:pt-1">
           <span className="text-[11px] font-bold text-ink-3">{slot.label}</span>
-          {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3" aria-label={t('box.units.from_tag')} />}
+          {box.fromTag[slot.index] && <Tag size={11} className="ml-0.5 text-ink-3 @min-[92px]:ml-0" aria-label={t('box.units.from_tag')} />}
         </button>
         <span className="flex-1" />
-        {tools.map((tool) => (
-          <button key={tool} type="button" className={`min-h-6 min-w-6 rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold ${loaded ? 'bg-accent text-on-accent' : 'tone-muted'}`} title={`${tool} → ${slot.label}`} aria-label={`${tool} → ${slot.label}`} onClick={() => onTool(Number(tool.slice(1)), slot.index)}>
-            {tool}
-          </button>
-        ))}
-        {group && (
-          <span className="tone-warn rounded-[5px] px-1.5 py-px text-[10.5px] font-semibold" title={t('box.units.reload_group', { group })}>
-            {group}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-0.5 @min-[92px]:flex-col @min-[92px]:items-end">
+          {tools.map((tool) => (
+            <button key={tool} type="button" className={`min-h-6 min-w-6 rounded-[5px] border-0 px-1.5 py-px text-[10.5px] font-semibold @min-[92px]:px-1 ${loaded ? 'bg-accent text-on-accent' : 'tone-muted'}`} title={`${tool} → ${slot.label}`} aria-label={`${tool} → ${slot.label}`} onClick={() => onTool(Number(tool.slice(1)), slot.index)}>
+              {tool}
+            </button>
+          ))}
+          {group && (
+            <span className="tone-warn rounded-[5px] px-1.5 py-px text-[10.5px] font-semibold" title={t('box.units.reload_group', { group })}>
+              {group}
+            </span>
+          )}
+        </div>
       </div>
       <button type="button" aria-pressed={selected} title={title} onClick={() => onSelect(slot.index)} className="flex w-full min-w-0 flex-1 flex-col items-center gap-0.5 border-0 bg-transparent p-0 text-center text-inherit">
-        <Spool slot={slot} size={50} label={false} loaded={loaded} />
+        <span className={`flex ${turning ? 'spin-slow' : ''}`} title={turning ? t('box.units.turning') : undefined}>
+          <Spool slot={slot} size={SLOT_SPOOL} label={false} loaded={loaded} />
+        </span>
         {slot.present && (
           <>
             <span className="w-full truncate px-0.5 text-[14px] leading-tight font-bold">{slot.type ?? t('box.units.unknown_type')}</span>
@@ -103,8 +115,6 @@ function SlotTile({ box, slot, selected, onSelect, onTool }: { box: BoxState; sl
 function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHeater: (box: number) => void }) {
   const c = box.climates.find((x) => x.box === unit)
   const timer = useDryLeft(c)
-  const rolling = box.spoolRoll?.rolling
-  const rollingHere = rolling != null && rolling.startsWith(String(unit))
   const inPrint = useJobActive()
   const heaterText = !c
     ? ''
@@ -126,11 +136,6 @@ function ClimateRow({ box, unit, onHeater }: { box: BoxState; unit: number; onHe
       {c?.humidity != null && (
         <span className="num inline-flex items-center gap-1 text-[12.5px] font-semibold" title={humidityLevel(c.humidity).label}>
           <Droplet size={13} className={humidityLevel(c.humidity).cls} /> {c.humidity}%
-        </span>
-      )}
-      {rollingHere && (
-        <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-2" title={t('box.settings.vo_box_spool_roll')}>
-          <RotateCw size={12} className="spin" /> {rolling}
         </span>
       )}
       <span className="flex-1" />

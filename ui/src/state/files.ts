@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { client, useConnected, usePrinter } from './printer'
+import { useEffect, useMemo, useState } from 'react'
+import { afterKlipperAnswers, client, useConnected, usePrinter } from './printer'
 import { createStore, useStore } from '../lib/store'
 import { toast } from '../components/toast'
 import { baseName, extOf, isLocked, joinPath, parentOf, rootProps, type FsEntry } from '../components/files/fs'
@@ -47,6 +47,28 @@ export type HistoryJob = {
   exists?: boolean
 }
 
+export type FileHistory = { last: HistoryJob; count: number }
+
+/**
+ * Looks up a G-code file's last job and completed prints in print history (newest first). Moonraker keeps history by
+ * file name, so a job that started before the file's modified time printed an earlier file of that name, deleted and
+ * uploaded again or replaced, and isn't this file's. Fluidd gets the same from the file metadata's `job_id`, which
+ * Moonraker drops when the file changes.
+ */
+export function fileHistory(jobs: HistoryJob[] | null): (path: string, modified: number) => FileHistory | undefined {
+  const byName = new Map<string, HistoryJob[]>()
+  for (const j of jobs ?? []) {
+    const list = byName.get(j.filename)
+    if (list) list.push(j)
+    else byName.set(j.filename, [j])
+  }
+  return (path, modified) => {
+    const own = byName.get(path)?.filter((j) => j.start_time >= modified)
+    if (!own?.length) return undefined
+    return { last: own[0], count: own.filter((j) => j.status === 'completed').length }
+  }
+}
+
 const metaCache = new Map<string, FileMeta | null>()
 const inflight = new Map<string, Promise<FileMeta | null>>()
 
@@ -55,8 +77,9 @@ export function fetchMeta(filename: string, force = false): Promise<FileMeta | n
   if (hit !== undefined && !force) return Promise.resolve(hit)
   let p = inflight.get(filename)
   if (!p) {
-    p = client
-      .call<FileMeta>('server.files.metadata', { filename })
+    // After Klipper's state, which Moonraker would otherwise answer late behind a screenful of these.
+    p = Promise.resolve(afterKlipperAnswers())
+      .then(() => client.call<FileMeta>('server.files.metadata', { filename }))
       .catch(() => null)
       .then((meta) => {
         metaCache.set(filename, meta)
@@ -91,8 +114,11 @@ export function thumbnailUrl(filename: string, meta: FileMeta | null | undefined
   return client.fileUrl('gcodes', joinPath(parentOf(filename), pick.relative_path))
 }
 
-/** A Moonraker list, fetched while connected and enabled and again when `rev` moves; empty when the call fails. */
-function useList<R, T>(method: string, params: Record<string, unknown>, rev: 'filesRev' | 'historyRev', enabled: boolean, pick: (r: R) => T[]) {
+/**
+ * A Moonraker list, fetched while connected and enabled and again when `rev` moves; empty when the call fails. With
+ * `afterKlipper`, the first fetch on a connection waits for Klipper's state, so Moonraker answers that first.
+ */
+function useList<R, T>(method: string, params: Record<string, unknown>, rev: 'filesRev' | 'historyRev', enabled: boolean, pick: (r: R) => T[], afterKlipper = false) {
   const n = usePrinter((s) => s[rev])
   const ready = useConnected()
   const [list, setList] = useState<T[] | null>(null)
@@ -100,8 +126,8 @@ function useList<R, T>(method: string, params: Record<string, unknown>, rev: 'fi
   useEffect(() => {
     if (!ready || !enabled) return
     let live = true
-    client
-      .call<R>(method, params)
+    Promise.resolve(afterKlipper ? afterKlipperAnswers() : null)
+      .then(() => client.call<R>(method, params))
       .then((r) => live && setList(pick(r)))
       .catch(() => live && setList([]))
     return () => {
@@ -111,9 +137,37 @@ function useList<R, T>(method: string, params: Record<string, unknown>, rev: 'fi
   return list
 }
 
-export const useFiles = () => useList<FileEntry[], FileEntry>('server.files.list', { root: 'gcodes' }, 'filesRev', true, (f) => f.filter((x) => /\.(gcode|g|gco|gcode\.3mf)$/i.test(x.path) && !x.path.startsWith('.')))
+// ---- deletes, hidden at once: Moonraker drops a file from its lists only once the delete has run and the list is
+// read again, so a deleted file stayed on screen for a moment. It's hidden from the start, and comes back if the
+// delete fails. Each is the file as it was (its modified time), so a new file of the same name shows straight away. ----
 
-export const useHistory = (limit = 200, enabled = true) => useList<{ jobs: HistoryJob[] }, HistoryJob>('server.history.list', { limit, order: 'desc' }, 'historyRev', enabled, (r) => r.jobs)
+type Deleting = { root: string; path: string; modified?: number }
+const deleting = createStore<Deleting[]>([])
+// After this, a delete that went through has long since left Moonraker's lists.
+const DELETE_HIDE_MS = 60_000
+
+/** Hides these entries of a root from every file list until their deletes end. Returns a function that shows them again. */
+export function hideDeleted(root: string, entries: { path: string; modified?: number }[]): () => void {
+  const added = entries.map((e): Deleting => ({ root, path: e.path, modified: e.modified }))
+  deleting.set((d) => [...d, ...added])
+  const show = () => deleting.set((d) => d.filter((x) => !added.includes(x)))
+  setTimeout(show, DELETE_HIDE_MS)
+  return show
+}
+
+function isDeleted(list: Deleting[], root: string, e: { path: string; modified?: number }) {
+  return list.some((d) => d.root === root && ((d.path === e.path && (d.modified == null || e.modified == null || d.modified === e.modified)) || e.path.startsWith(`${d.path}/`)))
+}
+
+/** `list` without the entries being deleted. */
+export function useWithoutDeleted<T extends { path: string; modified?: number }>(root: string, list: T[] | null): T[] | null {
+  const d = useStore(deleting, (x) => x)
+  return useMemo(() => (list && d.length ? list.filter((e) => !isDeleted(d, root, e)) : list), [list, d, root])
+}
+
+export const useFiles = () => useWithoutDeleted('gcodes', useList<FileEntry[], FileEntry>('server.files.list', { root: 'gcodes' }, 'filesRev', true, (f) => f.filter((x) => /\.(gcode|g|gco|gcode\.3mf)$/i.test(x.path) && !x.path.startsWith('.')), true))
+
+export const useHistory = (limit = 200, enabled = true) => useList<{ jobs: HistoryJob[] }, HistoryJob>('server.history.list', { limit, order: 'desc' }, 'historyRev', enabled, (r) => r.jobs, true)
 
 // ---------------------------------------------------------------------------------------------------------------
 // Any root: directories, file operations, uploads, and downloads, for the file browser and the editor. Paths are
@@ -153,12 +207,15 @@ export function useDirectory(root: string, path: string) {
       live = false
     }
   }, [key, root, path, rev, ready])
+  const dirs = useWithoutDeleted(root, state.dir?.dirs ?? null)
+  const files = useWithoutDeleted(root, state.dir?.files ?? null)
+  const dir = useMemo(() => (state.dir && dirs && files ? { ...state.dir, dirs, files } : state.dir), [state.dir, dirs, files])
   // A stale folder stays on screen only until the new one loads, so moving between folders doesn't flash empty.
-  return { dir: state.dir, error: state.key === key ? state.error : null, loading: state.key !== key }
+  return { dir, error: state.key === key ? state.error : null, loading: state.key !== key }
 }
 
 /** Every file in a root (server.files.list), for searching across folders. */
-export const useRootFiles = (root: string, enabled = true) => useList<FileEntry[], FileEntry>('server.files.list', { root }, 'filesRev', enabled, (f) => f)
+export const useRootFiles = (root: string, enabled = true) => useWithoutDeleted(root, useList<FileEntry[], FileEntry>('server.files.list', { root }, 'filesRev', enabled, (f) => f))
 
 /** Refuses writes over files Valve Oil UI must leave alone (config/fluidd.cfg). */
 function guard(root: string, path: string) {
@@ -176,10 +233,17 @@ export async function copyItem(root: string, from: string, to: string) {
   await client.call('server.files.copy', { source: rooted(root, from), dest: rooted(root, to) })
 }
 
-export async function deleteItem(root: string, e: Pick<FsEntry, 'kind' | 'path'>) {
+/** Deletes a file or folder, hidden from the lists from the start and shown again if the delete fails. */
+export async function deleteItem(root: string, e: Pick<FsEntry, 'kind' | 'path'> & { modified?: number }) {
   guard(root, e.path)
-  if (e.kind === 'dir') await client.call('server.files.delete_directory', { path: rooted(root, e.path), force: true })
-  else await client.call('server.files.delete_file', { path: rooted(root, e.path) })
+  const show = hideDeleted(root, [e])
+  try {
+    if (e.kind === 'dir') await client.call('server.files.delete_directory', { path: rooted(root, e.path), force: true })
+    else await client.call('server.files.delete_file', { path: rooted(root, e.path) })
+  } catch (err) {
+    show()
+    throw err
+  }
 }
 
 export async function makeDir(root: string, path: string) {

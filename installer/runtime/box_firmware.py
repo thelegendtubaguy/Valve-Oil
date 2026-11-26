@@ -236,7 +236,8 @@ def _unsupported_capture(backup_root: Path, box: Box, manifest: dict) -> Path | 
     _, report_path, report = max(captures, key=lambda capture: capture[0])
     applications = set(known_images(image_spec(manifest)))
     bootloaders = {entry["sha256"] for entry in manifest["bootloaders"]}
-    if report.get("bootloader_sha256") in bootloaders and report.get("application_sha256") in applications:
+    bootloader = {report.get("bootloader_sha256"), report.get("bootloader_build")}
+    if bootloader & bootloaders and report.get("application_sha256") in applications:
         return None
     return report_path
 

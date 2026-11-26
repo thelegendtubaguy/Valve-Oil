@@ -50,7 +50,7 @@ With this turned on, while a Box's heater has a target, during a print or not, e
 - Nothing turns while the print is paused, while the Box loads, unloads, or changes tools, or while QIDI's own drying runs on that Box, which turns the spools itself.
 - It's off until you turn on **Turn spools while heating** in the QIDI Box card's settings in Fluidd, or run `SAVE_VARIABLE VARIABLE=vo_box_spool_roll VALUE=1`. `VALUE=0` turns it off again. The change applies at the next turn.
 
-`klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
+While a slot turns, its spool turns on the Box card in Valve Oil UI. `klippy.log` notes each turn, for example `vo_box_spool_roll: turning 1A's spool 25 mm`.
 
 ### Box fans on a warm printer
 

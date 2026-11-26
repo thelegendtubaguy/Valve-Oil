@@ -35,6 +35,18 @@
 # is_any_upgrading() when a move starts and before each question, and a touch
 # it can't watch homes as QIDI's does, without the guard.
 #
+# Before each touch, QIDI's homing queues the frames that put the drivers in
+# homing mode (0x55 homing state to both, 0x56 homing mode to the homing
+# driver) and goes on without waiting: a frame lost on the way, or held behind
+# a request the drivers didn't answer, leaves the touch unarmed or armed late,
+# and nothing reports it. Valve Oil's homing.py hands the frames to arm(),
+# which waits until both drivers have acknowledged them, then asks the homing
+# driver (0xF2, firmware 03.01.10.15) until it reports its detector armed and
+# started, at rest, and not yet fired. When that doesn't happen it arms once
+# more, then fails homing before the toolhead moves. It also refuses to home
+# while a closed-loop motor firmware upgrade runs, since QIDI's code then
+# drops the frames without a word.
+#
 # Each move logs one line with what the driver reported, so a touch that went
 # wrong can be told from one that didn't. On by default; the saved variable
 # `vo_homing_guard` set to 0 turns it off. Printers without QIDI's closed-loop
@@ -68,6 +80,28 @@ REPLY_TIMEOUT = 0.25
 # the new question.
 SILENT_LIMIT = 2
 TRUE_WORDS = ("1", "true", "yes", "on", "enable", "enabled")
+# Arming. The drivers acknowledge 0x55 and 0x56 with `FB addr fun 01 sum`.
+# 0xF2 replies `FB addr F2 armed starts fires completions u32 sum`: armed is
+# the detector's flag, and the three counters (low bytes) go up when the
+# detector starts watching, when it pulls the endstop line, and when it ends.
+SET_HOMING_STATE = 0x55
+SET_HOMING_MODE = 0x56
+READ_HOMING = 0xF2
+# Driver firmware known to answer 0xF2; others are checked by their
+# acknowledgements only.
+READ_HOMING_FIRMWARE = ("03.01.10.15",)
+# How long to wait for the three acknowledgements. QIDI's queue sends one
+# frame at a time and gives up on a reply after 0.5 s; on the Max 4 all three
+# arrive within about 20 ms, or 210 ms on QIDI's mainboard firmware, which
+# holds each one back 50 ms.
+ARM_TIMEOUT = 1.6
+# The driver starts its detector the next time its main loop, which sleeps
+# 100 ms each pass, reaches it.
+DETECTOR_TIMEOUT = 0.6
+# How long to wait for one 0xF2 reply.
+READ_TIMEOUT = 0.6
+ARM_ATTEMPTS = 2
+WAIT_STEP = 0.005
 
 
 def _is_true(value):
@@ -93,6 +127,13 @@ def parse_reply(data):
             or sum(data[:-1]) & 0xff != data[-1]:
         return None
     return int.from_bytes(data[3:7], "big", signed=True)
+
+
+def _axis_name(endstop_name):
+    """The axis of an X/Y endstop name: QIDI's Klipper names the endstop "x",
+    Valve Oil's Klipper (v0.14) names it after the stepper, "stepper_x"."""
+    name = str(endstop_name)
+    return name[8:] if name.startswith("stepper_") else name
 
 
 def _trsyncs(mcu_endstop):
@@ -151,6 +192,10 @@ class HomingGuard:
         # take_stop() collects it.
         self.last_stop = None
         self.warned_no_trsync = False
+        # Arming: acknowledgements by (driver, function) and 0xF2 replies by
+        # driver, each with the time it arrived.
+        self.acks = {}
+        self.homing_reads = {}
         for name in STEPPERS:
             self.printer.register_event_handler(
                 "cl:" + name, self._make_rx_handler(name))
@@ -223,9 +268,12 @@ class HomingGuard:
         if self.cl is None or not self._enabled():
             return
         endstops = getattr(hmove, "endstops", None) or []
-        if len(endstops) != 1 or endstops[0][1] not in STEPPERS:
+        if len(endstops) != 1:
             return
         mcu_endstop, name = endstops[0]
+        name = _axis_name(name)
+        if name not in STEPPERS:
+            return
         trsyncs = _trsyncs(mcu_endstop)
         if trsyncs is None:
             if not self.warned_no_trsync:
@@ -315,6 +363,10 @@ class HomingGuard:
         return handler
 
     def _rx(self, name, data):
+        if len(data) >= 4 and data[0] == 0xfb \
+                and data[2] in (SET_HOMING_STATE, SET_HOMING_MODE, READ_HOMING):
+            self._rx_arm(name, data)
+            return
         waiting = self.waiting
         value = parse_reply(data)
         if waiting is None or value is None:
@@ -359,6 +411,148 @@ class HomingGuard:
                             " %s motor is %+d counts behind",
                             touch.name.upper(), touch.driver.upper(),
                             touch.peak)
+
+    # --------------------------------------------------------------- arming
+    def _rx_arm(self, name, data):
+        if sum(data[:-1]) & 0xff != data[-1]:
+            return
+        now = self.reactor.monotonic()
+        if data[2] == READ_HOMING:
+            if len(data) == 12:
+                self.homing_reads[name] = (now, tuple(data[3:6]))
+        elif len(data) == 5:
+            self.acks[(name, data[2])] = (now, data[3])
+
+    def _wait(self, until, done):
+        while not done():
+            now = self.reactor.monotonic()
+            if now >= until or self.printer.is_shutdown():
+                return done()
+            self.reactor.pause(min(until, now + WAIT_STEP))
+        return True
+
+    def _reads_homing(self, name):
+        addr = self.addrs[name]
+        version = None
+        get = getattr(self.cl, "get_device_property", None)
+        if callable(get):
+            try:
+                version = get(addr, "version")
+            except Exception:
+                version = None
+        if version is None:
+            props = getattr(self.cl, "device_properties", None) or {}
+            version = (props.get(addr) or {}).get("version")
+        return version in READ_HOMING_FIRMWARE
+
+    def _read_homing(self, name):
+        """(armed, starts, fires) from the driver, or None without a reply."""
+        addr = self.addrs[name]
+        sent = self.reactor.monotonic()
+        self.homing_reads.pop(name, None)
+        frame = [0xfa, addr, READ_HOMING]
+        self.cl.send_command(addr, bytes(frame + [sum(frame) & 0xff]))
+        if not self._wait(sent + READ_TIMEOUT,
+                          lambda: name in self.homing_reads):
+            return None
+        return self.homing_reads.pop(name)[1]
+
+    def _disarm(self, name):
+        # A driver still armed from an earlier touch keeps the position it
+        # started watching from, and arming it again doesn't move that.
+        addr = self.addrs[name]
+        sent = self.reactor.monotonic()
+        self.acks.pop((name, SET_HOMING_MODE), None)
+        frame = [0xfa, addr, SET_HOMING_MODE, 2]
+        self.cl.send_command(addr, bytes(frame + [sum(frame) & 0xff]))
+        self._wait(sent + READ_TIMEOUT,
+                   lambda: (name, SET_HOMING_MODE) in self.acks)
+
+    def _missing_acks(self, name):
+        want = [(driver, SET_HOMING_STATE) for driver in STEPPERS]
+        want.append((name, SET_HOMING_MODE))
+        return [key for key in want if self.acks.get(key, (0, 0))[1] != 1]
+
+    def _arm_once(self, name, run_arm, before):
+        """None once the driver is armed, else why it isn't."""
+        self.acks = {}
+        started = self.reactor.monotonic()
+        run_arm()
+        self._wait(started + ARM_TIMEOUT, lambda: not self._missing_acks(name))
+        missing = self._missing_acks(name)
+        if missing:
+            return "no reply to %s" % ", ".join(
+                "%s 0x%02X" % (driver.upper(), fun) for driver, fun in missing)
+        acked = self.acks[(name, SET_HOMING_MODE)][0] - started
+        if before is None:
+            logging.info("vo_homing_guard: %s armed, replies in %.0f ms",
+                         name.upper(), acked * 1000.)
+            return None
+        deadline = self.reactor.monotonic() + DETECTOR_TIMEOUT
+        while True:
+            state = self._read_homing(name)
+            if state is None:
+                return "no reply to 0xF2"
+            armed, starts, fires = state
+            if fires != before[2]:
+                return ("its detector fired before the touch (%d to %d)"
+                        % (before[2], fires))
+            if armed == 1 and starts != before[1]:
+                logging.info("vo_homing_guard: %s armed, replies in %.0f ms,"
+                             " detector started (starts %d to %d, fires %d)",
+                             name.upper(), acked * 1000., before[1], starts,
+                             fires)
+                return None
+            if self.reactor.monotonic() >= deadline:
+                return ("its detector didn't start (armed %d, starts %d)"
+                        % (armed, starts))
+
+    def arm(self, name, run_arm):
+        """Runs QIDI's arm script for homing axis name ("x" or "y") through
+        run_arm and returns once the drivers have taken it. Raises the
+        printer's command error, before anything moves, when they haven't."""
+        if self.cl is None or name not in STEPPERS or not self._enabled():
+            run_arm()
+            return
+        if self._upgrading():
+            raise self.printer.command_error(
+                "A closed-loop motor firmware upgrade is running, so homing %s"
+                " stopped before moving. Home again once it has finished."
+                % (name.upper(),))
+        reason = None
+        for attempt in range(ARM_ATTEMPTS):
+            before = None
+            if self._reads_homing(name):
+                before = self._read_homing(name)
+                if before is not None and before[0] == 1:
+                    logging.info("vo_homing_guard: %s still armed from an"
+                                 " earlier touch, disarming it first",
+                                 name.upper())
+                    self._disarm(name)
+                    before = self._read_homing(name)
+                    if before is not None and before[0] == 1:
+                        reason = "it stayed armed from an earlier touch"
+                        logging.warning("vo_homing_guard: %s not armed, %s",
+                                        name.upper(), reason)
+                        continue
+                if before is None:
+                    reason = "no reply to 0xF2"
+                    logging.warning("vo_homing_guard: %s not armed, %s",
+                                    name.upper(), reason)
+                    continue
+            reason = self._arm_once(name, run_arm, before)
+            if reason is None:
+                return
+            logging.warning("vo_homing_guard: %s not armed, %s", name.upper(),
+                            reason)
+            if attempt + 1 < ARM_ATTEMPTS:
+                self.printer.lookup_object("gcode").respond_raw(
+                    "!! The %s driver didn't confirm homing mode (%s). Arming"
+                    " it again." % (name.upper(), reason))
+        raise self.printer.command_error(
+            "The %s driver didn't confirm homing mode (%s), so homing %s"
+            " stopped before moving. Check the cables to the X and Y motors,"
+            " then home again." % (name.upper(), reason, name.upper()))
 
     # ------------------------------------------------------------- messages
     def _behind(self, touch):

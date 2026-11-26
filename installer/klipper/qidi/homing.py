@@ -326,6 +326,19 @@ class Homing:
             logging.exception("Valve Oil: X/Y drivers not set back to working"
                               " mode after a failed homing touch")
 
+    # Valve Oil: QIDI's arm script only queues the frames that put the drivers
+    # in homing mode, and the touch starts whether or not they arrived.
+    # vo_homing_guard runs it and returns once both drivers have taken it, or
+    # fails homing before the toolhead moves.
+    def _vo_arm(self, script, axis):
+        guard = self.printer.lookup_object('vo_homing_guard', None)
+        arm = getattr(guard, 'arm', None)
+        if arm is None:
+            self.gcode.run_script_from_command(script)
+            return
+        arm("xy"[axis],
+            lambda: self.gcode.run_script_from_command(script))
+
     # Valve Oil: one closed-loop X/Y touch. The driver decides when the
     # toolhead reaches the end of the axis; when it misses, vo_homing_guard
     # stops the move once the motor falls behind against the frame. The
@@ -383,7 +396,7 @@ class Homing:
             self.toolhead.set_position(retry_startpos)
             self.printer.send_event("homing:home_rails_end", self, rails)
             self.printer.send_event("homing:home_rails_begin", self, rails)
-            self.gcode.run_script_from_command(script)
+            self._vo_arm(script, axis)
         self.toolhead.set_position(homepos_axis)
         self.gcode.run_script_from_command(recover_script)
         for mcu_endstop1, _ in endstops:
@@ -395,7 +408,7 @@ class Homing:
         self.toolhead.set_position(retry_startpos)
         self.printer.send_event("homing:home_rails_end", self, rails)
         self.printer.send_event("homing:home_rails_begin", self, rails)
-        self.gcode.run_script_from_command(script)
+        self._vo_arm(script, axis)
         try:
             return hmove.homing_move(homepos_axis, speed, True)
         except self.printer.command_error:
@@ -468,7 +481,7 @@ class Homing:
                 if (axis == 0 or axis == 1): 
                     self.printer.send_event("homing:home_rails_end", self, rails)
                     self.printer.send_event("homing:home_rails_begin", self, rails)
-                    self.gcode.run_script_from_command(script)
+                    self._vo_arm(script, axis)
 
                 epos = self._vo_xy_touch(hmove, homepos_axis, hi.speed,
                                          touch_startpos, axis, lift_dir, hi,
@@ -502,7 +515,7 @@ class Homing:
                 if (axis == 0 or axis == 1): 
                     self.printer.send_event("homing:home_rails_end", self, rails)
                     self.printer.send_event("homing:home_rails_begin", self, rails)
-                    self.gcode.run_script_from_command(script)
+                    self._vo_arm(script, axis)
 
                 epos1 = self._vo_xy_touch(hmove, homepos_axis,
                                           hi.second_homing_speed,

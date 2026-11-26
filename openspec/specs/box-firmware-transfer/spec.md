@@ -20,7 +20,7 @@ The Box and mainboard transfer tools SHALL refuse serial access unless the opera
 - **THEN** the Box and mainboard transfer tools run only to install the pinned images, and never to restore or rescue
 
 ### Requirement: Transfers admit only known images and bootloaders
-The tools SHALL program only the stock or patched application pinned for that board and the printer's target firmware, only through a bootloader whose exact build has been validated, and only with explicit write confirmation, using backups of that board's bootloader and application.
+The tools SHALL program only the stock or patched application pinned for that board and the printer's target firmware, only through a bootloader of a validated build, and only with explicit write confirmation, using backups of that board's bootloader and application.
 
 #### Scenario: Mainboard images per printer
 - **WHEN** the tools program a mainboard
@@ -37,6 +37,10 @@ The tools SHALL program only the stock or patched application pinned for that bo
 #### Scenario: Unknown input
 - **WHEN** the image, backup, confirmation, or bootloader identity is not admitted
 - **THEN** no reset or erase command is sent
+
+#### Scenario: Bootloader differing from a validated build only in inert bytes
+- **WHEN** a bootloader's SHA-256 matches no validated build, but it matches one once the bytes the manifest declares inert for that build (bytes the build never reads or runs) are put back to the build's values
+- **THEN** the board is admitted, flashed, and rescued as that build, its report names the build it matched, and a bootloader with any other byte changed is not admitted
 
 ### Requirement: Earlier Box and mainboard builds are updated from QIDI's stock image
 A Box or mainboard application that matches an earlier build of this project, or QIDI's image of an earlier board version listed in the manifest as a predecessor by exact size and SHA-256, SHALL be admitted for backups and replaced with the image pinned for the printer's target firmware, made from QIDI's stock application for that board. A predecessor image MUST NOT be programmed.

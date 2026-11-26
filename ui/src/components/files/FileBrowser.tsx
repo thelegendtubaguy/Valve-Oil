@@ -73,6 +73,7 @@ import {
   copyItem,
   createZip,
   deleteItem,
+  hideDeleted,
   downloadFile,
   downloadZip,
   enqueueJobs,
@@ -84,6 +85,7 @@ import {
   useDirectory,
   useFileMeta,
   useHistory,
+  fileHistory,
   useRootFiles,
   writeText,
   zipName,
@@ -149,16 +151,8 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
   const shownColumns = columns.filter((c) => c.visible)
 
   const jobs = useHistory(500, gcodes)
-  const byFile = useMemo(() => {
-    const m = new Map<string, { last: HistoryJob; count: number }>()
-    for (const j of jobs ?? []) {
-      const e = m.get(j.filename)
-      if (!e) m.set(j.filename, { last: j, count: j.status === 'completed' ? 1 : 0 })
-      else if (j.status === 'completed') e.count++
-    }
-    return m
-  }, [jobs])
-  const jobOf = useCallback((e: FsEntry) => (gcodes ? byFile.get(e.path)?.last : undefined), [byFile, gcodes])
+  const historyOf = useMemo(() => fileHistory(jobs), [jobs])
+  const jobOf = useCallback((e: FsEntry) => (gcodes ? historyOf(e.path, e.modified)?.last : undefined), [historyOf, gcodes])
 
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
@@ -251,8 +245,11 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
       danger: true,
     })
     if (!ok) return
-    for (const e of list) await attempt(() => deleteItem(root, e))
+    // Every item leaves the list at once, though Moonraker deletes them one at a time.
+    const show = hideDeleted(root, list)
     setSelected(new Set())
+    for (const e of list) await attempt(() => deleteItem(root, e))
+    show()
   }
   const moveTo = async (list: FsEntry[], dest: string) => {
     list = writable(list).filter((e) => parentOf(e.path) !== dest && !(e.kind === 'dir' && (dest === e.path || dest.startsWith(`${e.path}/`))))
@@ -615,8 +612,8 @@ export function FileBrowser({ root, path: given, dirHref, editHref, previewHref,
                 <FileCard
                   path={e.path}
                   meta={e.meta}
-                  last={byFile.get(e.path)?.last}
-                  count={byFile.get(e.path)?.count ?? 0}
+                  last={historyOf(e.path, e.modified)?.last}
+                  count={historyOf(e.path, e.modified)?.count ?? 0}
                   onOpen={() => open(e)}
                   selected={selected.has(e.path)}
                   onSelect={(on, shift) => select(e, on, shift)}

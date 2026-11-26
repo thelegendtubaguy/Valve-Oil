@@ -86,14 +86,15 @@ MAX_ISSUE_URL = 7000
 # operator attaches themselves. Snapshots never record MCU unique IDs; only these keys are passed on regardless.
 SHAREABLE_REPORT_KEYS = (
     "application", "application_sha256", "application_padding", "application_region_sha256",
-    "application_region_bytes", "bootloader_sha256", "bootloader_page_sha256", "supported_bootloader", "version",
-    "build_versions", "constants", "id_registers",
+    "application_region_bytes", "bootloader_sha256", "bootloader_build", "bootloader_page_sha256",
+    "supported_bootloader", "version", "build_versions", "constants", "id_registers",
 )
 # The issue link carries only the board's identity: hashes, sizes, and the MCU model. The firmware's own version and
 # build strings are left out: a firmware someone built themselves can carry the build machine's name in them.
 LINK_REPORT_KEYS = (
     "application", "application_sha256", "application_padding", "application_region_sha256",
-    "application_region_bytes", "bootloader_sha256", "bootloader_page_sha256", "supported_bootloader", "id_registers",
+    "application_region_bytes", "bootloader_sha256", "bootloader_build", "bootloader_page_sha256",
+    "supported_bootloader", "id_registers",
 )
 LINK_CONSTANTS = ("MCU", "CLOCK_FREQ", "SERIAL_BAUD")
 # A QIDI version or file name, as the printer details carry them from QIDI's firmware manifest.
@@ -274,7 +275,10 @@ def classify(kind: str, report: dict, *, board_manifest: dict, pinned, printer, 
     from scripts.build_box_firmware import PREDECESSOR, board_spec, known_images
 
     spec = board_spec(board_manifest)
-    if report.get("bootloader_sha256") not in _admitted_bootloaders(kind, board_manifest):
+    # A bootloader that differs from an admitted build only in the manifest's inert bytes: the transfer tool names the
+    # build it matched as bootloader_build.
+    admitted = _admitted_bootloaders(kind, board_manifest)
+    if report.get("bootloader_sha256") not in admitted and report.get("bootloader_build") not in admitted:
         return UNRECOGNIZED_BOOTLOADER, "unrecognized"
     # A predecessor (QIDI's image of an earlier version, by its exact hash) is QIDI's image too.
     known = {sha256: QIDI_APPLICATION if entry["identity"] == PREDECESSOR else entry["identity"]

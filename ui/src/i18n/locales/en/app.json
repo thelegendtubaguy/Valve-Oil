@@ -71,7 +71,9 @@
     "firmware_restart": "Firmware restart",
     "restart": "Restart Klipper",
     "edit_config": "Edit configuration",
-    "logs": "Logs"
+    "logs": "Logs",
+    "message_all": "Show all",
+    "message_less": "Show less"
   },
   "notifications": {
     "title": "Notifications",

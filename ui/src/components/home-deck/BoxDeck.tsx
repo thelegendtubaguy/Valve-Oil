@@ -44,9 +44,9 @@ export function BoxDeck() {
           </a>
         </span>
       </h3>
+      {/* Where the filament is first, then the chosen slot's spool, then every slot to choose from. */}
       <div className="grid gap-3">
         {box.task && <Operation box={box} />}
-        <BoxUnits box={box} selected={current} onSelect={setSelected} onTool={onTool} onHeater={setHeater} />
         <FilamentRail box={box} onSelect={setSelected} />
         {!box.flowPaused &&
           box.warnings.map((w) => (
@@ -60,6 +60,9 @@ export function BoxDeck() {
           <SlotPanel box={box} slot={slot} />
         </div>
       )}
+      <div className="deck-sec">
+        <BoxUnits box={box} selected={current} onSelect={setSelected} onTool={onTool} onHeater={setHeater} />
+      </div>
       <ToolMapDialog box={box} open={mapOpen} onClose={() => setMapOpen(false)} />
       <BoxSettingsDialog box={box} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {heater != null && <HeaterDialog box={box} boxNumber={heater} onClose={() => setHeater(null)} />}

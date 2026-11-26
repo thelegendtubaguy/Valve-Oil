@@ -25,15 +25,37 @@ export function Card({ title, icon, aside, children, className = '' }: { title?:
  * A button that runs its action only after being held, for actions that are hard to undo.
  * Works with mouse, touch, and keyboard (hold Space or Enter).
  */
-export function HoldButton({ onHold, children, holdMs = 1200, className = '', disabled }: { onHold: () => void; children: ReactNode; holdMs?: number; className?: string; disabled?: boolean }) {
+/**
+ * A finished hold often changes what's under the pointer, as Cancel turning into Print again, and letting go would
+ * click that. Drops the click that comes with the pointer's release.
+ */
+function swallowReleaseClick() {
+  const swallow = (e: Event) => (e.stopPropagation(), e.preventDefault())
+  const done = () => {
+    window.removeEventListener('pointerup', done, true)
+    window.removeEventListener('pointercancel', done, true)
+    // The click follows the pointerup in the same task.
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0)
+  }
+  window.addEventListener('click', swallow, true)
+  window.addEventListener('pointerup', done, true)
+  window.addEventListener('pointercancel', done, true)
+}
+
+/**
+ * A button that acts when held for `holdMs`. With `onTap`, letting go before then (a tap or click, or Enter or Space)
+ * calls it instead, for a confirm dialog, so a press that doesn't know about holding still does something.
+ */
+export function HoldButton({ onHold, onTap, children, holdMs = 1200, className = '', disabled }: { onHold: () => void; onTap?: () => void; children: ReactNode; holdMs?: number; className?: string; disabled?: boolean }) {
   const [holding, setHolding] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const start = () => {
+  const start = (pointer: boolean) => {
     if (disabled || timer.current) return
     setHolding(true)
     timer.current = setTimeout(() => {
       timer.current = null
       setHolding(false)
+      if (pointer) swallowReleaseClick()
       onHold()
     }, holdMs)
   }
@@ -42,6 +64,12 @@ export function HoldButton({ onHold, children, holdMs = 1200, className = '', di
     timer.current = null
     setHolding(false)
   }
+  // Let go on the button: a tap if the hold hadn't finished. Leaving the button or a cancelled pointer is neither.
+  const release = () => {
+    const early = timer.current != null
+    stop()
+    if (early) onTap?.()
+  }
   useEffect(() => stop, [])
   return (
     <button
@@ -49,13 +77,13 @@ export function HoldButton({ onHold, children, holdMs = 1200, className = '', di
       disabled={disabled}
       className={`btn hold btn-danger ${holding ? 'holding' : ''} ${className}`}
       style={{ ['--hold-ms' as string]: `${holdMs}ms` }}
-      onPointerDown={start}
-      onPointerUp={stop}
+      onPointerDown={() => start(true)}
+      onPointerUp={release}
       onPointerLeave={stop}
       onPointerCancel={stop}
       onContextMenu={(e) => e.preventDefault()}
-      onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && !e.repeat && (e.preventDefault(), start())}
-      onKeyUp={(e) => (e.key === ' ' || e.key === 'Enter') && stop()}
+      onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && !e.repeat && (e.preventDefault(), start(false))}
+      onKeyUp={(e) => (e.key === ' ' || e.key === 'Enter') && release()}
     >
       <span className="hold-fill" />
       <span>{children}</span>
@@ -450,6 +478,8 @@ type Ask = {
   title: ReactNode
   body?: ReactNode
   confirm?: string
+  /** The dismiss button's label, when "Cancel" would be unclear, as beside "Cancel print". */
+  dismiss?: string
   danger?: boolean
   input?: { label: string; value: string; placeholder?: string }
   /** Recheck live state immediately before resolving a consequential action. */
@@ -496,7 +526,7 @@ export function AskHost() {
       footer={
         <>
           <button className="btn btn-ghost" onClick={cancel}>
-            {t('common.cancel')}
+            {p.dismiss ?? t('common.cancel')}
           </button>
           <button className={`btn ${p.danger ? 'btn-danger' : 'btn-primary'}`} disabled={!!p.input && !text.trim()} onClick={submit}>
             {p.confirm ?? t('common.ok')}

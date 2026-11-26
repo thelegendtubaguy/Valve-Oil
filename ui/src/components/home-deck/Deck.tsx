@@ -195,7 +195,6 @@ export function MacrosDeck({ className = '' }: { className?: string }) {
   const groups = macroGroups(macros, db)
   const [open, setOpen] = useState<string | null>(null)
   const [unfolded, toggle] = useFold('vo-home-macros-open')
-  if (!loaded) return null
   const shown = groups.find((g) => g.id === open) ?? groups[0]
   return (
     <section className={`card ${unfolded ? 'grow' : 'folded'} ${className}`}>
@@ -207,7 +206,8 @@ export function MacrosDeck({ className = '' }: { className?: string }) {
           <MacrosActions />
         </span>
       </h3>
-      {unfolded && (
+      {/* The card is there from the start, so the cards around it don't move; its macros wait for Fluidd's settings. */}
+      {unfolded && loaded && (
         <>
           {groups.length > 1 && (
             <div className="mb-2.5 overflow-x-auto">

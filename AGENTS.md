@@ -39,6 +39,10 @@ Run what applies to what you touched:
 - THR firmware generator or patch manifest: `scripts/check_thr_firmware.py` against a fresh `scripts/build_thr_firmware.py` build (`firmware/README.md`)
 - THR flashing tool or protocol: `scripts/check_thr_flashing.py` (with `--bootloader-backup` when available) and `scripts/check_thr_recovery.py` with a recoverable build's `--bootloader-backup` (`firmware/FLASHING.md`)
 
+## Test printers
+
+Install a checkout on a printer with `scripts/build_copy_dry_run.sh --host <printer-ip> --install`. It returns when the installer ends, stops it after `--install-timeout` seconds, and fails unless it installed. Don't run `install.sh` over SSH through your own wrapper for the password or waiting.
+
 ## Versions
 
 `python3 scripts/bump_installer_version.py <version>` sets the package version, and `CHANGELOG.md` gets a section for it listing what changes for operators. A version not yet released can be renumbered or folded; the installer admits state from any version of this package. `installer/supported_upgrade_sources.yaml` is edited by hand when adding a guarded patch target or source-patch provenance.

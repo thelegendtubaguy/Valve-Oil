@@ -1,5 +1,6 @@
 import { MoonrakerClient, resolveMoonrakerOrigin, type ConnectionState } from '../moonraker/client'
 import { createStore, useStore } from '../lib/store'
+import { readLocal, saveLocal } from '../lib/browser'
 import { misreadGcodeNumber } from '../components/control/gcode'
 import { t } from '../i18n'
 
@@ -50,6 +51,29 @@ export type PrinterState = {
 
 export const client = new MoonrakerClient(resolveMoonrakerOrigin())
 
+// ---- the last state this browser saw, to start from: a page shows the printer as it last was while Klipper's live
+// state is read again (about a second and a half on a Max 4), as it does while Klipper restarts. Screens draw at
+// once and keep their shape, and what needs Klipper waits for it to be ready. ----
+
+type Snapshot = Pick<PrinterState, 'objects' | 'status' | 'commands'>
+const SNAPSHOT_KEY = `vo-printer-snapshot:${client.httpBase}`
+
+function loadSnapshot(): Snapshot | null {
+  try {
+    const v = JSON.parse(readLocal(SNAPSHOT_KEY) ?? 'null')
+    if (!v || !Array.isArray(v.objects) || !Array.isArray(v.commands) || typeof v.status !== 'object' || !v.status) return null
+    return { objects: v.objects, status: v.status, commands: v.commands }
+  } catch {
+    return null
+  }
+}
+
+function saveSnapshot() {
+  const s = printer.get()
+  if (s.klippy !== 'ready' || !s.objects.length) return
+  saveLocal(SNAPSHOT_KEY, JSON.stringify({ objects: s.objects, status: s.status, commands: s.commands } satisfies Snapshot))
+}
+
 export const printer = createStore<PrinterState>({
   conn: 'closed',
   connLost: false,
@@ -66,6 +90,7 @@ export const printer = createStore<PrinterState>({
   host: null,
   filesRev: 0,
   historyRev: 0,
+  ...loadSnapshot(),
 })
 
 export function usePrinter<S>(selector: (s: PrinterState) => S): S {
@@ -272,6 +297,7 @@ async function initKlippy() {
     if (info.klippy_state !== 'ready') {
       // Show a confirmed failure immediately, even if its detailed message is slow to arrive.
       printer.set((s) => ({ ...s, klippy: info.klippy_state }))
+      markAnswered()
       klippyPoll = setTimeout(initKlippy, 2000)
       const pi = await client.call<{ state_message: string }>('printer.info')
       if (!stale()) printer.set((s) => ({ ...s, klippyMessage: pi.state_message }))
@@ -299,6 +325,8 @@ async function initKlippy() {
     const temps = Object.fromEntries(objects.filter(isTempObject).map((o) => [o, { temperatures: [], ...(typeof printer.get().status[o]?.target === 'number' ? { targets: [] } : {}) }]))
     printer.set((s) => ({ ...s, klippy: 'ready', klippyMessage: '', temps, ...(q ? settingsFrom(q) : { commands: [], heaterSettings: {}, settings: {} }) }))
     if (!q) retrySettings(stale)
+    saveSnapshot()
+    markAnswered()
 
     void client.call<Record<string, TempSeries>>('server.temperature_store', { include_monitors: false }).then((store) => {
       if (stale()) return
@@ -319,6 +347,7 @@ async function initKlippy() {
     ++klippyLoad
     if (klippyPoll) clearTimeout(klippyPoll)
     printer.set((s) => ({ ...s, klippyMessage: error instanceof Error ? error.message : String(error) }))
+    markAnswered()
     klippyPoll = setTimeout(initKlippy, 2000)
   }
 }
@@ -339,7 +368,11 @@ function retrySettings(stale: () => boolean) {
   setTimeout(() => {
     if (stale()) return
     querySettings().then(
-      (q) => !stale() && printer.set((s) => ({ ...s, ...settingsFrom(q) })),
+      (q) => {
+        if (stale()) return
+        printer.set((s) => ({ ...s, ...settingsFrom(q) }))
+        saveSnapshot()
+      },
       () => retrySettings(stale),
     )
   }, 2000)
@@ -368,6 +401,25 @@ function applyHost(p: ProcStat, initial: boolean) {
   }))
 }
 
+// Klipper has answered on this connection: it's ready, with its state and settings, or has said why it isn't.
+// Requests that can wait, such as the console's history and Home's files and print history, wait for it, so they
+// don't queue at Moonraker ahead of what the screens and their buttons need.
+let answered = false
+let answerWaiters: (() => void)[] = []
+function markAnswered() {
+  answered = true
+  for (const wake of answerWaiters.splice(0)) wake()
+}
+
+/** Null once Klipper has answered on this connection; until then, a promise of its answer or of `maxMs` passing. */
+export function afterKlipperAnswers(maxMs = 3000): Promise<void> | null {
+  if (answered) return null
+  return new Promise((resolve) => {
+    answerWaiters.push(resolve)
+    setTimeout(resolve, maxMs)
+  })
+}
+
 const readyHandlers = new Set<() => void>()
 /** Runs after each Klipper (re)connect once status is loaded. */
 export function onKlippyReady(fn: () => void) {
@@ -383,6 +435,7 @@ export function startPrinterConnection() {
     ++klippyLoad
     if (klippyPoll) clearTimeout(klippyPoll)
     queued = null
+    answered = false
     printer.set((s) => ({ ...s, conn, connLost: conn === 'open' ? false : conn === 'closed' ? true : s.connLost, klippy: 'unknown', klippyMessage: '' }))
     if (conn === 'open') {
       client
@@ -392,6 +445,8 @@ export function startPrinterConnection() {
     }
   })
   client.on('notify_status_update', (p) => queueStatus(p[0] as Status))
+  // The newest state for the next page, as this one closes or reloads.
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', saveSnapshot)
   client.on('notify_klippy_ready', () => initKlippy())
   client.on('notify_klippy_shutdown', () => {
     printer.set((s) => ({ ...s, klippy: 'shutdown', klippyMessage: '' }))

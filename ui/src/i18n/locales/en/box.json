@@ -71,6 +71,7 @@
       "high": "High humidity"
     },
     "from_tag": "Read from the spool's RFID tag",
+    "turning": "Turning its spool",
     "unknown_type": "Unknown",
     "empty_title": "{{slot}} · Empty",
     "reload_group": "Auto-reload group {{group}}",

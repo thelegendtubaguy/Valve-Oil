@@ -4,7 +4,7 @@ import { Dialog, HoldButton, Toggle } from './ui'
 import { attempt, toast } from './toast'
 import { Spool } from './Spool'
 import { client, runGcode } from '../state/printer'
-import { fetchMeta, thumbnailUrl, type FileMeta } from '../state/files'
+import { deleteItem, fetchMeta, thumbnailUrl, type FileMeta } from '../state/files'
 import { boxCommands, filamentLists, loadFilamentLists, useBox, QIDI_BOX_EXTERNAL_SLOT } from '../state/box'
 import { matchQidiBoxSlots, qidiBoxFileTools, qidiBoxSlotsForTool, normalizeQidiColor, qidiTextColor, type QidiBoxFileMetadata } from '../qidi/qidi-box'
 import { displayName, fmtBytes, fmtDuration, fmtAgo } from '../lib/format'
@@ -84,9 +84,10 @@ export function PrintDialog({ filename, onClose }: { filename: string; onClose: 
     setStarting(false)
   }
 
-  const remove = async () => {
-    await attempt(() => client.call('server.files.delete_file', { path: `gcodes/${filename}` }))
+  // The file leaves the lists at once; it comes back, with the error, if Moonraker can't delete it.
+  const remove = () => {
     onClose()
+    void attempt(() => deleteItem('gcodes', { kind: 'file', path: filename, modified: meta?.modified }))
   }
 
   const thumb = thumbnailUrl(filename, meta, 200)

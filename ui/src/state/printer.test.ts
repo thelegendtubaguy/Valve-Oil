@@ -238,3 +238,31 @@ it('schedules only one retry when the Klipper error detail request fails', async
   expect(printer.get().klippy).toBe('error')
   expect(fake.calls.filter((c) => c.method === 'server.info')).toHaveLength(1)
 })
+
+it("starts a new page from the state the last one saw, until Klipper's own arrives", async () => {
+  const stored = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (k: string) => stored.get(k) ?? null, setItem: (k: string, v: string) => void stored.set(k, v) })
+  await load()
+  await subscribe()
+  await finishLoad()
+  // The next page: Klipper not heard from yet, so it shows what the last page saw.
+  const { printer } = await load()
+  expect(printer.get().klippy).toBe('unknown')
+  expect(printer.get().status.idle_timeout?.state).toBe('Printing')
+  expect(printer.get().commands).toContain('M104')
+  await answer('server.info', READY_INFO)
+  await answer('printer.objects.list', { objects: ['idle_timeout'] })
+  await answer('printer.objects.subscribe', { status: { idle_timeout: { state: 'Ready' } } })
+  expect(printer.get().status.idle_timeout?.state).toBe('Ready')
+})
+
+it('holds requests that can wait until Klipper is ready', async () => {
+  const { afterKlipperAnswers } = await load()
+  const waited = vi.fn()
+  void afterKlipperAnswers()?.then(waited)
+  await subscribe()
+  expect(waited).not.toHaveBeenCalled()
+  await answer('printer.objects.query', SETTINGS)
+  expect(waited).toHaveBeenCalledOnce()
+  expect(afterKlipperAnswers()).toBeNull()
+})

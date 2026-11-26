@@ -16,6 +16,7 @@ const fake = vi.hoisted(() => ({
   projected: [] as { message: string; time: number; type: 'command' | 'response' }[][],
   lineId: 0,
   clockOffset: 0,
+  klipperAnswer: null as Promise<void> | null,
 }))
 
 vi.mock('../../state/printer', () => ({
@@ -39,6 +40,8 @@ vi.mock('../../state/printer', () => ({
     gcode: vi.fn(),
   },
   hostClockOffset: () => fake.clockOffset,
+  // The history waits for Klipper's first answer; most tests start with it given.
+  afterKlipperAnswers: () => fake.klipperAnswer,
   printer: {
     get: () => fake.printer,
     set: (next: PrinterState | ((state: PrinterState) => PrinterState)) => {
@@ -106,6 +109,7 @@ beforeEach(() => {
   fake.projected.length = 0
   fake.lineId = 0
   fake.clockOffset = 0
+  fake.klipperAnswer = null
 })
 afterEach(() => vi.useRealTimers())
 
@@ -244,4 +248,18 @@ it('keeps exactly one attachment across repeated start and stop cycles', async (
   expect(fake.handlers.get('notify_gcode_response')?.size).toBe(1)
   expect(fake.stateHandlers.size).toBe(1)
   expect(fake.printerSubscribers.size).toBe(1)
+})
+it('asks for the history only once Klipper has answered, keeping the lines that arrive meanwhile', async () => {
+  const { consoleStore } = await load()
+  let answer!: () => void
+  fake.klipperAnswer = new Promise((resolve) => (answer = resolve))
+  setConnection('open')
+  await settle()
+  expect(fake.calls.some((call) => call.method === 'server.gcode_store')).toBe(false)
+  emit('notify_gcode_response', ['while waiting'])
+  answer()
+  await settle()
+  take('server.gcode_store').resolve({ gcode_store: [{ message: 'older', time: Date.now() / 1000 - 60, type: 'response' }] })
+  await settle()
+  expect(consoleStore.get().entries.map((entry) => entry.message)).toEqual(['older', 'while waiting'])
 })

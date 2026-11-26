@@ -10,8 +10,10 @@ from installer.tests.klipper_fakes import NEVER, CommandError, Reactor, load_ext
 
 homing_guard = load_extra("homing_guard", "vo_homing_guard")
 # Both Max 4 variants of Valve Oil's QIDI homing.py carry the same touch loop.
+# Valve Oil's Klipper (v0.14) carries the same loop in its own homing.py.
 HOMING_SOURCES = ("installer/klipper/qidi/homing.py",
-                  "installer/klipper/qidi/homing-sync-reset.py")
+                  "installer/klipper/qidi/homing-sync-reset.py",
+                  "klipper/klippy/extras/homing.py")
 
 ADDRS = {"x": 1, "y": 3}
 CYCLE = 1024
@@ -81,10 +83,21 @@ class Status:
         return self.status
 
 
+class Console:
+    def __init__(self):
+        self.lines = []
+
+    def respond_raw(self, message):
+        self.lines.append(message)
+
+
 class GuardPrinter:
+    command_error = CommandError
+
     def __init__(self, closed_loop=True, variables=None):
         self.reactor = Reactor()
         self.cl = ClInterface()
+        self.console = Console()
         self.handlers = {}
         kinematics = types.SimpleNamespace(get_steppers=lambda: [
             Stepper("stepper_x"), Stepper("stepper_y"), Stepper("stepper_z")])
@@ -92,6 +105,7 @@ class GuardPrinter:
             "toolhead": types.SimpleNamespace(
                 get_kinematics=lambda: kinematics),
             "save_variables": Status(variables=dict(variables or {})),
+            "gcode": self.console,
         }
         if closed_loop:
             self.objects["cl_interface"] = self.cl
@@ -100,6 +114,9 @@ class GuardPrinter:
 
     def get_printer(self):
         return self
+
+    def is_shutdown(self):
+        return False
 
     def get_reactor(self):
         return self.reactor
@@ -172,6 +189,22 @@ class HomingGuardTest(unittest.TestCase):
         # Asking the homing driver itself makes it end the touch early, so
         # only the other driver is asked.
         self.assertEqual(set(printer.cl.sent), {bytes([0xfa, 3, 0x39, 0x36])})
+
+    def test_valve_oil_klipper_endstop_names_are_watched(self) -> None:
+        # Klipper v0.14 names the X/Y endstops after the stepper. On
+        # 2026-11-26 a Max 4 on Valve Oil's Klipper drove X into the frame
+        # with the guard idle, because it only knew QIDI's "x" and "y".
+        for name, driver in (("stepper_x", "y"), ("stepper_y", "x")):
+            printer = GuardPrinter()
+            endstop = printer.begin(name)
+            for value in (1024, 1100, 3000, 1024 + 8 * CYCLE):
+                self.assertTrue(printer.read(driver, value))
+            self.assertEqual(endstop.trsync._trsync_trigger_cmd.sent,
+                             [[7, Trsync.REASON_HOST_REQUEST]])
+            printer.end()
+            message, retry = printer.guard.take_stop()
+            self.assertTrue(retry)
+            self.assertIn("Stopped homing %s" % name[-1].upper(), message)
 
     def test_touch_ending_normally_changes_nothing(self) -> None:
         printer = GuardPrinter()
@@ -275,6 +308,179 @@ class HomingGuardTest(unittest.TestCase):
                 self.assertIsNone(printer.guard.take_stop())
 
 
+# ---------------------------------------------------------------- arming
+def frame(addr, fun, *data):
+    body = [0xfb, addr, fun] + list(data)
+    return bytes(body + [sum(body) & 0xff])
+
+
+class Drivers:
+    """QIDI's X and Y closed-loop drivers on firmware 03.01.10.15, as far as
+    arming goes. Replies arrive 4 ms after each frame; frames listed in drop
+    (as (name, function) pairs, used up one at a time) never arrive."""
+
+    def __init__(self, printer, version="03.01.10.15"):
+        self.printer = printer
+        self.state = {name: {"armed": 0, "starts": 1, "fires": 0}
+                      for name in ADDRS}
+        self.drop = []
+        self.fire_on_arm = False
+        self.pending = []
+        self.frames = []
+        printer.cl.device_properties = {
+            addr: {"version": version} for addr in ADDRS.values()}
+        printer.cl.send_command = self.receive
+        printer.reactor.on_pause = self.run
+
+    def receive(self, addr, msg, expects_response=True, timeout=0.5):
+        msg = bytes(msg)
+        name = {a: n for n, a in ADDRS.items()}[addr]
+        self.frames.append((name, msg[2]) + tuple(msg[3:-1]))
+        if (name, msg[2]) in self.drop:
+            self.drop.remove((name, msg[2]))
+            return
+        st = self.state[name]
+        if msg[2] == 0x56:
+            if msg[3] == 1 and not st["armed"]:
+                st["armed"] = 1
+                st["starts"] += 1
+                if self.fire_on_arm:
+                    st["armed"] = 0
+                    st["fires"] += 1
+            elif msg[3] == 2:
+                st["armed"] = 0
+        if msg[2] in (0x55, 0x56):
+            reply = frame(addr, msg[2], 1)
+        elif msg[2] == 0xf2:
+            reply = frame(addr, 0xf2, st["armed"], st["starts"], st["fires"],
+                          0, 0, 0, 0, 0)
+        else:
+            return
+        self.pending.append((self.printer.reactor.now + .004, name, reply))
+
+    def run(self, waketime):
+        reactor = self.printer.reactor
+        reactor.now = max(reactor.now, waketime)
+        for item in [p for p in self.pending if p[0] <= reactor.now]:
+            self.pending.remove(item)
+            self.printer.send_event("cl:" + item[1], item[2])
+        while reactor.callbacks:
+            reactor.callbacks.pop(0)(reactor.now)
+
+
+def x_arm_script(printer):
+    """QIDI's X arm script: homing state to both drivers, then X's mode."""
+    def run():
+        for addr, fun in ((1, 0x55), (3, 0x55), (1, 0x56)):
+            body = [0xfa, addr, fun, 1]
+            printer.cl.send_command(addr, bytes(body + [sum(body) & 0xff]))
+        run.count += 1
+    run.count = 0
+    return run
+
+
+class ArmTest(unittest.TestCase):
+    def test_arms_once_both_drivers_confirm_and_the_detector_started(self):
+        printer = GuardPrinter()
+        drivers = Drivers(printer)
+        run = x_arm_script(printer)
+        with self.assertLogs(level="INFO") as logs:
+            printer.guard.arm("x", run)
+        self.assertEqual(run.count, 1)
+        self.assertEqual(drivers.state["x"]["armed"], 1)
+        self.assertTrue(any("X armed" in line and "starts 1 to 2" in line
+                            for line in logs.output))
+        self.assertEqual(printer.console.lines, [])
+        # Only the homing driver is asked, before and after arming.
+        self.assertEqual([f for f in drivers.frames if f[1] == 0xf2],
+                         [("x", 0xf2)] * 2)
+
+    def test_lost_frame_is_armed_again(self):
+        # The Max 4 in the field: an X touch started with no reply to any of
+        # its arm frames, and the driver never ended it.
+        for lost in (("x", 0x55), ("y", 0x55), ("x", 0x56)):
+            with self.subTest(lost=lost):
+                printer = GuardPrinter()
+                drivers = Drivers(printer)
+                drivers.drop = [lost]
+                run = x_arm_script(printer)
+                with self.assertLogs(level="WARNING"):
+                    printer.guard.arm("x", run)
+                self.assertEqual(run.count, 2)
+                self.assertEqual(drivers.state["x"]["armed"], 1)
+                self.assertIn("Arming it again", printer.console.lines[0])
+                self.assertIn("%s 0x%02X" % (lost[0].upper(), lost[1]),
+                              printer.console.lines[0])
+
+    def test_drivers_that_never_confirm_stop_homing_before_moving(self):
+        printer = GuardPrinter()
+        drivers = Drivers(printer)
+        drivers.drop = [("x", 0x56)] * 2
+        run = x_arm_script(printer)
+        with self.assertRaisesRegex(CommandError,
+                                    "X driver didn't confirm homing mode"
+                                    r" \(no reply to X 0x56\), so homing X"
+                                    " stopped before moving"), \
+                self.assertLogs(level="WARNING"):
+            printer.guard.arm("x", run)
+        self.assertEqual(run.count, 2)
+
+    def test_detector_that_fired_before_the_touch_is_armed_again(self):
+        printer = GuardPrinter()
+        drivers = Drivers(printer)
+        drivers.fire_on_arm = True
+        run = x_arm_script(printer)
+        with self.assertRaisesRegex(CommandError, "fired before the touch"), \
+                self.assertLogs(level="WARNING"):
+            printer.guard.arm("x", run)
+        self.assertEqual(run.count, 2)
+
+    def test_driver_still_armed_is_disarmed_first(self):
+        printer = GuardPrinter()
+        drivers = Drivers(printer)
+        drivers.state["x"]["armed"] = 1
+        run = x_arm_script(printer)
+        with self.assertLogs(level="INFO"):
+            printer.guard.arm("x", run)
+        self.assertEqual(run.count, 1)
+        self.assertEqual(drivers.frames[:3],
+                         [("x", 0xf2), ("x", 0x56, 2), ("x", 0xf2)])
+        self.assertEqual(drivers.state["x"], {"armed": 1, "starts": 2,
+                                              "fires": 0})
+
+    def test_other_driver_firmware_is_checked_by_its_replies(self):
+        printer = GuardPrinter()
+        drivers = Drivers(printer, version="03.01.10.13")
+        run = x_arm_script(printer)
+        with self.assertLogs(level="INFO"):
+            printer.guard.arm("x", run)
+        self.assertNotIn(0xf2, [f[1] for f in drivers.frames])
+        drivers.drop = [("y", 0x55)] * 2
+        with self.assertRaisesRegex(CommandError, "no reply to Y 0x55"), \
+                self.assertLogs(level="WARNING"):
+            printer.guard.arm("x", run)
+
+    def test_no_homing_while_a_motor_firmware_upgrade_runs(self):
+        printer = GuardPrinter()
+        Drivers(printer)
+        printer.cl.upgrading = True
+        run = x_arm_script(printer)
+        with self.assertRaisesRegex(CommandError, "firmware upgrade is"
+                                    " running, so homing X stopped"):
+            printer.guard.arm("x", run)
+        self.assertEqual(run.count, 0)
+
+    def test_guard_off_or_no_closed_loop_just_arms(self):
+        for printer in (GuardPrinter(variables={"vo_homing_guard": 0}),
+                        GuardPrinter(closed_loop=False)):
+            with self.subTest():
+                drivers = Drivers(printer)
+                drivers.drop = [("x", 0x56)] * 3
+                run = x_arm_script(printer)
+                printer.guard.arm("x", run)
+                self.assertEqual(run.count, 1)
+
+
 # ------------------------------------------------------------- homing fakes
 class Toolhead:
     def __init__(self):
@@ -331,6 +537,16 @@ class Gcode:
 class Guard:
     def __init__(self):
         self.last_stop = None
+        self.arms = []
+        # The arm (counting from 1) whose drivers don't confirm homing mode.
+        self.fail_arm = None
+
+    def arm(self, name, run_arm):
+        run_arm()
+        self.arms.append(name)
+        if len(self.arms) == self.fail_arm:
+            raise CommandError("The %s driver didn't confirm homing mode"
+                               % name.upper())
 
     def take_stop(self):
         stop, self.last_stop = self.last_stop, None
@@ -405,7 +621,8 @@ AXES = {
 }
 
 
-def home(source, outcomes, axis="x", guard=True, fail_recover=False):
+def home(source, outcomes, axis="x", guard=True, fail_recover=False,
+         setup=None):
     a = AXES[axis]
     module = load_source("qidi_homing", REPO_ROOT / source)
     module.HomingMove = HomingMove
@@ -414,6 +631,8 @@ def home(source, outcomes, axis="x", guard=True, fail_recover=False):
     HomingMove.axis = a["index"]
     printer = HomingMove.printer = HomingPrinter(guard=guard,
                                                 fail_recover=fail_recover)
+    if setup is not None:
+        setup(printer)
     homing = module.Homing(printer)
     rail = types.SimpleNamespace(get_name=lambda: a["rail"],
                                  get_range=lambda: a["range"])
@@ -538,6 +757,31 @@ class GuardedHomingTest(unittest.TestCase):
                     scripts = HomingMove.printer.gcode.homing_scripts()
                     self.assertEqual(scripts,
                                      ["arm", "recover"] * len(outcomes))
+
+    def test_every_arm_goes_through_the_guard(self) -> None:
+        cases = (("x", [150, 20]), ("x", ["guard", 20, 20]),
+                 ("y", ["guard", "guard", 20, 20]))
+        for source in HOMING_SOURCES:
+            for axis, outcomes in cases:
+                with self.subTest(source=source, axis=axis, outcomes=outcomes):
+                    printer = home(source, outcomes, axis=axis)
+                    self.assertEqual(printer.guard.arms,
+                                     [axis] * len(outcomes))
+
+    def test_unconfirmed_arm_stops_homing_before_the_touch(self) -> None:
+        for source in HOMING_SOURCES:
+            for fail_arm in (1, 2, 3):
+                with self.subTest(source=source, fail_arm=fail_arm):
+                    def setup(printer, fail_arm=fail_arm):
+                        printer.guard.fail_arm = fail_arm
+                    with self.assertRaisesRegex(CommandError,
+                                                "didn't confirm homing mode"):
+                        home(source, ["guard", 20, 20], setup=setup)
+                    # The touch after the failed arm never started, and the
+                    # drivers went back to working mode.
+                    self.assertEqual(len(HomingMove.touches), fail_arm - 1)
+                    scripts = HomingMove.printer.gcode.homing_scripts()
+                    self.assertEqual(scripts[-1], "recover")
 
     def test_recover_failure_keeps_the_touch_error(self) -> None:
         for source in HOMING_SOURCES:
