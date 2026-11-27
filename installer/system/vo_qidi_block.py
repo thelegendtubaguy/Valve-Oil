@@ -52,8 +52,9 @@ NAMES = (
     "www.aws.qidi3dprinter.com", "login.qidi3dprinter.com", "download_aliyun.qidi3dprinter.com",
     "download.apac.qidi3dprinter.com", "download.eea.qidi3dprinter.com", "download.na.qidi3dprinter.com",
     "download.others.qidi3dprinter.com", "wiki.qidi3d.com",
-    # QIDI's MQTT broker and P2P server as QIDI's cloud names them to linked printers (also read from the database)
-    "us-mqtt.qidimaker.com", "peershare.qidimaker.com",
+    # QIDI's MQTT broker and P2P server as QIDI's cloud names them to linked printers (also read from the database),
+    # and the P2P servers the Max 4 01.01.07.02 and Plus 5 01.01.02.02 apps name themselves
+    "us-mqtt.qidimaker.com", "peershare.qidimaker.com", "peershare.qidimaker.com.cn",
     # Third parties QIDI's app reaches: Peergine (P2P), the printer's public address and location, connection checks
     "u.peergine.com", "api.ipify.org", "ip-api.com", "www.google.com", "www.baidu.com",
     # Moonraker's announcements and SimplyPrint
