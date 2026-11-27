@@ -104,3 +104,4 @@ Uninstall restores QIDI's app bytes, removes Valve Oil's services, the block, th
 - Who calls `/api/qidiclient/*` and `get_all_error_list` on the LAN in practice; both are answered either way.
 - When the app zeroes `box_count` for a Box that needs firmware.
 - Whether `algo_app` pauses a print by itself on spaghetti.
+- Whether the stock app's record also keeps the layer of the cut through a resumed print. After QIDI's power-loss resume on the Plus 5 `01.01.02.02`, `print_stats.info.current_layer` stayed empty for the rest of the print, so `print_state.current_layer` kept the cut's layer while `file_position` moved on, and the touchscreen showed layer 0.
