@@ -710,8 +710,7 @@ def _install_held(args, hold, *, paths, manifest, reporter, env, input_stream, i
         # The session that started the firmware update asked the questions.
         answers = install_flow.load_pending_answers(paths)
     else:
-        overview = install_flow.plan_install(paths, manifest, environ=env, system_options=options,
-                                             admission=admission)
+        overview = install_flow.plan_install(paths, manifest, environ=env, admission=admission)
         reporter.debug(event="install.overview", printer=overview.printer_id, firmware=overview.firmware,
                        installed=overview.installed_version, firmware_update=overview.firmware_update,
                        questions=",".join(question.id for question in overview.questions))
@@ -720,7 +719,6 @@ def _install_held(args, hold, *, paths, manifest, reporter, env, input_stream, i
             answers = front_end.ask(overview)
         elif input_stream is not None and not args.dry_run:
             answers = install_flow.ask_in_terminal(overview, reporter=reporter, input_stream=input_stream)
-    options = install_flow.system_options_for(answers, options)
     if not args.dry_run:
         progress.begin(install_flow.install_steps(overview), origin=_progress_origin(env), reporter=reporter,
                        from_version=overview.installed_version if overview else None,
@@ -911,8 +909,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--yes", action="store_true", help="Run non-interactively using default yes-mode choices.")
     # Every install now brings the THR to Valve Oil's firmware; the old opt-in is accepted and does nothing.
     parser.add_argument("--flash-thr-fifo", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--disable-ai-detection", action="store_true", help="Disable the QIDI AI detection backend service when system optimizations run.")
-    parser.add_argument("--keep-ai-detection", action="store_true", help="Keep the QIDI AI detection backend service enabled when system optimizations run.")
+    # Every install now turns QIDI's AI detection off; the old opt-in is accepted and does nothing.
+    parser.add_argument("--disable-ai-detection", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--keep-system-optimizations", action="store_true", help="During uninstall, keep the DNS, APT, qidiclient GIF, Rockchip root-mount, VPN, Bluetooth, and AI service changes.")
     parser.add_argument("--reboot-host", action="store_true", help="Authorize a pending managed host OS reboot after successful uninstall; install reboots without it.")
     parser.add_argument("--require-klipper-idle", action="store_true", help=argparse.SUPPRESS)
@@ -978,10 +976,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--backup is only supported with restore-backup.")
     if args.yes and args.mode not in {"install", "uninstall", "auto-update-check"}:
         parser.error("--yes is only supported with install, uninstall, and auto-update-check.")
-    if args.disable_ai_detection and args.keep_ai_detection:
-        parser.error("--disable-ai-detection and --keep-ai-detection cannot be combined.")
-    if (args.disable_ai_detection or args.keep_ai_detection) and args.mode not in {"install", "uninstall"}:
-        parser.error("system optimization flags are only supported with install and uninstall.")
+    if args.disable_ai_detection and args.mode not in {"install", "uninstall"}:
+        parser.error("--disable-ai-detection is only supported with install and uninstall.")
     if args.keep_system_optimizations and args.mode != "uninstall":
         parser.error("--keep-system-optimizations is only supported with uninstall.")
     if args.flash_thr_fifo and args.mode != "install":
@@ -1015,8 +1011,6 @@ def installer_version(bundle_root: Path) -> str:
 
 def _system_options_from_args(args: argparse.Namespace) -> SystemOptimizationCliOptions:
     return SystemOptimizationCliOptions(
-        disable_ai_detection=args.disable_ai_detection,
-        keep_ai_detection=args.keep_ai_detection,
         keep_system_optimizations=args.keep_system_optimizations,
         reboot_host=args.reboot_host,
     )

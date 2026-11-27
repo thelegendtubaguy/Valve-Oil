@@ -261,12 +261,6 @@
       "custom": "Custom"
     }
   },
-  "lan_only": {
-    "title": "LAN only mode",
-    "sub": "Turn off QIDI's cloud connection and remote access, as the touchscreen's LAN Only switch does. The Qidi Joy app and QIDI account sign-in don't work while it's on. Fluidd and the slicers keep working on your network.",
-    "change_failed": "LAN only mode couldn't be changed: {{error}}",
-    "unknown_answer": "Unknown answer"
-  },
   "about": {
     "title": "Version information",
     "dev_build": "Dev build",

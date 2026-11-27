@@ -41,7 +41,6 @@ from .models import (
     SystemValveOilUiSpec,
     SystemFluiddBundleSpec,
     SystemFluiddFilamentConfigSpec,
-    SystemOptionalServiceSpec,
     SystemOptimizationsSpec,
     SystemQidiClientStaticGifsSpec,
     SystemMoonrakerMetadata3mfSpec,
@@ -759,9 +758,6 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
     klipper_print_stats_raw = _require_mapping(system_raw, "klipper_print_stats_manager")
     filament_config_raw = _require_mapping(system_raw, "fluidd_filament_config")
     rockchip_raw = _require_mapping(system_raw, "rockchip_root_sync")
-    optional_raw = services_raw.get("optional_disable", [])
-    if not isinstance(optional_raw, list):
-        raise ManifestValidationError("Expected list at optional_disable.")
 
     return SystemOptimizationsSpec(
         enabled_by_default=_require_bool(system_raw, "enabled_by_default"),
@@ -780,15 +776,6 @@ def _parse_system_optimizations(raw: dict[str, Any]) -> SystemOptimizationsSpec 
         ),
         services=SystemServicesSpec(
             disable=_require_unique_str_list(services_raw, "disable"),
-            optional_disable=tuple(
-                SystemOptionalServiceSpec(
-                    id=_require_str(item, "id"),
-                    service=_require_str(item, "service"),
-                    prompt=_require_str(item, "prompt"),
-                )
-                for item in optional_raw
-                if _ensure_mapping_entry(item, "optional_disable")
-            ),
         ),
         qidiclient_static_gifs=SystemQidiClientStaticGifsSpec(
             archive=_validate_relative_path(

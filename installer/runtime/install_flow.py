@@ -16,17 +16,15 @@ from __future__ import annotations
 import json
 import subprocess
 import urllib.request
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from . import messages, progress
 from .auto_update import auto_update_enrolled
 from .errors import OperationCancelled
 from .fs_atomic import atomic_delete, atomic_write_text
 from .interaction import prompt_yes
-from .models import SystemOptimizationCliOptions
 
 AUTO_UPDATES = "auto_updates"
-AI_DETECTION = "ai_detection"
 PENDING_ANSWERS = ".vo_install_answers.json"  # in printer_data, for the install a firmware update runs
 
 # The two kinds of run a front end offers on a printer: install or update with the settings it has, or change them.
@@ -39,7 +37,7 @@ class Question:
     id: str
     title: str  # the touchscreen's heading and the terminal's question
     text: str  # what it means
-    yes: str  # the answer that turns the feature on (auto updates) or off (AI detection)
+    yes: str  # the answer that turns the feature on
     no: str
     instruction: str  # how to answer in the terminal
 
@@ -53,16 +51,6 @@ QUESTIONS = {
         "Yes, update automatically",
         "No, I'll update by hand",
         messages.AUTO_UPDATE_PROMPT_INSTRUCTION,
-    ),
-    AI_DETECTION: Question(
-        AI_DETECTION,
-        "Turn off QIDI AI detection?",
-        "QIDI's spaghetti and foreign object detection can use about 190 MB of the printer's 486 MB of memory "
-        "during a print. If you turn it off, also switch off Spaghetti Detection and Foreign Object Detection in the "
-        "touchscreen's Settings → Printing Options afterwards, so the screen matches.",
-        "Turn it off",
-        "Keep it on",
-        messages.AI_DETECTION_PROMPT_INSTRUCTION,
     ),
 }
 
@@ -80,7 +68,7 @@ class Overview:
     installed_version: str | None  # the Valve Oil installed now, None for a new install
     new_install: bool
     auto_updates_on: bool
-    ai_detection_on: bool  # QIDI's AI detection service runs now
+    ai_detection_on: bool  # QIDI's AI detection service runs now; the install turns it off
     box_count: int | None  # QIDI Boxes in the saved variables; None when Klipper couldn't say
     box_support_on: bool | None
     legacy_manual_install: bool  # hand-copied configs that the install resets to QIDI's first
@@ -96,27 +84,24 @@ class Overview:
 @dataclass(frozen=True)
 class Answers:
     auto_updates: bool | None = None  # None leaves automatic updates as they are
-    disable_ai_detection: bool | None = None  # None keeps the recorded choice
     asked: tuple[str, ...] = field(default=())
 
     def to_json(self) -> dict:
-        return {"auto_updates": self.auto_updates, "disable_ai_detection": self.disable_ai_detection}
+        return {"auto_updates": self.auto_updates}
 
     @classmethod
     def from_json(cls, data) -> "Answers":
         if not isinstance(data, dict):
             return cls()
-        values = {key: data.get(key) for key in ("auto_updates", "disable_ai_detection")}
-        return cls(**{key: value if isinstance(value, bool) else None for key, value in values.items()})
+        value = data.get("auto_updates")
+        return cls(auto_updates=value if isinstance(value, bool) else None)
 
 
-def plan_install(paths, manifest, *, environ, system_options: SystemOptimizationCliOptions | None = None,
-                 admission=None, kind: str = INSTALL, run=subprocess.run,
+def plan_install(paths, manifest, *, environ, admission=None, kind: str = INSTALL, run=subprocess.run,
                  urlopen=urllib.request.urlopen) -> Overview:
     """Look at the printer and return what the install found and asks. Changes nothing.
 
     kind CHANGE_SETTINGS asks about automatic updates whatever they are now; an install asks only while they are off.
-    Either asks about QIDI's AI detection only while its service runs, and not when a command-line flag answered it.
     """
     from .board_firmware import NEEDS_IMAGE, existing_installation
     from .firmware import detect_supported_firmware
@@ -124,7 +109,6 @@ def plan_install(paths, manifest, *, environ, system_options: SystemOptimization
     from .state_file import load_installed_state
     from .system_optimizations import ai_detection_running
 
-    system_options = system_options or SystemOptimizationCliOptions()
     printer, firmware = detect_supported_firmware(paths.firmware_manifest_path, manifest)
     target = printer.target_firmware
     installed_version = None
@@ -145,8 +129,6 @@ def plan_install(paths, manifest, *, environ, system_options: SystemOptimization
     questions = []
     if kind == CHANGE_SETTINGS or not enrolled:
         questions.append(QUESTIONS[AUTO_UPDATES])
-    if ai_on and not (system_options.disable_ai_detection or system_options.keep_ai_detection):
-        questions.append(QUESTIONS[AI_DETECTION])
     return Overview(
         printer_id=printer.id,
         printer_name=printer.display_name,
@@ -196,7 +178,7 @@ def summary_rows(overview: Overview, answers: Answers) -> list[tuple[str, str]]:
         rows.append(("QIDI firmware", f"{overview.firmware} updated to {overview.target_firmware} first"))
     rows.append(("Automatic updates", "On" if _auto_updates_after(overview, answers) else "Off"))
     if overview.ai_detection_on:
-        rows.append(("QIDI AI detection", "Turned off" if answers.disable_ai_detection else "Kept on"))
+        rows.append(("QIDI AI detection", "Turned off"))
     if overview.box_count:
         support = ("Box support turned on" if overview.turns_box_support_on else
                    "Box support on" if overview.box_support_on else "Box support off")
@@ -224,8 +206,7 @@ def ask_in_terminal(overview: Overview, *, reporter, input_stream) -> Answers:
         values[question.id] = prompt_yes(reporter=reporter, input_stream=input_stream, question=question.title,
                                          instruction=question.instruction)
         reporter.debug(event="install.answer", question=question.id, answer=values[question.id])
-    answers = Answers(auto_updates=values.get(AUTO_UPDATES), disable_ai_detection=values.get(AI_DETECTION),
-                      asked=tuple(values))
+    answers = Answers(auto_updates=values.get(AUTO_UPDATES), asked=tuple(values))
     reporter.line("")
     reporter.line(messages.INSTALL_SUMMARY_HEADER)
     for label, value in summary_rows(overview, answers):
@@ -239,14 +220,6 @@ def ask_in_terminal(overview: Overview, *, reporter, input_stream) -> Answers:
         raise OperationCancelled(messages.INSTALL_SUMMARY_DECLINED)
     reporter.debug(event="install.summary.confirmed")
     return answers
-
-
-def system_options_for(answers: Answers, options: SystemOptimizationCliOptions) -> SystemOptimizationCliOptions:
-    """The run's system options with the AI detection answer in them; a command-line flag already chose."""
-    if answers.disable_ai_detection is None or options.disable_ai_detection or options.keep_ai_detection:
-        return options
-    return replace(options, disable_ai_detection=answers.disable_ai_detection,
-                   keep_ai_detection=not answers.disable_ai_detection)
 
 
 def install_steps(overview: Overview | None) -> list[str]:

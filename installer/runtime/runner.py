@@ -732,7 +732,7 @@ def _execute_install(
             reporter=reporter,
             state=state,
             state_path=state_path,
-            input_stream=None,  # the AI detection answer is in system_options (install_flow.py)
+            input_stream=None,  # the install asked its questions before it started (install_flow.py)
             cli_options=system_options,
             environ=environ,
             auto_update_child=environ.get(LOCK_HELD_ENV) == "1",

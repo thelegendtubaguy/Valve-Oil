@@ -261,12 +261,6 @@
       "custom": "Personalizada"
     }
   },
-  "lan_only": {
-    "title": "Modo solo LAN",
-    "sub": "Desactiva la conexión a la nube de QIDI y el acceso remoto, como el interruptor LAN Only de la pantalla táctil. La app Qidi Joy y el inicio de sesión con la cuenta QIDI no funcionan mientras está activado. Fluidd y los laminadores siguen funcionando en tu red.",
-    "change_failed": "No se pudo cambiar el modo solo LAN: {{error}}",
-    "unknown_answer": "Respuesta desconocida"
-  },
   "about": {
     "title": "Información de versiones",
     "dev_build": "Compilación de desarrollo",

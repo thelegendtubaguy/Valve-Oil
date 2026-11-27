@@ -55,15 +55,19 @@ WantedBy=multi-user.target
 # as a Box by the same test.
 _START = 'RUN+="/bin/systemctl --no-block start ' + UNIT + '"'
 RULE_CONTENT = RULE_MARKER + f"""\
-# Starts Valve Oil's Box monitor when a USB QIDI Box connects or disconnects. Installed by Valve Oil.
+# Starts Valve Oil's Box monitor when a USB QIDI Box connects or disconnects, or the mainboard connects. Installed by Valve Oil.
 ACTION=="add|remove", SUBSYSTEM=="tty", ENV{{ID_VENDOR}}=="Klipper", ENV{{ID_MODEL}}=="02.03*", {_START}
 ACTION=="add|remove", SUBSYSTEM=="tty", ENV{{ID_VENDOR}}=="Klipper", ENV{{ID_MODEL}}=="*QIDI_BOX_V*", {_START}
+ACTION=="add", SUBSYSTEM=="tty", ENV{{ID_VENDOR}}=="Klipper", ENV{{ID_MODEL}}=="02.01*", {_START}
+ACTION=="add", SUBSYSTEM=="tty", ENV{{ID_VENDOR}}=="Klipper", ENV{{ID_MODEL}}=="*QIDI_MAIN_*", {_START}
 """
 
 
 def app_builds() -> dict[str, list]:
-    """Where each reviewed app build has its Box detector patch: file size to (offset, patched bytes in hex)."""
-    return {str(build.size): [build.detector.offset, build.detector.patched.hex()] for build in BUILDS.values()}
+    """Where each reviewed app build has its Box detector patch and the patch that takes its other duties over: file
+    size to (detector offset, patched bytes in hex, takeover offset, patched bytes in hex)."""
+    return {str(build.size): [build.detector.offset, build.detector.patched.hex(), build.agent.offset,
+                              build.agent.patched.hex()] for build in BUILDS.values()}
 
 
 @lru_cache(maxsize=1)

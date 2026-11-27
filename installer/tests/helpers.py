@@ -155,6 +155,10 @@ def build_env(printer_data_root: Path, *, moonraker_url: str) -> dict[str, str]:
 
 
 
+# The takeover site of the stand-in: the type the app identifies to Moonraker as.
+AGENT_TYPE, OTHER_TYPE = b"agent\x00\x00\x00", b"display\x00"
+
+
 def fake_qidiclient(variant: int = 0) -> tuple[bytes, bytes, bytes]:
     # A small stand-in for QIDI's touchscreen executable, admitted as a reviewed build, with its patched forms with and
     # without QIDI's package updates blocked. Each variant is a different build of the same size.
@@ -162,6 +166,7 @@ def fake_qidiclient(variant: int = 0) -> tuple[bytes, bytes, bytes]:
     stock = (
         b"\x7fELF\xff\xfe" + bytes([variant]) + bytes(57) + popup.BRANCH_IF_EQUAL + bytes(64) + popup.BRANCH_IF_EQUAL + bytes(60)
         + popup.STORE_NEED_UPDATE + bytes(28) + popup.EXTRACT_PROLOGUE + bytes(24) + popup.DETECTOR_CHANGED + bytes(12)
+        + AGENT_TYPE + bytes(8)
     )
     sites = (
         popup.Site(64, popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER),
@@ -169,12 +174,13 @@ def fake_qidiclient(variant: int = 0) -> tuple[bytes, bytes, bytes]:
         popup.Site(196, popup.STORE_NEED_UPDATE, popup.STORE_ZERO, blocking=True),
         popup.Site(228, popup.EXTRACT_PROLOGUE, popup.RETURN_FALSE, retired=True),
         popup.Site(260, popup.DETECTOR_CHANGED, popup.DETECTOR_UNCHANGED),
+        popup.Site(276, AGENT_TYPE, OTHER_TYPE, duty="agent"),
     )
     unblocked = stock.replace(popup.BRANCH_IF_EQUAL, popup.BRANCH_IF_NOT_LONGER).replace(
-        popup.DETECTOR_CHANGED, popup.DETECTOR_UNCHANGED)
+        popup.DETECTOR_CHANGED, popup.DETECTOR_UNCHANGED).replace(AGENT_TYPE, OTHER_TYPE)
     blocked = unblocked.replace(popup.STORE_NEED_UPDATE, popup.STORE_ZERO)
     popup.BUILDS[hashlib.sha256(stock).hexdigest()] = popup.Build(
-        size=len(stock), sites=sites,
+        model="QD_TEST", size=len(stock), sites=sites,
         patched_sha256=hashlib.sha256(unblocked).hexdigest(), blocked_sha256=hashlib.sha256(blocked).hexdigest(),
         other_blocked_sha256=(hashlib.sha256(earlier_blocked_qidiclient(blocked)).hexdigest(),),
     )

@@ -82,7 +82,34 @@ See [Installing, updating, and uninstalling](install.md) for the dry run and the
 
 ## QIDI's cloud
 
-**LAN only mode** on Valve Oil UI's **Updates** screen is QIDI's own setting, the same one as the touchscreen's LAN Only switch. On, the printer disconnects from QIDI's cloud and stops QIDI's remote access, so the Qidi Joy app and signing in to a QIDI account don't work; Fluidd, Valve Oil UI, and your slicers keep working on your network. Off, the printer connects to QIDI's cloud again. A change made on the touchscreen shows in Valve Oil UI the next time the page is opened.
+Valve Oil keeps the printer off QIDI's servers, on every install, so a QIDI account can't be used on it. QIDI's own LAN only mode stays on. The touchscreen shows **LAN Only Mode** where the QIDI account was, its **Log in** button is greyed out, and its LAN Only switch, at the bottom of the Wi-Fi page, turns itself back on when you turn it off. QIDI's phone app doesn't work either. Fluidd, Valve Oil UI, and your slicers keep working on your network, and QIDI Studio still finds the printer there. Each attempt to turn LAN only mode off is logged in `moonraker.log` as `vo_moonraker_fixes: general.lan_mode set to ... was answered with 1; LAN only mode stays on`.
+
+Nothing on the printer reaches QIDI or the other services QIDI's software contacts: QIDI's cloud, download, MQTT, and P2P servers, Peergine's P2P servers, the services that look up the printer's public address and location, Moonraker's announcements feed, and the time server QIDI's touchscreen app uses. Their names point nowhere in a marked block of `/etc/hosts`, connections to their addresses fail at once, and QIDI's remote access client, `frpc`, stays stopped. Moonraker no longer runs QIDI's cloud connection at all; see [MQTT and Home Assistant](#mqtt-and-home-assistant). The printer still uses its DNS servers, your network's and the public ones QIDI's firmware adds (`1.1.1.1` and `8.8.8.8`), and reaches the rest of the internet, so Valve Oil's updates and the add-ons you install, such as ZeroTier and OctoEverywhere, keep working.
+
+Uninstall removes the block and puts QIDI's own MQTT connection back. LAN only mode stays on until you turn it off on the touchscreen.
+
+### MQTT and Home Assistant
+
+QIDI's Moonraker came with QIDI's own MQTT connection, which connected only to QIDI's cloud and ignored an `[mqtt]` section in `moonraker.conf`, so Moonraker couldn't talk to your own MQTT broker. Valve Oil runs Moonraker's own MQTT instead, from Moonraker `v0.9.3`, the version QIDI's Moonraker is built on. Without an `[mqtt]` section it connects nowhere.
+
+To connect to your broker, for example for Home Assistant, add an `[mqtt]` section to `moonraker.conf` (Fluidd's **Configuration** page) and save and restart Moonraker:
+
+```ini
+[mqtt]
+address: 192.168.1.10
+username: printer
+password: your-password
+```
+
+Every option is in [Moonraker's MQTT documentation](https://moonraker.readthedocs.io/en/latest/configuration/#mqtt).
+
+## QIDI's AI detection
+
+QIDI's AI detection, which watches the camera for spaghetti and objects left on the bed, is always off with Valve Oil. Every install and update turns off its service, `algo_app`, on the Max 4, the only supported printer that has it. The service can use about 190 MB of the printer's 486 MB of memory during a print. A QIDI firmware update starts it again. After one that Valve Oil runs, Valve Oil's install turns it straight back off; after one from a USB drive, the next install does, or the next automatic update check when automatic updates are on.
+
+Valve Oil also keeps the AI detection settings that QIDI's touchscreen app saves in Moonraker off, on every printer. Each attempt to turn one on is answered with off and logged in `moonraker.log` as `vo_moonraker_fixes: ai.noodle_detection set to ... was answered with 0; QIDI's AI detection stays off`, with that setting's name.
+
+Uninstall puts the service back as Valve Oil found it when you choose to undo the [OS optimizations](install.md#os-optimizations), and `--keep-system-optimizations` keeps it off. Those settings stay off until you turn them on.
 
 ## Add-ons
 

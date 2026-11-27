@@ -46,13 +46,14 @@ class Printer:
             self.events.remove(event)
             event[1]()
 
-    def run(self, *, patched=True):
+    def run(self, *, patched=True, took_over=False):
         def restart():
             self.restarts += 1
 
         return MONITOR.run(str(self.data), boxes_now=lambda: MONITOR.connected(str(self.by_id)),
                            patched=lambda: patched, busy=lambda: self.busy, restart=restart,
-                           clock=lambda: self.now, sleep=self.sleep, say=lambda message: None)
+                           clock=lambda: self.now, sleep=self.sleep, say=lambda message: None,
+                           took_over=lambda: took_over, by_id=str(self.by_id))
 
     def record(self) -> dict:
         return json.loads((self.data / MONITOR.RECORD).read_text())["boxes"]
@@ -139,6 +140,39 @@ class BoxConfigTests(unittest.TestCase):
         printer.unplug("AAA", "CCC")
         printer.run()
         self.assertEqual((printer.box_cfg.read_text(), printer.restarts), ("# No Box Config\n", 4))
+
+    def test_mcu_id_and_save_config_backups_are_kept_as_qidis_app_kept_them(self):
+        printer = Printer("# No Box Config\n")
+        printer.plug("AAA")
+        mainboard = printer.by_id / "usb-Klipper_QIDI_MAIN_V2_1.0.12_M41N-if00"
+        mcu_id = printer.data / "config/MCU_ID.cfg"
+        mcu_id.write_text("[mcu]\nserial: /dev/serial/by-id/usb-Klipper_QIDI_MAIN_V2_1.0.11_M41N-if00\n"
+                          "restart_method: command\n")
+        backup = printer.data / "config/printer-20261120_054123.cfg"
+        kept = [printer.data / "config/printer.cfg", printer.data / "config/my-printer-20261120.cfg"]
+        for path in (backup, *kept):
+            path.write_text("[printer]\n")
+
+        # With an app that still does these itself, the monitor leaves them to it.
+        printer.run(took_over=False)
+        self.assertIn("1.0.11", mcu_id.read_text())
+        self.assertTrue(backup.exists())
+
+        # Taken over: the app's exact file for the mainboard connected, and the backups go; Klipper isn't restarted
+        # for it, as the app didn't.
+        restarts = printer.restarts
+        printer.run(took_over=True)
+        self.assertEqual(mcu_id.read_text(), f"[mcu]\nserial: {mainboard}\nrestart_method: command\n")
+        self.assertFalse(backup.exists())
+        self.assertTrue(all(path.exists() for path in kept))
+        self.assertEqual(printer.restarts, restarts)
+
+        # Without a mainboard on USB, as on a Smart 5 whose mainboard is on a UART, nothing is touched.
+        mainboard.unlink()
+        backup.write_text("[printer]\n")
+        printer.run(took_over=True)
+        self.assertIn("1.0.12", mcu_id.read_text())
+        self.assertTrue(backup.exists())
 
     def test_a_box_change_waits_for_an_idle_printer_and_for_board_work(self):
         printer = Printer("# No Box Config\n")

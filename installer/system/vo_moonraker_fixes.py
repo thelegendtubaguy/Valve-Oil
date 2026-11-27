@@ -2,40 +2,32 @@
 # Moonraker fixes for Valve Oil, installed in QIDI's Moonraker virtualenv and
 # imported by vo-moonraker-fixes.pth.
 #
-# QIDI's Moonraker connects to QIDI's cloud MQTT broker from its event loop.
-# The TCP connect is awaited, but the TLS handshake that follows runs inside
-# ExtPahoClient.reconnect with the socket's timeout set to the MQTT keepalive,
-# 60 s. A broker that accepts the connection and then doesn't answer the
-# handshake stops Moonraker's event loop for that long: no API, no websocket,
-# and no Klipper state until it times out. At boot the touchscreen then
-# reports "Printer service failed to start".
+# Valve Oil keeps the printer off QIDI's servers. QIDI's Moonraker always
+# loads QIDI's compiled mqtt component, which connects only to QIDI's cloud
+# broker with the account QIDI's cloud gave the printer, and ignores the
+# [mqtt] section of moonraker.conf. Here Moonraker loads upstream Moonraker's
+# MQTT component instead (vo_moonraker_mqtt.py, beside this module): with an
+# [mqtt] section it connects to that broker as Moonraker documents, for
+# example for Home Assistant; without one it connects nowhere. QIDI's
+# frp_manager acts only when QIDI's mqtt component calls it, so it starts no
+# FRP.
 #
-# Here the handshake runs in a worker thread, for at most 10 s, before
-# QIDI's code gets the socket. QIDI's reconnect then receives a socket that
-# is already through its handshake, so its own wrap and handshake return at
-# once. Errors reach QIDI's retry loop as they did. Plain MQTT connections
-# and anything this module doesn't recognize are left as they are.
+# A few keys of QIDI's config table are kept at one value (PINNED):
+# - QIDI's LAN-only mode (general.lan_mode) stays on: the touchscreen app then
+#   shows LAN Only Mode instead of a cloud login, and stops its own cloud
+#   requests before they connect.
+# - QIDI's AI detection switches (ai.*, which the touchscreen app writes "1" or
+#   "0") stay off. Valve Oil keeps QIDI's AI detection service stopped, so a
+#   switch turned on would detect nothing.
+# Each is written when Moonraker starts and after any config write that
+# changed it; a write of a pinned key itself stores the pinned value and
+# answers with it, and skips QIDI's handler, which for general.lan_mode would
+# otherwise close the operator's MQTT connection or reconnect QIDI's.
 #
-# QIDI's code decrypts the saved account, password, and broker address
-# through the touchscreen app, which connects to Moonraker as an extension
-# agent, and it asks whichever agent registered first. At boot the first
-# connect runs before the touchscreen app has connected, so it goes to QIDI's
-# fallback broker with no account, is refused with "Not authorized", and
-# leaves that warning in Fluidd. A slicer that registers as an agent before
-# the touchscreen app gets the decrypt requests instead. Here the first
-# connect after Moonraker starts waits for the touchscreen app, for at most
-# APP_WAIT_TIMEOUT, and every decrypt goes to the touchscreen app when it is
-# connected.
-#
-# Turning on QIDI's LAN-only mode (general.lan_mode "1" in QIDI's config
-# table, from the touchscreen or Fluidd) closes QIDI's MQTT connection only
-# when it is connected. A reconnect loop that never connected, as on a printer
-# with no QIDI account after LAN-only mode was turned off, keeps retrying, and
-# each refusal shows an MQTT error on the touchscreen until Moonraker
-# restarts. Here, when that write turns LAN-only mode on while MQTT isn't
-# connected, QIDI's own MQTT disconnect request runs after QIDI's handler, and
-# the MQTT warning and failed component are cleared, then cleared again once
-# an attempt already under way has had its answer.
+# QIDI's /api/qidiclient/* endpoints are served by the one agent connected
+# and fail when a slicer has registered as an agent too. They prefer the
+# touchscreen app's agent here, which is Valve Oil's agent under the app's
+# name.
 #
 # QIDI's Moonraker checks over D-Bus, as it starts, that the touchscreen app
 # and Klipper answer, and only logs what they say. Neither call has a time
@@ -47,329 +39,177 @@
 # failed call. Its calls once Moonraker has started are left as they are.
 #
 # The .pth file imports this module in every Python started from Moonraker's
-# virtualenv, so importing it only registers import hooks for
-# moonraker.components.mqtt, moonraker.components.database, and
-# moonraker.components.dbus_manager, and the modules the fixes use are
-# imported when Moonraker loads those components.
+# virtualenv, so importing it only registers import hooks, and the modules
+# the fixes use are imported when Moonraker loads the components.
 
 import sys
 
 MQTT_MODULE = "moonraker.components.mqtt"
 DATABASE_MODULE = "moonraker.components.database"
+EXTENSIONS_MODULE = "moonraker.components.extensions"
 DBUS_MODULE = "moonraker.components.dbus_manager"
-LAN_MODE = ("general", "lan_mode")
-MQTT_WARNING = "mqtt_disconnect_reson"
-LAN_MODE_SETTLE = 5.
-HANDSHAKE_TIMEOUT = 10.
-APP_WAIT_TIMEOUT = 120.
-APP_POLL_INTERVAL = 0.5
+MQTT_FILE_NAME = "vo_moonraker_mqtt.py"
+# QIDI's config table key: (the value it is kept at, what the log says when a
+# write is answered with it).
+PINNED = {
+    "general.lan_mode": ("1", "LAN only mode stays on"),
+    "ai.noodle_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.spool_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.foreign_object_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.bed_detection": ("0", "QIDI's AI detection stays off"),
+}
 DBUS_STARTUP_CALL_TIMEOUT = 5.
 
 
-class _HandshakenContext:
-    """Stands in for the client's SSL context for one reconnect.
-
-    QIDI's reconnect wraps the socket it is given with the client's SSL
-    context. For the socket that already finished its handshake this returns
-    it as it is and puts the real context back; anything else goes to the
-    real context.
-    """
-
-    def __init__(self, client, context, tls):
-        object.__setattr__(self, "_vo", (client, context, tls))
-
-    def __getattr__(self, name):
-        return getattr(self._vo[1], name)
-
-    def __setattr__(self, name, value):
-        setattr(self._vo[1], name, value)
-
-    def wrap_socket(self, sock, *args, **kwargs):
-        client, context, tls = self._vo
-        if client._ssl_context is self:
-            client._ssl_context = context
-        if sock is tls:
-            return tls
-        return context.wrap_socket(sock, *args, **kwargs)
-
-
-def _handshake(sock, context, host, timeout):
-    # As ExtPahoClient.reconnect does it, apart from the timeout.
-    sock.settimeout(timeout)
-    try:
-        tls = context.wrap_socket(sock, server_hostname=host,
-                                  do_handshake_on_connect=False)
-    except ssl.CertificateError:
-        raise
-    except ValueError:
-        tls = context.wrap_socket(sock, do_handshake_on_connect=False)
-    tls.settimeout(timeout)
-    tls.do_handshake()
-    return tls
-
-
-def _is_touchscreen_app(connection):
-    # QIDI's touchscreen app identifies as an agent named after the printer
-    # model, with the URL "local": QD_MAX4 or QD_PLUS5, and S5 on the Smart 5.
-    data = getattr(connection, "client_data", None)
-    if not isinstance(data, dict):
-        return False
-    name = data.get("name")
-    return data.get("url") == "local" and isinstance(name, str) \
-        and (name.startswith("QD_") or name == "S5")
-
-
-def _agents(component):
-    """QIDI's registry of extension agents, or None if it can't be read."""
-    try:
-        extensions = component.server.lookup_component("extensions", None)
-    except Exception:
-        return None
-    agents = getattr(extensions, "agents", None)
-    return agents if isinstance(agents, dict) else None
-
-
-def _touchscreen_app_first(agents):
-    """Puts the touchscreen app's agent first, where QIDI's decrypt looks.
-
-    Returns whether the touchscreen app is connected.
-    """
-    for name, connection in agents.items():
-        if _is_touchscreen_app(connection):
-            break
-    else:
-        return False
-    if next(iter(agents)) != name:
-        others = [(key, value) for key, value in agents.items()
-                  if key != name]
-        agents.clear()
-        agents[name] = connection
-        agents.update(others)
-    return True
-
-
-def _decrypt_through_touchscreen_app(decrypt):
-    # Returns QIDI's coroutine without running it, so none of QIDI's log
-    # lines come from inside this module.
-    def _qidiclient_decrypt_hex(self, *args, **kwargs):
-        agents = _agents(self)
-        if agents:
-            _touchscreen_app_first(agents)
-        return decrypt(self, *args, **kwargs)
-    _qidiclient_decrypt_hex._vo_decrypt = decrypt
-    return _qidiclient_decrypt_hex
-
-
-async def _after_touchscreen_app(loop, component, reconnect):
-    """Runs QIDI's first MQTT connect once the touchscreen app is connected."""
-    try:
-        agents = _agents(component)
-        if agents is not None and not _touchscreen_app_first(agents):
-            logging.info("vo_moonraker_fixes: MQTT waiting for the "
-                         "touchscreen app before connecting")
-            deadline = time.monotonic() + APP_WAIT_TIMEOUT
-            while True:
-                await asyncio.sleep(APP_POLL_INTERVAL)
-                agents = _agents(component)
-                if agents is None:
-                    break
-                if _touchscreen_app_first(agents):
-                    logging.info("vo_moonraker_fixes: touchscreen app "
-                                 "connected; MQTT connecting")
-                    break
-                if time.monotonic() >= deadline:
-                    logging.info("vo_moonraker_fixes: touchscreen app not "
-                                 "connected after %.0f s; MQTT connecting "
-                                 "without it", APP_WAIT_TIMEOUT)
-                    break
-    except BaseException:
-        reconnect.close()
-        raise
-    # QIDI's reconnect runs in a task of its own, so its log lines keep their
-    # own origin. Cancelling this task cancels it too.
-    return await loop.create_task(reconnect)
-
-
-class _EventLoop:
-    """The MQTT component's event loop, with TLS handshakes off the loop and
-    the first connect held for the touchscreen app."""
-
-    def __init__(self, loop, component):
-        self._vo_loop = loop
-        self._vo_component = component
-        self._vo_hold = True
-
-    def __getattr__(self, name):
-        return getattr(self._vo_loop, name)
-
-    def create_task(self, coro, *args, **kwargs):
-        loop = self._vo_loop
-        if self._vo_hold \
-                and getattr(coro, "__name__", None) == "_do_reconnect":
-            self._vo_hold = False
-            coro = _after_touchscreen_app(loop, self._vo_component, coro)
-        return loop.create_task(coro, *args, **kwargs)
-
-    async def create_socket_connection(self, address, timeout=None):
-        loop = self._vo_loop
-        sock = await loop.create_socket_connection(address, timeout)
-        client = getattr(self._vo_component, "client", None)
-        context = getattr(client, "_ssl_context", None)
-        if isinstance(context, _HandshakenContext):
-            # An earlier connection attempt ended before reconnect used it.
-            context = client._ssl_context = context._vo[1]
-        if context is None or not getattr(client, "_ssl", False) \
-                or not isinstance(getattr(client, "_host", None), str):
-            return sock
-        try:
-            tls = await loop.run_in_thread(
-                _handshake, sock, context, client._host, HANDSHAKE_TIMEOUT)
-        except BaseException:
-            # Also ends a handshake still waiting in its thread.
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            sock.close()
-            raise
-        client._ssl_context = _HandshakenContext(client, context, tls)
-        return tls
-
-
-class _EventLoopAttribute:
-    """MQTTClient.eventloop: what QIDI's code assigns comes back wrapped.
-
-    A descriptor on the class, so none of QIDI's code runs inside this
-    module and its log lines keep their own origin.
-    """
-
-    def __set__(self, component, loop):
-        if not isinstance(loop, _EventLoop):
-            if inspect.iscoroutinefunction(
-                    getattr(loop, "create_socket_connection", None)) \
-                    and callable(getattr(loop, "run_in_thread", None)):
-                loop = _EventLoop(loop, component)
-                logging.info("vo_moonraker_fixes: MQTT TLS handshake "
-                             "moved off the event loop; first connect waits "
-                             "for the touchscreen app")
-            else:
-                logging.info("vo_moonraker_fixes: MQTT TLS handshake left "
-                             "on the event loop; Moonraker's event loop "
-                             "differs from the version this fix is for")
-        component.__dict__["eventloop"] = loop
-
-    def __get__(self, component, owner=None):
-        if component is None:
-            return self
-        try:
-            return component.__dict__["eventloop"]
-        except KeyError:
-            raise AttributeError("eventloop") from None
-
-
 def _imports():
-    global asyncio, inspect, logging, socket, ssl, time
+    global asyncio, inspect, logging, os
     import asyncio
     import inspect
     import logging
-    import socket
-    import ssl
-    import time
+    import os
 
 
-def _turns_lan_mode_on(web_request):
-    try:
-        section = web_request.get("section", None)
-        key = web_request.get("key", None)
-        value = web_request.get("value", None)
-    except Exception:
-        return False
-    return (section, key) == LAN_MODE and str(value) == "1"
+# ---- MQTT -------------------------------------------------------------------
+
+def mqtt_file():
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        MQTT_FILE_NAME)
 
 
-def _mqtt_connected(mqtt):
-    is_connected = getattr(mqtt, "is_connected", None)
-    if not callable(is_connected):
-        return True
-    try:
-        return bool(is_connected())
-    except Exception:
-        return True
+class _MqttFinder:
+    """Loads upstream Moonraker's MQTT component in place of QIDI's."""
+
+    def find_spec(self, name, path=None, target=None):
+        if name != MQTT_MODULE:
+            return None
+        if self in sys.meta_path:
+            sys.meta_path.remove(self)
+        import importlib.util
+        import logging
+        import os
+        source = mqtt_file()
+        if not os.path.isfile(source):
+            logging.info("vo_moonraker_fixes: %s is missing; QIDI's MQTT "
+                         "component loads", source)
+            return None
+        logging.info("vo_moonraker_fixes: Moonraker's MQTT component "
+                     "loads in place of QIDI's")
+        return importlib.util.spec_from_file_location(name, source)
 
 
-def _clear_mqtt_failure(server):
-    for name, arg in (("remove_warning", MQTT_WARNING),
-                      ("remove_failed_component", "mqtt")):
-        remove = getattr(server, name, None)
-        if callable(remove):
-            remove(arg)
+# ---- Pinned config keys ----------------------------------------------------
+
+def _pinned_key(section, key):
+    name = "%s.%s" % (str(section).strip(), str(key).strip())
+    return name if name in PINNED else None
 
 
-async def _clear_after_last_attempt(database, server, mqtt):
-    # An attempt already sent when the disconnect ran still gets its refusal,
-    # within QIDI's 2 s CONNACK wait, and that sets the warning again.
-    await asyncio.sleep(LAN_MODE_SETTLE)
+async def _pin(database, names):
     items = getattr(database, "config_items", None)
-    lan_mode = items.get("general.lan_mode") if isinstance(items, dict) \
-        else "1"
-    if str(lan_mode) == "1" and not _mqtt_connected(mqtt):
-        _clear_mqtt_failure(server)
+    for name in names:
+        value = PINNED[name][0]
+        try:
+            cursor = await database.get_value_from_config(*name.split(".", 1))
+            row = dict(await cursor.fetchone() or {})
+            if str(row.get("value")) != value:
+                await database.update_value_from_config(*name.split(".", 1),
+                                                        value)
+                logging.info("vo_moonraker_fixes: %s kept at %s", name, value)
+        except Exception:
+            logging.exception("vo_moonraker_fixes: keeping %s at %s failed",
+                              name, value)
+        if isinstance(items, dict) and name in items:
+            items[name] = value
 
 
-async def _stop_mqtt_retries(database, server, mqtt):
-    from moonraker.common import WebRequest
-    try:
-        # As database.py builds its MQTT connect request.
-        await mqtt._handle_disconnect_request(WebRequest("", {}))
-    except Exception:
-        logging.exception("vo_moonraker_fixes: stopping QIDI's MQTT "
-                          "retries for LAN-only mode failed")
-        return
-    _clear_mqtt_failure(server)
-    asyncio.ensure_future(_clear_after_last_attempt(database, server, mqtt))
-    logging.info("vo_moonraker_fixes: LAN-only mode on; QIDI's MQTT "
-                 "retries stopped")
+def _unpinned(database):
+    """The pinned keys a write changed: QIDI's handlers keep config_items as
+    they write the table. All of them when it can't tell."""
+    items = getattr(database, "config_items", None)
+    if not isinstance(items, dict):
+        return list(PINNED)
+    return [name for name, (value, _) in PINNED.items()
+            if str(items.get(name, value)) != value]
 
 
-def _lan_mode_stops_mqtt(handler):
+def _then_pin(method):
+    # Startup reads the table; each later write is checked in memory, as the
+    # print state writes many times a minute.
+    startup = method.__name__ == "_init_config_items"
+
+    async def pinned(self, *args, **kwargs):
+        try:
+            return await method(self, *args, **kwargs)
+        finally:
+            names = list(PINNED) if startup else _unpinned(self)
+            if names:
+                await _pin(self, names)
+    pinned._vo_pinned = method
+    pinned.__name__ = method.__name__
+    return pinned
+
+
+def _pinned_stay(handler):
     async def _handle_config_update_request(self, web_request, *args,
                                             **kwargs):
-        mqtt = None
-        if _turns_lan_mode_on(web_request):
-            server = getattr(self, "server", None)
-            lookup = getattr(server, "lookup_component", None)
-            mqtt = lookup("mqtt", None) if callable(lookup) else None
-            if mqtt is not None and (
-                    _mqtt_connected(mqtt) or not callable(
-                        getattr(mqtt, "_handle_disconnect_request", None))):
-                # Connected: QIDI's handler closes it.
-                mqtt = None
-        result = await handler(self, web_request, *args, **kwargs)
-        if mqtt is not None and isinstance(result, dict) \
-                and result.get("status") == "success":
-            await _stop_mqtt_retries(self, self.server, mqtt)
-        return result
-    _handle_config_update_request._vo_config_update = handler
+        try:
+            section = web_request.get("section", None)
+            key = web_request.get("key", None)
+        except Exception:
+            section = key = None
+        name = _pinned_key(section, key)
+        if name is not None:
+            pinned, outcome = PINNED[name]
+            try:
+                value = web_request.get("value", None)
+            except Exception:
+                value = None
+            if str(value) != pinned:
+                logging.info("vo_moonraker_fixes: %s set to %r was answered "
+                             "with %s; %s", name, value, pinned, outcome)
+            await _pin(self, [name])
+            return {"status": "success", "result": {name: pinned}}
+        try:
+            return await handler(self, web_request, *args, **kwargs)
+        finally:
+            names = _unpinned(self)
+            if names:
+                await _pin(self, names)
+    _handle_config_update_request._vo_pinned = handler
     return _handle_config_update_request
+
+
+DATABASE_METHODS = ("_init_config_items", "_handle_config_update_request",
+                    "_handle_config_update_batch_request",
+                    "_handle_config_delete_request")
 
 
 def apply_database(module):
     """Patch QIDI's moonraker.components.database after it is imported."""
     _imports()
     for component_class in vars(module).values():
-        handler = vars(component_class).get("_handle_config_update_request") \
-            if isinstance(component_class, type) else None
-        if callable(getattr(handler, "_vo_config_update", None)):
-            return True
-        if inspect.iscoroutinefunction(handler):
-            component_class._handle_config_update_request = \
-                _lan_mode_stops_mqtt(handler)
-            return True
-    logging.info("vo_moonraker_fixes: LAN-only mode MQTT fix not applied; "
-                 "Moonraker's database code differs from the version this "
-                 "fix is for")
+        if not isinstance(component_class, type):
+            continue
+        methods = {name: vars(component_class).get(name)
+                   for name in DATABASE_METHODS}
+        if not all(inspect.iscoroutinefunction(method)
+                   for method in methods.values()):
+            continue
+        for name, method in methods.items():
+            if hasattr(method, "_vo_pinned"):
+                continue
+            wrap = _pinned_stay \
+                if name == "_handle_config_update_request" else _then_pin
+            setattr(component_class, name, wrap(method))
+        return True
+    logging.info("vo_moonraker_fixes: QIDI's LAN-only mode and AI detection "
+                 "switches not kept; Moonraker's database code differs from "
+                 "the version this fix is for")
     return False
 
+
+# ---- D-Bus startup checks ---------------------------------------------------
 
 def _dbus_startup_bounded(component_init):
     async def component_init_(self, *args, **kwargs):
@@ -424,24 +264,54 @@ def apply_dbus(module):
     return True
 
 
-def apply(module):
-    """Patch QIDI's moonraker.components.mqtt after it is imported."""
-    _imports()
-    component_class = getattr(module, "MQTTClient", None)
-    if not isinstance(component_class, type) \
-            or "eventloop" in vars(component_class) \
-            or not callable(getattr(component_class, "_do_reconnect", None)):
-        logging.info("vo_moonraker_fixes: MQTT TLS handshake left on the "
-                     "event loop; Moonraker's MQTT code differs from the "
-                     "version this fix is for")
-        return False
-    component_class.eventloop = _EventLoopAttribute()
-    decrypt = vars(component_class).get("_qidiclient_decrypt_hex")
-    if callable(decrypt) and not hasattr(decrypt, "_vo_decrypt"):
-        component_class._qidiclient_decrypt_hex = \
-            _decrypt_through_touchscreen_app(decrypt)
-    return True
+# ---- Agent selection --------------------------------------------------------
 
+def _is_touchscreen_app(connection):
+    # QIDI's touchscreen app identifies as an agent named after the printer
+    # model, with the URL "local": QD_MAX4 or QD_PLUS5, and S5 on the Smart 5.
+    data = getattr(connection, "client_data", None)
+    if not isinstance(data, dict):
+        return False
+    name = data.get("name")
+    return data.get("url") == "local" and isinstance(name, str) \
+        and (name.startswith("QD_") or name == "S5")
+
+
+def _app_agent_first(select):
+    """ExtensionManager._select_qidiclient: with several agents and none
+    named, the touchscreen app's agent rather than an error."""
+    def _select_qidiclient(self, web_request, *args, **kwargs):
+        agents = getattr(self, "agents", None)
+        try:
+            named = web_request.get_str("agent", None)
+        except Exception:
+            named = None
+        if named is None and isinstance(agents, dict) and len(agents) > 1:
+            for connection in agents.values():
+                if _is_touchscreen_app(connection):
+                    return connection
+        return select(self, web_request, *args, **kwargs)
+    _select_qidiclient._vo_select = select
+    return _select_qidiclient
+
+
+def apply_extensions(module):
+    """Patch QIDI's moonraker.components.extensions after it is imported."""
+    _imports()
+    for component_class in vars(module).values():
+        select = vars(component_class).get("_select_qidiclient") \
+            if isinstance(component_class, type) else None
+        if callable(select):
+            if not hasattr(select, "_vo_select"):
+                component_class._select_qidiclient = _app_agent_first(select)
+            return True
+    logging.info("vo_moonraker_fixes: agent selection left as it is; "
+                 "Moonraker's extensions code differs from the version "
+                 "this fix is for")
+    return False
+
+
+# ---- Import hooks -----------------------------------------------------------
 
 class _Finder:
     """Patches one of QIDI's Moonraker modules once, when Moonraker imports
@@ -478,10 +348,12 @@ class _Finder:
 
 
 def install():
+    if not any(isinstance(finder, _MqttFinder) for finder in sys.meta_path):
+        sys.meta_path.insert(0, _MqttFinder())
     installed = {finder.module_name for finder in sys.meta_path
                  if isinstance(finder, _Finder)}
-    for module_name, patch in ((MQTT_MODULE, apply),
-                               (DATABASE_MODULE, apply_database),
+    for module_name, patch in ((DATABASE_MODULE, apply_database),
+                               (EXTENSIONS_MODULE, apply_extensions),
                                (DBUS_MODULE, apply_dbus)):
         if module_name not in installed:
             sys.meta_path.insert(0, _Finder(module_name, patch))

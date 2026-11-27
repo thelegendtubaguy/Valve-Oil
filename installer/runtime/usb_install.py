@@ -305,14 +305,10 @@ class Session:
         return ("Printer", overview.printer_name)
 
     def _settings_questions(self, overview):
-        questions = [install_flow.QUESTIONS[install_flow.AUTO_UPDATES]]
-        if overview.ai_detection_on:
-            questions.append(install_flow.QUESTIONS[install_flow.AI_DETECTION])
-        return tuple(questions)
+        return (install_flow.QUESTIONS[install_flow.AUTO_UPDATES],)
 
     def _settings_text(self, overview) -> str:
-        parts = ["Automatic updates " + ("on" if overview.auto_updates_on else "off"),
-                 "AI detection " + ("on" if overview.ai_detection_on else "off")]
+        parts = ["Automatic updates " + ("on" if overview.auto_updates_on else "off")]
         if overview.box_count:
             parts.append("Box support " + ("on" if overview.box_support_on else "off"))
         return " · ".join(parts)
@@ -335,9 +331,7 @@ class Session:
                 values[question.id] = tapped == "yes"
                 index += 1
                 continue
-            answers = install_flow.Answers(auto_updates=values.get(install_flow.AUTO_UPDATES),
-                                           disable_ai_detection=values.get(install_flow.AI_DETECTION),
-                                           asked=tuple(values))
+            answers = install_flow.Answers(auto_updates=values.get(install_flow.AUTO_UPDATES), asked=tuple(values))
             minutes = self._minutes(overview)
             tapped = self._ask_screen("ready", ("back", "install"),
                                       title="Ready to install" if overview.new_install else "Ready to update",

@@ -46,8 +46,8 @@ CPU_AFFINITY = {
     CROWSNEST_OPERATION: "0",
     ALGO_APP_OPERATION: "3",
 }
-# Settings apply when the service starts. Restarting algo_app would start it when AI detection is off, so it picks
-# them up at its next start; they match QIDI's unit anyway. The camera may be missing, so its restart can fail.
+# Settings apply when the service starts. Restarting algo_app would start it, and Valve Oil keeps it off, so they
+# apply only if something starts it again; they match QIDI's unit anyway. The camera may be missing, so its restart can fail.
 RESTART = {operation: service for operation, service in SERVICES.items() if operation != ALGO_APP_OPERATION}
 OPTIONAL_RESTART = frozenset({CROWSNEST_OPERATION})
 FILES = {operation: f"/etc/systemd/system/{service}.d/vo-priority.conf" for operation, service in SERVICES.items()}

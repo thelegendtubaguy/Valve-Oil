@@ -55,12 +55,13 @@ from . import wifi_wait
 from . import zram_swap
 from . import boot_screen
 from . import box_config
+from . import qidi_agent
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
 from .firmware import detect_firmware, detect_supported_firmware_best_effort
 from .fs_atomic import atomic_delete, atomic_write_text, fsync_directory
 from .host_reboot import HostRebootError, clear_host_reboot_marker, read_host_reboot_marker, recommend_reboot, write_host_reboot_marker
-from .interaction import confirm_yes, prompt_yes
+from .interaction import confirm_yes
 from .models import (
     InstalledState,
     Manifest,
@@ -83,10 +84,6 @@ SYSTEM_JOURNAL = ".vo_system_journal.json"
 LEGACY_MIGRATION_JOURNAL = ".vo_system_ledger_migration.json"
 LEGACY_MIGRATION_PREFIX = ".ledger-migration-"
 LEGACY_MIGRATION_OWNER = ".migration-owner.json"
-AI_TOUCHSCREEN_WARNING = (
-    "Turn off Settings -> Printing Options -> Spaghetti Detection and Foreign Object "
-    "Detection on the touchscreen if you want the screen to match the disabled backend state."
-)
 QIDICLIENT_ARCHIVE_ROOTS = frozenset(
     {
         "account",
@@ -150,6 +147,8 @@ SERVICE_NAMES = {
     addons_service.UNIT: "the add-ons service",
     status_service.UNIT: "the Valve Oil status service",
     box_config.UNIT: "the Valve Oil Box monitor",
+    qidi_agent.UNIT: "Valve Oil's stand-in for the touchscreen app's duties",
+    qidi_agent.BLOCK_UNIT: "Valve Oil's block of QIDI's servers",
     auto_update.TIMER_NAME: "the update check",
     QIDICLIENT_SERVICE: "the touchscreen",
     cpu_governor.SERVICE: "the CPU governor",
@@ -173,11 +172,13 @@ STEP_LABELS = {
     ZRAM_SWAP_OPERATION: "Installing zram swap",
     KLIPPER_TREE_OPERATION: "Installing Valve Oil's Klipper",
 }
-SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
+AI_DETECTION_SERVICE = "algo_app.service"
+SERVICE_STEP_NAMES = {AI_DETECTION_SERVICE: "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
 # Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker; the Box monitor starts
-# after it is patched, and waits for the install to end anyway.
-RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, status_service.UNIT, auto_update.TIMER_NAME, QIDICLIENT_SERVICE, box_config.UNIT)
+# after it is patched, and waits for the install to end anyway. Valve Oil's agent follows the patched app, which no
+# longer connects as the agent it replaces. The LAN-only blocks come first, before anything that could reach QIDI.
+RESTART_ORDER = (zram_swap.UNIT, qidi_agent.BLOCK_UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, status_service.UNIT, auto_update.TIMER_NAME, QIDICLIENT_SERVICE, box_config.UNIT, qidi_agent.UNIT)
 MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
@@ -323,6 +324,15 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: moonraker_speedups.KLIPPER_PATH_FILE,
         patch=moonraker_speedups.patch_klipper_path_file,
         restart_service=moonraker_speedups.KLIPPER_RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.MQTT_OPERATION: _GuardedFilePatch(
+        label="Moonraker MQTT component",
+        file=lambda spec: moonraker_fixes.MQTT_FILE,
+        patch=moonraker_fixes.patch_mqtt,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
         missing_message=None,
         skip_unrecognized=True,
         create_if_missing=True,
@@ -565,6 +575,21 @@ GUARDED_FILE_PATCHES = {
         skip_unrecognized=True,
         create_if_missing=True,
     ),
+    # Valve Oil's stand-in for the touchscreen app's other duties, and the LAN-only mode blocks. Each agent file acts
+    # only for the patched app; each unit restarts for its own files, and udev reads the rules by itself. Valve Oil's
+    # USB rule goes in before the file that switches QIDI's makerbase-automount rule off (qidi_agent.OPERATIONS).
+    **{operation: _GuardedFilePatch(
+        label=qidi_agent.LABELS[operation],
+        file=lambda spec, operation=operation: qidi_agent.file_for(operation),
+        patch=qidi_agent.patcher(operation),
+        restart_service=qidi_agent.restart_service(operation),
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=qidi_agent.service_unit(operation),
+        # The mount unit is a template udev starts instances of, so it is loaded rather than enabled.
+        reloads_units=operation == qidi_agent.USB_UNIT_OPERATION,
+    ) for operation in qidi_agent.OPERATIONS},
     # The update check runs on every install; enrollment alone decides whether it installs anything (auto_update.py).
     # Restarting the oneshot service would run a check, so only the timer is restarted.
     auto_update.SERVICE_OPERATION: _GuardedFilePatch(
@@ -659,14 +684,7 @@ def maybe_apply_system_optimizations(
     spec = manifest.system_optimizations
     if spec is None:
         return state
-    policy = resolve_policy(
-        prior_ledger=state.system_ledger,
-        reporter=reporter,
-        input_stream=input_stream,
-        cli_options=cli_options,
-        ai_detection_running=lambda: _ai_detection_running(spec, paths=paths, environ=environ, run=run),
-    )
-    ledger = _ledger_with_policy(state.system_ledger, policy)
+    ledger = _ledger_with_policy(state.system_ledger, _policy())
     if not _system_root_allowed(paths=paths, environ=environ):
         reporter.debug(event="system_optimizations.skipped", reason="non-default-system-root")
         updated = _replace_system_ledger(state, ledger)
@@ -778,10 +796,7 @@ def maybe_reconcile_system_optimizations(
         state = load_installed_state(state_path)
     except StateValidationError:
         return
-    ledger = _ledger_with_policy(
-        state.system_ledger,
-        _noninteractive_policy(state.system_ledger, SystemOptimizationCliOptions()),
-    )
+    ledger = _ledger_with_policy(state.system_ledger, _policy())
     if not _system_root_allowed(paths=paths, environ=environ):
         return
     try:
@@ -826,7 +841,7 @@ def maybe_emit_system_dry_run(
     if manifest.system_optimizations is None:
         return
     prior_ledger = prior_state.system_ledger if prior_state is not None else None
-    policy = _noninteractive_policy(prior_ledger, cli_options)
+    policy = _policy()
     reporter.line("System optimizations dry-run:")
     for operation_id in _selected_operation_ids(manifest.system_optimizations, policy):
         if operation_id in FLUIDD_BUNDLE_OPERATIONS and _system_root_allowed(paths=paths, environ=environ):
@@ -1249,11 +1264,15 @@ def _moonraker_env_present(root: Path) -> bool:
 
 
 def _moonraker_fixes_module_current(root: Path) -> bool:
-    module = _map_path(root, moonraker_fixes.MODULE_FILE)
-    try:
-        return not module.is_symlink() and module.read_text(encoding="utf-8") == moonraker_fixes.module_source()
-    except (OSError, UnicodeDecodeError):
-        return False
+    for file, source in ((moonraker_fixes.MODULE_FILE, moonraker_fixes.module_source),
+                         (moonraker_fixes.MQTT_FILE, moonraker_fixes.mqtt_source)):
+        module = _map_path(root, file)
+        try:
+            if module.is_symlink() or module.read_text(encoding="utf-8") != source():
+                return False
+        except (OSError, UnicodeDecodeError):
+            return False
+    return True
 
 
 def _klippy_env_present(root: Path) -> bool:
@@ -1829,48 +1848,14 @@ def restore_system_optimizations(
         reporter.line(messages.SYSTEM_RESTORE_COMPLETE)
 
 
-def resolve_policy(
-    *,
-    prior_ledger: dict[str, Any] | None,
-    reporter,
-    input_stream,
-    cli_options: SystemOptimizationCliOptions,
-    ai_detection_running: Callable[[], bool],
-) -> dict[str, str]:
-    """Every install and update applies the OS optimizations; only whether AI detection stays on is the operator's."""
-    policy = _noninteractive_policy(prior_ledger, cli_options)
-    if cli_options.disable_ai_detection or cli_options.keep_ai_detection or input_stream is None:
-        return policy
-    # The operator is asked only while AI detection is on; otherwise their earlier choice stands.
-    if not ai_detection_running():
-        return policy
-    if prompt_yes(
-        reporter=reporter,
-        input_stream=input_stream,
-        question=messages.AI_DETECTION_PROMPT,
-        instruction=messages.AI_DETECTION_PROMPT_INSTRUCTION,
-    ):
-        return {"system_optimizations": "enabled", "ai_detection": "disable"}
-    return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-
-
 def ai_detection_running(manifest: Manifest, *, paths: RuntimePaths, environ: dict[str, str],
                          run=subprocess.run) -> bool:
-    """Whether QIDI's AI detection service runs now, so the operator is asked about it (install_flow.py)."""
-    if manifest.system_optimizations is None:
+    """Whether QIDI's AI detection service runs now, which the install turns off; its summary says so (install_flow.py)."""
+    spec = manifest.system_optimizations
+    if spec is None or AI_DETECTION_SERVICE not in spec.services.disable or not _system_root_allowed(paths=paths, environ=environ):
         return False
-    return _ai_detection_running(manifest.system_optimizations, paths=paths, environ=environ, run=run)
-
-
-def _ai_detection_running(spec: SystemOptimizationsSpec, *, paths: RuntimePaths, environ: dict[str, str], run) -> bool:
-    if not _system_root_allowed(paths=paths, environ=environ):
-        return True
-    root = _system_root(environ)
-    for item in spec.services.optional_disable:
-        state = _service_state(item.service, root=root, run=run)
-        if state["exists"] and not _service_state_is_disabled(state):
-            return True
-    return False
+    state = _service_state(AI_DETECTION_SERVICE, root=_system_root(environ), run=run)
+    return bool(state["exists"]) and not _service_state_is_disabled(state)
 
 
 def apply_system_optimizations(
@@ -2005,6 +1990,7 @@ def apply_system_optimizations(
             env_ready = {
                 moonraker_speedups.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_speedups_current(spec, root),
                 moonraker_speedups.KLIPPER_PATH_OPERATION: lambda: _klippy_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_fixes.MQTT_OPERATION: lambda: _moonraker_env_present(root),
                 moonraker_fixes.MODULE_OPERATION: lambda: _moonraker_env_present(root),
                 moonraker_fixes.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_fixes_module_current(root),
                 # Klipper never starts through a launcher that isn't in place.
@@ -2660,27 +2646,6 @@ def apply_system_optimizations(
             restore_preimages.setdefault(operation_id, preimage)
             _settle_host_journal(paths, rockchip_journal)
             applied_any = True
-        for operation_id in _policy_skipped_optional_service_operation_ids(spec, policy, selected_ids):
-            started_at = _now()
-            preimage = _capture_operation_preimage(
-                operation_id,
-                paths=paths,
-                spec=spec,
-                root=root,
-                run=run,
-            )
-            actions.append(
-                _action_record(
-                    operation_id=operation_id,
-                    status="missing" if not preimage.get("exists", True) else "skipped_by_policy",
-                    started_at=started_at,
-                    preimage=preimage,
-                    desired={"enabled": "unchanged", "active": "unchanged"},
-                    postflight={"service": preimage.get("service"), "exists": preimage.get("exists", True)},
-                    source=source,
-                    reconciled=False,
-                )
-            )
         restarts.flush()
         applied_any = _retire_services(
             restore_preimages, actions, spec=spec, root=root, sudo_password=sudo_password, run=run, reporter=reporter,
@@ -2763,13 +2728,6 @@ def apply_system_optimizations(
     ):
         with suppress(HostRebootError, OSError):
             recommend_reboot(paths)
-    optional_services = {f"service_{item.service}" for item in spec.services.optional_disable}
-    if source not in {"auto_update_child", "auto_update_reconcile"} and any(
-        action.get("id") in optional_services and action.get("status") == "applied"
-        for action in actions[prior_action_count:]
-    ):
-        # Last, so the touchscreen app has already restarted when the operator turns its settings off.
-        reporter.line(AI_TOUCHSCREEN_WARNING)
     if source in {"auto_update_child", "auto_update_reconcile"}:
         reporter.line(
             "System optimizations reconciled."
@@ -4267,7 +4225,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION,
-        # The path file imports the module, so it goes after it and restoration removes it first.
+        # The path file imports the module, which loads the MQTT component, so each goes after what it loads and
+        # restoration removes it first.
+        moonraker_fixes.MQTT_OPERATION,
         moonraker_fixes.MODULE_OPERATION,
         moonraker_fixes.PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
@@ -4284,6 +4244,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         box_config.MONITOR_OPERATION,
         box_config.UNIT_OPERATION,
         box_config.RULE_OPERATION,
+        *qidi_agent.OPERATIONS,
         auto_update.SERVICE_OPERATION,
         auto_update.TIMER_OPERATION,
         remote_screen.NGINX_OPERATION,
@@ -4291,8 +4252,6 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
     if enabled:
         ids.extend(["dns", "apt_sources", "qidiclient_static_gifs", adb_usb_only.OPERATION])
         ids.extend(f"service_{service}" for service in spec.services.disable)
-        if policy.get("ai_detection") == "disable":
-            ids.extend(f"service_{item.service}" for item in spec.services.optional_disable)
         # The unit goes after the modules it loads, so restoration stops it first.
         ids.extend([ZRAM_SWAP_OPERATION, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION])
     # QIDI's bundle goes last: restoring it after nginx serves the build is outside transaction rollback.
@@ -4300,25 +4259,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
     return tuple(ids)
 
 
-def _policy_skipped_optional_service_operation_ids(
-    spec: SystemOptimizationsSpec,
-    policy: dict[str, Any],
-    selected_ids: tuple[str, ...],
-) -> tuple[str, ...]:
-    if policy.get("ai_detection") == "disable":
-        return ()
-    selected = set(selected_ids)
-    return tuple(
-        operation_id
-        for operation_id in (f"service_{item.service}" for item in spec.services.optional_disable)
-        if operation_id not in selected
-    )
-
-
 def _service_for_operation(operation_id: str, spec: SystemOptimizationsSpec) -> str:
     service = operation_id.removeprefix("service_")
     services = set(spec.services.disable)
-    services.update(item.service for item in spec.services.optional_disable)
     # Kept valid so ledgers from earlier package versions can still be restored and retired.
     services.update(operation.removeprefix("service_") for operation in adb_usb_only.RETIRED_SERVICE_OPERATIONS)
     if service not in services:
@@ -4362,7 +4305,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, klipper_chelper.OPERATION,
         moonraker_speedups.PATH_OPERATION,
-        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MQTT_OPERATION, moonraker_fixes.MODULE_OPERATION,
+        moonraker_fixes.PATH_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, wifi_wait.OPERATION, wifi_wait.RULE_OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         adb_usb_only.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
@@ -4370,6 +4314,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         status_service.UNIT_OPERATION, status_service.SERVER_OPERATION,
         boot_screen.PLAYER_OPERATION, boot_screen.UNIT_OPERATION,
         box_config.MONITOR_OPERATION, box_config.UNIT_OPERATION, box_config.RULE_OPERATION,
+        *qidi_agent.OPERATIONS,
         auto_update.SERVICE_OPERATION, auto_update.TIMER_OPERATION,
         klipper_tree.LAUNCHER_OPERATION, klipper_tree.DROPIN_OPERATION,
     ):
@@ -4461,18 +4406,10 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
             raise SystemOptimizationError("qidiclient static GIF archive contains an unsafe entry type.")
 
 
-def _noninteractive_policy(
-    prior_ledger: dict[str, Any] | None,
-    cli_options: SystemOptimizationCliOptions,
-) -> dict[str, str]:
-    """Enable the OS optimizations whatever an earlier install chose, keeping its AI detection choice unless a flag overrides it."""
-    if cli_options.disable_ai_detection:
-        return {"system_optimizations": "enabled", "ai_detection": "disable"}
-    if cli_options.keep_ai_detection:
-        return {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
-    prior_policy = prior_ledger.get("policy") if isinstance(prior_ledger, dict) else None
-    disable = isinstance(prior_policy, dict) and prior_policy.get("ai_detection") == "disable"
-    return {"system_optimizations": "enabled", "ai_detection": "disable" if disable else "keep_enabled"}
+def _policy() -> dict[str, str]:
+    """Every install and update applies the OS optimizations, turning QIDI's AI detection off among them. The ledger
+    keeps the policy's ai_detection field, always "disable" now, for the earlier package versions that read it."""
+    return {"system_optimizations": "enabled", "ai_detection": "disable"}
 
 
 def system_ledger_needs_migration(ledger: dict[str, Any] | None) -> bool:
@@ -4838,6 +4775,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,
+            moonraker_fixes.MQTT_OPERATION,
             moonraker_fixes.MODULE_OPERATION,
             moonraker_fixes.PATH_OPERATION,
             *service_priority.SERVICES,
@@ -4862,12 +4800,12 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             box_config.MONITOR_OPERATION,
             box_config.UNIT_OPERATION,
             box_config.RULE_OPERATION,
+            *qidi_agent.OPERATIONS,
             auto_update.SERVICE_OPERATION,
             auto_update.TIMER_OPERATION,
             remote_screen.NGINX_OPERATION,
             ROCKCHIP_ROOT_SYNC_OPERATION,
             *(f"service_{service}" for service in spec.services.disable),
-            *(f"service_{item.service}" for item in spec.services.optional_disable),
             *adb_usb_only.RETIRED_SERVICE_OPERATIONS,
         }
     )
