@@ -55,6 +55,7 @@ from . import wifi_wait
 from . import zram_swap
 from . import boot_screen
 from . import box_config
+from . import qidi_agent
 from .auto_update import current_auto_update_checksum
 from .errors import InstallerError
 from .firmware import detect_firmware, detect_supported_firmware_best_effort
@@ -150,6 +151,8 @@ SERVICE_NAMES = {
     addons_service.UNIT: "the add-ons service",
     status_service.UNIT: "the Valve Oil status service",
     box_config.UNIT: "the Valve Oil Box monitor",
+    qidi_agent.UNIT: "Valve Oil's stand-in for the touchscreen app's duties",
+    qidi_agent.BLOCK_UNIT: "Valve Oil's block of QIDI's servers",
     auto_update.TIMER_NAME: "the update check",
     QIDICLIENT_SERVICE: "the touchscreen",
     cpu_governor.SERVICE: "the CPU governor",
@@ -176,8 +179,9 @@ STEP_LABELS = {
 SERVICE_STEP_NAMES = {"algo_app.service": "QIDI AI detection"}
 # Swap comes up before the services that use memory. nginx goes next so it never serves a removed Fluidd build while
 # Moonraker comes back. The touchscreen app goes last so it reconnects to the restarted Moonraker; the Box monitor starts
-# after it is patched, and waits for the install to end anyway.
-RESTART_ORDER = (zram_swap.UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, status_service.UNIT, auto_update.TIMER_NAME, QIDICLIENT_SERVICE, box_config.UNIT)
+# after it is patched, and waits for the install to end anyway. Valve Oil's agent follows the patched app, which no
+# longer connects as the agent it replaces. The LAN-only blocks come first, before anything that could reach QIDI.
+RESTART_ORDER = (zram_swap.UNIT, qidi_agent.BLOCK_UNIT, "nginx.service", MOONRAKER_SERVICE, KLIPPER_SERVICE, remote_screen.UNIT, addons_service.UNIT, status_service.UNIT, auto_update.TIMER_NAME, QIDICLIENT_SERVICE, box_config.UNIT, qidi_agent.UNIT)
 MOONRAKER_READY_TIMEOUT_SECONDS = 120
 
 
@@ -323,6 +327,15 @@ GUARDED_FILE_PATCHES = {
         file=lambda spec: moonraker_speedups.KLIPPER_PATH_FILE,
         patch=moonraker_speedups.patch_klipper_path_file,
         restart_service=moonraker_speedups.KLIPPER_RESTART_SERVICE,
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+    ),
+    moonraker_fixes.MQTT_OPERATION: _GuardedFilePatch(
+        label="Moonraker MQTT component",
+        file=lambda spec: moonraker_fixes.MQTT_FILE,
+        patch=moonraker_fixes.patch_mqtt,
+        restart_service=moonraker_fixes.RESTART_SERVICE,
         missing_message=None,
         skip_unrecognized=True,
         create_if_missing=True,
@@ -565,6 +578,21 @@ GUARDED_FILE_PATCHES = {
         skip_unrecognized=True,
         create_if_missing=True,
     ),
+    # Valve Oil's stand-in for the touchscreen app's other duties, and the LAN-only mode blocks. Each agent file acts
+    # only for the patched app; each unit restarts for its own files, and udev reads the rules by itself. Valve Oil's
+    # USB rule goes in before the file that switches QIDI's makerbase-automount rule off (qidi_agent.OPERATIONS).
+    **{operation: _GuardedFilePatch(
+        label=qidi_agent.LABELS[operation],
+        file=lambda spec, operation=operation: qidi_agent.file_for(operation),
+        patch=qidi_agent.patcher(operation),
+        restart_service=qidi_agent.restart_service(operation),
+        missing_message=None,
+        skip_unrecognized=True,
+        create_if_missing=True,
+        service_unit=qidi_agent.service_unit(operation),
+        # The mount unit is a template udev starts instances of, so it is loaded rather than enabled.
+        reloads_units=operation == qidi_agent.USB_UNIT_OPERATION,
+    ) for operation in qidi_agent.OPERATIONS},
     # The update check runs on every install; enrollment alone decides whether it installs anything (auto_update.py).
     # Restarting the oneshot service would run a check, so only the timer is restarted.
     auto_update.SERVICE_OPERATION: _GuardedFilePatch(
@@ -1249,11 +1277,15 @@ def _moonraker_env_present(root: Path) -> bool:
 
 
 def _moonraker_fixes_module_current(root: Path) -> bool:
-    module = _map_path(root, moonraker_fixes.MODULE_FILE)
-    try:
-        return not module.is_symlink() and module.read_text(encoding="utf-8") == moonraker_fixes.module_source()
-    except (OSError, UnicodeDecodeError):
-        return False
+    for file, source in ((moonraker_fixes.MODULE_FILE, moonraker_fixes.module_source),
+                         (moonraker_fixes.MQTT_FILE, moonraker_fixes.mqtt_source)):
+        module = _map_path(root, file)
+        try:
+            if module.is_symlink() or module.read_text(encoding="utf-8") != source():
+                return False
+        except (OSError, UnicodeDecodeError):
+            return False
+    return True
 
 
 def _klippy_env_present(root: Path) -> bool:
@@ -2005,6 +2037,7 @@ def apply_system_optimizations(
             env_ready = {
                 moonraker_speedups.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_speedups_current(spec, root),
                 moonraker_speedups.KLIPPER_PATH_OPERATION: lambda: _klippy_env_present(root) and _moonraker_speedups_current(spec, root),
+                moonraker_fixes.MQTT_OPERATION: lambda: _moonraker_env_present(root),
                 moonraker_fixes.MODULE_OPERATION: lambda: _moonraker_env_present(root),
                 moonraker_fixes.PATH_OPERATION: lambda: _moonraker_env_present(root) and _moonraker_fixes_module_current(root),
                 # Klipper never starts through a launcher that isn't in place.
@@ -4267,7 +4300,9 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         MOONRAKER_SPEEDUPS_OPERATION,
         moonraker_speedups.PATH_OPERATION,
         moonraker_speedups.KLIPPER_PATH_OPERATION,
-        # The path file imports the module, so it goes after it and restoration removes it first.
+        # The path file imports the module, which loads the MQTT component, so each goes after what it loads and
+        # restoration removes it first.
+        moonraker_fixes.MQTT_OPERATION,
         moonraker_fixes.MODULE_OPERATION,
         moonraker_fixes.PATH_OPERATION,
         FILAMENT_CONFIG_OPERATION,
@@ -4284,6 +4319,7 @@ def _selected_operation_ids(spec: SystemOptimizationsSpec, policy: dict[str, Any
         box_config.MONITOR_OPERATION,
         box_config.UNIT_OPERATION,
         box_config.RULE_OPERATION,
+        *qidi_agent.OPERATIONS,
         auto_update.SERVICE_OPERATION,
         auto_update.TIMER_OPERATION,
         remote_screen.NGINX_OPERATION,
@@ -4362,7 +4398,8 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         moonraker_klippy_apis.OPERATION, moonraker_spoolman.OPERATION, moonraker_allowed_services.OPERATION,
         moonraker_used_extruders.OPERATION, qidiclient_firmware_popup.OPERATION, klipper_chelper.OPERATION,
         moonraker_speedups.PATH_OPERATION,
-        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MODULE_OPERATION, moonraker_fixes.PATH_OPERATION,
+        moonraker_speedups.KLIPPER_PATH_OPERATION, moonraker_fixes.MQTT_OPERATION, moonraker_fixes.MODULE_OPERATION,
+        moonraker_fixes.PATH_OPERATION,
         restart_on_exit.MOONRAKER_OPERATION, restart_on_exit.KLIPPER_OPERATION,
         webcam_id.OPERATION, wifi_wait.OPERATION, wifi_wait.RULE_OPERATION, *service_priority.SERVICES, *cpu_tuning.FILES, zram_swap.UNIT_OPERATION, cpu_governor.OPERATION,
         adb_usb_only.OPERATION, remote_screen.UNIT_OPERATION, remote_screen.SERVER_OPERATION, remote_screen.NGINX_OPERATION,
@@ -4370,6 +4407,7 @@ def _desired(operation_id: str, spec: SystemOptimizationsSpec) -> dict[str, Any]
         status_service.UNIT_OPERATION, status_service.SERVER_OPERATION,
         boot_screen.PLAYER_OPERATION, boot_screen.UNIT_OPERATION,
         box_config.MONITOR_OPERATION, box_config.UNIT_OPERATION, box_config.RULE_OPERATION,
+        *qidi_agent.OPERATIONS,
         auto_update.SERVICE_OPERATION, auto_update.TIMER_OPERATION,
         klipper_tree.LAUNCHER_OPERATION, klipper_tree.DROPIN_OPERATION,
     ):
@@ -4838,6 +4876,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             MOONRAKER_SPEEDUPS_OPERATION,
             moonraker_speedups.PATH_OPERATION,
             moonraker_speedups.KLIPPER_PATH_OPERATION,
+            moonraker_fixes.MQTT_OPERATION,
             moonraker_fixes.MODULE_OPERATION,
             moonraker_fixes.PATH_OPERATION,
             *service_priority.SERVICES,
@@ -4862,6 +4901,7 @@ def _host_operation_ids(spec: SystemOptimizationsSpec) -> frozenset[str]:
             box_config.MONITOR_OPERATION,
             box_config.UNIT_OPERATION,
             box_config.RULE_OPERATION,
+            *qidi_agent.OPERATIONS,
             auto_update.SERVICE_OPERATION,
             auto_update.TIMER_OPERATION,
             remote_screen.NGINX_OPERATION,

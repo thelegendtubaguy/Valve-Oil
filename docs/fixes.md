@@ -51,35 +51,17 @@ QIDI's `qidi-tuning` service keeps Klipper on CPUs 1 and 2, keeps the web server
 
 Moonraker also gets CPU 3, which has little else to do when AI detection is off. On the test Max 4 with the camera streaming and Fluidd connected, other programs interrupted Moonraker about 18 times a second instead of 45, and status updates reached Fluidd and the touchscreen in a median 8.7 ms instead of 12.5 ms. With AI detection running, the difference is small.
 
-## Moonraker freezing while it connects to QIDI's cloud
+## Moonraker freezing and MQTT errors from QIDI's cloud
 
-On a printer linked to a QIDI account, QIDI's Moonraker keeps a connection open to QIDI's cloud server. Each time it connects, it waits for the server to answer the start of the encrypted connection, and QIDI's code does that waiting in the one loop that runs everything else in Moonraker, with a 60 second limit. If the server accepts the connection and then doesn't answer, Moonraker stops for those 60 seconds. Fluidd and the touchscreen get no answers, Klipper's state isn't read, and `moonraker.log` says `EVENT LOOP BLOCKED: 62 seconds` after `The handshake operation timed out`. QIDI's code retries 2 seconds later, so a server that keeps doing it freezes Moonraker again and again.
+QIDI's Moonraker kept its own connection open to QIDI's cloud, and it went wrong in several ways. While it waited for QIDI's server to answer, Moonraker stopped for up to 60 seconds at a time, so Fluidd and the touchscreen got no answers, and at power-on the touchscreen could show **Printer service failed to start** (`QDC_400_005_015_001`) while Klipper was running normally. At power-on it connected before the touchscreen app had started and was refused, so Fluidd showed **Moonraker has failed plugins** with `mqtt` and `MQTT Connection Failed: Not authorized`. With a slicer connected first, it couldn't read the printer's QIDI account at all. On a printer with no QIDI account it kept retrying after LAN only mode was turned on, and the touchscreen kept an MQTT error until Moonraker restarted.
 
-At power-on this can show on the touchscreen as **Printer service failed to start** (`QDC_400_005_015_001`) while Klipper is running normally.
-
-Moonraker now waits for the server's answer in the background, for at most 10 seconds, and keeps answering Fluidd, the touchscreen, and Klipper while it waits. When the answer doesn't come, QIDI's code gets the same error and retries as before. On the Max 4 test printer, with a test server that accepts connections and never answers, each Moonraker request took about 59 seconds before the change and about 15 ms after it.
-
-This doesn't change whether QIDI's cloud accepts your printer. For the `MQTT Connection Failed: Not authorized` warning, see the next section.
+Valve Oil [keeps the printer off QIDI's servers](settings.md#qidis-cloud), and Moonraker runs [its own MQTT](settings.md#mqtt-and-home-assistant) in place of QIDI's, which connects only to a broker you set up. None of this happens.
 
 ## Moonraker not starting after a restart
 
 As QIDI's Moonraker starts, it checks over D-Bus, the system's message bus, that the touchscreen app and Klipper answer, and only writes what they say to `moonraker.log`. QIDI's code waits for those answers with no time limit. On a Max 4 whose Klipper held its D-Bus name and didn't answer, Moonraker restarted by an update waited until the printer was switched off and on again: Fluidd and the touchscreen couldn't reach the printer, and the update stopped with `Moonraker did not answer after its restart.` (issue #390). `moonraker.log` then ends at `qidi-client service test response` with no `klipper service test response` after it.
 
 Now each of those checks waits at most 5 seconds. One that gets no answer is logged as `vo_moonraker_fixes: org.qidi.klipper did not answer Moonraker's D-Bus check within 5 s; Moonraker starts without its answer`, and Moonraker starts. The checks only log their answers, so nothing else changes. Moonraker's other D-Bus calls wait as long as QIDI's code does.
-
-## `Not authorized` from QIDI's cloud after the printer starts
-
-QIDI's Moonraker reads the printer's QIDI account through the touchscreen app. At power-on it connected to QIDI's cloud before the touchscreen app had started, so it connected without the account to QIDI's fallback server, which refused it. Fluidd then showed **Moonraker has failed plugins** with `mqtt`, and `MQTT Connection Failed: Not authorized`, even when the printer connected with its account seconds later. QIDI's code also reads the account through whichever program registered with Moonraker first as an agent, so when OrcaSlicer connected to the printer before the touchscreen app did, the account couldn't be read at all.
-
-Now, on a printer linked to a QIDI account, Moonraker waits for the touchscreen app before it first connects to QIDI's cloud, and always reads the account through the touchscreen app. If the touchscreen app hasn't connected after two minutes, Moonraker connects as QIDI's code did before.
-
-The warning still appears when QIDI's server refuses the printer's account, or answers too late. QIDI's code waits 2 seconds for the server to accept the account, then starts again, and keeps trying. Moonraker drops the warning as soon as the printer connects. Fluidd used to keep showing it until the page was reloaded; now, while Fluidd shows a Moonraker warning or failed plugin, it checks Moonraker again every 10 seconds, so the warning goes away within 10 seconds of the printer connecting. When `moonraker.log` has `MQTT connection successful` after the last `Not authorized`, the printer is connected to QIDI's cloud.
-
-## MQTT errors after turning LAN only mode on
-
-QIDI's LAN only mode, on the touchscreen or in [Valve Oil UI](settings.md#qidis-cloud), disconnects the printer from QIDI's cloud. QIDI's code only closed the connection when it was connected, though. On a printer with no QIDI account, turning LAN only mode off makes it try to connect, QIDI's cloud refuses it every few seconds with `Bad user name or password`, and turning LAN only mode back on left those tries running. The touchscreen kept showing an MQTT connection error, and Fluidd showed **Moonraker has failed plugins** with `mqtt` and `MQTT Connection Failed: Bad user name or password`, until Moonraker restarted.
-
-Now, turning LAN only mode on also stops QIDI's tries to connect and clears that warning. A printer that is connected to QIDI's cloud is disconnected by QIDI's own code, as before.
 
 ## Touchscreen offering firmware you already have
 
@@ -91,11 +73,9 @@ The installer changes QIDI's touchscreen app for this, on Max 4 firmware `01.01.
 
 ## QIDI app connections disabled for security
 
-On a printer linked to a QIDI account, QIDI's touchscreen app runs the peer-to-peer (P2P) remote access that QIDI's phone app uses for the camera and files. Some of its connections are disabled due to security concerns: the printer no longer relays other people's sessions or sends its own through other people's devices, and it ignores requests and settings from QIDI's P2P server about them.
+QIDI's touchscreen app ran the peer-to-peer (P2P) remote access that QIDI's phone app uses for the camera and files, on a printer linked to a QIDI account. Some of its connections raised security concerns. Valve Oil keeps the printer off QIDI's servers, and the touchscreen app no longer starts P2P at all. The app's P2P code also no longer relays other people's sessions, sends its own through other people's devices, or follows QIDI's P2P server's requests and settings about them.
 
-QIDI's phone app still reaches the printer on the same network. Away from it, for example over a phone's cellular connection, the session goes through QIDI's own relay server, and on the Smart 5 test printer the camera showed a black picture there.
-
-The installer makes this change in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back. QIDI's touchscreen app in Plus 5 firmware `01.01.02.02` uses the filament's type itself, so it isn't changed for this.
+The installer makes these changes in the same touchscreen app builds as [the firmware notice fix](#touchscreen-offering-firmware-you-already-have), keeps QIDI's original, and uninstall puts it back.
 
 ## Touchscreen greying out filament of the right type
 

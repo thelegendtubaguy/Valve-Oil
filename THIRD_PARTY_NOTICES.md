@@ -51,6 +51,14 @@ The fixture contains the unmodified minified `getVariables` getter, printer-stor
 
 The fixture contains the unmodified `MetadataStorage` class and metascan handler extracted from QIDI Max 4 Moonraker source captured on 2026-09-15. The enclosing module credits Copyright (C) 2020 Eric Callahan and distribution under GNU GPLv3. The fixture retains that attribution without the contact address; imports and service dependencies are supplied by the test harness.
 
+### Moonraker MQTT component
+
+- Upstream: <https://github.com/Arksine/moonraker>
+- License: GPL-3.0-only
+- Path: `installer/system/vo_moonraker_mqtt.py`
+
+The file is Moonraker `v0.9.3`'s `moonraker/components/mqtt.py`, Copyright (C) 2021 Eric Callahan, distributed under GNU GPLv3, with the contact address left out of its copyright line. Valve Oil changed it on 2026-11-22: a header says where it comes from, and its `load_component` at the end loads a stand-in that connects nowhere when `moonraker.conf` has no `[mqtt]` section.
+
 ### Moonraker Timelapse
 
 - Source: <https://github.com/mainsail-crew/moonraker-timelapse>

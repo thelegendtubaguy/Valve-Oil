@@ -79,7 +79,26 @@ See [Installing, updating, and uninstalling](install.md) for the dry run and the
 
 ## QIDI's cloud
 
-**LAN only mode** on Valve Oil UI's **Updates** screen is QIDI's own setting, the same one as the touchscreen's LAN Only switch. On, the printer disconnects from QIDI's cloud and stops QIDI's remote access, so the Qidi Joy app and signing in to a QIDI account don't work; Fluidd, Valve Oil UI, and your slicers keep working on your network. Off, the printer connects to QIDI's cloud again. A change made on the touchscreen shows in Valve Oil UI the next time the page is opened.
+Valve Oil keeps the printer off QIDI's servers, on every install. QIDI's own LAN only mode stays on: the touchscreen shows **LAN Only Mode** where the QIDI account was, and its LAN Only switch, at the bottom of the Wi-Fi page, turns itself back on. Signing in to a QIDI account and QIDI's phone app don't work; Fluidd, Valve Oil UI, and your slicers keep working on your network, and QIDI Studio still finds the printer there.
+
+Nothing on the printer reaches QIDI or the other services QIDI's software contacts: QIDI's cloud, download, MQTT, and P2P servers, Peergine's P2P servers, the services that look up the printer's public address and location, Moonraker's announcements feed, and the time server QIDI's touchscreen app uses. Their names point nowhere in a marked block of `/etc/hosts`, connections to their addresses fail at once, and QIDI's remote access client, `frpc`, stays stopped. Moonraker no longer runs QIDI's cloud connection at all; see [MQTT and Home Assistant](#mqtt-and-home-assistant). The printer still uses its DNS servers, your network's and the public ones QIDI's firmware adds (`1.1.1.1` and `8.8.8.8`), and reaches the rest of the internet, so Valve Oil's updates and the add-ons you install, such as ZeroTier and OctoEverywhere, keep working.
+
+Uninstall removes the block and puts QIDI's own MQTT connection back. LAN only mode stays on until you turn it off on the touchscreen.
+
+### MQTT and Home Assistant
+
+QIDI's Moonraker came with QIDI's own MQTT connection, which connected only to QIDI's cloud and ignored an `[mqtt]` section in `moonraker.conf`, so Moonraker couldn't talk to your own MQTT broker. Valve Oil runs Moonraker's own MQTT instead, from Moonraker `v0.9.3`, the version QIDI's Moonraker is built on. Without an `[mqtt]` section it connects nowhere.
+
+To connect to your broker, for example for Home Assistant, add an `[mqtt]` section to `moonraker.conf` (Fluidd's **Configuration** page) and save and restart Moonraker:
+
+```ini
+[mqtt]
+address: 192.168.1.10
+username: printer
+password: your-password
+```
+
+Every option is in [Moonraker's MQTT documentation](https://moonraker.readthedocs.io/en/latest/configuration/#mqtt).
 
 ## Add-ons
 

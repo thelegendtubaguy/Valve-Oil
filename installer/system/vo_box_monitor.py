@@ -1,5 +1,7 @@
 # vo:box-monitor
 """Valve Oil's Box monitor: writes box.cfg for the USB QIDI Boxes connected, and restarts Klipper for them when idle.
+It also keeps MCU_ID.cfg naming the mainboard and removes SAVE_CONFIG's printer-*.cfg backups, as QIDI's app did at
+its start and when the mainboard connected, where Valve Oil's patch has taken those duties from the app.
 
 Installed by Valve Oil as /usr/local/lib/vo_box_monitor.py and run by vo-box-monitor.service, which a udev rule
 starts when a USB Box connects or disconnects, and which also runs once at boot. Valve Oil's patch of QIDI's touchscreen
@@ -301,6 +303,60 @@ def write_config(printer_data, boxes):
     return True
 
 
+MAINBOARD_NAMES = ("usb-Klipper_QIDI_MAIN_", "usb-Klipper_02.01", "usb-Klipper_stm32f407xx_")
+MCU_ID_CFG = "config/MCU_ID.cfg"
+
+
+def mainboard(by_id=SERIAL_BY_ID):
+    """The mainboard's /dev/serial/by-id path as QIDI's app finds it: the first name, in directory order, containing
+    one of MAINBOARD_NAMES; None when there is none."""
+    try:
+        names = os.listdir(by_id)
+    except OSError:
+        return None
+    for name in names:
+        if any(part in name for part in MAINBOARD_NAMES):
+            return os.path.join(by_id, name)
+    return None
+
+
+def keep_mcu_id(printer_data, by_id=SERIAL_BY_ID):
+    """Write MCU_ID.cfg in QIDI's app's form when it would change, and remove printer-*.cfg in the config folder, as
+    the app did; both only when the mainboard is found. Klipper reads the new name at its next start. Returns whether
+    MCU_ID.cfg was written, or None without a mainboard."""
+    path = mainboard(by_id)
+    if path is None:
+        return None
+    wanted = "[mcu]\nserial: " + path + "\nrestart_method: command\n"
+    target = os.path.join(printer_data, MCU_ID_CFG)
+    written = read_text(target) != wanted
+    if written:
+        _write(target, wanted)
+    config = os.path.dirname(target)
+    try:
+        names = os.listdir(config)
+    except OSError:
+        names = []
+    for name in names:
+        if name.startswith("printer-") and ".cfg" in name and os.path.isfile(os.path.join(config, name)):
+            _remove(os.path.join(config, name))
+    return written
+
+
+def app_took_over(app=APP, builds=None):
+    """Whether the touchscreen app is a reviewed build whose other duties Valve Oil's patch has taken over."""
+    builds = APP_BUILDS if builds is None else builds
+    try:
+        site = (builds or {}).get(str(os.stat(app).st_size))
+        if site is None or len(site) < 4:
+            return False
+        with open(app, "rb") as handle:
+            data = os.pread(handle.fileno(), len(site[3]) // 2, site[2])
+    except OSError:
+        return False
+    return data == bytes.fromhex(site[3])
+
+
 def app_patched(app=APP, builds=None):
     """Whether the touchscreen app is a reviewed build with Valve Oil's patch of its Box detector."""
     builds = APP_BUILDS if builds is None else builds
@@ -385,12 +441,15 @@ def settle(boxes_now, *, clock, sleep):
 
 
 def run(printer_data=PRINTER_DATA, *, boxes_now=connected, patched=app_patched, busy=printer_busy,
-        restart=restart_klipper, clock=time.monotonic, sleep=time.sleep, uptime=None, say=log):
+        restart=restart_klipper, clock=time.monotonic, sleep=time.sleep, uptime=None, say=log,
+        took_over=app_took_over, by_id=SERIAL_BY_ID):
     """Bring box.cfg to the Boxes connected; return what was done."""
     if not patched():
         return "the touchscreen app manages box.cfg"
     if uptime is not None:
         sleep(max(0.0, BOOT_SECONDS - uptime()))
+    if took_over() and keep_mcu_id(printer_data, by_id):
+        say("MCU_ID.cfg now names the mainboard connected.")
     waiting = None
     while True:
         work = board_work(printer_data)

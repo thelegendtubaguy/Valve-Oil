@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CircleCheck, Cpu, Download, ExternalLink, Info, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { Card, Dialog, PageHeader, Notice } from '../components/ui'
-import { LanOnly } from '../components/settings/LanOnly'
 import { JobView, RunningBox } from '../components/settings/Addons'
 import { fmtDateTime, fmtTime, PendingToggleRow } from '../components/settings/common'
 import { InstallStepsCard, InstallerLogsCard } from '../components/updates/Install'
@@ -345,8 +344,6 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
       <div className="mt-2" />
       <PendingToggleRow title={t('updates.card.auto')} sub={t('updates.card.auto_sub')} pending={s.autoUpdateRequest != null} checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} onChange={setAutoUpdate} />
       {view.updateWindow && <UpdateWindow window={view.updateWindow} disabled={autoUpdateDisabled(s)} pending={s.windowPending} error={s.windowError} />}
-      {/* QIDI's setting, through Moonraker; it hides itself while Moonraker is down or isn't QIDI's. */}
-      <LanOnly className="mt-2 border-t border-line pt-2" />
 
       <div className="sep my-2" />
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 py-1">

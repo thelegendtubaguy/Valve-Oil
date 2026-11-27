@@ -25,6 +25,7 @@ from installer.runtime import adb_usb_only
 from installer.runtime import cpu_governor
 from installer.runtime import cpu_tuning
 from installer.runtime import box_config as box_monitor
+from installer.runtime import qidi_agent
 from installer.runtime import klipper_chelper, klipper_tree, qidiclient_firmware_popup
 from installer.runtime import moonraker_fixes
 from installer.runtime import restart_on_exit
@@ -135,6 +136,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         check_timer = system_root / auto_update.TIMER_FILE.lstrip("/")
         fixes_module = system_root / moonraker_fixes.MODULE_FILE.lstrip("/")
         fixes_path = system_root / moonraker_fixes.PATH_FILE.lstrip("/")
+        fixes_mqtt = system_root / moonraker_fixes.MQTT_FILE.lstrip("/")
         screen_state = system_root / "systemd" / f"{remote_screen.UNIT}.json"
         asvc = system_root / moonraker_allowed_services.FILE.lstrip("/")
         asvc_before = asvc.read_bytes()
@@ -210,10 +212,11 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             )
             self.assertEqual(install_idle_checks, 2)
             # Every host change is in place before any service restarts, and each restarts once. Zram swap starts first,
-            # the touchscreen app restarts after Moonraker answers again, and Klipper restarts once for its host and source
-            # changes.
+            # then the block of QIDI's servers, the touchscreen app restarts after Moonraker answers again, and Klipper restarts
+            # once for its host and source changes.
             restarts = [
                 zram_swap.UNIT,
+                qidi_agent.BLOCK_UNIT,
                 "nginx.service",
                 "moonraker.service",
                 "moonraker answered",
@@ -223,6 +226,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 auto_update.TIMER_NAME,
                 "qidi-client.service",
                 box_monitor.UNIT,
+                qidi_agent.UNIT,
                 "crowsnest.service",
                 cpu_tuning.TUNING_UNIT,
                 cpu_tuning.IRQBALANCE_UNIT,
@@ -357,8 +361,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual(check_timer.read_text(encoding="utf-8"), auto_update.TIMER_CONTENT)
             self.assertEqual(json.loads((system_root / "systemd" / f"{auto_update.TIMER_NAME}.json").read_text(encoding="utf-8"))["enabled"], "enabled")
             self.assertFalse(auto_update.auto_update_enrolled(paths))
-            # Moonraker's Python imports the fixes module through the path file.
+            # Moonraker's Python imports the fixes module through the path file, and it loads the MQTT component.
             self.assertEqual(fixes_module.read_bytes(), moonraker_fixes.MODULE_PAYLOAD.read_bytes())
+            self.assertEqual(fixes_mqtt.read_bytes(), moonraker_fixes.MQTT_PAYLOAD.read_bytes())
             self.assertEqual(fixes_path.read_text(encoding="utf-8"), moonraker_fixes.PATH_CONTENT)
             self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "enabled")
             # Without a package Fluidd build, nginx keeps serving QIDI's patched bundle.
@@ -660,6 +665,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertEqual(enrolled_when_timer_stopped, [False])
             self.assertFalse(fixes_module.exists())
             self.assertFalse(fixes_path.exists())
+            self.assertFalse(fixes_mqtt.exists())
             self.assertEqual(json.loads(screen_state.read_text(encoding="utf-8"))["enabled"], "disabled")
             for dropin in restart_on_exit.FILES.values():
                 self.assertFalse((system_root / dropin.lstrip("/")).exists())

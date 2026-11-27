@@ -155,6 +155,24 @@ The installer adds `/etc/profile.d/valve-oil-adb-usb-only.sh`, which unsets that
 
 To check that ADB is off the network, run `sudo ss -tlnp | grep 5555` over SSH; it should print nothing.
 
+### What QIDI's touchscreen app still does
+
+QIDI's touchscreen app does much more than draw the screen, and two programs doing one job get in each other's way, as the app did with `box.cfg`. So Valve Oil does the app's background work on the printer and its network itself, and the app no longer does it. Its work with QIDI's cloud is done by nothing: Valve Oil [keeps the printer off QIDI's servers](settings.md#qidis-cloud). The app still draws the screen and does everything you do on it, including the offer to resume a print after a power cut. Its account screen shows **LAN Only Mode**.
+
+Valve Oil now:
+
+- **Records each print's progress** for resuming after a power cut, as the app did, so the touchscreen's resume offer and QIDI's resume work as before.
+- **Resumes a print after a lost connection to a board,** a heater that didn't heat at the expected rate, or a full move queue, past the print's first layer, by restarting Klipper's firmware and resuming as the app did.
+- **Mounts USB drives** at `USB` in the file list, with the app's settings, and unmounts them when they're removed. QIDI's other USB mounter, which mounted a drive again each time the system saw it, is switched off.
+- **Keeps `MCU_ID.cfg` naming the mainboard,** and removes `SAVE_CONFIG`'s `printer-*.cfg` backups, at startup and when the mainboard connects, as the app did.
+- **Saves the number of USB Boxes** for QIDI's Box macros, and **pauses a print when QIDI's AI detection reports spaghetti.**
+- **Answers what QIDI's software asks the app for** through Moonraker: the print files, the official filament list, and the app's list of errors.
+- **Announces the printer on the network,** so QIDI Studio finds it.
+
+The touchscreen app also no longer reports the printer to QIDI's cloud, checks QIDI's servers for firmware updates, starts QIDI's P2P remote access, or runs `ntpdate`, which isn't installed on these printers.
+
+This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. With any other app, as after a QIDI firmware update until Valve Oil is installed again, the app does all of this itself and Valve Oil does none of it; the printer is kept off QIDI's servers either way. Uninstall puts QIDI's app back, which takes all of it back. Valve Oil's side logs to `journalctl -u vo-qidi-agent`.
+
 ## Slicer start G-code
 
 > [!TIP]
