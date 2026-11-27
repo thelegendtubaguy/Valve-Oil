@@ -143,6 +143,14 @@ def _lan_mode_stays_on(handler):
         except Exception:
             section = key = None
         if _is_lan_mode(section, key):
+            try:
+                value = web_request.get("value", None)
+            except Exception:
+                value = None
+            if str(value) != LAN_ONLY:
+                logging.info("vo_moonraker_fixes: general.lan_mode set to %r "
+                             "was answered with %s; LAN only mode stays on",
+                             value, LAN_ONLY)
             await _pin_lan_mode(self)
             return {"status": "success", "result": {LAN_MODE_KEY: LAN_ONLY}}
         try:
