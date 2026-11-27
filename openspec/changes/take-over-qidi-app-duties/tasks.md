@@ -22,7 +22,7 @@
 
 ## 4. Validation
 
-- [ ] 4.1 On each printer, with QIDI's app running and with it stopped: power cut and resume, resume after a Klipper error, Box connect and remove, USB drive in QIDI's app and Fluidd, mainboard name change, AI pause, QIDI Studio discovery, nothing reaching QIDI's servers, and Moonraker's MQTT with and without an `[mqtt]` section. (Smart 5, 2026-11-22: block, LAN-only pin, and MQTT both ways checked. Plus 5 `01.01.02.02`, 2026-11-27: install over 26.11.25.1, home screen, one agent, discovery started, block, LAN-only mode.)
+- [ ] 4.1 On each printer, with QIDI's app running and with it stopped: power cut and resume, resume after a Klipper error, Box connect and remove, USB drive in QIDI's app and Fluidd, mainboard name change, AI pause, QIDI Studio discovery, nothing reaching QIDI's servers, and Moonraker's MQTT with and without an `[mqtt]` section. (Smart 5, 2026-11-22: block, LAN-only pin, and MQTT both ways checked. Plus 5 `01.01.02.02`, 2026-11-27: install over 26.11.25.1, home screen, one agent, discovery started, block, LAN-only mode; power cut at layer 32 with QIDI's app running: Valve Oil's record survived, the app offered the resume, and the print resumed 4 KiB before the recorded position.)
 - [ ] 4.2 Compare Valve Oil's print-state writes with the stock app's during the same print.
 
 ## 5. Release
