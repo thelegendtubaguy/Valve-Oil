@@ -9,12 +9,13 @@ vo-qidi-agent.service. Valve Oil patches those duties out of the reviewed app bu
   answering the app's methods in its result shapes;
 - the print state power-loss resume reads, written as the app writes it;
 - resuming a print after the Klipper errors the app resumes from;
-- saving box_count, and pausing a print when QIDI's AI service reports spaghetti;
+- saving box_count;
 - the error list, the print file list and statistics, the official filament list, and LAN discovery, through the
   helpers.
 
 The app's QIDI cloud work, its P2P remote access, and its decryption of the cloud account for QIDI's MQTT component are
-patched out of the app and done by nothing: Valve Oil keeps the printer off QIDI's servers.
+patched out of the app and done by nothing: Valve Oil keeps the printer off QIDI's servers. So is the app's pause for a
+spaghetti report from QIDI's AI service, since Valve Oil keeps that service stopped.
 
 APP_BUILDS, filled in at install, says how to tell the patched app and what it is called: {size: {"site": [file
 offset, patched bytes as hex], "name": the app's agent name}}. With any other app on disk, as after a QIDI firmware
@@ -670,57 +671,12 @@ class BoxCount:
             LOG.info("saving box_count failed: %s", exc)
 
 
-# ---- AI pause -------------------------------------------------------------------------------------------------------
-
-def ai_report(value):
-    """QIDI's AI service's report in the qdc_ai_error_code saved variable, "<kind>=<0|1> status=<0|1> time=<ts>":
-    (kind, status) or None."""
-    if not isinstance(value, str):
-        return None
-    fields = dict(part.split("=", 1) for part in value.split() if "=" in part)
-    kind = value.split("=", 1)[0].strip() if "=" in value else ""
-    status = fields.get("status")
-    return (kind, status == "1") if kind else None
-
-
-class AiPause:
-    """Pauses a print when QIDI's AI service reports spaghetti, once per print, as QIDI's app does."""
-
-    def __init__(self, context):
-        self.context = context
-        self.value = None
-        self.paused_this_print = False
-        context.subscribe({"save_variables": ["variables"], "print_stats": ["state"]})
-        context.on_status(self.update)
-
-    def update(self, changes):
-        stats = changes.get("print_stats") or {}
-        if stats.get("state") in ("standby", "complete", "cancelled", "error"):
-            self.paused_this_print = False
-        variables = (changes.get("save_variables") or {}).get("variables")
-        if not isinstance(variables, dict) or "qdc_ai_error_code" not in variables:
-            return
-        value = variables["qdc_ai_error_code"]
-        if value == self.value:
-            return
-        self.value = value
-        report = ai_report(value)
-        if report is None or report != ("noodle", True) or self.paused_this_print:
-            return
-        if self.context.print_state() not in ("printing", "paused"):
-            return
-        self.paused_this_print = True
-        LOG.info("QIDI's AI service reported spaghetti; pausing")
-        asyncio.ensure_future(self.context.gcode("PAUSE W=1"))
-
-
 # ---- Service --------------------------------------------------------------------------------------------------------
 
 def build(context):
     PrintStateRecorder(context)
     ErrorResume(context)
     BoxCount(context)
-    AiPause(context)
     for name in HELPERS:
         try:
             module = importlib.import_module(name)

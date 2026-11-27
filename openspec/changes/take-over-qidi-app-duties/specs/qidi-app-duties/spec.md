@@ -5,7 +5,7 @@ On a printer whose touchscreen app is a reviewed build, Valve Oil SHALL patch th
 
 #### Scenario: Patched app running
 - **WHEN** the patched app runs, a print runs, a Box or USB drive is connected, and the network comes up
-- **THEN** the app writes no `print_state`, `MCU_ID.cfg`, or `box_count`, deletes no `printer-*.cfg`, mounts nothing, sends QIDI's cloud nothing an operator didn't start, announces nothing on the LAN, starts no FRP or P2P, and is not among Moonraker's agents
+- **THEN** the app writes no `print_state`, `MCU_ID.cfg`, or `box_count`, deletes no `printer-*.cfg`, mounts nothing, pauses no print for QIDI's AI service, sends QIDI's cloud nothing an operator didn't start, announces nothing on the LAN, starts no FRP or P2P, and is not among Moonraker's agents
 
 #### Scenario: Account screen of QIDI's app
 - **WHEN** an operator opens the patched app's account screen
@@ -79,15 +79,33 @@ With QIDI's app's mounter patched out, a USB drive's partition SHALL be mounted 
 - **THEN** it is unmounted and `USB` is empty
 
 ### Requirement: Klipper and its configuration are kept as QIDI's app keeps them
-Valve Oil SHALL save `box_count` when Klipper's Box count differs from the saved one, delete `printer-*.cfg` in the config folder at boot, and pause a running print when QIDI's AI service reports spaghetti, as QIDI's app does, whichever app is on the screen.
-
-#### Scenario: AI service reports spaghetti
-- **WHEN** QIDI's AI service reports spaghetti during a print with no touchscreen app running
-- **THEN** the print pauses
+Valve Oil SHALL save `box_count` when Klipper's Box count differs from the saved one and delete `printer-*.cfg` in the config folder at boot, as QIDI's app does, whichever app is on the screen.
 
 #### Scenario: Box count changes
 - **WHEN** Klipper starts with a different number of Boxes than the saved `box_count`
 - **THEN** `box_count` is saved with the new number
+
+### Requirement: QIDI's AI detection stays off
+On every install, whichever touchscreen app is installed, Valve Oil SHALL keep QIDI's AI detection service stopped and disabled without asking the operator, and SHALL keep the AI detection settings in QIDI's config table (`ai.*`) that the touchscreen app turns on and off at their off value.
+
+#### Scenario: Install or update
+- **WHEN** an install, `--yes` install, automatic update, or already-current automatic-update check runs on a printer whose AI detection service is enabled or running, also where an earlier install recorded keeping it on
+- **THEN** the service is stopped and disabled without a question, and an attended install's summary says AI detection is turned off
+- **AND** on a printer without the service nothing is changed for it
+
+#### Scenario: A QIDI firmware update starts it again
+- **WHEN** a QIDI firmware package enables and starts the AI detection service
+- **THEN** the next install, or the next automatic-update check while automatic updates are on, stops and disables it again
+
+#### Scenario: An AI detection setting turned on
+- **WHEN** the touchscreen app or another Moonraker client writes an AI detection setting on, alone or in a batch config write
+- **THEN** the setting is stored and answered as off, and the write is logged in `moonraker.log`
+- **AND** Moonraker starts with every AI detection setting off
+
+#### Scenario: Uninstalled with AI detection off
+- **WHEN** Valve Oil is uninstalled
+- **THEN** the service is put back as Valve Oil first found it when the operator accepts restoring the OS optimizations, and stays off when the operator declines or passes `--keep-system-optimizations`
+- **AND** the AI detection settings stay off until the operator turns them on
 
 ### Requirement: Uninstall gives the duties back to QIDI's app
 Uninstall SHALL restore QIDI's app bytes and remove Valve Oil's services, rules, the block of QIDI's servers, and the Moonraker changes, so QIDI's MQTT component loads again.

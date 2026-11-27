@@ -33,9 +33,6 @@ Codes added and removed here, each on the signal and condition the app used:
 - QDC_100_005_005_001, new mainboard or THR firmware: added while a board's reported version doesn't start with the
   version in QIDI's firmware manifest, the comparison of Valve Oil's patched app. The app judged each board as its
   version arrived, so the later one decided; this judges both together.
-- QDC_500_005_005_001 and 002, QIDI's AI service: added while a print is printing or paused and qdc_ai_error_code
-  reports foreign or noodle with status=1, removed when the print completes or is cancelled. Valve Oil's agent sends
-  the pause; the app's popup that also removed them has no counterpart here.
 
 Codes left out:
 
@@ -43,6 +40,8 @@ Codes left out:
   is a Moonraker client and sends events through Moonraker, so it has nothing to send it through.
 - QDC_400_004_010_001 and 002, QIDI's cloud MQTT and P2P connections: Valve Oil keeps the printer off QIDI's cloud,
   with QIDI's LAN-only mode on, where the app reported neither.
+- QDC_500_005_005_001 and 002, QIDI's AI service's foreign-object and spaghetti reports: Valve Oil keeps that service
+  stopped, so nothing reports either.
 - QDC_100_005_005_002, 003, and 004: the closed-loop motor and buffer versions reach the app through its own checks,
   and Valve Oil's patch makes the app treat QIDI's online update as offering nothing, so 004 never shows.
 - QDC_300_005_005_001, new Box firmware: the app compares each Box's version from its own device scan with the
@@ -69,8 +68,6 @@ KLIPPER_WARNING = "QDC_100_005_000_001"
 KLIPPER_ERROR = "QDC_100_005_015_001"
 USB_LOW = "QDC_400_004_005_001"
 BOARD_FIRMWARE = "QDC_100_005_005_001"
-AI_FOREIGN = "QDC_500_005_005_001"
-AI_NOODLE = "QDC_500_005_005_002"
 
 SUB_STATUS_CODES = (
     ("ext_filament_exhausted", "QDC_200_001_010_001"),
@@ -98,7 +95,6 @@ BOX_WARNING_CODES = tuple(
 )
 # Klipper's MCU object for each board and its key in QIDI's firmware manifest.
 BOARDS = (("mcu", "MCU"), ("mcu THR", "THR"))
-AI_CODES = (("foreign", AI_FOREIGN), ("noodle", AI_NOODLE))
 
 USB_LOW_MB = 1024.0
 USB_POLL_SECONDS = 30.0
@@ -360,37 +356,6 @@ class BoardFirmwareRule:
         return targets
 
 
-class AiRule:
-    """QIDI's AI service's foreign-object and spaghetti reports during a print."""
-
-    def __init__(self, context, errors):
-        self.context = context
-        self.errors = errors
-        self.state = None
-        context.subscribe({"save_variables": ["variables"], "print_stats": ["state"]})
-        context.on_status(self.update)
-
-    def update(self, changes):
-        state = (changes.get("print_stats") or {}).get("state")
-        if state is not None and state != self.state:
-            self.state = state
-            if state in ("complete", "cancelled"):
-                for _, code in AI_CODES:
-                    self.errors.remove(code)
-        variables = (changes.get("save_variables") or {}).get("variables")
-        if not isinstance(variables, dict):
-            return
-        value = variables.get("qdc_ai_error_code")
-        if not isinstance(value, str) or "status=1" not in value:
-            return
-        if self.context.print_state() not in ("printing", "paused"):
-            return
-        kind = value.split("=", 1)[0].strip()
-        for name, code in AI_CODES:
-            if kind == name:
-                self.errors.add(code)
-
-
 # ---- Moonraker and the host -----------------------------------------------------------------------------------------
 
 def mounted(path, mounts=MOUNTS):
@@ -459,6 +424,5 @@ def setup(context, *, definitions=DEFINITIONS, manifest=FIRMWARE_MANIFEST, mount
     errors = ErrorList(context, definitions=Definitions(definitions))
     KlipperRules(context, errors)
     BoardFirmwareRule(context, errors, manifest=manifest)
-    AiRule(context, errors)
     UsbRule(context, errors, mounts=mounts)
     return errors

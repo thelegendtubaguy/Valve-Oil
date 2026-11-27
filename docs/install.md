@@ -23,7 +23,6 @@ On a printer with an older QIDI firmware this release updates from, it updates t
 Before it changes anything, it asks every question that applies, shows a summary of your answers and of what it will do, and asks `Install now?`. Answer `N` and nothing is changed. After `Y`, it needs nothing from you until it finishes. It asks about:
 
 - **Automatic updates**, while they're off. See [Automatic updates](#automatic-updates).
-- **Turning off QIDI AI detection**, only while it's on: turns off QIDI's `algo_app` service. When the installer has finished its system changes, it reminds you to also turn off Spaghetti Detection and Foreign Object Detection in the touchscreen's Settings -> Printing Options, so the screen matches.
 
 It doesn't ask about anything else:
 
@@ -31,6 +30,7 @@ It doesn't ask about anything else:
 - **Tool-to-slot mappings:** a tool with no slot gets the slot with its number, and mappings you've set are left as they are.
 - **Restarting Klipper:** every install ends by restarting Klipper once the printer is idle.
 - **Rebooting:** when the [OS optimizations](#os-optimizations) need a reboot, the printer reboots about 5 seconds after the install finishes, once Klipper is ready.
+- **QIDI AI detection:** every install turns it off, and the summary says so while it's on. See [QIDI's AI detection](settings.md#qidis-ai-detection).
 
 The summary also lists the board firmware it will flash, whether it updates the QIDI firmware first, and, on a printer with configs copied in by hand from before the installer existed, that those are backed up and reset to QIDI's first.
 
@@ -110,7 +110,7 @@ Every install and update applies these, including on printers where an earlier i
 
 - Adding `1.1.1.1` and `8.8.8.8` as fallback DNS servers, on Max 4 firmware `01.01.06.03` only. From Max 4 `01.01.06.04`, and on the Plus 5, QIDI's firmware adds fallback DNS servers itself, so Valve Oil leaves DNS to it, and an update hands back DNS that an earlier install changed.
 - Pointing the printer's package sources at Debian's official servers.
-- Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and QIDI AI detection if you choose.
+- Turning off services the printer doesn't use: `xl2tpd`, `bluetooth`, and [QIDI's AI detection](settings.md#qidis-ai-detection), `algo_app`, on the Max 4.
 - Taking [ADB](#adb) off the network, where it gives anyone a root shell on the printer without a password. It stays on the board's USB port, for recovery with a cable.
 - Stopping a broken QIDI boot service from leaving the printer's storage in slow synchronous mode. Files then reach storage up to about 30 seconds after they are written, unless the program writing them waits for them. Klipper's `SAVE_CONFIG` and `SAVE_CONFIG_QD` wait for `printer.cfg` before Klipper restarts.
 - Compressed swap in memory ([zram](#zram-swap)), so the printer doesn't run out of memory.
@@ -141,7 +141,7 @@ No reboot that Valve Oil starts goes ahead while `/sbin/init` doesn't lead to `s
 
 ### Zram swap
 
-The Max 4 has 486 MB of memory and no swap. QIDI's AI detection alone can hold about 190 MB during a print, and when memory runs out, Linux makes room by dropping program code that has to be read back from storage. Klipper then stalls for seconds at a time, and a stall during a print can end it with `MCU 'mcu' shutdown: Missed scheduling of next digital out event`, often right when a print is cancelled.
+The Max 4 has 486 MB of memory and no swap. QIDI's AI detection, which Valve Oil turns off, alone can hold about 190 MB during a print, and when memory runs out, Linux makes room by dropping program code that has to be read back from storage. Klipper then stalls for seconds at a time, and a stall during a print can end it with `MCU 'mcu' shutdown: Missed scheduling of next digital out event`, often right when a print is cancelled.
 
 Zram gives Linux a compressed swap area in memory instead: 256 MB of swap that holds about 2.3 MB of idle data per MB of memory it uses. On a Max 4, with memory filled the way it was on a printer that hit this shutdown, Klipper's longest delay went from 405 ms to 4 ms, and the program that filled memory was no longer killed.
 
@@ -165,11 +165,11 @@ Valve Oil now:
 - **Resumes a print after a lost connection to a board,** a heater that didn't heat at the expected rate, or a full move queue, past the print's first layer, by restarting Klipper's firmware and resuming as the app did.
 - **Mounts USB drives** at `USB` in the file list, with the app's settings, and unmounts them when they're removed. QIDI's other USB mounter, which mounted a drive again each time the system saw it, is switched off.
 - **Keeps `MCU_ID.cfg` naming the mainboard,** and removes `SAVE_CONFIG`'s `printer-*.cfg` backups, at startup and when the mainboard connects, as the app did.
-- **Saves the number of USB Boxes** for QIDI's Box macros, and **pauses a print when QIDI's AI detection reports spaghetti.**
+- **Saves the number of USB Boxes** for QIDI's Box macros.
 - **Answers what QIDI's software asks the app for** through Moonraker: the print files, the official filament list, and the app's list of errors.
 - **Announces the printer on the network,** so QIDI Studio finds it.
 
-The touchscreen app also no longer reports the printer to QIDI's cloud, checks QIDI's servers for firmware updates, starts QIDI's P2P remote access, or runs `ntpdate`, which isn't installed on these printers.
+The touchscreen app also no longer reports the printer to QIDI's cloud, checks QIDI's servers for firmware updates, starts QIDI's P2P remote access, pauses a print for QIDI's AI detection, or runs `ntpdate`, which isn't installed on these printers. Nothing pauses for AI detection, since Valve Oil [keeps it off](settings.md#qidis-ai-detection).
 
 This applies to the touchscreen apps of Max 4 firmware `01.01.07.01` and `01.01.07.02`, Plus 5 firmware `01.01.02.01` and `01.01.02.02`, and Smart 5 firmware `01.01.02.01`. With any other app, as after a QIDI firmware update until Valve Oil is installed again, the app does all of this itself and Valve Oil does none of it; the printer is kept off QIDI's servers either way. Uninstall puts QIDI's app back, which takes all of it back. Valve Oil's side logs to `journalctl -u vo-qidi-agent`.
 

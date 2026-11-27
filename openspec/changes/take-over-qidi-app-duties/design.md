@@ -20,7 +20,7 @@ QIDI's Moonraker loads its compiled `mqtt` component whether or not `moonraker.c
 
 **Goals:** each duty above on the printer and its network that isn't operator-started is Valve Oil's on every supported printer whichever app is on the screen; QIDI's app no longer does any of them; behavior seen by QIDI's Moonraker components and QIDI Studio is the same as with the stock app; stopping QIDI's app loses nothing but its screen. Nothing on the printer reaches QIDI's servers, and Moonraker's MQTT works with the operator's own broker.
 
-**Non-Goals:** the Valve Oil touchscreen (change `add-valve-oil-touchscreen`), which shows no QIDI cloud login; keeping QIDI's cloud, QIDI's phone app, account linking, FRP, or P2P working, which the owner chose to give up; changing what QIDI's app shows or does when an operator uses it, beyond its account screen showing LAN Only Mode; QIDI firmware updates, which Valve Oil already delivers and already blocks in the app; QIDI's AI service itself.
+**Non-Goals:** the Valve Oil touchscreen (change `add-valve-oil-touchscreen`), which shows no QIDI cloud login; keeping QIDI's cloud, QIDI's phone app, account linking, FRP, or P2P working, which the owner chose to give up; keeping QIDI's AI detection working, which the owner chose to turn off for good; changing what QIDI's app shows or does when an operator uses it, beyond its account screen showing LAN Only Mode and its AI detection settings staying off; QIDI firmware updates, which Valve Oil already delivers and already blocks in the app.
 
 ## Decisions
 
@@ -47,8 +47,9 @@ Through the same connection and one status subscription, the agent service:
 - records `print_state.*` exactly as the app does: the same 19 keys and string forms, written when the file position has moved more than 1024 bytes, only the fields that changed, with the app's per-print reset, so QIDI's `power_off_print` and the resume prompts behave as with the stock app;
 - after `Lost communication with MCU`, `Heater extruder not heating at expected rate`, or `Move queue overflow` during a print past layer 1, restarts Klipper's firmware, waits for it as the app does, and resumes with `power_off_print`;
 - saves `box_count` after it connects, when Klipper becomes ready, and when a Box connects or disconnects, from the USB Boxes connected, as the app does;
-- sends `PAUSE W=1` when `qdc_ai_error_code` reports `noodle` with `status=1` during a print, once per print;
-- keeps the app's error list from Klipper's state and warnings with QIDI's codes and texts (`QIDI_Client/resource/qidi_client_error`), answers `get_all_error_list`, and sends each addition and removal as `ui_assistant_message_update` to Moonraker's clients. The app's cloud MQTT and P2P entries are left out: with LAN-only mode on, the app reported neither.
+- keeps the app's error list from Klipper's state and warnings with QIDI's codes and texts (`QIDI_Client/resource/qidi_client_error`), answers `get_all_error_list`, and sends each addition and removal as `ui_assistant_message_update` to Moonraker's clients. The app's cloud MQTT and P2P entries are left out, since with LAN-only mode on the app reported neither, and so are its AI detection entries, since nothing reports to them with QIDI's AI service off.
+
+The app's AI pause (`PAUSE W=1` when `qdc_ai_error_code` reports `noodle` with `status=1`) is patched out and has no counterpart, because QIDI's AI service, which writes that variable, is kept off.
 
 ### The agent service does the app's LAN work
 
@@ -81,6 +82,15 @@ It also keeps QIDI's `frpc.service` stopped. Only public addresses are blocked, 
 
 QIDI's LAN-only mode (`general.lan_mode` `"1"`) makes QIDI's app filter its own HTTP requests before they connect and show LAN Only Mode on its account screen instead of a cloud login that can't work. `vo_moonraker_fixes.py` keeps it on inside QIDI's database component: it writes `"1"` when Moonraker starts, a write of `general.lan_mode` stores and answers `"1"` without running QIDI's handler (which would close the operator's MQTT connection or start QIDI's), and a batch write or a delete that changed it is followed by `"1"` again. The check after other writes reads only the component's in-memory copy, as the print state writes many times a minute. QIDI's app reads the value only through Moonraker. Uninstall leaves it on; the operator turns it off at the bottom of the touchscreen's Wi-Fi page.
 
+### QIDI's AI detection stays off
+
+The owner chose to turn QIDI's AI detection off for good with the takeover. It took up to about 190 MB of the Max 4's 486 MB during a print, and the app's pause for it is patched out with the app's other duties. It stays off in two places.
+
+- **The service.** `algo_app.service` moves from the optional services the installer asked about to the services every install and update disables (`installer/package.yaml` `system_optimizations.services.disable`), so the question, its touchscreen screen, and `--keep-ai-detection` go. `--disable-ai-detection` stays accepted and does nothing, like `--flash-thr-fifo`. Only the Max 4 has the unit. The Plus 5 `01.01.02.x` and Smart 5 `01.01.02.01` packages ship none, so there the operation records the service as missing. QIDI's Max 4 package's `postinst` enables and starts it again, and the service operation, like the others, is reconciled on every install, on Valve Oil's own firmware update through the install it runs, and on every automatic-update check while automatic updates are on. The unit is disabled rather than masked, since `postinst` enables it and stops with an error when it can't. The ledger keeps its `policy.ai_detection` field, now always `disable`, so earlier package versions still read the ledger, and an earlier ledger's `keep_enabled` no longer applies. Uninstall restores the service with the other optional OS optimizations, only when the operator accepts, and `--keep-system-optimizations` keeps it off. The service-priority drop-in for `algo_app` stays, applied only if something starts it.
+- **The touchscreen's settings.** QIDI's app writes its AI detection switches as `"1"` and `"0"` to QIDI's config table, `ai.noodle_detection`, `ai.spool_detection`, `ai.foreign_object_detection`, and `ai.bed_detection`, which QIDI's Moonraker defaults to `"0"`. `vo_moonraker_fixes.py` keeps them at `"0"` the way it keeps `general.lan_mode` at `"1"`, from one table of pinned keys and values. Each is written when Moonraker starts, a write of one stores and answers the pinned value without running QIDI's handler and is logged as `vo_moonraker_fixes: <key> set to <value> was answered with <pinned>; <reason>`, and a batch write or delete that changed one is followed by the pinned value. `ai.sensitivity` (`LOW`, `MEDIUM`, `HIGH`) isn't a switch and isn't pinned. Uninstall leaves the settings off, as it leaves LAN-only mode on.
+
+The app also saves Klipper's `enable_noodle_detection` saved variable from its spaghetti switch, which QIDI's Klipper's `ai_func_manager` reads before pausing for `SET_AI_DETECT_RESULT` and `smart_output_pin` reads to keep the chamber light on during a print. Neither variable is pinned. With the service off, nothing sends `SET_AI_DETECT_RESULT` or writes `qdc_ai_error_code`.
+
 ### Moonraker's own MQTT
 
 `vo_moonraker_fixes.py` loads upstream Moonraker `v0.9.3`'s `mqtt.py`, the version QIDI's Moonraker is built on, as `moonraker.components.mqtt` in place of QIDI's compiled component. It is installed beside the fixes module as `vo_moonraker_mqtt.py`, unchanged apart from its ending: with an `[mqtt]` section, upstream's client connects to that broker as Moonraker documents; without one, a stand-in loads that connects nowhere, reports itself disconnected, and refuses publishes and subscriptions, so the component QIDI's `server.py` always loads never shows as failed. Upstream components that use MQTT (history, power, sensors) see upstream's API. When the file is missing, QIDI's component loads as before.
@@ -98,10 +108,11 @@ Uninstall restores QIDI's app bytes, removes Valve Oil's services, the block, th
 - [A host QIDI's software reaches isn't in the list, because a later build or QIDI's cloud names a new one] → each new reviewed build's strings and each printer's logs are checked for hosts, and the hosts the cloud writes into the config table are blocked as they appear.
 - [A QIDI firmware update replaces QIDI's Moonraker with a build whose `mqtt` component or database code differs] → the database fix checks the methods it wraps and logs when it leaves them alone; the MQTT component is upstream's and depends only on upstream Moonraker's API.
 - [Operators relied on QIDI's phone app or cloud] → the owner's decision; the changelog and docs say what stops working.
+- [Operators relied on QIDI's AI detection to pause failed prints] → the owner's decision; the changelog and docs say it is off and how uninstall brings the service back.
+- [The touchscreen's AI detection switches draw from the Klipper saved variable rather than the config table and still show on] → check each switch on the screen on each printer; the service is off either way, so a switch shown on detects nothing.
 
 ## Open Questions
 
 - Who calls `/api/qidiclient/*` and `get_all_error_list` on the LAN in practice; both are answered either way.
 - When the app zeroes `box_count` for a Box that needs firmware.
-- Whether `algo_app` pauses a print by itself on spaghetti.
 - Whether the stock app's record also keeps the layer of the cut through a resumed print. After QIDI's power-loss resume on the Plus 5 `01.01.02.02`, `print_stats.info.current_layer` stayed empty for the rest of the print, so `print_state.current_layer` kept the cut's layer while `file_position` moved on, and the touchscreen showed layer 0.

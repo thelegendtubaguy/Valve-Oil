@@ -33,8 +33,7 @@ def overview(**changes):
                   firmware_update=False, package_version=MANIFEST.package.version, installed_version=None,
                   new_install=True, auto_updates_on=False, ai_detection_on=True, box_count=2, box_support_on=False,
                   legacy_manual_install=False, boards=("Box 1", "Box 2"),
-                  questions=(install_flow.QUESTIONS[install_flow.AUTO_UPDATES],
-                             install_flow.QUESTIONS[install_flow.AI_DETECTION]))
+                  questions=(install_flow.QUESTIONS[install_flow.AUTO_UPDATES],))
     values.update(changes)
     return install_flow.Overview(**values)
 
@@ -91,13 +90,13 @@ class UsbInstallTests(unittest.TestCase):
             self.assertEqual(self.ui.names()[-1], "installing")  # the run's progress replaces the ready screen
             return 0
 
-        session = self.session(["start", "yes", "back", "no", "yes", "install"], run=install)
+        session = self.session(["start", "yes", "back", "no", "install"], run=install)
         self.assertEqual(session.loop(), usb_install.DONE)
-        self.assertEqual(self.ui.names()[:6], ["checking", "found", "question", "question", "question", "question"])
-        self.assertEqual(self.ui.names()[6], "ready")
-        self.assertEqual((self.answers.auto_updates, self.answers.disable_ai_detection), (False, True))
-        ready = dict(self.ui.screens[6][1])
+        self.assertEqual(self.ui.names()[:6], ["checking", "found", "question", "ready", "question", "ready"])
+        self.assertEqual(self.answers.auto_updates, False)
+        ready = dict(self.ui.screens[5][1])
         self.assertIn(("Automatic updates", "Off"), ready["rows"])
+        # QIDI's AI detection is turned off without a question.
         self.assertIn(("QIDI AI detection", "Turned off"), ready["rows"])
 
         # The finish screen comes once the log is on the drive; the printer restarts when the drive comes out.
@@ -108,7 +107,7 @@ class UsbInstallTests(unittest.TestCase):
         self.assertEqual(self.restarted, [True])
 
     def test_quitting_before_install_changes_nothing(self):
-        for taps in (["quit"], ["start", "back"], ["start", "yes", "yes", "back", "back", "back"]):
+        for taps in (["quit"], ["start", "back"], ["start", "yes", "back", "back"]):
             with self.subTest(taps=taps):
                 ran = []
                 session = self.session(taps, run=lambda front_end: ran.append(True) or 0)
@@ -122,9 +121,9 @@ class UsbInstallTests(unittest.TestCase):
         self.assertEqual(self.ui.names()[1], "update")
         self.assertEqual(self.answers, install_flow.Answers())
 
-        session = self.session(["settings", "no", "no", "install"], found=found)
+        session = self.session(["settings", "no", "install"], found=found)
         self.assertEqual(session.loop(), usb_install.DONE)
-        self.assertEqual((self.answers.auto_updates, self.answers.disable_ai_detection), (False, False))
+        self.assertEqual(self.answers.auto_updates, False)
 
         current = overview(installed_version=MANIFEST.package.version, new_install=False, questions=())
         session = self.session(["again"], found=current)
@@ -139,12 +138,12 @@ class UsbInstallTests(unittest.TestCase):
             with self.subTest(community=community):
                 # The touchscreen: a new install says what community support means before the questions; Back
                 # returns to the first screen. The update screen marks the printer.
-                taps = ["start", "back", "start", "ok", "yes", "yes", "install"] if community else \
-                    ["start", "yes", "yes", "install"]
+                taps = ["start", "back", "start", "ok", "yes", "install"] if community else \
+                    ["start", "yes", "install"]
                 session = self.session(taps, found=overview(community_supported=community))
                 self.assertEqual(session.loop(), usb_install.DONE)
-                self.assertEqual(self.ui.names()[1:6], ["found", "confirm", "found", "confirm", "question"]
-                                 if community else ["found", "question", "question", "ready", "installing"])
+                expected = ["found", "confirm", "found", "confirm", "question"] if community else ["found", "question"]
+                self.assertEqual(self.ui.names()[1:1 + len(expected)], expected)
                 self.assertEqual(printer_row(self.ui.screens[1]), [("Printer", "QIDI Max 4", "community-supported")]
                                  if community else [("Printer", "QIDI Max 4")])
 
@@ -169,7 +168,7 @@ class UsbInstallTests(unittest.TestCase):
         def fail(front_end):
             raise RuntimeError("Moonraker did not come back")
 
-        session = self.session(["start", "yes", "yes", "install", "view_log", "close", "quit"], run=fail)
+        session = self.session(["start", "yes", "install", "view_log", "close", "quit"], run=fail)
         self.assertEqual(session.loop(), usb_install.QUIT)
         failed = [fields for name, fields in self.ui.screens if name == "failed"][0]
         self.assertIn(f"Step 2, {progress.BACKUP}, did not finish: Moonraker did not come back", failed["text"])
@@ -190,7 +189,7 @@ class UsbInstallTests(unittest.TestCase):
                     error.install_outcome = outcome
                     raise error
 
-                session = self.session(["start", "yes", "yes", "install", "quit"], run=fail)
+                session = self.session(["start", "yes", "install", "quit"], run=fail)
                 self.assertEqual(session.loop(), usb_install.QUIT)
                 failed = [fields for name, fields in self.ui.screens if name == "failed"][0]
                 self.assertIn(said, failed["text"])

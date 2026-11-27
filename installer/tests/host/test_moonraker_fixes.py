@@ -148,13 +148,18 @@ class Cursor:
         return self.row
 
 
+# QIDI's defaults for the config keys these tests use (DEFAULT_CONFIGA_ITEM in QIDI's database.py).
+QIDI_DEFAULTS = {"general.lan_mode": "0", "general.sound": "1", "ai.noodle_detection": "0", "ai.spool_detection": "0",
+                 "ai.foreign_object_detection": "0", "ai.bed_detection": "0", "ai.sensitivity": "HIGH"}
+
+
 def database_class():
     class MoonrakerDatabase:
         """QIDI's database component: its config table, the in-memory copy it keeps, and its config handlers."""
 
         def __init__(self, table):
             self.table = table
-            self.config_items = {"general.lan_mode": "0", "general.sound": "1"}
+            self.config_items = dict(QIDI_DEFAULTS)
             self.reads = 0
             self.mqtt_calls = []
 
@@ -189,13 +194,18 @@ def database_class():
             section = web_request.get("section")
             for name in [name for name in self.table if name.startswith(f"{section}.")]:
                 del self.table[name]
-            self.config_items["general.lan_mode"] = "0"  # QIDI's default
+            for name in self.config_items:
+                if name.startswith(f"{section}."):
+                    self.config_items[name] = QIDI_DEFAULTS[name]
             return {"status": "success"}
     return MoonrakerDatabase
 
 
-class LanOnlyModeTests(unittest.TestCase):
-    """QIDI's LAN-only mode stays on, so QIDI's app shows LAN Only Mode and keeps its own cloud requests in."""
+class PinnedConfigTests(unittest.TestCase):
+    """QIDI's LAN-only mode stays on, so QIDI's app shows LAN Only Mode and keeps its own cloud requests in, and QIDI's
+    AI detection switches stay off, since Valve Oil keeps QIDI's AI service stopped."""
+
+    AI_SWITCHES = ("ai.noodle_detection", "ai.spool_detection", "ai.foreign_object_detection", "ai.bed_detection")
 
     def setUp(self):
         self.fixes = load_payload()
@@ -207,34 +217,48 @@ class LanOnlyModeTests(unittest.TestCase):
         asyncio.run(database._init_config_items())
         return database
 
-    def test_moonraker_starts_with_lan_only_mode_on(self):
-        for table in ({"general.lan_mode": "0"}, {}):
+    def write(self, database, name, value):
+        section, key = name.split(".")
+        return asyncio.run(database._handle_config_update_request(
+            WebRequest({"section": section, "key": key, "value": value})))
+
+    def test_moonraker_starts_with_lan_only_mode_on_and_ai_detection_off(self):
+        on = dict.fromkeys(self.AI_SWITCHES, "1")
+        for table in ({"general.lan_mode": "0", **on}, {}):
             with self.subTest(table=dict(table)):
                 database = self.started(table)
-                self.assertEqual((table["general.lan_mode"], database.config_items["general.lan_mode"]), ("1", "1"))
+                for name, value in (("general.lan_mode", "1"), *((name, "0") for name in self.AI_SWITCHES)):
+                    self.assertEqual((table[name], database.config_items[name]), (value, value))
 
-    def test_turning_it_off_answers_on_and_never_reaches_qidis_mqtt_or_frp(self):
-        database = self.started({"general.lan_mode": "1"})
-        result = asyncio.run(database._handle_config_update_request(
-            WebRequest({"section": "general", "key": "lan_mode", "value": "0"})))
-        self.assertEqual(result, {"status": "success", "result": {"general.lan_mode": "1"}})
-        self.assertEqual((database.table["general.lan_mode"], database.config_items["general.lan_mode"]), ("1", "1"))
-        self.assertEqual(database.mqtt_calls, [])
+    def test_turning_a_pinned_setting_back_is_answered_with_it_and_logged(self):
+        for name, written, pinned in (("general.lan_mode", "0", "1"), *((name, "1", "0") for name in self.AI_SWITCHES)):
+            with self.subTest(name=name):
+                database = self.started({})
+                with self.assertLogs(level="INFO") as logs:
+                    result = self.write(database, name, written)
+                self.assertEqual(result, {"status": "success", "result": {name: pinned}})
+                self.assertEqual((database.table[name], database.config_items[name]), (pinned, pinned))
+                self.assertIn(f"vo_moonraker_fixes: {name} set to '{written}' was answered with {pinned}; ",
+                              "\n".join(logs.output))
+                # Turning LAN-only mode off never reaches QIDI's MQTT or FRP.
+                self.assertEqual(database.mqtt_calls, [])
 
-    def test_batch_writes_and_deletes_leave_it_on(self):
-        database = self.started({"general.lan_mode": "1"})
+    def test_batch_writes_and_deletes_leave_them_pinned(self):
+        database = self.started({})
         asyncio.run(database._handle_config_update_batch_request(WebRequest({"items": [
-            {"section": "general", "key": "lan_mode", "value": "0"}, {"section": "general", "key": "sound", "value": "0"}]})))
-        self.assertEqual((database.table["general.lan_mode"], database.table["general.sound"]), ("1", "0"))
+            {"section": "general", "key": "lan_mode", "value": "0"}, {"section": "general", "key": "sound", "value": "0"},
+            {"section": "ai", "key": "noodle_detection", "value": "1"}]})))
+        self.assertEqual((database.table["general.lan_mode"], database.table["general.sound"],
+                          database.table["ai.noodle_detection"]), ("1", "0", "0"))
         asyncio.run(database._handle_config_delete_request(WebRequest({"section": "general"})))
-        self.assertEqual((database.table, database.config_items["general.lan_mode"]), ({"general.lan_mode": "1"}, "1"))
+        self.assertEqual((database.table["general.lan_mode"], database.config_items["general.lan_mode"]), ("1", "1"))
+        self.assertNotIn("general.sound", database.table)
 
     def test_other_writes_add_no_database_reads(self):
-        database = self.started({"general.lan_mode": "1"})
+        database = self.started({})
         reads = database.reads
         for value in ("0", "1", "0"):
-            asyncio.run(database._handle_config_update_request(
-                WebRequest({"section": "general", "key": "sound", "value": value})))
+            self.write(database, "general.sound", value)
         self.assertEqual(database.reads, reads)
 
     def test_unrecognized_database_code_is_left_alone(self):

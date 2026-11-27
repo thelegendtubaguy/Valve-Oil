@@ -15,7 +15,7 @@ update() and show() write only the rectangles that changed, so ticking a clock c
 Fields every screen takes:
     footer        the line at the bottom, e.g. "Valve Oil 26.11.12.1 · USB installer · QIDI firmware 01.01.07.01"
     where         the printer's name in the header, e.g. "QIDI Max 4"
-    header_step   the header's right-hand text, e.g. "Question 1 of 2", "Step 4 of 10 · 1:52", "Finished in 13:48"
+    header_step   the header's right-hand text, e.g. "Question 1 of 1", "Step 4 of 10 · 1:52", "Finished in 13:48"
 
 Text fields take a paragraph or a list of paragraphs. A paragraph is a str, a (tone, str) pair, or a list of such
 pairs drawn as one paragraph; tone is "plain", "muted", "good", "warn", or "bad" (the smaller pink error line), and a
@@ -26,7 +26,7 @@ Screens (mockup id in screens.html; fields; buttons, in order, besides "log" for
 but the log itself):
     checking             01-checking. text, note (default "Checking the printer…", "Nothing has been changed yet.").
     found                02-welcome, 02b-firmware-first. title, rows, text (muted), firmware_first. quit, start.
-    question             03-auto-updates, 04-ai-detection. title, text (first paragraph plain, the rest muted),
+    question             03-auto-updates. title, text (first paragraph plain, the rest muted),
                          no_label, yes_label. back, no, yes.
     ready                07-ready. title (default "Ready to install"), rows, text (small, muted). back, install.
     installing           08-installing, 09-box-firmware, 18-ssh-install, 19-auto-update. title (default
@@ -1211,19 +1211,12 @@ EXAMPLES = {
                                              "updates the printer to it first, from this drive. That adds about 15 "
                                              "minutes.",
                                      "footer": f"Valve Oil {_VERSION} · USB installer · QIDI firmware 01.01.06.05"}),
-    "03-auto-updates": ("question", {**_HEADER, "header_step": "Question 1 of 2", "title": "Keep Valve Oil updated?",
+    "03-auto-updates": ("question", {**_HEADER, "header_step": "Question 1 of 1", "title": "Keep Valve Oil updated?",
                                      "text": ["The printer checks for a new release every hour and installs it by "
                                               "itself.",
                                               "It never updates during a print, while a print is paused, or while a "
                                               "heater is on. You can turn this off later."],
                                      "no_label": "No, I'll update by hand", "yes_label": "Yes, update automatically"}),
-    "04-ai-detection": ("question", {**_HEADER, "header_step": "Question 2 of 2", "title": "Turn off QIDI AI detection?",
-                                     "text": ["QIDI's spaghetti and foreign object detection can use about 190 MB of "
-                                              "the printer's 486 MB of memory during a print.",
-                                              "If you turn it off, also switch off Spaghetti Detection and Foreign "
-                                              "Object Detection in the touchscreen's Settings → Printing Options "
-                                              "afterwards, so the screen matches."],
-                                     "no_label": "Keep it on", "yes_label": "Turn it off"}),
     "07-ready": ("ready", {**_HEADER, "rows": [
         ("Valve Oil", _VERSION, "on QIDI Max 4"), ("Automatic updates", "On"), ("QIDI AI detection", "Turned off"),
         ("QIDI Box", "2 found", "Box support turned on"), ("Board firmware", "Toolhead, mainboard, Box 1, Box 2")],
@@ -1241,10 +1234,10 @@ EXAMPLES = {
                          "waiting_text": "Waiting for the USB drive to be taken out…"}),
     "11-update": ("update", {**_HEADER, "rows": [
         ("Installed", "26.11.11.3"), ("On this drive", _VERSION, "newer"),
-        ("Settings kept", "Automatic updates on · AI detection off · Box support on")],
+        ("Settings kept", "Automatic updates on · Box support on")],
         "text": "Your settings and configuration are kept. Your configuration is backed up first."}),
     "12-up-to-date": ("up_to_date", {**_HEADER, "rows": [
-        ("Installed", _VERSION, "3 days ago"), ("Settings", "Automatic updates on · AI detection off · Box support on"),
+        ("Installed", _VERSION, "3 days ago"), ("Settings", "Automatic updates on · Box support on"),
         ("Last backup", "12 Nov 2026, 09:14")]}),
     "18-ssh-install": ("installing", {**_HEADER, "header_step": "Step 4 of 10 · 1:52", "title": "Installing",
                                       "step": "System changes", "detail": "restarting Moonraker…", "steps": _STEPS,

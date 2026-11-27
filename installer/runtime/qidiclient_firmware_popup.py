@@ -123,16 +123,17 @@ EXTERNAL_ITERATOR, EXTERNAL_SCRATCH = 0x5D8, 0x5B8
 JSON_OBJECT, JSON_STRING, MAP_NODE_VALUE = 1, 3, 0x40
 # Valve Oil does everything else the app does besides drawing the screen on the printer and its network
 # (vo_qidi_agent.py and its helpers, the Box monitor, and the USB mounter), and keeps the printer off QIDI's servers,
-# so each of those duties is patched out of the app, and its cloud work is done by nothing. That leaves what an
-# operator starts from its screen and its power-loss resume prompt; with QIDI's LAN-only mode kept on, its account
-# screen shows LAN Only Mode. Each site below names its duty; the analysis behind every site is in
+# so each of those duties is patched out of the app, and its cloud work and AI pause are done by nothing. That leaves
+# what an operator starts from its screen and its power-loss resume prompt; with QIDI's LAN-only mode kept on, its
+# account screen shows LAN Only Mode. Each site below names its duty; the analysis behind every site is in
 # openspec/observations/qidi-platform.md (Touchscreen app duties):
 #   print_state         the print-state writer power-loss resume reads: return at entry
 #   mcu_id_cfg          rewriting MCU_ID.cfg, and on the Max 4 and Plus 5 deleting printer-*.cfg in the same function
 #   printer_cfg_backups deleting printer-*.cfg (Smart 5, a separate call)
 #   klipper_restart     the device monitor's heaters-off Klipper restart (Smart 5; elsewhere only the detector reached it)
 #   box_count           saving box_count
-#   ai_pause            the PAUSE sent for QIDI's AI service's spaghetti report; its popup stays
+#   ai_pause            the PAUSE sent for QIDI's AI service's spaghetti report, done by nothing since Valve Oil keeps
+#                       that service stopped; its popup stays
 #   agent               identifying to Moonraker as an agent: the type string becomes another client type, so
 #                       Valve Oil's agent is the only one under the app's name
 #   error_list_push     pushing its error list to QIDI's cloud

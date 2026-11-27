@@ -154,8 +154,6 @@ def check_bundle(archive_path: Path, workspace: Path) -> None:
         "--dry-run",
         "--demo-tui",
         "--yes",
-        "--disable-ai-detection",
-        "--keep-ai-detection",
         "--keep-system-optimizations",
         "--reboot-host",
     ):

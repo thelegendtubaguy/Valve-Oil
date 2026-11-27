@@ -263,30 +263,7 @@ class KlipperErrorResumeTests(unittest.TestCase):
         self.assertEqual(self.scenario(layer=12, message="ADC out of range")[0], [])
 
 
-class AiPauseAndBoxCountTests(unittest.TestCase):
-    def test_spaghetti_pauses_a_print_once(self):
-        async def scenario():
-            moonraker = FakeMoonraker()
-            await moonraker.start()
-            context = AGENT.Context("S5", version="1", printer_data="/nonexistent")
-            AGENT.AiPause(context)
-            service = asyncio.ensure_future(AGENT.serve(context, socket_path=moonraker.path, patched=lambda: True))
-            await asyncio.wait_for(moonraker.connected.wait(), 2)
-            await settle()
-            report = {"save_variables": {"variables": {"qdc_ai_error_code": "noodle=1 status=1 time=1"}}}
-            context._status_update({"print_stats": {"state": "standby"}, **report})
-            context._status_update({"print_stats": {"state": "printing"}})
-            context._status_update({"save_variables": {"variables": {"qdc_ai_error_code": "foreign=1 status=1 time=2"}}})
-            context._status_update({"save_variables": {"variables": {"qdc_ai_error_code": "noodle=1 status=1 time=3"}}})
-            context._status_update({"save_variables": {"variables": {"qdc_ai_error_code": "noodle=1 status=1 time=4"}}})
-            await settle()
-            service.cancel()
-            await moonraker.stop()
-            return moonraker.gcode()
-
-        # Not while idle, not for a foreign object, and once per print.
-        self.assertEqual(run(scenario()), ["PAUSE W=1"])
-
+class BoxCountTests(unittest.TestCase):
     def test_box_count_is_saved_from_the_usb_boxes_when_it_differs(self):
         async def scenario(saved):
             moonraker = FakeMoonraker(status={"save_variables": {"variables": {"box_count": saved}}})

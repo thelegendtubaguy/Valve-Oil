@@ -12,13 +12,17 @@
 # frp_manager acts only when QIDI's mqtt component calls it, so it starts no
 # FRP.
 #
-# QIDI's LAN-only mode (general.lan_mode in QIDI's config table) is kept on:
-# the touchscreen app then shows LAN Only Mode instead of a cloud login, and
-# stops its own cloud requests before they connect. The value is written "1"
-# when Moonraker starts and after any config write that changed it; a write
-# of general.lan_mode itself stores "1" and answers with it, and skips QIDI's
-# handler, which would otherwise close the operator's MQTT connection or
-# reconnect QIDI's.
+# A few keys of QIDI's config table are kept at one value (PINNED):
+# - QIDI's LAN-only mode (general.lan_mode) stays on: the touchscreen app then
+#   shows LAN Only Mode instead of a cloud login, and stops its own cloud
+#   requests before they connect.
+# - QIDI's AI detection switches (ai.*, which the touchscreen app writes "1" or
+#   "0") stay off. Valve Oil keeps QIDI's AI detection service stopped, so a
+#   switch turned on would detect nothing.
+# Each is written when Moonraker starts and after any config write that
+# changed it; a write of a pinned key itself stores the pinned value and
+# answers with it, and skips QIDI's handler, which for general.lan_mode would
+# otherwise close the operator's MQTT connection or reconnect QIDI's.
 #
 # QIDI's /api/qidiclient/* endpoints are served by the one agent connected
 # and fail when a slicer has registered as an agent too. They prefer the
@@ -45,9 +49,15 @@ DATABASE_MODULE = "moonraker.components.database"
 EXTENSIONS_MODULE = "moonraker.components.extensions"
 DBUS_MODULE = "moonraker.components.dbus_manager"
 MQTT_FILE_NAME = "vo_moonraker_mqtt.py"
-LAN_MODE = ("general", "lan_mode")
-LAN_MODE_KEY = "general.lan_mode"
-LAN_ONLY = "1"
+# QIDI's config table key: (the value it is kept at, what the log says when a
+# write is answered with it).
+PINNED = {
+    "general.lan_mode": ("1", "LAN only mode stays on"),
+    "ai.noodle_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.spool_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.foreign_object_detection": ("0", "QIDI's AI detection stays off"),
+    "ai.bed_detection": ("0", "QIDI's AI detection stays off"),
+}
 DBUS_STARTUP_CALL_TIMEOUT = 5.
 
 
@@ -88,34 +98,39 @@ class _MqttFinder:
         return importlib.util.spec_from_file_location(name, source)
 
 
-# ---- LAN-only mode ----------------------------------------------------------
+# ---- Pinned config keys ----------------------------------------------------
 
-def _is_lan_mode(section, key):
-    return (str(section).strip(), str(key).strip()) == LAN_MODE
+def _pinned_key(section, key):
+    name = "%s.%s" % (str(section).strip(), str(key).strip())
+    return name if name in PINNED else None
 
 
-async def _pin_lan_mode(database):
+async def _pin(database, names):
     items = getattr(database, "config_items", None)
-    try:
-        cursor = await database.get_value_from_config(*LAN_MODE)
-        row = dict(await cursor.fetchone() or {})
-        if str(row.get("value")) != LAN_ONLY:
-            await database.update_value_from_config(*LAN_MODE, LAN_ONLY)
-            logging.info("vo_moonraker_fixes: QIDI's LAN-only mode "
-                         "kept on")
-    except Exception:
-        logging.exception("vo_moonraker_fixes: keeping QIDI's LAN-only "
-                          "mode on failed")
-    if isinstance(items, dict) and LAN_MODE_KEY in items:
-        items[LAN_MODE_KEY] = LAN_ONLY
+    for name in names:
+        value = PINNED[name][0]
+        try:
+            cursor = await database.get_value_from_config(*name.split(".", 1))
+            row = dict(await cursor.fetchone() or {})
+            if str(row.get("value")) != value:
+                await database.update_value_from_config(*name.split(".", 1),
+                                                        value)
+                logging.info("vo_moonraker_fixes: %s kept at %s", name, value)
+        except Exception:
+            logging.exception("vo_moonraker_fixes: keeping %s at %s failed",
+                              name, value)
+        if isinstance(items, dict) and name in items:
+            items[name] = value
 
 
-def _lan_mode_changed(database):
-    """Whether a write changed the mode: QIDI's handlers keep config_items
-    as they write the table."""
+def _unpinned(database):
+    """The pinned keys a write changed: QIDI's handlers keep config_items as
+    they write the table. All of them when it can't tell."""
     items = getattr(database, "config_items", None)
-    return not isinstance(items, dict) \
-        or str(items.get(LAN_MODE_KEY, LAN_ONLY)) != LAN_ONLY
+    if not isinstance(items, dict):
+        return list(PINNED)
+    return [name for name, (value, _) in PINNED.items()
+            if str(items.get(name, value)) != value]
 
 
 def _then_pin(method):
@@ -127,14 +142,15 @@ def _then_pin(method):
         try:
             return await method(self, *args, **kwargs)
         finally:
-            if startup or _lan_mode_changed(self):
-                await _pin_lan_mode(self)
+            names = list(PINNED) if startup else _unpinned(self)
+            if names:
+                await _pin(self, names)
     pinned._vo_pinned = method
     pinned.__name__ = method.__name__
     return pinned
 
 
-def _lan_mode_stays_on(handler):
+def _pinned_stay(handler):
     async def _handle_config_update_request(self, web_request, *args,
                                             **kwargs):
         try:
@@ -142,22 +158,24 @@ def _lan_mode_stays_on(handler):
             key = web_request.get("key", None)
         except Exception:
             section = key = None
-        if _is_lan_mode(section, key):
+        name = _pinned_key(section, key)
+        if name is not None:
+            pinned, outcome = PINNED[name]
             try:
                 value = web_request.get("value", None)
             except Exception:
                 value = None
-            if str(value) != LAN_ONLY:
-                logging.info("vo_moonraker_fixes: general.lan_mode set to %r "
-                             "was answered with %s; LAN only mode stays on",
-                             value, LAN_ONLY)
-            await _pin_lan_mode(self)
-            return {"status": "success", "result": {LAN_MODE_KEY: LAN_ONLY}}
+            if str(value) != pinned:
+                logging.info("vo_moonraker_fixes: %s set to %r was answered "
+                             "with %s; %s", name, value, pinned, outcome)
+            await _pin(self, [name])
+            return {"status": "success", "result": {name: pinned}}
         try:
             return await handler(self, web_request, *args, **kwargs)
         finally:
-            if _lan_mode_changed(self):
-                await _pin_lan_mode(self)
+            names = _unpinned(self)
+            if names:
+                await _pin(self, names)
     _handle_config_update_request._vo_pinned = handler
     return _handle_config_update_request
 
@@ -181,13 +199,13 @@ def apply_database(module):
         for name, method in methods.items():
             if hasattr(method, "_vo_pinned"):
                 continue
-            wrap = _lan_mode_stays_on \
+            wrap = _pinned_stay \
                 if name == "_handle_config_update_request" else _then_pin
             setattr(component_class, name, wrap(method))
         return True
-    logging.info("vo_moonraker_fixes: QIDI's LAN-only mode not kept on; "
-                 "Moonraker's database code differs from the version this "
-                 "fix is for")
+    logging.info("vo_moonraker_fixes: QIDI's LAN-only mode and AI detection "
+                 "switches not kept; Moonraker's database code differs from "
+                 "the version this fix is for")
     return False
 
 

@@ -351,16 +351,8 @@ class SystemAptSourcesSpec:
 
 
 @dataclass(frozen=True)
-class SystemOptionalServiceSpec:
-    id: str
-    service: str
-    prompt: str
-
-
-@dataclass(frozen=True)
 class SystemServicesSpec:
     disable: tuple[str, ...]
-    optional_disable: tuple[SystemOptionalServiceSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -643,8 +635,6 @@ class InstalledState:
 
 @dataclass(frozen=True)
 class SystemOptimizationCliOptions:
-    disable_ai_detection: bool = False
-    keep_ai_detection: bool = False
     keep_system_optimizations: bool = False
     reboot_host: bool = False
 

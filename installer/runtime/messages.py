@@ -7,8 +7,6 @@ CHECKING_INSTALLED_PACKAGE = "checking installed package"
 PERFORMING_UNINSTALL_PREFLIGHT_CHECKS = "performing uninstall preflight checks"
 UNINSTALLING = "uninstalling"
 
-AI_DETECTION_PROMPT = "Would you like us to disable QIDI AI detection features?"
-AI_DETECTION_PROMPT_INSTRUCTION = "Type Y/YES to disable the backend service, or N/NO to keep AI detection enabled."
 SYSTEM_CHANGES_APPLYING = "Applying system changes. This can take a few minutes."
 SYSTEM_CHANGES_RESTORING = "Restoring system changes. This can take a few minutes."
 SYSTEM_OPTIMIZATIONS_FAILED = "System optimizations were not fully applied. Klipper config installation remains installed."

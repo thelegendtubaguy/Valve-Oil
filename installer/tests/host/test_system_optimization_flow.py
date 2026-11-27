@@ -161,7 +161,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 dry_run=True,
                 urlopen=moonraker_urlopen(),
                 environ=env,
-                system_options=SystemOptimizationCliOptions(disable_ai_detection=True),
+                system_options=SystemOptimizationCliOptions(),
                 run=host_run,
             )
 
@@ -206,7 +206,7 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 PlainReporter(io.StringIO()),
                 urlopen=install_urlopen,
                 environ=env,
-                system_options=SystemOptimizationCliOptions(disable_ai_detection=True),
+                system_options=SystemOptimizationCliOptions(),
                 auto_updates=False,
                 run=install_run,
             )
@@ -253,7 +253,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
                 self.assertIn(f"Nice={service_priority.NICE[operation]}\n", text)
                 if operation in service_priority.CPU_AFFINITY:
                     self.assertIn(f"CPUAffinity={service_priority.CPU_AFFINITY[operation]}\n", text)
-            # algo_app isn't started to apply them, since AI detection may be off.
+            # QIDI's AI detection is turned off without a question, and algo_app isn't started to apply them.
+            algo_app = system_root / "systemd/algo_app.service.json"
+            self.assertEqual(json.loads(algo_app.read_text(encoding="utf-8"))["enabled"], "disabled")
             self.assertNotIn(service_priority.SERVICES[service_priority.ALGO_APP_OPERATION], service_events)
             # QIDI's tuning script is replaced by one run that pins the interrupts irqbalance now leaves alone.
             for operation, dropin in cpu_tuning.FILES.items():
@@ -674,7 +676,9 @@ class SystemOptimizationFlowTests(unittest.TestCase):
             self.assertFalse((system_root / wifi_wait.RULE_FILE.lstrip("/")).exists())
             for dropin in (*service_priority.FILES.values(), *cpu_tuning.FILES.values()):
                 self.assertFalse((system_root / dropin.lstrip("/")).exists())
-            # Zram swap and the CPU governor are optional OS optimizations, so declining restoration keeps them.
+            # Zram swap, the CPU governor, and QIDI's AI detection turned off are optional OS optimizations, so declining
+            # restoration keeps them.
+            self.assertEqual(json.loads(algo_app.read_text(encoding="utf-8"))["enabled"], "disabled")
             self.assertTrue((zram / zram_swap.MARKER).is_file())
             self.assertEqual((system_root / cpu_governor.FILE.lstrip("/")).read_text(encoding="utf-8"), cpu_governor.CONTENT)
             self.assertEqual(zram_unit.read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
@@ -690,38 +694,56 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
         state_path = printer_root / manifest.state_file
         urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")
-        # An earlier install that declined the OS optimizations recorded that choice and changed nothing on the host.
+        # An earlier install that declined the OS optimizations and kept QIDI's AI detection on recorded that choice and
+        # changed nothing on the host.
         run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=None, urlopen=urlopen, environ=env)
         state = load_installed_state(state_path)
-        declined = {**(state.system_ledger or {}), "policy": {"system_optimizations": "disabled", "ai_detection": "unset"}}
+        declined = {**(state.system_ledger or {}), "policy": {"system_optimizations": "disabled", "ai_detection": "keep_enabled"}}
         write_installed_state(state_path, _replace_system_ledger(state, declined))
 
         env[SYSTEM_ROOT_ENV] = str(root)
         host_run = fake_host_run(root)
-        system_optimizations.maybe_reconcile_system_optimizations(
-            paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), environ=env, block_qidi_updates=True,
-            run=host_run, urlopen=urlopen,
-        )
 
-        # An automatic update applies them anyway, leaving AI detection on.
+        def reconcile():
+            system_optimizations.maybe_reconcile_system_optimizations(
+                paths=paths, manifest=manifest, reporter=PlainReporter(io.StringIO()), environ=env, block_qidi_updates=True,
+                run=host_run, urlopen=urlopen,
+            )
+
+        algo_app = root / "systemd/algo_app.service.json"
+
+        def ai_detection():
+            state = json.loads(algo_app.read_text(encoding="utf-8"))
+            return state["enabled"], state["active"]
+
+        reconcile()
+
+        # An automatic update applies them anyway, QIDI's AI detection turned off among them.
         state = load_installed_state(state_path)
-        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "enabled", "ai_detection": "keep_enabled"})
+        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "enabled", "ai_detection": "disable"})
         self.assertEqual((root / zram_swap.UNIT_FILE.lstrip("/")).read_text(encoding="utf-8"), zram_swap.UNIT_CONTENT)
         self.assertTrue(paths.host_reboot_marker_path.exists())
         self.assertTrue(paths.reboot_recommended_path.exists())
-        self.assertEqual(json.loads((root / "systemd/algo_app.service.json").read_text(encoding="utf-8"))["enabled"], "enabled")
+        self.assertEqual(ai_detection(), ("disabled", "inactive"))
 
-        # The install asks about AI detection while it runs, and not once it is off.
-        def questions():
-            overview = install_flow.plan_install(paths, manifest, environ=env, run=host_run, urlopen=urlopen)
-            return [question.id for question in overview.questions]
-
-        self.assertIn(install_flow.AI_DETECTION, questions())
-        algo_app = root / "systemd/algo_app.service.json"
-        algo_app.write_text(json.dumps({"exists": True, "service": "algo_app.service", "enabled": "disabled", "active": "inactive"}), encoding="utf-8")
-        self.assertNotIn(install_flow.AI_DETECTION, questions())
+        # A QIDI firmware package enables and starts it again. The install asks nothing about it and says it turns it
+        # off, and the next install or automatic update does.
+        algo_app.write_text(json.dumps({"exists": True, "service": "algo_app.service", "enabled": "enabled", "active": "active"}), encoding="utf-8")
+        overview = install_flow.plan_install(paths, manifest, environ=env, run=host_run, urlopen=urlopen)
+        self.assertEqual([question.id for question in overview.questions], [install_flow.AUTO_UPDATES])
+        self.assertIn(("QIDI AI detection", "Turned off"), install_flow.summary_rows(overview, install_flow.Answers()))
+        reconcile()
+        self.assertEqual(ai_detection(), ("disabled", "inactive"))
         run_install(paths, manifest, PlainReporter(io.StringIO()), urlopen=urlopen, environ=env, run=host_run)
-        self.assertEqual(load_installed_state(state_path).system_ledger["policy"]["system_optimizations"], "enabled")
+        state = load_installed_state(state_path)
+        self.assertEqual(state.system_ledger["policy"], {"system_optimizations": "enabled", "ai_detection": "disable"})
+
+        # Restoring the OS optimizations at uninstall puts it back as the first install found it.
+        system_optimizations.restore_system_optimizations(
+            paths=paths, manifest=manifest, state=state, reporter=PlainReporter(io.StringIO()), input_stream=io.StringIO(),
+            environ=env, include_optional=True, run=host_run, urlopen=urlopen,
+        )
+        self.assertEqual(ai_detection(), ("enabled", "active"))
 
     def test_touchscreen_app_keeps_its_form_without_a_decision_and_is_released_when_replaced(self):
         printer_root = copy_base_runtime(homing_patched=True)

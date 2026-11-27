@@ -100,6 +100,14 @@ password: your-password
 
 Every option is in [Moonraker's MQTT documentation](https://moonraker.readthedocs.io/en/latest/configuration/#mqtt).
 
+## QIDI's AI detection
+
+QIDI's AI detection, which watches the camera for spaghetti and objects left on the bed, is always off with Valve Oil. Every install and update turns off its service, `algo_app`, on the Max 4, the only supported printer that has it. The service can use about 190 MB of the printer's 486 MB of memory during a print. A QIDI firmware update starts it again. After one that Valve Oil runs, Valve Oil's install turns it straight back off; after one from a USB drive, the next install does, or the next automatic update check when automatic updates are on.
+
+Valve Oil also keeps the AI detection settings that QIDI's touchscreen app saves in Moonraker off, on every printer. Each attempt to turn one on is answered with off and logged in `moonraker.log` as `vo_moonraker_fixes: ai.noodle_detection set to ... was answered with 0; QIDI's AI detection stays off`, with that setting's name.
+
+Uninstall puts the service back as Valve Oil found it when you choose to undo the [OS optimizations](install.md#os-optimizations), and `--keep-system-optimizations` keeps it off. Those settings stay off until you turn them on.
+
 ## Add-ons
 
 | Command | What it does |
