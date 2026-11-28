@@ -671,6 +671,7 @@ def maybe_apply_system_optimizations(
         reporter.debug(event="system_optimizations.skipped", reason="non-default-system-root")
         updated = _replace_system_ledger(state, ledger)
         write_installed_state(state_path, updated)
+        keep_system_ledger_copy(paths, updated.system_ledger, environ=environ)
         return updated
     try:
         ledger = apply_system_optimizations(
@@ -691,6 +692,7 @@ def maybe_apply_system_optimizations(
         recovery_ledger = exc.ledger or ledger
         updated = _replace_system_ledger(state, recovery_ledger)
         write_installed_state(state_path, updated)
+        keep_system_ledger_copy(paths, updated.system_ledger, environ=environ)
         raise
     except SystemOptimizationApplyError as exc:
         ledger = exc.ledger
@@ -699,6 +701,7 @@ def maybe_apply_system_optimizations(
         reporter.line(f"{messages.SYSTEM_OPTIMIZATIONS_FAILED} {getattr(exc, 'message', str(exc))}")
     updated = _replace_system_ledger(state, ledger)
     write_installed_state(state_path, updated)
+    keep_system_ledger_copy(paths, updated.system_ledger, environ=environ)
     _clear_committed_rockchip_journal(paths, ledger)
     return updated
 
@@ -808,6 +811,7 @@ def maybe_reconcile_system_optimizations(
         reporter.line(f"{messages.SYSTEM_OPTIMIZATIONS_FAILED} {getattr(exc, 'message', str(exc))}")
     updated = _replace_system_ledger(state, ledger)
     write_installed_state(state_path, updated)
+    keep_system_ledger_copy(paths, updated.system_ledger, environ=environ)
     _clear_committed_rockchip_journal(paths, ledger)
 
 
@@ -1707,6 +1711,145 @@ def carried_system_ledger(ledger: dict[str, Any], *, manifest: Manifest, paths: 
             del preimages[operation_id]
             outcomes.pop(operation_id, None)
     return {**ledger, "restore_preimages": preimages, "outcomes": outcomes}
+
+
+# A copy of the system ledger outside the config folder, which QIDI's package replaces: a QIDI update from a USB drive,
+# the touchscreen, or a firmware zip deletes the installed state with it, while this copy stays.
+KEPT_LEDGER_FILE = ".vo_system_ledger.json"
+_DEFAULT_POLICY = {"system_optimizations": "enabled", "ai_detection": "keep_enabled"}
+
+
+def keep_system_ledger_copy(paths: RuntimePaths, ledger: dict[str, Any] | None, *, environ: dict[str, str]) -> None:
+    """Keep a copy of the ledger just written to the installed state beside it in printer_data."""
+    if not _system_root_allowed(paths=paths, environ=environ):
+        return
+    with suppress(OSError, TypeError, ValueError):
+        if isinstance(ledger, dict) and ledger.get("restore_preimages"):
+            atomic_write_text(paths.printer_data_root / KEPT_LEDGER_FILE,
+                              json.dumps({"system_ledger": ledger}) + "\n", mode=0o600)
+        else:
+            atomic_delete(paths.printer_data_root / KEPT_LEDGER_FILE)
+
+
+def remove_system_ledger_copy(paths: RuntimePaths) -> None:
+    with suppress(OSError):
+        atomic_delete(paths.printer_data_root / KEPT_LEDGER_FILE)
+
+
+def _earlier_ledgers(paths: RuntimePaths) -> list[dict[str, Any]]:
+    """Earlier system ledgers, newest first: the copy kept in printer_data, then each config backup's installed state.
+    A backup holds the state from before the install or uninstall that made it."""
+    from .backup import list_installer_backups
+    from .naming import INSTALL_BACKUP_LABEL_PREFIX
+    from .state_file import parse_installed_state
+    import yaml
+    import zipfile
+
+    found = []
+    with suppress(OSError, ValueError, KeyError, TypeError):
+        found.append(json.loads((paths.printer_data_root / KEPT_LEDGER_FILE).read_text(encoding="utf-8"))["system_ledger"])
+    members = ("config/vo_state.yaml", "config/tltg_optimized_state.yaml")
+    for archive in reversed(list_installer_backups(paths.printer_data_root, install_label_prefix=INSTALL_BACKUP_LABEL_PREFIX)):
+        try:
+            with zipfile.ZipFile(archive.path) as backup:
+                member = next((name for name in members if name in backup.namelist()), None)
+                if member is not None:
+                    found.append(parse_installed_state(yaml.safe_load(backup.read(member))).system_ledger)
+        except Exception:  # a damaged or unreadable backup only means one source fewer
+            continue
+    return [ledger for ledger in found if isinstance(ledger, dict) and ledger.get("restore_preimages")
+            and not system_ledger_needs_migration(ledger)]
+
+
+def _package_named(path: str) -> bool:
+    """A file under one of Valve Oil's own names, which no QIDI package ships."""
+    name = PurePosixPath(path).name
+    return name.startswith(("vo-", "vo_")) or "-vo-" in name or "valve-oil" in name
+
+
+def recovered_system_ledger(ledger: dict[str, Any] | None, *, manifest: Manifest, paths: RuntimePaths,
+                            environ: dict[str, str], run=subprocess.run) -> dict[str, Any] | None:
+    """The ledger with what it lost to a QIDI update put back, so uninstall can undo every host change.
+
+    QIDI's package deletes the installed state but leaves most host changes in place, so the install after it finds
+    them already made, with nothing to say what was there before, and uninstall then leaves them. A change the ledger
+    has no restore preimage for, and that it has no outcome for or records as already current, takes the preimage
+    and outcome of the newest earlier ledger that has one (_earlier_ledgers) while the host is still as that install
+    left it (_restore_decision). A file under Valve Oil's own name that is still there and that no earlier ledger
+    accounts for didn't exist before Valve Oil. The ledger as it was when nothing is recovered."""
+    spec = manifest.system_optimizations
+    if (spec is None or not _system_root_allowed(paths=paths, environ=environ)
+            or (ledger is not None and (not isinstance(ledger, dict) or system_ledger_needs_migration(ledger)))):
+        return ledger
+    root = _system_root(environ)
+    base = ledger or {}
+    preimages = dict(base.get("restore_preimages") or {})
+    outcomes = dict(base.get("outcomes") or {})
+
+    def lost(operation_id: str) -> bool:
+        guarded = GUARDED_FILE_PATCHES.get(operation_id)
+        if operation_id in preimages or (guarded is not None and guarded.binary is not None):
+            return False  # a reviewed binary's original is rebuilt from the host by every install (_binary_original)
+        outcome = outcomes.get(operation_id)
+        return not isinstance(outcome, dict) or outcome.get("status") == "already_current"
+
+    earlier = _earlier_ledgers(paths)
+    policy = base.get("policy") or next((item["policy"] for item in earlier if isinstance(item.get("policy"), dict)),
+                                        _DEFAULT_POLICY)
+    # (preimage, outcome, committed transaction) for each lost change, the newest first.
+    candidates: dict[str, list[tuple[dict[str, Any], dict[str, Any], str | None]]] = {}
+    for item in earlier:
+        committed = item.get("committed_transactions") if isinstance(item.get("committed_transactions"), dict) else {}
+        for operation_id, preimage in item["restore_preimages"].items():
+            outcome = (item.get("outcomes") or {}).get(operation_id)
+            if (preimage is not None and isinstance(outcome, dict) and outcome.get("status") != "legacy_unproven"
+                    and lost(operation_id)):
+                candidates.setdefault(operation_id, []).append((preimage, outcome, committed.get(operation_id)))
+    for operation_id, guarded in GUARDED_FILE_PATCHES.items():
+        path = guarded.file(spec)
+        target = _map_path(root, path)
+        if (guarded.create_if_missing and guarded.binary is None and _package_named(path) and lost(operation_id)
+                and not target.is_symlink() and target.is_file()):
+            candidates.setdefault(operation_id, []).append((
+                {"path": path, "exists": False},
+                {"status": "applied", "desired": _desired(operation_id, spec),
+                 "postflight": {"path": path, "sha256": _sha256_file(target)}, "source": "recovered"},
+                None,
+            ))
+    recovered: dict[str, tuple[dict[str, Any], dict[str, Any], str | None]] = {}
+    for operation_id, choices in candidates.items():
+        for preimage, outcome, transaction in choices:
+            try:
+                validate_system_ledger({"schema_version": 2, "policy": policy, "restore_preimages": {operation_id: preimage},
+                                        "outcomes": {operation_id: outcome}}, manifest=manifest, paths=paths)
+                decision, _ = _restore_decision(operation_id, preimage=preimage, outcome=outcome, manifest=manifest,
+                                                paths=paths, root=root, run=run)
+            except (InstallerError, OSError, KeyError, TypeError, ValueError):
+                continue
+            if decision == _RESTORE:
+                recovered[operation_id] = (preimage, outcome, transaction)
+                break
+    if not recovered:
+        return ledger
+    # In the order an install applies them, so uninstall undoes them in reverse as it does the rest.
+    order = {operation_id: index for index, operation_id in enumerate(_selected_operation_ids(spec, policy))}
+    merged = {**preimages, **{operation_id: preimage for operation_id, (preimage, _, _) in recovered.items()}}
+    result = {
+        **base,
+        "schema_version": 2,
+        "policy": policy,
+        "restore_preimages": dict(sorted(merged.items(), key=lambda item: order.get(item[0], len(order)))),
+        "outcomes": {**outcomes, **{operation_id: outcome for operation_id, (_, outcome, _) in recovered.items()}},
+        "committed_transactions": {
+            **(base.get("committed_transactions") or {}),
+            **{operation_id: transaction for operation_id, (_, _, transaction) in recovered.items() if transaction},
+        },
+    }
+    try:
+        validate_system_ledger(result, manifest=manifest, paths=paths)
+    except StateValidationError:
+        return ledger
+    return result
 
 
 def restore_system_optimizations(

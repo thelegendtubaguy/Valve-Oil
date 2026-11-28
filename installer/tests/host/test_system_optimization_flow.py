@@ -10,6 +10,7 @@ import shutil
 import unittest
 import urllib.error
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import mock
@@ -1531,6 +1532,66 @@ class SystemOptimizationFlowTests(unittest.TestCase):
         after = {name: data for name, data in snapshot_tree(system_root).items()
                  if name in before or not name.startswith(("systemd/", "run/"))}
         self.assertEqual(after, {**before, moonraker: newer, hook: hook_bytes, "etc/resolv.conf": resolv.read_bytes()})
+
+    def test_uninstall_after_a_usb_update_still_undoes_every_host_change(self):
+        # Issue #437 and the Smart 5 back-to-stock run: a QIDI update from a USB drive, the touchscreen, or a firmware
+        # zip deletes the installed state with the config folder but leaves most of Valve Oil's host changes, so the
+        # install after it found them already made and uninstall left them, the boot animation among them.
+        for source in ("kept copy", "config backup", "own names only"):
+            with self.subTest(source):
+                printer_root = copy_base_runtime(homing_patched=True)
+                system_root = fake_system_root(include_moonraker_cache=True)
+                host_run = fake_host_run(system_root)
+                env = build_env(printer_root, moonraker_url="http://moonraker.invalid")
+                env[SYSTEM_ROOT_ENV] = str(system_root)
+                boot = printer_root / "boot-id"
+                boot.write_text("test-boot\n")
+                env["VO_BOOT_ID_PATH"] = str(boot)
+                paths = resolve_runtime_paths(bundle_root=REPO_ROOT, environ=env)
+                manifest = load_manifest(REPO_ROOT / "installer/package.yaml")
+                compatibility = load_supported_upgrade_sources(REPO_ROOT / "installer/supported_upgrade_sources.yaml")
+                stock_config = printer_root.parent / "stock-config"
+                shutil.copytree(paths.config_root, stock_config, symlinks=True)
+                before = snapshot_tree(system_root)
+                urlopen = moonraker_urlopen(saved_variables_path=paths.config_root / "saved_variables.cfg")
+
+                clock = [datetime(2026, 11, 28, tzinfo=timezone.utc)]
+
+                def install(answers="yes\nno\n"):
+                    # Each install an hour after the last, so each config backup has its own name.
+                    clock[0] += timedelta(hours=1)
+                    with mock.patch("installer.runtime.runner.utc_now", return_value=clock[0]):
+                        run_install(paths, manifest, PlainReporter(io.StringIO()), input_stream=io.StringIO(answers),
+                                    urlopen=urlopen, environ=env, run=host_run)
+
+                install()
+                kept = paths.printer_data_root / system_optimizations.KEPT_LEDGER_FILE
+                self.assertTrue(kept.is_file())
+                if source == "config backup":
+                    install()  # an update, whose config backup holds the first install's state
+                if source != "kept copy":
+                    kept.unlink()  # installed by a release before the copy was kept
+
+                # QIDI's package: the config folder replaced, and QIDI's own Moonraker file put back.
+                shutil.rmtree(paths.config_root)
+                shutil.copytree(stock_config, paths.config_root, symlinks=True)
+                moonraker = manifest.system_optimizations.moonraker_file_manager.file.lstrip("/")
+                (system_root / moonraker).write_bytes(before[moonraker])
+                install()
+                run_uninstall(paths, manifest, compatibility, PlainReporter(io.StringIO()),
+                              input_stream=io.StringIO("yes\nyes\nno\n"), urlopen=moonraker_urlopen(), environ=env,
+                              run=host_run)
+                self.assertFalse(kept.exists())
+                # The fake host keeps its own notes on units and resolvconf runs under systemd/ and run/.
+                after = {name: data for name, data in snapshot_tree(system_root).items()
+                         if name in before or not name.startswith(("systemd/", "run/"))}
+                if source == "own names only":
+                    # Nothing says what QIDI's own files held, but every file under Valve Oil's own name is gone.
+                    self.assertEqual([name for name in after if name not in before
+                                      and system_optimizations._package_named("/" + name)], [])
+                    self.assertNotIn("etc/systemd/system/vo-boot-animation.service", after)
+                else:
+                    self.assertEqual(after, before)
 
     def test_valve_oils_klipper_installs_beside_qidis_and_uninstall_removes_it(self):
         """Valve Oil's Klipper on a Plus 5 through its life: installed beside QIDI's ~/klipper, which nothing changes,

@@ -79,6 +79,8 @@ from .system_optimizations import (
     migrate_legacy_system_ledger,
     recover_pending_legacy_system_ledger_migration,
     restore_system_optimizations,
+    recovered_system_ledger,
+    remove_system_ledger_copy,
     retire_earlier_host_names,
     system_ledger_needs_migration,
     validate_legacy_system_ledger,
@@ -193,6 +195,11 @@ def run_uninstall(
             validate_system_ledger(state.system_ledger, manifest=manifest, paths=paths)
     except StateValidationError as exc:
         raise InstalledPackageValidationError() from exc
+    # What the ledger lost to a QIDI update from a USB drive, the touchscreen, or a firmware zip, so it is undone too.
+    recovered = recovered_system_ledger(state.system_ledger, manifest=manifest, paths=paths, environ=env, run=run)
+    if recovered is not state.system_ledger:
+        from dataclasses import replace
+        state = replace(state, system_ledger=recovered)
     validate_source_state(
         state,
         manifest.install.source_patches,
@@ -518,6 +525,7 @@ def _execute_uninstall(
         if state_path.exists():
             journal.note_write()
             delete_state_file(state_path)
+        remove_system_ledger_copy(paths)
         if saved_variable_verify_marker_path(paths).exists():
             journal.note_write()
             atomic_delete(saved_variable_verify_marker_path(paths))

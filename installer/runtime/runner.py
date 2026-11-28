@@ -105,6 +105,7 @@ from .system_optimizations import (
     discard_legacy_system_ledger_migration,
     finalize_legacy_system_ledger_migration,
     load_carried_system_ledger,
+    recovered_system_ledger,
     maybe_apply_system_optimizations,
     maybe_emit_system_dry_run,
     migrate_legacy_system_ledger,
@@ -703,13 +704,17 @@ def _execute_install(
                 for result in source_results
                 if result.original is not None
             ),
-            system_ledger=(
+            # A QIDI update from a USB drive, the touchscreen, or a firmware zip deleted the state file but left
+            # most host changes; what the ledger lost is taken back from the copy kept beside it or the config
+            # backups, so uninstall can still undo it.
+            system_ledger=recovered_system_ledger(
                 prior_state.system_ledger
                 if prior_state is not None and prior_state.system_ledger and prior_state.system_ledger.get("restore_preimages")
                 # QIDI's package deleted the state file of the install a firmware update replaced; that update
                 # kept its system ledger, so what that install changed on the host can still be undone.
                 else load_carried_system_ledger(paths, manifest=manifest, environ=environ, run=run)
-                if prior_state is None else None
+                if prior_state is None else None,
+                manifest=manifest, paths=paths, environ=environ, run=run,
             ),
         )
         journal.note_write()
