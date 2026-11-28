@@ -1736,9 +1736,19 @@ def remove_system_ledger_copy(paths: RuntimePaths) -> None:
         atomic_delete(paths.printer_data_root / KEPT_LEDGER_FILE)
 
 
-def _earlier_ledgers(paths: RuntimePaths) -> list[dict[str, Any]]:
+def earlier_system_ledgers(paths: RuntimePaths) -> list[dict[str, Any]]:
     """Earlier system ledgers, newest first: the copy kept in printer_data, then each config backup's installed state.
-    A backup holds the state from before the install or uninstall that made it."""
+    A backup holds the state from before the install or uninstall that made it. The backups stop at the newest
+    uninstall's. Its state, and every older one, describes changes that uninstall undid, so a host now as they describe
+    was made so by something else, such as the operator or a later QIDI firmware. Read by an install before it prunes
+    the backups (recovered_system_ledger). Never fails, since it only adds to what uninstall undoes."""
+    try:
+        return _earlier_system_ledgers(paths)
+    except Exception:
+        return []
+
+
+def _earlier_system_ledgers(paths: RuntimePaths) -> list[dict[str, Any]]:
     from .backup import list_installer_backups
     from .naming import INSTALL_BACKUP_LABEL_PREFIX
     from .state_file import parse_installed_state
@@ -1750,6 +1760,8 @@ def _earlier_ledgers(paths: RuntimePaths) -> list[dict[str, Any]]:
         found.append(json.loads((paths.printer_data_root / KEPT_LEDGER_FILE).read_text(encoding="utf-8"))["system_ledger"])
     members = ("config/vo_state.yaml", "config/tltg_optimized_state.yaml")
     for archive in reversed(list_installer_backups(paths.printer_data_root, install_label_prefix=INSTALL_BACKUP_LABEL_PREFIX)):
+        if archive.kind == "uninstall":
+            break
         try:
             with zipfile.ZipFile(archive.path) as backup:
                 member = next((name for name in members if name in backup.namelist()), None)
@@ -1768,15 +1780,29 @@ def _package_named(path: str) -> bool:
 
 
 def recovered_system_ledger(ledger: dict[str, Any] | None, *, manifest: Manifest, paths: RuntimePaths,
-                            environ: dict[str, str], run=subprocess.run) -> dict[str, Any] | None:
+                            environ: dict[str, str], run=subprocess.run,
+                            earlier: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
     """The ledger with what it lost to a QIDI update put back, so uninstall can undo every host change.
 
     QIDI's package deletes the installed state but leaves most host changes in place, so the install after it finds
     them already made, with nothing to say what was there before, and uninstall then leaves them. A change the ledger
     has no restore preimage for, and that it has no outcome for or records as already current, takes the preimage
-    and outcome of the newest earlier ledger that has one (_earlier_ledgers) while the host is still as that install
-    left it (_restore_decision). A file under Valve Oil's own name that is still there and that no earlier ledger
-    accounts for didn't exist before Valve Oil. The ledger as it was when nothing is recovered."""
+    and outcome of the newest earlier ledger that has one (earlier, else earlier_system_ledgers) while the host is
+    still as that install left it (_restore_decision). A file under Valve Oil's own name that is still there and that
+    no earlier ledger accounts for didn't exist before Valve Oil. The ledger as it was when nothing is recovered, and
+    when anything goes wrong, since recovery only adds to what uninstall undoes and never stops an install or an
+    uninstall."""
+    try:
+        if earlier is None:
+            earlier = earlier_system_ledgers(paths)
+        return _recovered_system_ledger(ledger, manifest=manifest, paths=paths, environ=environ, run=run,
+                                        earlier=earlier)
+    except Exception:
+        return ledger
+
+
+def _recovered_system_ledger(ledger: dict[str, Any] | None, *, manifest: Manifest, paths: RuntimePaths,
+                             environ: dict[str, str], run, earlier: list[dict[str, Any]]) -> dict[str, Any] | None:
     spec = manifest.system_optimizations
     if (spec is None or not _system_root_allowed(paths=paths, environ=environ)
             or (ledger is not None and (not isinstance(ledger, dict) or system_ledger_needs_migration(ledger)))):
@@ -1791,9 +1817,9 @@ def recovered_system_ledger(ledger: dict[str, Any] | None, *, manifest: Manifest
         if operation_id in preimages or (guarded is not None and guarded.binary is not None):
             return False  # a reviewed binary's original is rebuilt from the host by every install (_binary_original)
         outcome = outcomes.get(operation_id)
-        return not isinstance(outcome, dict) or outcome.get("status") == "already_current"
+        # The Rockchip mount found already changed, with nothing saying Valve Oil changed it, is already_current_unowned.
+        return not isinstance(outcome, dict) or outcome.get("status") in ("already_current", "already_current_unowned")
 
-    earlier = _earlier_ledgers(paths)
     policy = base.get("policy") or next((item["policy"] for item in earlier if isinstance(item.get("policy"), dict)),
                                         _DEFAULT_POLICY)
     # (preimage, outcome, committed transaction) for each lost change, the newest first.

@@ -321,8 +321,9 @@ Every install and update SHALL apply the host OS optimizations, leaving only whe
 
 #### Scenario: Host restore records outlive a QIDI update outside Valve Oil
 - **WHEN** a QIDI update from a USB drive, the touchscreen, or a firmware zip deletes the installed state with the config folder and leaves host changes in place, and the install command runs again
-- **THEN** the install recovers, for each host change it has no restore preimage for, the newest earlier record of it, from the copy kept in printer_data outside the config folder or from the configuration backups, while the host is still as that earlier install left it, as the install after a Valve Oil firmware update does
+- **THEN** the install recovers, for each host change it has no restore preimage for, the newest earlier record of it, from the copy kept in printer_data outside the config folder or from the configuration backups newer than the newest uninstall's, read before the install prunes them, while the host is still as that earlier install left it, as the install after a Valve Oil firmware update does
 - **AND** a file under one of Valve Oil's own names that no earlier record accounts for is recorded as created by Valve Oil
+- **AND** a recovery that fails leaves the record as it was and never stops the install or uninstall
 - **AND** uninstall recovers the same way before it restores host state, so an installation recorded before this rule existed is also returned to its preimages, and uninstall removes the kept copy
 
 #### Scenario: Changed services restart once

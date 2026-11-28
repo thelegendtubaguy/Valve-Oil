@@ -103,6 +103,7 @@ from .rollback import RollbackJournal
 from .state_file import StateValidationError, load_installed_state, write_installed_state
 from .system_optimizations import (
     discard_legacy_system_ledger_migration,
+    earlier_system_ledgers,
     finalize_legacy_system_ledger_migration,
     load_carried_system_ledger,
     recovered_system_ledger,
@@ -307,8 +308,11 @@ def run_install(
 
     reporter.status(messages.CREATING_BACKUP)
     backup_zip_path = None
+    earlier_ledgers = None
     if not dry_run:
         progress.step(progress.BACKUP, reporter)
+        # Read before this backup prunes the oldest, which may be the last to hold what a QIDI update lost.
+        earlier_ledgers = earlier_system_ledgers(paths)
         existing_backups = list_installer_backups(
             paths.printer_data_root,
             install_label_prefix=manifest.backup.label_prefix,
@@ -384,6 +388,7 @@ def run_install(
             started_at=started_at,
             plan=plan,
             backup_zip_path=backup_zip_path,
+            earlier_ledgers=earlier_ledgers,
             input_stream=input_stream,
             urlopen=urlopen,
             environ=env,
@@ -523,6 +528,7 @@ def _execute_install(
     started_at,
     plan: InstallPlan,
     backup_zip_path,
+    earlier_ledgers: list[dict] | None = None,
     input_stream,
     urlopen,
     environ: dict[str, str],
@@ -714,7 +720,7 @@ def _execute_install(
                 # kept its system ledger, so what that install changed on the host can still be undone.
                 else load_carried_system_ledger(paths, manifest=manifest, environ=environ, run=run)
                 if prior_state is None else None,
-                manifest=manifest, paths=paths, environ=environ, run=run,
+                manifest=manifest, paths=paths, environ=environ, run=run, earlier=earlier_ledgers,
             ),
         )
         journal.note_write()
