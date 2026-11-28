@@ -1156,9 +1156,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         )
         archive = _release_archive()
         checksum = hashlib.sha256(archive).hexdigest()
-        state_path(paths).write_text(
-            json.dumps({"latest_checksum": "0" * 64}), encoding="utf-8"
-        )
+        auto_update.record_installed_build(paths, "0" * 64, "release")
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
         process = {"id": 100}
         child_calls = []
@@ -1335,7 +1333,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         )
         checksum = "a" * 64
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
-        state_path(paths).write_text(json.dumps({"latest_checksum": checksum}), encoding="utf-8")
+        auto_update.record_installed_build(paths, checksum, "release")
         base_urlopen = self._fixture_urlopen(printer_root)
 
         def urlopen(request, timeout=0):
@@ -1365,7 +1363,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         before = (printer_root / "config/saved_variables.cfg").read_bytes()
         checksum = "a" * 64
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
-        state_path(paths).write_text(json.dumps({"latest_checksum": checksum}), encoding="utf-8")
+        auto_update.record_installed_build(paths, checksum, "release")
 
         active_base_urlopen = self._fixture_urlopen(printer_root, state="printing")
 
@@ -1515,6 +1513,126 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         self.assertEqual((result.action, result.checksum), ("checked", "2" * 64))
         self.assertEqual(sum(url.endswith(".sha256") for url in state["opened"]), 1)
 
+    def test_manual_dev_install_records_provenance_and_offers_older_stable(self):
+        printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
+        bundle = temp_path("manual-dev-bundle-")
+        shutil.copytree(REPO_ROOT / "installer", bundle / "installer")
+        shutil.copytree(REPO_ROOT / "firmware", bundle / "firmware")
+        paths = dataclasses.replace(paths, bundle_root=bundle, installer_root=bundle / "installer")
+        metadata = bundle / "RELEASE_METADATA.yaml"
+        metadata.write_text(f'package_version: "{self.manifest.package.version}"\n'
+                            'channel: dev\ngit_short_sha: abc1234\nbuild_id: manual-a\n')
+        self._run_install(paths)
+        recorded = json.loads(state_path(paths).read_text())
+        self.assertEqual(recorded["installed_channel"], "dev")
+        self.assertEqual(recorded["installed_commit"], "abc1234")
+        self.assertEqual(recorded["installed_build_id"], "manual-a")
+        self.assertIsNone(recorded["installed_checksum"])
+        self.assertFalse(auto_update.experimental_updates(paths))
+        result = run_auto_update_check(paths=paths, reporter=PlainReporter(io.StringIO()), enrolled=False,
+                                      latest=("f" * 64, "1.0.0"), urlopen=self._fixture_urlopen(printer_root))
+        self.assertEqual(result.action, "checked")
+        waiting = valve_oil_status.load_status(paths).pending
+        self.assertTrue(any(item.kind == valve_oil_status.RELEASE and item.version == "1.0.0" for item in waiting))
+        # A failed same-version candidate cannot replace the last successful build's provenance.
+        metadata.write_text(metadata.read_text().replace("manual-a", "manual-b").replace("abc1234", "def5678"))
+        before = state_path(paths).read_bytes()
+        with mock.patch("installer.runtime.runner.settle_installed_bundle", side_effect=InstallerError("install failed")):
+            with self.assertRaises(InstallerError):
+                self._run_install(paths)
+        self.assertEqual(state_path(paths).read_bytes(), before)
+        # Reinstalling from an unpackaged source must not retain the previous archive's identity.
+        metadata.unlink()
+        self._run_install(paths)
+        self.assertIsNone(json.loads(state_path(paths).read_text())["installed_channel"])
+
+    def test_real_installer_accepts_older_compatible_stable_after_dev(self):
+        printer_root, paths, _ = self._fixture("01.01.07.01", source_variant="sync-reset")
+        self._run_install(paths)
+        auto_update.set_experimental_updates(paths, True)
+        auto_update.record_installed_build(paths, "d" * 64, "dev")
+        state_file = printer_root / self.manifest.state_file
+        self.assertEqual(load_installed_state(state_file).package_version, self.manifest.package.version)
+        stable = dataclasses.replace(self.manifest, package=dataclasses.replace(self.manifest.package, version="1.0.0"))
+        auto_update.set_experimental_updates(paths, False)
+        # Real install/preflight/ledger validation and file writes; only the device transport is a fixture.
+        run_install(paths, stable, PlainReporter(io.StringIO()),
+                    urlopen=self._fixture_urlopen(printer_root))
+        self.assertEqual(load_installed_state(state_file).package_version, "1.0.0")
+        self.assertFalse(auto_update.experimental_updates(paths))
+        self.assertTrue((printer_root / "config/printer.cfg").is_file())
+
+    def test_experimental_feed_uses_checksums_and_returns_to_older_stable(self):
+        """The mutable prerelease's checksum, not package.version, drives both update paths and stable recovery."""
+        from installer.runtime import update_check
+
+        printer_root, paths, urlopen, forbidden, _ = self._waiting_printer()
+        paths.restart_marker_path.unlink()
+        state = state_path(paths)
+        auto_update.set_experimental_updates(paths, True)
+        state.write_text(json.dumps({"latest_checksum": "1" * 64,
+                                     "installed_checksum": "1" * 64, "installed_channel": "dev",
+                                     "latest_channel": "dev", "keep": "me"}), encoding="utf-8")
+        installed = "99.1.1"
+        installs = []
+
+        def install(**kwargs):
+            installs.append((kwargs["archive_url"], kwargs["expected_checksum"]))
+
+        common = {
+            "paths": paths,
+            "reporter": PlainReporter(io.StringIO()),
+            "environ": {},
+            "urlopen": urlopen,
+            "run": forbidden,
+            "enrolled": True,
+            "start_firmware": forbidden,
+            "deliver": forbidden,
+            "read_session": forbidden,
+            "disk_usage": lambda path: types.SimpleNamespace(free=2 ** 40),
+        }
+        with mock.patch("installer.runtime.auto_update._installation_requires_reconciliation", return_value=False), \
+                mock.patch.object(update_check, "installed_release", return_value=installed), \
+                mock.patch("installer.runtime.auto_update.run_latest_installer", side_effect=install):
+            # Same package.version, a new prerelease checksum: it still installs the new dev build.
+            result = run_auto_update_check(**common, latest=("2" * 64, self.manifest.package.version))
+            self.assertEqual(result.action, "updated")
+            self.assertEqual(installs[-1], (auto_update.DEFAULT_DEV_ARCHIVE_URL, "2" * 64))
+            self.assertEqual(json.loads(state.read_text())["latest_channel"], "dev")
+            # A restart reads the same preference and sees a second dev build with the same package.version.
+            self.assertTrue(auto_update.experimental_updates(paths))
+            result = run_auto_update_check(**common, latest=("3" * 64, self.manifest.package.version))
+            self.assertEqual(result.action, "updated")
+            self.assertEqual(installs[-1], (auto_update.DEFAULT_DEV_ARCHIVE_URL, "3" * 64))
+
+        auto_update.set_experimental_updates(paths, False)
+        before_failure = state.read_bytes()
+        with mock.patch("installer.runtime.auto_update._installation_requires_reconciliation", return_value=False), \
+                mock.patch.object(update_check, "installed_release", return_value=installed), \
+                mock.patch("installer.runtime.auto_update.installed_release_channel", return_value="dev"), \
+                mock.patch("installer.runtime.auto_update.run_latest_installer", side_effect=AutoUpdateError("download failed")):
+            with self.assertRaises(AutoUpdateError):
+                run_auto_update_check(**common, latest=("4" * 64, "1.0.0"))
+        # A failed stable install never rewrites either the choice or the installed build's state.
+        failed = json.loads(state.read_text())
+        self.assertEqual(failed["installed_checksum"], json.loads(before_failure)["installed_checksum"])
+        self.assertEqual(failed["installed_channel"], "dev")
+        self.assertFalse(auto_update.experimental_updates(paths))
+
+        with mock.patch("installer.runtime.auto_update._installation_requires_reconciliation", return_value=False), \
+                mock.patch.object(update_check, "installed_release", return_value=installed), \
+                mock.patch("installer.runtime.auto_update.installed_release_channel", return_value="dev"), \
+                mock.patch("installer.runtime.auto_update.run_latest_installer", side_effect=install):
+            result = run_auto_update_check(**common, latest=("4" * 64, "1.0.0"))
+        self.assertEqual(result.action, "updated")
+        self.assertEqual(installs[-1], (auto_update.DEFAULT_ARCHIVE_URL, "4" * 64))
+        self.assertEqual(json.loads(state.read_text()), {"keep": "me",
+                                                          "installed_channel": "release", "installed_checksum": "4" * 64,
+                                                          "installed_version": None,
+                                                          "installed_commit": None, "installed_build_id": None,
+                                                          "available_channel": "release", "available_checksum": "4" * 64,
+                                                          "latest_channel": "release", "latest_checksum": "4" * 64})
+
     def test_unenrolled_check_only_publishes_what_is_waiting(self):
         # The safety boundary: without enrollment the check never installs, starts a firmware update, reconciles,
         # reads or flashes a board, stops or restarts a service, or reboots. It records the latest checksum.
@@ -1524,7 +1642,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         before = snapshot_tree(printer_root)
         lock_free_while_fetching = []
 
-        def prefetch(environ):
+        def prefetch(environ, **kwargs):
             # The release is fetched before the check takes the lock, so a slow network never holds up a print start.
             try:
                 with acquire(paths.lock_path):
@@ -1589,7 +1707,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         printer_root, paths, urlopen, forbidden, _ = self._waiting_printer(latest=None)
         paths.restart_marker_path.unlink()
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
-        state_path(paths).write_text(json.dumps({"latest_checksum": "2" * 64}), encoding="utf-8")
+        auto_update.record_installed_build(paths, "2" * 64, "release")
         boards = [{"board": board, "state": "current"} for board in ("thr", "mcu")]
         (printer_root / ".vo_board_admission.json").write_text(json.dumps({
             "schema_version": 1, "package_version": self.manifest.package.version, "printer": "max4",
@@ -1616,7 +1734,7 @@ class SourcePatchLifecycleMatrixTests(unittest.TestCase):
         printer_root, paths, urlopen, forbidden, _ = self._waiting_printer(latest=None)
         paths.restart_marker_path.unlink()
         enrollment_path(paths).write_text("1\n", encoding="utf-8")
-        state_path(paths).write_text(json.dumps({"latest_checksum": "2" * 64}), encoding="utf-8")
+        auto_update.record_installed_build(paths, "2" * 64, "release")
         (printer_root / ".vo_board_admission.json").write_text(json.dumps({
             "schema_version": 1, "package_version": self.manifest.package.version, "printer": "max4",
             "firmware": "01.01.06.05", "target_firmware": "01.01.07.01", "new_install": False,

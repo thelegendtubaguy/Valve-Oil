@@ -151,7 +151,7 @@ describe('parseVoStatus', () => {
       updated_at: null,
       release: { installed: null, channel: null, commit: null },
       printer: { id: null, name: null, firmware: null, target_firmware: null },
-      auto_update: { enabled: null, scheduled: null, window: null },
+      auto_update: { enabled: null, experimental: null, installed_build: null, available_build: null, scheduled: null, window: null },
       check: { at: null, result: null, message: '', next_at: null },
       pending: [],
       boards: [],
@@ -180,6 +180,7 @@ describe('parseVoStatus', () => {
 
     expect(status?.pending).toEqual([{
       ...firmware,
+      downgrade: false,
       blocked_by: [heaters, { code: 'free_space', message: 'free_space' }]
     }])
   })
@@ -300,6 +301,29 @@ describe('voIssueUrlValid', () => {
 })
 
 describe('voStatusView', () => {
+  it('offers Update now immediately after either source switch, without waiting for the hourly check', () => {
+    for (const channel of ['release', 'dev']) {
+      const experimental = channel !== 'dev'
+      const status = parseVoStatus({ ...base, release: { ...base.release, channel },
+        auto_update: { ...base.auto_update, experimental, installed_build: 'a'.repeat(64), available_build: null } })!
+      expect(voStatusView(status).sourceChanged).toBe(true)
+      expect(voStatusView(status).updateNow).toMatchObject({ offered: true, action: 'install', allowed: true })
+      status.auto_update.experimental = !experimental
+      expect(voStatusView(status).sourceChanged).toBe(true)
+      expect(voStatusView(status).updateNow.offered).toBe(true)
+      status.auto_update.available_build = status.auto_update.installed_build
+      expect(voStatusView(status).sourceChanged).toBe(false)
+      expect(voStatusView(status).updateNow.offered).toBe(false)
+    }
+  })
+
+  it('shows experimental feed failures when the printer supports feed selection', () => {
+    const status = parseVoStatus({ ...base, release: { ...base.release, channel: 'dev' },
+      auto_update: { ...base.auto_update, experimental: true },
+      check: { ...base.check, result: 'failed', message: 'Checksum fetch failed' } })!
+    expect(voStatusView(status).checkFailed).toBe('Checksum fetch failed')
+  })
+
   it.each([
     ['nothing waiting', {}, { notice: 'none', reasons: [], firmwareWaiting: false }],
     [

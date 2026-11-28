@@ -24,8 +24,11 @@ import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Callable
+from typing import Callable, Mapping
+
+import yaml
 
 from .box_enablement import (
     SavedVariablePersistenceError,
@@ -56,6 +59,10 @@ from .sudo import run_sudo_ignore_failure as _run_sudo_ignore_failure
 
 DEFAULT_ARCHIVE_URL = f"{REPOSITORY_URL}/releases/latest/download/{ARCHIVE_NAME}"
 DEFAULT_CHECKSUM_URL = f"{DEFAULT_ARCHIVE_URL}.sha256"
+EXPERIMENTAL_FILE = ".vo_experimental_updates"
+DEV_ARCHIVE_NAME = "valve-oil-dev.tar.gz"
+DEFAULT_DEV_ARCHIVE_URL = f"{REPOSITORY_URL}/releases/download/prerelease/{DEV_ARCHIVE_NAME}"
+DEFAULT_DEV_CHECKSUM_URL = f"{DEFAULT_DEV_ARCHIVE_URL}.sha256"
 LOCK_HELD_ENV = "VO_INSTALLER_LOCK_HELD"
 # Who asked for an install's QIDI firmware update, as its status-file run kind: "automatic", "update_now", or by default
 # "install" (firmware_update.py).
@@ -69,6 +76,8 @@ SYSTEM_ROOT_ENV = "VO_SYSTEM_ROOT"
 URL_OVERRIDE_ENVIRONMENT = (
     "VO_AUTO_UPDATE_ARCHIVE_URL",
     "VO_AUTO_UPDATE_CHECKSUM_URL",
+    "VO_AUTO_UPDATE_DEV_ARCHIVE_URL",
+    "VO_AUTO_UPDATE_DEV_CHECKSUM_URL",
     "VO_INSTALLER_ARCHIVE_URL",
     "VO_INSTALLER_CHECKSUM_URL",
 )
@@ -130,6 +139,11 @@ LEGACY_TIMER = re.compile(
     r"\[Unit\]\nDescription=Run [^\n]*auto-update hourly\n\n\[Timer\]\nOnBootSec=\d+min\nOnUnitActiveSec=1h\n"
     r"Persistent=true\n\n\[Install\]\nWantedBy=timers\.target\n"
 )
+
+
+class UpdateChannel(str, Enum):
+    STABLE = "release"
+    EXPERIMENTAL = "dev"
 
 
 class AutoUpdateError(InstallerError):
@@ -351,9 +365,10 @@ def run_auto_update_check(
     in_window = settings.in_window()
     if enrolled and not recovery_required and in_window:
         _complete_pending_activation(paths, reporter=reporter, urlopen=urlopen)
+    channel = selected_update_channel(paths)
     try:
         if latest is None:
-            latest = fetch_latest_release(release_checksum_url(env), urlopen=_release_opener(urlopen))
+            latest = fetch_latest_release(release_checksum_url(env, channel), urlopen=_release_opener(urlopen))
         if isinstance(latest, AutoUpdateError):
             raise latest
         checksum, latest_version = latest
@@ -362,6 +377,12 @@ def run_auto_update_check(
         update_check.publish_failed(paths, enrolled=enrolled, message=messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED)
         return AutoUpdateRunResult(action="skipped-checksum-unavailable")
     state = _read_state(paths)
+    installed_checksum = state.get("installed_checksum")
+    installed_channel = installed_release_channel(paths)
+    record_available_build(paths, checksum, channel)
+    if channel == UpdateChannel.EXPERIMENTAL:
+        # The prerelease tag is mutable and keeps package.version. Its verified checksum is its build identity.
+        latest_version = f"dev-{checksum[:12]}"
     try:
         reconciliation_required = _installation_requires_reconciliation(paths)
     except AutoUpdateError:
@@ -369,12 +390,16 @@ def run_auto_update_check(
         raise
     found = update_check.discover(
         paths, enrolled=enrolled, latest_version=latest_version, reconciliation_required=reconciliation_required,
-        release_changed=state.get("latest_checksum") != checksum, urlopen=urlopen, recovery_required=recovery_required,
+        release_changed=(installed_checksum != checksum or (installed_channel is not None and installed_channel != channel)),
+        release_transition=(update_check.ReleaseTransition.RETURN_TO_STABLE
+                            if channel == UpdateChannel.STABLE and installed_release_channel(paths) == "dev"
+                            else update_check.ReleaseTransition.FOLLOW_SOURCE),
+        urlopen=urlopen, recovery_required=recovery_required,
         outside_window=None if in_window else settings.window_label(), **seams)
     update_check.publish(paths, found, urlopen=urlopen)
 
     if not enrolled:
-        write_state(paths, checksum)
+        write_state(paths, checksum, channel=channel)
         reporter.line(messages.AUTO_UPDATE_CHECKED_NOT_ENROLLED)
         return AutoUpdateRunResult(action="checked", checksum=checksum)
     if recovery_required:
@@ -388,14 +413,15 @@ def run_auto_update_check(
             return _skipped(reporter, found, checksum)
         update_window.hold_lights_if_off(paths, urlopen=urlopen)
         # A new release, or the current one installed again: missing checksum state or drifted installation state.
-        updating = state.get("latest_checksum") not in (None, checksum) or found.newer_release
+        updating = (installed_checksum not in (None, checksum)
+                    or (installed_channel is not None and installed_channel != channel) or found.newer_release)
         reporter.line(messages.AUTO_UPDATE_AVAILABLE if updating else messages.AUTO_UPDATE_RECONCILING)
         record = valve_oil_status.begin_run(paths, kind="automatic", step="install",
                                             step_label=f"Installing Valve Oil {found.latest_version or ''}".strip())
         try:
             run_latest_installer(
                 paths=paths,
-                archive_url=release_archive_url(env),
+                archive_url=release_archive_url(env, channel),
                 expected_checksum=checksum,
                 urlopen=urlopen,
                 run=run,
@@ -406,7 +432,8 @@ def run_auto_update_check(
             valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.FAILED, message=message)
             update_check.mark_failed(paths, valve_oil_status.RELEASE, message)
             raise
-        write_state(paths, checksum)
+        write_state(paths, checksum, channel=channel)
+        record_installed_build(paths, checksum, channel)
         valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE)
         valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED, message=messages.AUTO_UPDATE_COMPLETE)
         reporter.line(messages.AUTO_UPDATE_COMPLETE)
@@ -523,13 +550,13 @@ def fetch_latest_release(checksum_url: str, *, urlopen: UrlOpenFn = release_urlo
     return first.lower(), version
 
 
-def prefetch_latest_release(environ: dict[str, str], *,
+def prefetch_latest_release(environ: Mapping[str, str], *, channel: UpdateChannel = UpdateChannel.STABLE,
                             urlopen: UrlOpenFn = urllib.request.urlopen) -> tuple[str, str | None] | AutoUpdateError:
     """The latest release, or why it couldn't be read, for an update check to fetch before it takes the installer lock.
     An installer run holding the lock stops print starts (vo_print_guard), and the fetch can wait 20 s on the network;
     finding an update while a print starts is harmless, as installing it waits for the lock and an idle printer."""
     try:
-        return fetch_latest_release(release_checksum_url(environ), urlopen=_release_opener(urlopen))
+        return fetch_latest_release(release_checksum_url(environ, channel), urlopen=_release_opener(urlopen))
     except AutoUpdateError as exc:
         return exc
 
@@ -551,7 +578,7 @@ def newer_release(latest: str | None, installed: str | None) -> bool:
 
 def older_release(latest: str | None, installed: str | None) -> bool:
     """Whether the latest release is known to be older than the installed one: a release withdrawn after printers
-    updated to it, or a build newer than any release. Its installer refuses the newer state, so it isn't installed."""
+    updated to it, or a build newer than any release."""
     latest_key, installed_key = version_key(latest), version_key(installed)
     return latest_key is not None and installed_key is not None and latest_key < installed_key
 
@@ -575,13 +602,14 @@ def run_latest_installer(
     """Download, verify, and unpack the latest release under the installer's cache in the printer user's home, put it
     in place of the installed bundle, remove the download, and run the bundled installer noninteractively.
 
-    The cache is outside /tmp, which a QIDI firmware update the installer starts empties, and its run directory is gone
-    before the installer starts, whether the bundle was put in place or not.
+    The cache is outside /tmp, which a QIDI firmware update the installer starts empties. Keep the previous bundle
+    until the candidate succeeds, restore it on failure, and remove the staging directory when the run finishes.
     """
     # An install that stopped before it retired the earlier folder leaves the update check running from there.
     if paths.bundle_root.name not in (BUNDLE_ROOT_NAME, LEGACY_BUNDLE_ROOT_NAME):
         raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED)
     stage = _new_stage(paths)
+    previous_bundle = None
     try:
         archive_path = stage / "bundle.tar.gz"
         extract_root = stage / "extract"
@@ -591,17 +619,22 @@ def run_latest_installer(
         staged_bundle = extract_root / BUNDLE_ROOT_NAME
         if not (staged_bundle / "install.sh").is_file():
             raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED)
-        _replace_bundle(staged_bundle, paths.bundle_root, previous=stage / "previous")
+        previous_bundle = _replace_bundle(staged_bundle, paths.bundle_root, previous=stage / "previous")
+        archive_path.unlink()
+        result = run(
+            ["/bin/sh", str(paths.bundle_root / "install.sh"), "--yes", "--plain"],
+            cwd=str(paths.bundle_root),
+            text=True,
+            env={**os.environ, **environ, LOCK_HELD_ENV: "1"},
+        )
+        if result.returncode != 0:
+            raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED)
+    except BaseException:
+        if previous_bundle is not None:
+            _restore_bundle(previous_bundle, paths.bundle_root, failed=stage / "failed")
+        raise
     finally:
         shutil.rmtree(stage, ignore_errors=True)
-    result = run(
-        ["/bin/sh", str(paths.bundle_root / "install.sh"), "--yes", "--plain"],
-        cwd=str(paths.bundle_root),
-        text=True,
-        env={**os.environ, **environ, LOCK_HELD_ENV: "1"},
-    )
-    if result.returncode != 0:
-        raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED)
 
 
 def _new_stage(paths: RuntimePaths) -> Path:
@@ -619,19 +652,39 @@ def _new_stage(paths: RuntimePaths) -> Path:
         raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED) from exc
 
 
-def _replace_bundle(staged: Path, bundle_root: Path, *, previous: Path) -> None:
+def _replace_bundle(staged: Path, bundle_root: Path, *, previous: Path) -> Path | None:
     """Put the staged bundle in place of the installed one in one rename where the kernel can swap two directories;
     otherwise move the old one aside first. The old bundle ends up under the run directory, which is removed."""
     from .qidi_package import exchange_paths
 
     try:
         if bundle_root.exists() and not bundle_root.is_symlink() and exchange_paths(staged, bundle_root):
-            return  # the old bundle is at `staged` now
+            return staged  # the old bundle is at `staged` now
     except OSError:
         pass  # not on the same filesystem
     if bundle_root.exists() or bundle_root.is_symlink():
         shutil.move(str(bundle_root), previous)
-    shutil.move(str(staged), bundle_root)
+    try:
+        shutil.move(str(staged), bundle_root)
+    except OSError:
+        if previous.exists():
+            shutil.move(str(previous), bundle_root)
+        raise
+    return previous if previous.exists() else None
+
+
+def _restore_bundle(previous: Path, bundle_root: Path, *, failed: Path) -> None:
+    """A child installer failed before its caller records success; leave the working bundle in place for recovery."""
+    from .qidi_package import exchange_paths
+
+    try:
+        if bundle_root.exists() and not bundle_root.is_symlink() and exchange_paths(previous, bundle_root):
+            return
+    except OSError:
+        pass
+    if bundle_root.exists() or bundle_root.is_symlink():
+        shutil.move(str(bundle_root), failed)
+    shutil.move(str(previous), bundle_root)
 
 
 def _download_archive(archive_url: str, archive_path: Path, *, urlopen: UrlOpenFn) -> None:
@@ -678,13 +731,17 @@ def _validate_archive_members(members: list[tarfile.TarInfo]) -> None:
         raise AutoUpdateError(messages.AUTO_UPDATE_INSTALLER_FAILED)
 
 
-def release_checksum_url(environ: dict[str, str]) -> str:
+def release_checksum_url(environ: Mapping[str, str], channel: UpdateChannel = UpdateChannel.STABLE) -> str:
+    if channel == UpdateChannel.EXPERIMENTAL:
+        return environ.get("VO_AUTO_UPDATE_DEV_CHECKSUM_URL", DEFAULT_DEV_CHECKSUM_URL)
     return environ.get("VO_AUTO_UPDATE_CHECKSUM_URL") or environ.get(
         "VO_INSTALLER_CHECKSUM_URL", DEFAULT_CHECKSUM_URL
     )
 
 
-def release_archive_url(environ: dict[str, str]) -> str:
+def release_archive_url(environ: Mapping[str, str], channel: UpdateChannel = UpdateChannel.STABLE) -> str:
+    if channel == UpdateChannel.EXPERIMENTAL:
+        return environ.get("VO_AUTO_UPDATE_DEV_ARCHIVE_URL", DEFAULT_DEV_ARCHIVE_URL)
     return environ.get("VO_AUTO_UPDATE_ARCHIVE_URL") or environ.get(
         "VO_INSTALLER_ARCHIVE_URL", DEFAULT_ARCHIVE_URL
     )
@@ -700,7 +757,7 @@ def current_user() -> str:
 # ---- state ------------------------------------------------------------------------------------------------------------
 
 
-def _read_state(paths: RuntimePaths) -> dict[str, str]:
+def _read_state(paths: RuntimePaths) -> dict[str, object]:
     path = state_path(paths)
     if not path.exists():
         return {}
@@ -711,11 +768,13 @@ def _read_state(paths: RuntimePaths) -> dict[str, str]:
     return payload if isinstance(payload, dict) else {}
 
 
-def write_state(paths: RuntimePaths, checksum: str) -> None:
+def write_state(paths: RuntimePaths, checksum: str, *, channel: str = "release") -> None:
     path = state_path(paths)
+    state = _read_state(paths)
+    state.update({"latest_checksum": checksum, "latest_channel": channel})
     atomic_write_text(
         path,
-        json.dumps({"latest_checksum": checksum}, sort_keys=True, indent=2) + "\n",
+        json.dumps(state, sort_keys=True, indent=2) + "\n",
         mode=0o644,
     )
 
@@ -793,6 +852,65 @@ def _installation_requires_reconciliation(paths: RuntimePaths) -> bool:
 def current_auto_update_checksum(paths: RuntimePaths) -> str | None:
     value = _read_state(paths).get("latest_checksum")
     return value if isinstance(value, str) and len(value) == 64 else None
+
+
+def experimental_updates(paths: RuntimePaths) -> bool:
+    """Independent of checksum state, including older stable installers that replace that state."""
+    return (paths.printer_data_root / EXPERIMENTAL_FILE).is_file()
+
+
+def selected_update_channel(paths: RuntimePaths) -> UpdateChannel:
+    return UpdateChannel.EXPERIMENTAL if experimental_updates(paths) else UpdateChannel.STABLE
+
+
+def set_experimental_updates(paths: RuntimePaths, enabled: bool) -> None:
+    path = paths.printer_data_root / EXPERIMENTAL_FILE
+    if enabled:
+        atomic_write_text(path, "1\n", mode=0o644)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def installed_release_channel(paths: RuntimePaths) -> str | None:
+    """The successful installer run records this; replaceable bundle metadata cannot prove an install worked."""
+    state = _read_state(paths)
+    value = state.get("installed_channel")
+    if state.get("installed_version") != installed_release(paths):
+        return None
+    return value if isinstance(value, str) and value in {"release", "dev"} else None
+
+
+def record_available_build(paths: RuntimePaths, checksum: str, channel: str) -> None:
+    state = _read_state(paths)
+    state.update({"available_checksum": checksum, "available_channel": channel})
+    atomic_write_text(state_path(paths), json.dumps(state, sort_keys=True, indent=2) + "\n", mode=0o644)
+
+
+def record_installed_build(paths: RuntimePaths, checksum: str | None = None, channel: str | None = None) -> None:
+    """Snapshot provenance only after success; a downloaded bundle is not an installed build."""
+    version = installed_release(paths)
+    try:
+        metadata = yaml.safe_load((paths.bundle_root / "RELEASE_METADATA.yaml").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        metadata = {}
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise AutoUpdateError("Could not record the installed build's metadata.") from exc
+    if not isinstance(metadata, dict) or metadata.get("package_version") != version:
+        metadata = {}
+    if channel is None:
+        channel = metadata.get("channel")
+    if not isinstance(channel, str) or channel not in {UpdateChannel.STABLE, UpdateChannel.EXPERIMENTAL}:
+        channel = None
+    commit, build_id = metadata.get("git_short_sha"), metadata.get("build_id")
+    state = _read_state(paths)
+    state.update({
+        "installed_version": version,
+        "installed_checksum": checksum,
+        "installed_channel": channel,
+        "installed_commit": commit if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{7,40}", commit) else None,
+        "installed_build_id": build_id if isinstance(build_id, str) and re.fullmatch(r"[A-Za-z0-9._+-]{1,128}", build_id) else None,
+    })
+    atomic_write_text(state_path(paths), json.dumps(state, sort_keys=True, indent=2) + "\n", mode=0o644)
 
 
 def state_path(paths: RuntimePaths) -> Path:

@@ -74,6 +74,8 @@ export interface VoStatusPending {
   board: string | null;
   /** A release that installs the installed one again, as its installed files are missing or changed; version is the installed release. */
   reinstall: boolean;
+  /** An experimental build returning explicitly to a numerically older stable release. */
+  downgrade: boolean;
   /** Empty when automatic updates are off, or when it can run at the next check. */
   blocked_by: VoStatusBlocker[];
 }
@@ -231,6 +233,12 @@ export interface VoStatus {
   auto_update: {
     /** null when the printer didn't say. */
     enabled: boolean | null;
+    /** Whether this printer follows the mutable development prerelease feed. */
+    experimental: boolean | null;
+    /** Verified archive checksum, or the successful manual install's build ID. */
+    installed_build: string | null;
+    /** Verified checksum from the feed's last successful check. */
+    available_build: string | null;
     scheduled: boolean | null;
     /** null from a service without update windows. */
     window: VoStatusUpdateWindow | null;
@@ -343,6 +351,7 @@ export interface VoUpdateView {
 }
 
 export interface VoStatusView {
+  sourceChanged: boolean;
   release: string | null;
   /** A dev build's short commit, or '' for a dev build that doesn't say; null for a release. */
   devBuild: string | null;
@@ -627,6 +636,7 @@ const parsePending = (value: Record<string, unknown>): VoStatusPending | null =>
     current: optionalText(value.current),
     board: optionalText(value.board),
     reinstall: value.kind === 'release' && value.reinstall === true,
+    downgrade: value.kind === 'release' && value.downgrade === true,
     blocked_by: parseBlockers(value.blocked_by)
   }
 }
@@ -783,6 +793,9 @@ export const parseVoStatus = (value: unknown): VoStatus | null => {
     },
     auto_update: {
       enabled: optionalBoolean(autoUpdate.enabled),
+      experimental: optionalBoolean(autoUpdate.experimental),
+      installed_build: optionalText(autoUpdate.installed_build),
+      available_build: optionalText(autoUpdate.available_build),
       scheduled: optionalBoolean(autoUpdate.scheduled),
       window: parseUpdateWindow(autoUpdate)
     },
@@ -907,9 +920,13 @@ const updateView = (status: VoStatus): VoUpdateView | null => {
   return null
 }
 
+const updateSourceChanged = (status: VoStatus): boolean =>
+  status.auto_update.experimental != null && (status.auto_update.available_build == null ||
+    status.auto_update.experimental !== (status.release.channel === 'dev'))
+
 /** What Update now would do, and whether it can start; the printer's own answer, or for an older service, busy and printing. */
 const updateNowView = (status: VoStatus, update: VoUpdateView | null): VoUpdateNowView => {
-  const waiting = status.pending.length > 0
+  const waiting = status.pending.length > 0 || updateSourceChanged(status)
   const unfinished = update?.state === 'failed' || update?.state === 'interrupted'
   const live = status.update_now
   const blockedBy = live
@@ -1040,6 +1057,7 @@ export const voStatusView = (status: VoStatus, now: number = Date.now()): VoStat
   const dev = status.release.channel === 'dev'
 
   return {
+    sourceChanged: updateSourceChanged(status),
     release: status.release.installed,
     devBuild: dev ? status.release.commit ?? '' : null,
     printerName: status.printer.name,
@@ -1054,7 +1072,7 @@ export const voStatusView = (status: VoStatus, now: number = Date.now()): VoStat
     firmwareWaiting: waiting.some(item => item.kind !== 'release'),
     checkedAt: time(status.check.at),
     nextCheckAt: nextCheckAt != null && nextCheckAt > now ? nextCheckAt : null,
-    checkFailed: status.check.result === 'failed' && !dev ? status.check.message : null,
+    checkFailed: status.check.result === 'failed' && (!dev || status.auto_update.experimental != null) ? status.check.message : null,
     boards: status.boards.map(board => boardView(board, status)),
     updating,
     update,

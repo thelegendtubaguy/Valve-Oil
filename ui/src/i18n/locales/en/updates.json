@@ -8,6 +8,12 @@
   "reconnecting_long_other": "The printer hasn't answered for {{count}} minutes. Don't turn it off. Check its screen to see what it's doing.",
   "dont_power_off": "Don't turn the printer off until it finishes.",
   "card": {
+    "source_changed": "The selected update source has not been applied yet.",
+    "experimental": "Receive experimental updates",
+    "experimental_sub": "Use development builds. Turn off to return to stable with Update now or the next automatic update.",
+    "experimental_error": "Could not change experimental updates: {{error}}",
+    "installed_build": "Installed build: {{build}}",
+    "available_build": "Available build: {{build}}",
     "updating": "Updating",
     "waiting": "Waiting to install",
     "up_to_date": "Up to date",

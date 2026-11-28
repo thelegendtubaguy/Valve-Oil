@@ -47,6 +47,8 @@ export type ValveOilState = {
   now: number
   autoUpdateRequest: boolean | null
   autoUpdateError: string
+  experimentalRequest: boolean | null
+  experimentalError: string
   /** A change to the update window or its timezone is being saved. */
   windowPending: boolean
   windowError: string
@@ -116,6 +118,8 @@ export const valveOil = createStore<ValveOilState>({
   now: Date.now(),
   autoUpdateRequest: null,
   autoUpdateError: '',
+  experimentalRequest: null,
+  experimentalError: '',
   windowPending: false,
   windowError: '',
   updateNowPending: false,
@@ -269,7 +273,7 @@ export function watchValveOil() {
 
 // ---- actions ----
 /** Posts to api/auto-update, with `busy` set while it's saving and a failure kept in `error`. */
-async function postAutoUpdate(body: Record<string, unknown>, busy: Partial<ValveOilState>, done: Partial<ValveOilState>, error: 'autoUpdateError' | 'windowError') {
+async function postAutoUpdate(body: Record<string, unknown>, busy: Partial<ValveOilState>, done: Partial<ValveOilState>, error: 'autoUpdateError' | 'experimentalError' | 'windowError') {
   patch({ ...busy, [error]: '' })
   try {
     const status = parseVoStatus(await request('/auto-update', 'POST', undefined, body))
@@ -288,6 +292,12 @@ export async function setAutoUpdate(enabled: boolean) {
   await postAutoUpdate({ enabled }, { autoUpdateRequest: enabled }, { autoUpdateRequest: null }, 'autoUpdateError')
 }
 
+export async function setExperimentalUpdates(enabled: boolean) {
+  const s = valveOil.get()
+  if (autoUpdateDisabled(s) || enabled === s.status?.auto_update.experimental) return
+  await postAutoUpdate({ experimental: enabled }, { experimentalRequest: enabled }, { experimentalRequest: null }, 'experimentalError')
+}
+
 /** Saves the update window or its timezone: any of {"window": {...} | null, "timezone": "<IANA name>"}. */
 export async function setUpdateWindow(body: { window?: VoUpdateWindowHours | null; timezone?: string }) {
   if (autoUpdateDisabled(valveOil.get())) return
@@ -295,6 +305,7 @@ export async function setUpdateWindow(body: { window?: VoUpdateWindowHours | nul
 }
 
 export const clearWindowError = () => patch({ windowError: '' })
+export const clearExperimentalError = () => patch({ experimentalError: '' })
 
 export async function updateNow() {
   if (updateNowDisabled(valveOil.get())) return
@@ -387,11 +398,11 @@ export const clearUpdateNowError = () => patch({ updateNowError: '', updateNowBl
 // ---- derived ----
 export const reconnecting = (s: ValveOilState) => s.reconnectingSince != null
 
-export const autoUpdateDisabled = (s: ValveOilState) => s.status?.auto_update.enabled == null || s.autoUpdateRequest != null || s.windowPending || reconnecting(s)
+export const autoUpdateDisabled = (s: ValveOilState) => s.status?.auto_update.enabled == null || s.autoUpdateRequest != null || s.experimentalRequest != null || s.windowPending || reconnecting(s)
 
 export const updateNowDisabled = (s: ValveOilState) => {
   const view = s.status ? voStatusView(s.status) : null
-  return view == null || !view.updateNow.offered || !view.updateNow.allowed || s.updateNowPending || reconnecting(s)
+  return view == null || !view.updateNow.offered || !view.updateNow.allowed || s.updateNowPending || s.experimentalRequest != null || reconnecting(s)
 }
 
 /** How long the printer hasn't answered during an update, in minutes, once that's unusually long; otherwise null. */

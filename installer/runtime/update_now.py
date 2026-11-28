@@ -15,7 +15,8 @@ import urllib.request
 from pathlib import Path
 
 from . import firmware_update, safety, valve_oil_status
-from .auto_update import KIND_ENV, release_archive_url, release_checksum_url, run_latest_installer, write_state, fetch_latest_checksum
+from .auto_update import (KIND_ENV, selected_update_channel, record_available_build, record_installed_build, release_archive_url,
+                          release_checksum_url, run_latest_installer, write_state, fetch_latest_checksum)
 from .errors import InstallerError
 from .locking import acquire
 from .models import RuntimePaths
@@ -71,14 +72,17 @@ def run_update_now(*, paths: RuntimePaths, reporter, environ: dict[str, str], ur
             safety.ensure_klipper_ready(paths.moonraker_url, urlopen=urlopen)
             valve_oil_status.set_run_step(paths, record.id, step="download", step_label="Downloading the latest Valve Oil release")
             reporter.line("Downloading the latest Valve Oil release...")
-            checksum = fetch_latest_checksum(release_checksum_url(environ), urlopen=urlopen)
+            channel = selected_update_channel(paths)
+            checksum = fetch_latest_checksum(release_checksum_url(environ, channel), urlopen=urlopen)
+            record_available_build(paths, checksum, channel)
             valve_oil_status.set_run_step(paths, record.id, step="install", step_label="Installing the latest Valve Oil release")
             reporter.line("Installing the latest Valve Oil release...")
             run_latest_installer(
-                paths=paths, archive_url=release_archive_url(environ), expected_checksum=checksum, urlopen=urlopen, run=run,
+                paths=paths, archive_url=release_archive_url(environ, channel), expected_checksum=checksum, urlopen=urlopen, run=run,
                 environ={**environ, KIND_ENV: "update_now"},
             )
-            write_state(paths, checksum)
+            write_state(paths, checksum, channel=channel)
+            record_installed_build(paths, checksum, channel)
             valve_oil_status.clear_pending(paths, kind=valve_oil_status.RELEASE)
             valve_oil_status.finish_run(paths, record.id, state=valve_oil_status.SUCCEEDED,
                                         message="The latest Valve Oil release is installed.")

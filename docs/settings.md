@@ -65,7 +65,7 @@ Before 26.11.18.2 these were named `TLTG_` instead of `VO_`, and several print m
 
 ## Updates
 
-Fluidd's Settings page has a **Valve Oil** section, and Valve Oil UI an [Updates](valve-oil-ui.md#updates) screen, with the **Automatic updates** switch, the **Update window**, and **Update now**. Over SSH:
+Fluidd's Settings page has a **Valve Oil** section, and Valve Oil UI an [Updates](valve-oil-ui.md#updates) screen, with the **Automatic updates** switch, the **Update window**, and **Update now**. Valve Oil UI also has **Receive experimental updates**, off by default, to select the existing `dev` prerelease or return to stable releases; see [Experimental updates](install.md#experimental-updates). Over SSH:
 
 | Command | What it does |
 |---|---|

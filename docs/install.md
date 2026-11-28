@@ -241,6 +241,12 @@ Every install schedules Valve Oil's update check, 5 minutes after the printer st
 
 A board the update check tried and couldn't bring to Valve Oil's firmware isn't tried again by later checks until it reports another firmware version; the next install tries again.
 
+#### Experimental updates
+
+On Valve Oil UI's **Updates** screen, **Receive experimental updates** selects the existing `dev` prerelease instead of the stable release from `main`. It is off by default and saved on the printer, independently of automatic updates. The hourly check and **Update now** use the same selection. The screen shows installed and available build identities; a changed archive checksum identifies a new development build even when its package version is unchanged.
+
+Turning it off selects the stable release again, including a compatible stable release with a lower package version. The switch itself does not install anything: use **Update now**, or let enabled automatic updates apply it while the printer is idle and within the update window. The target installer still checks firmware and patch compatibility; an incompatible release is refused rather than forced onto the printer. If installation fails, the updater restores the previous installer bundle. Returning to a release predating this setting also returns to that release's interface.
+
 #### Update window
 
 Set an **Update window** to choose the hours automatic updates start in, such as 02:00 to 05:00. Outside it, the hourly check still looks and shows what's waiting, but installs, restarts, and flashes nothing, and the printer warning says `Automatic updates are on, so it will be installed during the update window, 02:00–05:00 America/Chicago, while the printer is idle.` Hours are whole hours, up to but not including the end hour, and a window can run past midnight, such as 22:00 to 04:00. The check runs once an hour, so an update starts within the window's first hour and may run past the window's end. Without a window, automatic updates start at any hour, as before. Each check does one step: installing a release, starting the QIDI firmware update, or flashing boards. When a release, QIDI firmware, and board firmware are all waiting, a window shorter than three hours can spread them over several nights. **Update now** and `./install.sh` ignore the window.

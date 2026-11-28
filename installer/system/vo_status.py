@@ -10,7 +10,7 @@ Moonraker before it reaches this loopback-only server.
 
 API, under nginx's /vo-status/ prefix (schema 1; see STATUS_SCHEMA):
   GET  api/status       the status
-  POST api/auto-update  any of {"enabled": true|false, "window": {"start": <hour>, "end": <hour>} | null,
+  POST api/auto-update  any of {"enabled": true|false, "experimental": true|false, "window": {"start": <hour>, "end": <hour>} | null,
                         "timezone": "<IANA name>"}; answers with the status. A timezone posted here is the browser's.
   POST api/update-now   {}; answers 202 with {"job": ...}, or 409 with {"error", "blocked_by"} when update_now.allowed
                         is false
@@ -29,17 +29,17 @@ API, under nginx's /vo-status/ prefix (schema 1; see STATUS_SCHEMA):
 POSTs need the X-Valve-Oil: status header and a JSON body, and a same-origin Origin when a browser sends one.
 
 The status: {schema, updated_at, release: {installed, channel, commit}, printer: {id, name, firmware, target_firmware},
-auto_update: {enabled, scheduled, window: {start, end} | null, timezone, timezone_source, in_window}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
-reinstall, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware, build, pinned, bootloader, report,
+auto_update: {enabled, experimental, installed_build, available_build, scheduled, window: {start, end} | null, timezone, timezone_source, in_window}, check: {at, result, message, next_at}, pending: [{kind, version, current, board,
+reinstall, downgrade, blocked_by: [{code, message}]}], boards: [{id, state, name, firmware, build, pinned, bootloader, report,
 detail, checked_at, issue_url, waiting_for_firmware_update}], run: {id, kind, state, step, step_label, started_at,
 finished_at, message, resumed, firmware_update, can_continue} | null, job: {id, kind, state, started_at, finished_at,
 log, message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_by: [{code, message}]},
 uninstall: {allowed, blocked_by: [{code, message}]},
 support: {issue_url}, klipper: {available, unavailable_reason, selected, running, fallback_reason, version, restart_error,
 switch: {to, allowed, blocked_by: [{code, message}]}}}.
-- release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
-  release (its RELEASE_METADATA.yaml); null when the bundle in ~/valve-oil is for another version or doesn't say. A
-  dev build's update check fails until a release publishes the archive it looks for, so the UIs don't report that.
+- release.channel and release.commit: "release" or "dev", and the commit, recorded after the installed release's
+  successful install; null when no matching successful provenance is available. A downloaded candidate cannot
+  change the installed identity.
 - auto_update.window: the whole hours an enrolled check installs in, from start up to end, wrapping past midnight when
   end is earlier; null for any time. timezone: the IANA zone it is read in (null: UTC), and timezone_source how it was
   set ("lookup" at install from the printer's internet address, "browser", or "operator" over SSH). in_window: whether
@@ -117,6 +117,8 @@ ENROLLMENT_FILE = PRINTER_DATA / ".vo_auto_update_enrolled"
 AUTO_UPDATE_TIMER = Path("/etc/systemd/system/vo-auto-update.timer")
 # installer/runtime/update_window.py: the update window and the timezone it is read in.
 UPDATE_SETTINGS_FILE = PRINTER_DATA / ".vo_auto_update_settings.json"
+AUTO_UPDATE_STATE_FILE = PRINTER_DATA / "config/vo_auto_update_state.json"
+EXPERIMENTAL_FILE = PRINTER_DATA / ".vo_experimental_updates"
 TIMEZONE_SOURCES = ("lookup", "browser", "operator")
 ZONE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$")
 MACRO_GLOBALS = PRINTER_DATA / "config/vo-macros/globals.cfg"
@@ -480,6 +482,29 @@ def set_auto_update(enabled: bool) -> None:
         ENROLLMENT_FILE.unlink(missing_ok=True)
 
 
+def experimental_updates() -> bool:
+    return EXPERIMENTAL_FILE.is_file()
+
+
+def _update_builds(version: str | None) -> tuple[str | None, str | None]:
+    data = _read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)
+    if not isinstance(data, dict):
+        return None, None
+    installed = (_text(data.get("installed_checksum")) or _text(data.get("installed_build_id"))
+                 if version and data.get("installed_version") == version else None)
+    selected = "dev" if experimental_updates() else "release"
+    available = _text(data.get("available_checksum")) if data.get("available_channel") == selected else None
+    return installed, available if available and len(available) == 64 else None
+
+
+def set_experimental_updates(enabled: bool) -> None:
+    # Separate from checksum state: an older stable installer can rewrite that file.
+    if enabled:
+        EXPERIMENTAL_FILE.touch(mode=0o644, exist_ok=True)
+    else:
+        EXPERIMENTAL_FILE.unlink(missing_ok=True)
+
+
 def zone(name):
     """The tzinfo for an IANA name the printer knows, or None (update_window.zone)."""
     if not isinstance(name, str) or not ZONE_NAME.match(name):
@@ -555,11 +580,17 @@ def status_body(jobs: Jobs) -> dict:
     admission, admitted_at = _admission()
     enabled = auto_update_enabled()
     settings = update_settings()
+    installed_build, available_build = _update_builds(installed)
     outside = not in_window(settings)
     live = live_printer()
     run_busy = jobs.busy() or _run_active(_record(data.get("run")))
     busy = run_busy or installer_lock_held()
-    pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
+    pending = [item for item in map(_pending, _records(data.get("pending")))
+               if item is not None and _still_waiting(item, installed)]
+    checked_channel = _text(_record(_read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)).get("available_channel"))
+    selected_channel = "dev" if experimental_updates() else "release"
+    if checked_channel in INSTALL_SOURCES and checked_channel != selected_channel:
+        pending = [item for item in pending if item["kind"] != "release"]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
                                             window_blocker(settings) if outside else None)
@@ -574,7 +605,8 @@ def status_body(jobs: Jobs) -> dict:
             "firmware": _qidi_firmware() or _text(printer.get("firmware")),
             "target_firmware": _text(printer.get("target_firmware")) or _text(admission.get("target_firmware")),
         },
-        "auto_update": {"enabled": enabled, "scheduled": AUTO_UPDATE_TIMER.is_file(), **settings,
+        "auto_update": {"enabled": enabled, "experimental": experimental_updates(), "installed_build": installed_build,
+                        "available_build": available_build, "scheduled": AUTO_UPDATE_TIMER.is_file(), **settings,
                         "in_window": not outside},
         "check": {
             "at": _text(check.get("at")),
@@ -839,21 +871,13 @@ def restart_klipper() -> None:
 
 
 def release_build(installed: str | None) -> tuple[str | None, str | None]:
-    """The channel and short commit of the bundle that installed `installed`, from its RELEASE_METADATA.yaml."""
-    fields = {}
-    try:
-        with RELEASE_METADATA.open("r", encoding="utf-8") as handle:
-            for line in handle.read(4096).splitlines():
-                key, separator, value = line.partition(":")
-                if separator:
-                    fields[key.strip()] = value.strip().strip('"').strip("'")
-    except (OSError, UnicodeDecodeError):
+    """Installed provenance survives replacement by an uninstalled same-version candidate."""
+    fields = _read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)
+    if not isinstance(fields, dict) or not installed or fields.get("installed_version") != installed:
         return None, None
-    if not installed or fields.get("package_version") != installed:
-        return None, None
-    channel = fields.get("channel") if fields.get("channel") in INSTALL_SOURCES else None
-    commit = fields.get("git_short_sha") if COMMIT.match(fields.get("git_short_sha", "")) else None
-    return channel, commit
+    channel = fields.get("installed_channel") if fields.get("installed_channel") in INSTALL_SOURCES else None
+    commit = _text(fields.get("installed_commit"))
+    return channel, commit if commit and COMMIT.fullmatch(commit) else None
 
 
 def printer_details(status: dict) -> str:
@@ -1164,6 +1188,7 @@ def _pending(item: dict) -> dict | None:
         "current": _text(item.get("current")),
         "board": _text(item.get("board")),
         "reinstall": item["kind"] == "release" and item.get("reinstall") is True,
+        "downgrade": item["kind"] == "release" and item.get("downgrade") is True,
         "blocked_by": [
             {"code": _text(blocker.get("code")), "message": _text(blocker.get("message")) or _text(blocker.get("code"))}
             for blocker in _records(item.get("blocked_by"))
@@ -1176,7 +1201,7 @@ def _still_waiting(item: dict | None, installed: str | None) -> bool:
     # A manual install of the waiting release, or of a later one, ends the wait before the next check rewrites the
     # file. Installing the same release again doesn't change its version, so that install removes a reinstall item
     # itself.
-    if item is None or item["reinstall"] or item["kind"] != "release" or not installed:
+    if item is None or item["reinstall"] or item.get("downgrade") is True or item["kind"] != "release" or not installed:
         return item is not None
     if item["version"] == installed:
         return False
@@ -1426,11 +1451,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(exc.status, {"error": str(exc)}, allow=allow)
 
     def _auto_update(self, body: dict) -> None:
-        if not body or not set(body) <= {"enabled", "window", "timezone"}:
+        if not body or not set(body) <= {"enabled", "experimental", "window", "timezone"}:
             raise RequestError(HTTPStatus.BAD_REQUEST,
-                               'Expected any of "enabled", "window", and "timezone", such as {"enabled": true}.')
+                               'Expected any of "enabled", "experimental", "window", and "timezone", such as {"enabled": true}.')
         if "enabled" in body and not isinstance(body["enabled"], bool):
             raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"enabled": true} or {"enabled": false}.')
+        if "experimental" in body and not isinstance(body["experimental"], bool):
+            raise RequestError(HTTPStatus.BAD_REQUEST, 'Expected {"experimental": true} or {"experimental": false}.')
         settings = update_settings()
         try:
             if "window" in body:
@@ -1448,6 +1475,9 @@ class Handler(BaseHTTPRequestHandler):
             if "enabled" in body:
                 set_auto_update(body["enabled"])
                 log(f"Automatic updates {'on' if body['enabled'] else 'off'}")
+            if "experimental" in body:
+                set_experimental_updates(body["experimental"])
+                log(f"Experimental updates {'on' if body['experimental'] else 'off'}")
         except OSError as exc:
             log(f"Automatic update settings failed: {exc}")
             raise RequestError(HTTPStatus.INTERNAL_SERVER_ERROR, "The automatic update setting could not be saved.") from exc

@@ -16,6 +16,7 @@ import shutil
 import time
 import urllib.request
 from dataclasses import dataclass, field, replace
+from enum import Enum
 
 from . import board_firmware, firmware_update, qidi_package, valve_oil_status
 from .auto_update import installed_release, newer_release, older_release
@@ -93,8 +94,13 @@ def installed(paths, *, enrolled: bool) -> bool:
     return enrolled or (paths.printer_data_root / state_file).exists() or board_firmware.admission_path(paths).exists()
 
 
+class ReleaseTransition(Enum):
+    FOLLOW_SOURCE = "follow-source"
+    RETURN_TO_STABLE = "return-to-stable"
+
+
 def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliation_required: bool,
-             release_changed: bool, urlopen=urllib.request.urlopen, recovery_required: bool = False,
+             release_changed: bool, release_transition: ReleaseTransition = ReleaseTransition.FOLLOW_SOURCE, urlopen=urllib.request.urlopen, recovery_required: bool = False,
              resolve_usb=usb_path_for_serial, disk_usage=shutil.disk_usage, outside_window: str | None = None,
              **_seams) -> Findings:
     manifest = load_manifest(paths.installer_root / "package.yaml")
@@ -105,9 +111,10 @@ def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliatio
     installed_version = installed_release(paths, manifest)
     bundle = manifest.package.version
     newer = newer_release(latest_version, installed_version or bundle)
-    # A latest release older than the installed one is never installed, as a new release or to reconcile: its installer
-    # refuses the newer state, after the bundle folder had already been replaced with it.
-    older = older_release(latest_version, installed_version or bundle)
+    # A withdrawn stable release must not cause an unattended downgrade. Leaving dev is an explicit exception;
+    # the target installer still validates its patch ledger, firmware and source compatibility.
+    stable_downgrade = release_transition == ReleaseTransition.RETURN_TO_STABLE
+    older = older_release(latest_version, installed_version or bundle) and not stable_downgrade
     release_changed = release_changed and not older
     reconciliation_required = reconciliation_required and not older
     if newer:
@@ -116,8 +123,9 @@ def discover(paths, *, enrolled: bool, latest_version: str | None, reconciliatio
         # Valve Oil is no longer installed as this release installs it, such as after QIDI's package cleaned the config:
         # this release is installed again. Marked, so readers don't take it for a release the printer already runs.
         item = PendingItem(kind=valve_oil_status.RELEASE, version=bundle, current=installed_version, reinstall=True)
-    elif enrolled and release_changed:
-        item = PendingItem(kind=valve_oil_status.RELEASE, version=latest_version, current=installed_version)
+    elif release_changed:
+        item = PendingItem(kind=valve_oil_status.RELEASE, version=latest_version, current=installed_version,
+                           downgrade=stable_downgrade)
     else:
         item = None
     plan = None

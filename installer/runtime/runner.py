@@ -15,6 +15,7 @@ from .auto_update import (
     adopt_legacy_enrollment,
     apply_auto_update_answer,
     settle_installed_bundle,
+    record_installed_build,
 )
 from .board_firmware import UNADMITTED_STATES, existing_installation
 from .box_enablement import (
@@ -834,6 +835,7 @@ def _execute_install(
             environ=environ,
             run=run,
         )
+    record_installed_build(paths)
     return result
 
 

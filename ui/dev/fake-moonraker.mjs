@@ -845,6 +845,7 @@ function applyUpdates(name) {
     scenario: name,
     absent: name === 'absent',
     auto: true,
+    experimental: false,
     // vo_status.py: the update window and its timezone, as the install looked it up.
     window: null,
     timezone: 'America/Chicago',
@@ -917,7 +918,7 @@ function applyUpdates(name) {
   }
   if (name === 'dev') {
     // A dev build's check fails until a release publishes the archive it looks for; the UIs leave that out.
-    Object.assign(vo, { channel: 'dev', commit: 'a8dda52' })
+    Object.assign(vo, { channel: 'dev', commit: 'a8dda52', experimental: undefined })
     vo.check = { at: iso(1700), result: 'failed', message: 'Could not fetch latest release checksum.' }
   }
   if (name === 'failed') {
@@ -1015,7 +1016,7 @@ function voStatusBody() {
     updated_at: iso(60),
     release: { installed: vo.release, channel: vo.channel, commit: vo.commit },
     printer: { id: 'max4', name: 'QIDI Max 4', firmware: vo.firmware, target_firmware: vo.target },
-    auto_update: { enabled: vo.auto, scheduled: true, window: vo.window, timezone: vo.timezone, timezone_source: vo.timezoneSource, in_window: !outside },
+    auto_update: { enabled: vo.auto, experimental: vo.experimental, installed_build: 'a'.repeat(64), available_build: (vo.experimental ? 'b' : 'a').repeat(64), scheduled: true, window: vo.window, timezone: vo.timezone, timezone_source: vo.timezoneSource, in_window: !outside },
     check: { ...vo.check, next_at: nextCheck() },
     pending: vo.pending.map((item) => ({ ...item, blocked_by: vo.auto ? [...blockers.map((code) => ({ code, message: BLOCKERS[code] })), ...(outside ? [voWindowBlocker()] : [])] : [] })),
     boards: vo.boards,
@@ -1242,10 +1243,11 @@ async function statusApi(req, res, path) {
   }
   await new Promise((r) => setTimeout(r, 400))
   if (route === 'auto-update') {
-    // vo_status.py Handler._auto_update: any of enabled, window, and timezone.
+    // vo_status.py Handler._auto_update: any of enabled, experimental, window, and timezone.
     const keys = Object.keys(body)
-    if (!keys.length || keys.some((key) => !['enabled', 'window', 'timezone'].includes(key)))
-      return send(400, { error: 'Expected any of "enabled", "window", and "timezone", such as {"enabled": true}.' })
+    if (!keys.length || keys.some((key) => !['enabled', 'experimental', 'window', 'timezone'].includes(key)))
+      return send(400, { error: 'Expected any of "enabled", "experimental", "window", and "timezone", such as {"enabled": true}.' })
+    if ('experimental' in body && typeof body.experimental !== 'boolean') return send(400, { error: 'Expected a boolean experimental setting.' })
     if ('enabled' in body && typeof body.enabled !== 'boolean') return send(400, { error: 'Expected {"enabled": true} or {"enabled": false}.' })
     if ('window' in body && body.window !== null) {
       const { start, end } = body.window ?? {}
@@ -1262,6 +1264,7 @@ async function statusApi(req, res, path) {
     if ('window' in body) vo.window = body.window && { start: body.window.start, end: body.window.end }
     if ('timezone' in body) [vo.timezone, vo.timezoneSource] = [body.timezone, 'browser']
     if ('enabled' in body) vo.auto = body.enabled
+    if ('experimental' in body) vo.experimental = body.experimental
     return send(200, voStatus())
   }
   if (route === 'update-now') {

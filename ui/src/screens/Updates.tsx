@@ -28,12 +28,14 @@ import {
 import {
   autoUpdateDisabled,
   clearAutoUpdateError,
+  clearExperimentalError,
   clearUpdateNowError,
   clearWindowError,
   dismissUpdate,
   reconnecting,
   reconnectingLongMinutes,
   setAutoUpdate,
+  setExperimentalUpdates,
   setUpdateWindow,
   shownUpdate,
   updateNow,
@@ -318,13 +320,13 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
           <div className="mt-1 flex items-center gap-2.5 text-[22px] font-bold tracking-[-0.01em]">
             {view.updating || !s.fresh ? (
               <LoaderCircle size={22} className="spin flex-none text-accent-ink" />
-            ) : view.waiting.length > 0 ? (
+            ) : view.waiting.length > 0 || view.sourceChanged ? (
               <Download size={22} className="flex-none text-accent-ink" />
             ) : (
               <CircleCheck size={22} className="flex-none text-good" />
             )}
             {/* Until this screen's own answer arrives, what the page has may be from when it loaded, so it says nothing either way. */}
-            {view.updating ? t('updates.card.updating') : !s.fresh ? t('updates.card.checking') : view.waiting.length > 0 ? t('updates.card.waiting') : t('updates.card.up_to_date')}
+            {view.updating ? t('updates.card.updating') : !s.fresh ? t('updates.card.checking') : view.waiting.length > 0 || view.sourceChanged ? t('updates.card.waiting') : t('updates.card.up_to_date')}
           </div>
         </div>
       </div>
@@ -334,6 +336,8 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
           <span className="k">{t('updates.card.release')}</span>
           <span className="v">{view.release || t('updates.card.unknown')}</span>
           {view.devBuild != null && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{view.devBuild ? t('updates.card.dev_build_commit', { commit: view.devBuild }) : t('updates.card.dev_build')}</span>}
+          {s.status?.auto_update.installed_build && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{t('updates.card.installed_build', { build: /^[a-f0-9]{64}$/.test(s.status.auto_update.installed_build) ? s.status.auto_update.installed_build.slice(0, 12) : s.status.auto_update.installed_build })}</span>}
+          {s.status?.auto_update.available_build && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{t('updates.card.available_build', { build: s.status.auto_update.available_build.slice(0, 12) })}</span>}
         </div>
         <div className="row-k">
           <span className="k">{t('updates.card.qidi_firmware')}</span>
@@ -344,6 +348,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
 
       <div className="mt-2" />
       <PendingToggleRow title={t('updates.card.auto')} sub={t('updates.card.auto_sub')} pending={s.autoUpdateRequest != null} checked={s.autoUpdateRequest ?? s.status?.auto_update.enabled === true} disabled={autoUpdateDisabled(s)} onChange={setAutoUpdate} />
+      <PendingToggleRow title={t('updates.card.experimental')} sub={t('updates.card.experimental_sub')} pending={s.experimentalRequest != null} checked={s.experimentalRequest ?? s.status?.auto_update.experimental === true} disabled={autoUpdateDisabled(s) || s.status?.auto_update.experimental == null} onChange={setExperimentalUpdates} />
       {view.updateWindow && <UpdateWindow window={view.updateWindow} disabled={autoUpdateDisabled(s)} pending={s.windowPending} error={s.windowError} />}
       {/* QIDI's setting, through Moonraker; it hides itself while Moonraker is down or isn't QIDI's. */}
       <LanOnly className="mt-2 border-t border-line pt-2" />
@@ -355,7 +360,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
           {!s.fresh ? (
             <div className="text-[12.5px] text-ink-3">{t('updates.card.checking')}</div>
           ) : view.waiting.length === 0 ? (
-            <div className="text-[12.5px] text-ink-3">{t('updates.card.nothing_waiting')}</div>
+            <div className="text-[12.5px] text-ink-3">{t(view.sourceChanged ? 'updates.card.source_changed' : 'updates.card.nothing_waiting')}</div>
           ) : (
             view.waiting.map((item) => (
               <div key={`${item.kind}-${item.board ?? ''}-${item.version ?? ''}`} className="text-[12.5px] text-ink-2">
@@ -385,6 +390,11 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
         {s.autoUpdateError && (
           <Notice tone="bad" onClose={clearAutoUpdateError}>
             {t('updates.card.auto_error', { error: s.autoUpdateError })}
+          </Notice>
+        )}
+        {s.experimentalError && (
+          <Notice tone="bad" onClose={clearExperimentalError}>
+            {t('updates.card.experimental_error', { error: s.experimentalError })}
           </Notice>
         )}
         {s.updateNowError && (

@@ -8,6 +8,12 @@
   "reconnecting_long_other": "La impresora lleva {{count}} minutos sin responder. No la apagues. Mira su pantalla para ver qué está haciendo.",
   "dont_power_off": "No apagues la impresora hasta que termine.",
   "card": {
+    "source_changed": "El origen de actualizaciones seleccionado aún no se ha aplicado.",
+    "experimental": "Recibir actualizaciones experimentales",
+    "experimental_sub": "Usar compilaciones de desarrollo. Desactiva esta opción para volver a la versión estable con Actualizar ahora o la próxima actualización automática.",
+    "experimental_error": "No se pudieron cambiar las actualizaciones experimentales: {{error}}",
+    "installed_build": "Compilación instalada: {{build}}",
+    "available_build": "Compilación disponible: {{build}}",
     "updating": "Actualizando",
     "waiting": "Pendiente de instalar",
     "up_to_date": "Al día",

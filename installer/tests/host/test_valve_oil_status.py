@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -54,6 +56,8 @@ class StatusServiceTests(unittest.TestCase):
         server.PROGRESS_FILE = status_file.progress_path(cls.paths)
         server.ENROLLMENT_FILE = cls.paths.printer_data_root / ".vo_auto_update_enrolled"
         server.UPDATE_SETTINGS_FILE = update_window.settings_path(cls.paths)
+        server.EXPERIMENTAL_FILE = cls.paths.printer_data_root / ".vo_experimental_updates"
+        server.AUTO_UPDATE_STATE_FILE = cls.paths.printer_data_root / "config/vo_auto_update_state.json"
         server.MACRO_GLOBALS = root / "globals.cfg"
         server.FIRMWARE_MANIFEST = root / "firmware_manifest.json"
         server.AUTO_UPDATE_TIMER = root / "missing.timer"
@@ -230,7 +234,8 @@ class StatusServiceTests(unittest.TestCase):
             status, body = self.request("/api/auto-update", headers=self.GOOD, body=json.dumps(
                 {"enabled": True, "window": outside, "timezone": "Asia/Tokyo"}).encode())
             self.assertEqual(status, 200)
-            self.assertEqual(body["auto_update"], {"enabled": True, "scheduled": False, "window": outside,
+            self.assertEqual(body["auto_update"], {"enabled": True, "experimental": False, "installed_build": None,
+                                               "available_build": None, "scheduled": False, "window": outside,
                                                    "timezone": "Asia/Tokyo", "timezone_source": "browser",
                                                    "in_window": False})
             saved = update_window.load_settings(self.paths)
@@ -250,6 +255,54 @@ class StatusServiceTests(unittest.TestCase):
         finally:
             marker.unlink(missing_ok=True)
             settings.unlink(missing_ok=True)
+
+    def test_source_switch_does_not_offer_a_release_from_the_previous_feed(self) -> None:
+        state = self.server.AUTO_UPDATE_STATE_FILE
+        state.parent.mkdir(exist_ok=True)
+        state.write_text(json.dumps({"available_channel": "release", "available_checksum": "a" * 64}))
+        status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(),
+                                 installed_release="26.11.26.1", pending=(status_file.PendingItem(
+                                     kind=status_file.RELEASE, version="26.11.25.1", current="26.11.26.1", downgrade=True),))
+        try:
+            self.server.set_experimental_updates(False)
+            self.assertEqual(len(self.request("/api/status", method="GET")[1]["pending"]), 1)
+            code, body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"experimental": true}')
+            self.assertEqual(code, 200)
+            self.assertEqual(body["pending"], [])
+            self.assertIsNone(body["auto_update"]["available_build"])
+            self.assertFalse(body["busy"])
+        finally:
+            self.server.set_experimental_updates(False)
+            state.unlink(missing_ok=True)
+
+    def test_experimental_updates_are_printer_owned_and_preserve_checksum_state(self) -> None:
+        state = self.server.AUTO_UPDATE_STATE_FILE
+        state.parent.mkdir(exist_ok=True)
+        status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(name="QIDI Max 4"),
+                                 installed_release="26.11.11.3", pending=())
+        recorded = {"installed_version": "26.11.11.3", "latest_checksum": "a" * 64, "latest_channel": "dev",
+                    "installed_checksum": "b" * 64, "installed_channel": "dev",
+                    "available_checksum": "a" * 64, "available_channel": "dev"}
+        state.write_text(json.dumps(recorded), encoding="utf-8")
+        try:
+            self.assertFalse(self.request("/api/status", method="GET")[1]["auto_update"]["experimental"])
+            status, body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"experimental": true}')
+            self.assertEqual((status, body["auto_update"]["experimental"]), (200, True))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+            self.assertEqual(saved, recorded)
+            self.assertEqual(body["auto_update"]["installed_build"], "b" * 64)
+            self.assertEqual(body["auto_update"]["available_build"], "a" * 64)
+            self.assertTrue(self.server.EXPERIMENTAL_FILE.is_file())
+            self.assertTrue(self.request("/api/status", method="GET")[1]["auto_update"]["experimental"])
+            body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"experimental": false}')[1]
+            self.assertFalse(body["auto_update"]["experimental"])
+            self.assertFalse(self.server.EXPERIMENTAL_FILE.exists())
+            self.assertIsNone(body["auto_update"]["available_build"])
+            self.assertEqual(body["auto_update"]["installed_build"], "b" * 64)
+            self.assertEqual(self.request("/api/auto-update", headers=self.GOOD,
+                                          body=b'{"experimental": "true"}')[0], 400)
+        finally:
+            state.unlink(missing_ok=True)
 
     def test_an_install_publishes_its_steps_for_the_browser(self) -> None:
         def reported() -> dict:
@@ -556,6 +609,11 @@ class StatusServiceTests(unittest.TestCase):
         self.server.SUPPORT_LOG_BYTES = 64
         try:
             metadata.write_text('package_version: "26.11.11.3"\nchannel: "dev"\ngit_short_sha: "a8dda52"\n')
+            self.server.AUTO_UPDATE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            self.server.AUTO_UPDATE_STATE_FILE.write_text(json.dumps({
+                "installed_version": "26.11.11.3", "installed_channel": "dev", "installed_commit": "a8dda52",
+                "installed_build_id": "manual-a", "installed_checksum": None,
+            }))
             status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(name="QIDI Max 4"),
                                      installed_release="26.11.11.3", pending=(), failed="Could not fetch latest release checksum.")
             body = self.request("/api/status", method="GET")[1]
@@ -567,9 +625,13 @@ class StatusServiceTests(unittest.TestCase):
             self.assertIn("Valve Oil: 26.11.11.3 (dev build a8dda52)", query["printer_details"][0])
             # Filled in, the required Logs and files let issues be sent without the bundle (#410, #426).
             self.assertNotIn("logs", query)
-            # The bundle in ~/valve-oil is for another version: what installed the installed release isn't known.
+            # Neither a same-version candidate nor another version can claim to be installed.
+            metadata.write_text('package_version: "26.11.11.3"\nchannel: "dev"\ngit_short_sha: "deadbee"\n')
+            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["commit"], "a8dda52")
+            self.assertEqual(body["auto_update"]["installed_build"], "manual-a")
             metadata.write_text('package_version: "26.11.15.1"\nchannel: "dev"\n')
-            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["channel"], None)
+            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["channel"], "dev")
+            self.assertEqual(self.server.release_build("26.11.15.1"), (None, None))
 
             (logs / "klippy.log").write_text("".join(f"line {number}\n" for number in range(40)))
             (logs / "klippy.log.2026-11-15").write_text("yesterday\n")
@@ -591,6 +653,7 @@ class StatusServiceTests(unittest.TestCase):
         finally:
             self.server.SUPPORT_LOG_BYTES = 16 * 1024 * 1024
             metadata.unlink(missing_ok=True)
+            self.server.AUTO_UPDATE_STATE_FILE.unlink(missing_ok=True)
             shutil.rmtree(logs, ignore_errors=True)
 
 
@@ -739,6 +802,66 @@ class StatusServiceTests(unittest.TestCase):
 
 
 class UpdateNowRunTests(unittest.TestCase):
+    def test_failed_child_installer_restores_the_previous_bundle(self) -> None:
+        from installer.runtime import auto_update
+        from installer.runtime.cli import resolve_runtime_paths
+
+        root = temp_path("vo-restore-bundle-")
+        paths = resolve_runtime_paths(bundle_root=root / "valve-oil", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        paths.bundle_root.mkdir()
+        (paths.bundle_root / "identity").write_text("previous", encoding="utf-8")
+        stage = root / "stage"
+        staged = stage / "extract" / paths.bundle_root.name
+        staged.mkdir(parents=True)
+        (staged / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (stage / "bundle.tar.gz").write_bytes(b"downloaded archive")
+        with mock.patch.object(auto_update, "_new_stage", return_value=stage), \
+                mock.patch.object(auto_update, "_download_archive"), \
+                mock.patch.object(auto_update, "_verify_archive_checksum"), \
+                mock.patch.object(auto_update, "_extract_validated_archive"), \
+                mock.patch("installer.runtime.qidi_package.exchange_paths", return_value=False):
+            with self.assertRaises(auto_update.AutoUpdateError):
+                auto_update.run_latest_installer(
+                    paths=paths, archive_url="https://example.invalid/bundle.tar.gz", expected_checksum="a" * 64,
+                    urlopen=mock.Mock(), run=lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1), environ={},
+                )
+        self.assertEqual((paths.bundle_root / "identity").read_text(encoding="utf-8"), "previous")
+
+    def test_update_now_uses_the_persisted_experimental_feed(self) -> None:
+        from installer.runtime import auto_update, update_now
+        from installer.runtime.cli import resolve_runtime_paths
+        from installer.runtime.reporter import create_reporter
+
+        root = temp_path("vo-update-feed-")
+        paths = resolve_runtime_paths(bundle_root=root / "bundle", environ={"VO_PRINTER_DATA_ROOT": str(root)})
+        auto_update.set_experimental_updates(paths, True)
+        installs = []
+
+        def install(**kwargs):
+            installs.append(kwargs["archive_url"])
+
+        seams = [
+            mock.patch.object(update_now.firmware_update, "load_record", return_value=None),
+            mock.patch.object(update_now.safety, "ensure_no_recovery_sentinel"),
+            mock.patch.object(update_now.safety, "ensure_printer_idle"),
+            mock.patch.object(update_now.safety, "ensure_klipper_ready"),
+            mock.patch.object(update_now, "fetch_latest_checksum", return_value="a" * 64),
+            mock.patch.object(update_now, "run_latest_installer", side_effect=install),
+        ]
+        with contextlib.ExitStack() as stack:
+            for seam in seams:
+                stack.enter_context(seam)
+            self.assertTrue(update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={}))
+        self.assertEqual(installs, [auto_update.DEFAULT_DEV_ARCHIVE_URL])
+        self.assertEqual(json.loads(auto_update.state_path(paths).read_text())["latest_channel"], "dev")
+
+        auto_update.set_experimental_updates(paths, False)
+        with contextlib.ExitStack() as stack:
+            for seam in seams:
+                stack.enter_context(seam)
+            self.assertTrue(update_now.run_update_now(paths=paths, reporter=create_reporter(io.StringIO(), prefer_plain=True), environ={}))
+        self.assertEqual(installs, [auto_update.DEFAULT_DEV_ARCHIVE_URL, auto_update.DEFAULT_ARCHIVE_URL])
+
     def test_pending_firmware_cannot_replace_a_run_started_after_attach(self):
         from installer.runtime import update_now
         from installer.runtime.cli import resolve_runtime_paths

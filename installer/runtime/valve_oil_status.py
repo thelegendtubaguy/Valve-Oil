@@ -95,6 +95,8 @@ class PendingItem:
     # RELEASE only: the installed release is installed again, because its installed state is missing or has drifted
     # (as after QIDI's package emptied the config folder); `version` is then the installed release.
     reinstall: bool = False
+    # RELEASE only: an experimental build is explicitly returning to an older stable release.
+    downgrade: bool = False
     # Empty when the work can run at the next check, or when automatic updates are off.
     blocked_by: tuple[Blocker, ...] = ()
 
