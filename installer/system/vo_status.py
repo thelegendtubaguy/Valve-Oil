@@ -37,9 +37,9 @@ log, message, run_id} | null, busy, printer_busy, update_now: {allowed, blocked_
 uninstall: {allowed, blocked_by: [{code, message}]},
 support: {issue_url}, klipper: {available, unavailable_reason, selected, running, fallback_reason, version, restart_error,
 switch: {to, allowed, blocked_by: [{code, message}]}}}.
-- release.channel and release.commit: "release" or "dev", and the commit, of the bundle that installed the installed
-  release (its RELEASE_METADATA.yaml); null when the bundle in ~/valve-oil is for another version or doesn't say. A
-  dev build's update check fails until a release publishes the archive it looks for, so the UIs don't report that.
+- release.channel and release.commit: "release" or "dev", and the commit, recorded after the installed release's
+  successful install; null when no matching successful provenance is available. A downloaded candidate cannot
+  change the installed identity.
 - auto_update.window: the whole hours an enrolled check installs in, from start up to end, wrapping past midnight when
   end is earlier; null for any time. timezone: the IANA zone it is read in (null: UTC), and timezone_source how it was
   set ("lookup" at install from the printer's internet address, "browser", or "operator" over SSH). in_window: whether
@@ -486,14 +486,15 @@ def experimental_updates() -> bool:
     return EXPERIMENTAL_FILE.is_file()
 
 
-def _update_builds() -> tuple[str | None, str | None]:
+def _update_builds(version: str | None) -> tuple[str | None, str | None]:
     data = _read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)
     if not isinstance(data, dict):
         return None, None
-    installed = _text(data.get("installed_checksum"))
+    installed = (_text(data.get("installed_checksum")) or _text(data.get("installed_build_id"))
+                 if version and data.get("installed_version") == version else None)
     selected = "dev" if experimental_updates() else "release"
     available = _text(data.get("available_checksum")) if data.get("available_channel") == selected else None
-    return installed if installed and len(installed) == 64 else None, available if available and len(available) == 64 else None
+    return installed, available if available and len(available) == 64 else None
 
 
 def set_experimental_updates(enabled: bool) -> None:
@@ -579,7 +580,7 @@ def status_body(jobs: Jobs) -> dict:
     admission, admitted_at = _admission()
     enabled = auto_update_enabled()
     settings = update_settings()
-    installed_build, available_build = _update_builds()
+    installed_build, available_build = _update_builds(installed)
     outside = not in_window(settings)
     live = live_printer()
     run_busy = jobs.busy() or _run_active(_record(data.get("run")))
@@ -865,21 +866,13 @@ def restart_klipper() -> None:
 
 
 def release_build(installed: str | None) -> tuple[str | None, str | None]:
-    """The channel and short commit of the bundle that installed `installed`, from its RELEASE_METADATA.yaml."""
-    fields = {}
-    try:
-        with RELEASE_METADATA.open("r", encoding="utf-8") as handle:
-            for line in handle.read(4096).splitlines():
-                key, separator, value = line.partition(":")
-                if separator:
-                    fields[key.strip()] = value.strip().strip('"').strip("'")
-    except (OSError, UnicodeDecodeError):
+    """Installed provenance survives replacement by an uninstalled same-version candidate."""
+    fields = _read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)
+    if not isinstance(fields, dict) or not installed or fields.get("installed_version") != installed:
         return None, None
-    if not installed or fields.get("package_version") != installed:
-        return None, None
-    channel = fields.get("channel") if fields.get("channel") in INSTALL_SOURCES else None
-    commit = fields.get("git_short_sha") if COMMIT.match(fields.get("git_short_sha", "")) else None
-    return channel, commit
+    channel = fields.get("installed_channel") if fields.get("installed_channel") in INSTALL_SOURCES else None
+    commit = _text(fields.get("installed_commit"))
+    return channel, commit if commit and COMMIT.fullmatch(commit) else None
 
 
 def printer_details(status: dict) -> str:

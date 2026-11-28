@@ -336,7 +336,7 @@ function ValveOilCard({ s, view }: { s: ValveOilState; view: VoStatusView }) {
           <span className="k">{t('updates.card.release')}</span>
           <span className="v">{view.release || t('updates.card.unknown')}</span>
           {view.devBuild != null && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{view.devBuild ? t('updates.card.dev_build_commit', { commit: view.devBuild }) : t('updates.card.dev_build')}</span>}
-          {s.status?.auto_update.installed_build && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{t('updates.card.installed_build', { build: s.status.auto_update.installed_build.slice(0, 12) })}</span>}
+          {s.status?.auto_update.installed_build && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{t('updates.card.installed_build', { build: /^[a-f0-9]{64}$/.test(s.status.auto_update.installed_build) ? s.status.auto_update.installed_build.slice(0, 12) : s.status.auto_update.installed_build })}</span>}
           {s.status?.auto_update.available_build && <span className="col-span-2 -mt-1 text-right text-[12px] text-ink-3">{t('updates.card.available_build', { build: s.status.auto_update.available_build.slice(0, 12) })}</span>}
         </div>
         <div className="row-k">

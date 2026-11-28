@@ -28,6 +28,8 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping
 
+import yaml
+
 from .box_enablement import (
     SavedVariablePersistenceError,
     maybe_repair_saved_variables,
@@ -375,8 +377,8 @@ def run_auto_update_check(
         update_check.publish_failed(paths, enrolled=enrolled, message=messages.AUTO_UPDATE_CHECKSUM_FETCH_FAILED)
         return AutoUpdateRunResult(action="skipped-checksum-unavailable")
     state = _read_state(paths)
-    installed_checksum = state.get("installed_checksum", state.get("latest_checksum") if "latest_channel" not in state else None)
-    installed_channel = state.get("installed_channel", "release")
+    installed_checksum = state.get("installed_checksum")
+    installed_channel = installed_release_channel(paths)
     record_available_build(paths, checksum, channel)
     if channel == UpdateChannel.EXPERIMENTAL:
         # The prerelease tag is mutable and keeps package.version. Its verified checksum is its build identity.
@@ -388,7 +390,7 @@ def run_auto_update_check(
         raise
     found = update_check.discover(
         paths, enrolled=enrolled, latest_version=latest_version, reconciliation_required=reconciliation_required,
-        release_changed=(installed_checksum != checksum or installed_channel != channel),
+        release_changed=(installed_checksum != checksum or (installed_channel is not None and installed_channel != channel)),
         release_transition=(update_check.ReleaseTransition.RETURN_TO_STABLE
                             if channel == UpdateChannel.STABLE and installed_release_channel(paths) == "dev"
                             else update_check.ReleaseTransition.FOLLOW_SOURCE),
@@ -411,7 +413,8 @@ def run_auto_update_check(
             return _skipped(reporter, found, checksum)
         update_window.hold_lights_if_off(paths, urlopen=urlopen)
         # A new release, or the current one installed again: missing checksum state or drifted installation state.
-        updating = installed_checksum not in (None, checksum) or installed_channel != channel or found.newer_release
+        updating = (installed_checksum not in (None, checksum)
+                    or (installed_channel is not None and installed_channel != channel) or found.newer_release)
         reporter.line(messages.AUTO_UPDATE_AVAILABLE if updating else messages.AUTO_UPDATE_RECONCILING)
         record = valve_oil_status.begin_run(paths, kind="automatic", step="install",
                                             step_label=f"Installing Valve Oil {found.latest_version or ''}".strip())
@@ -872,6 +875,8 @@ def installed_release_channel(paths: RuntimePaths) -> str | None:
     """The successful installer run records this; replaceable bundle metadata cannot prove an install worked."""
     state = _read_state(paths)
     value = state.get("installed_channel")
+    if state.get("installed_version") != installed_release(paths):
+        return None
     return value if isinstance(value, str) and value in {"release", "dev"} else None
 
 
@@ -881,9 +886,30 @@ def record_available_build(paths: RuntimePaths, checksum: str, channel: str) -> 
     atomic_write_text(state_path(paths), json.dumps(state, sort_keys=True, indent=2) + "\n", mode=0o644)
 
 
-def record_installed_build(paths: RuntimePaths, checksum: str, channel: str) -> None:
+def record_installed_build(paths: RuntimePaths, checksum: str | None = None, channel: str | None = None) -> None:
+    """Snapshot provenance only after success; a downloaded bundle is not an installed build."""
+    version = installed_release(paths)
+    try:
+        metadata = yaml.safe_load((paths.bundle_root / "RELEASE_METADATA.yaml").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        metadata = {}
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise AutoUpdateError("Could not record the installed build's metadata.") from exc
+    if not isinstance(metadata, dict) or metadata.get("package_version") != version:
+        metadata = {}
+    if channel is None:
+        channel = metadata.get("channel")
+    if not isinstance(channel, str) or channel not in {UpdateChannel.STABLE, UpdateChannel.EXPERIMENTAL}:
+        channel = None
+    commit, build_id = metadata.get("git_short_sha"), metadata.get("build_id")
     state = _read_state(paths)
-    state.update({"installed_checksum": checksum, "installed_channel": channel})
+    state.update({
+        "installed_version": version,
+        "installed_checksum": checksum,
+        "installed_channel": channel,
+        "installed_commit": commit if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{7,40}", commit) else None,
+        "installed_build_id": build_id if isinstance(build_id, str) and re.fullmatch(r"[A-Za-z0-9._+-]{1,128}", build_id) else None,
+    })
     atomic_write_text(state_path(paths), json.dumps(state, sort_keys=True, indent=2) + "\n", mode=0o644)
 
 

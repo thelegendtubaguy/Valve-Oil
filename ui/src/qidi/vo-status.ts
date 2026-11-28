@@ -235,7 +235,7 @@ export interface VoStatus {
     enabled: boolean | null;
     /** Whether this printer follows the mutable development prerelease feed. */
     experimental: boolean | null;
-    /** Verified checksum of the last build whose installer completed. */
+    /** Verified archive checksum, or the successful manual install's build ID. */
     installed_build: string | null;
     /** Verified checksum from the feed's last successful check. */
     available_build: string | null;

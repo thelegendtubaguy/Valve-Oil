@@ -259,7 +259,9 @@ class StatusServiceTests(unittest.TestCase):
     def test_experimental_updates_are_printer_owned_and_preserve_checksum_state(self) -> None:
         state = self.server.AUTO_UPDATE_STATE_FILE
         state.parent.mkdir(exist_ok=True)
-        recorded = {"latest_checksum": "a" * 64, "latest_channel": "dev",
+        status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(name="QIDI Max 4"),
+                                 installed_release="26.11.11.3", pending=())
+        recorded = {"installed_version": "26.11.11.3", "latest_checksum": "a" * 64, "latest_channel": "dev",
                     "installed_checksum": "b" * 64, "installed_channel": "dev",
                     "available_checksum": "a" * 64, "available_channel": "dev"}
         state.write_text(json.dumps(recorded), encoding="utf-8")
@@ -588,6 +590,11 @@ class StatusServiceTests(unittest.TestCase):
         self.server.SUPPORT_LOG_BYTES = 64
         try:
             metadata.write_text('package_version: "26.11.11.3"\nchannel: "dev"\ngit_short_sha: "a8dda52"\n')
+            self.server.AUTO_UPDATE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            self.server.AUTO_UPDATE_STATE_FILE.write_text(json.dumps({
+                "installed_version": "26.11.11.3", "installed_channel": "dev", "installed_commit": "a8dda52",
+                "installed_build_id": "manual-a", "installed_checksum": None,
+            }))
             status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(name="QIDI Max 4"),
                                      installed_release="26.11.11.3", pending=(), failed="Could not fetch latest release checksum.")
             body = self.request("/api/status", method="GET")[1]
@@ -599,9 +606,13 @@ class StatusServiceTests(unittest.TestCase):
             self.assertIn("Valve Oil: 26.11.11.3 (dev build a8dda52)", query["printer_details"][0])
             # Filled in, the required Logs and files let issues be sent without the bundle (#410, #426).
             self.assertNotIn("logs", query)
-            # The bundle in ~/valve-oil is for another version: what installed the installed release isn't known.
+            # Neither a same-version candidate nor another version can claim to be installed.
+            metadata.write_text('package_version: "26.11.11.3"\nchannel: "dev"\ngit_short_sha: "deadbee"\n')
+            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["commit"], "a8dda52")
+            self.assertEqual(body["auto_update"]["installed_build"], "manual-a")
             metadata.write_text('package_version: "26.11.15.1"\nchannel: "dev"\n')
-            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["channel"], None)
+            self.assertEqual(self.request("/api/status", method="GET")[1]["release"]["channel"], "dev")
+            self.assertEqual(self.server.release_build("26.11.15.1"), (None, None))
 
             (logs / "klippy.log").write_text("".join(f"line {number}\n" for number in range(40)))
             (logs / "klippy.log.2026-11-15").write_text("yesterday\n")
@@ -623,6 +634,7 @@ class StatusServiceTests(unittest.TestCase):
         finally:
             self.server.SUPPORT_LOG_BYTES = 16 * 1024 * 1024
             metadata.unlink(missing_ok=True)
+            self.server.AUTO_UPDATE_STATE_FILE.unlink(missing_ok=True)
             shutil.rmtree(logs, ignore_errors=True)
 
 
