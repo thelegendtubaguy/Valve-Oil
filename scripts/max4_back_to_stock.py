@@ -520,7 +520,15 @@ def restore_from_old_record(vo, check: bool) -> None:
 
 def marked_leftovers() -> tuple[list[str], list[str]]:
     """Valve Oil's own units, and its other files, still on the printer: each carries Valve Oil's marker."""
-    from installer.runtime.earlier_names import _owned
+    from installer.runtime.earlier_names import _owned as marked
+
+    def _owned(path: Path) -> bool:
+        if marked(path):
+            return True
+        try:  # the Wi-Fi start rule carries "# valve-oil:" rather than "# vo:"
+            return not path.is_symlink() and path.is_file() and "# valve-oil:" in path.read_text(errors="replace")[:256]
+        except OSError:
+            return False
 
     system = Path("/etc/systemd/system")
     units = sorted(str(path) for pattern in ("vo-*.service", "vo-*.timer", "tltg-*.service", "tltg-*.timer")
@@ -528,6 +536,7 @@ def marked_leftovers() -> tuple[list[str], list[str]]:
     files = [*system.glob("*.d/vo-*.conf"), *system.glob("*.d/tltg-*.conf"),
              *Path("/usr/local/lib").glob("vo_*.py"), *Path("/usr/local/lib").glob("tltg_*.py"),
              *Path("/etc/udev/rules.d").glob("*-vo-*.rules"), *Path("/etc/udev/rules.d").glob("*-tltg-*.rules"),
+             *Path("/etc/udev/rules.d").glob("*valve-oil*.rules"), *Path("/etc/profile.d").glob("valve-oil*.sh"),
              *(path for env in ("moonraker-env", "klippy-env") for pattern in ("vo-*.pth", "vo_*.py", "tltg-*.pth", "tltg_*.py")
                for path in (HOME / env / "lib/python3.9/site-packages").glob(pattern))]
     return units, sorted(str(path) for path in files if _owned(path))
