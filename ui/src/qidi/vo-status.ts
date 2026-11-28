@@ -921,7 +921,8 @@ const updateView = (status: VoStatus): VoUpdateView | null => {
 }
 
 const updateSourceChanged = (status: VoStatus): boolean =>
-  status.auto_update.experimental != null && status.auto_update.experimental !== (status.release.channel === 'dev')
+  status.auto_update.experimental != null && (status.auto_update.available_build == null ||
+    status.auto_update.experimental !== (status.release.channel === 'dev'))
 
 /** What Update now would do, and whether it can start; the printer's own answer, or for an older service, busy and printing. */
 const updateNowView = (status: VoStatus, update: VoUpdateView | null): VoUpdateNowView => {

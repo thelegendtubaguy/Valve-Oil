@@ -585,7 +585,12 @@ def status_body(jobs: Jobs) -> dict:
     live = live_printer()
     run_busy = jobs.busy() or _run_active(_record(data.get("run")))
     busy = run_busy or installer_lock_held()
-    pending = [item for item in map(_pending, _records(data.get("pending"))) if _still_waiting(item, installed)]
+    pending = [item for item in map(_pending, _records(data.get("pending")))
+               if item is not None and _still_waiting(item, installed)]
+    checked_channel = _text(_record(_read_json(AUTO_UPDATE_STATE_FILE, limit=MAX_STATUS_BYTES)).get("available_channel"))
+    selected_channel = "dev" if experimental_updates() else "release"
+    if checked_channel in INSTALL_SOURCES and checked_channel != selected_channel:
+        pending = [item for item in pending if item["kind"] != "release"]
     for item in pending:
         item["blocked_by"] = _live_blockers(item["blocked_by"], live, enabled,
                                             window_blocker(settings) if outside else None)

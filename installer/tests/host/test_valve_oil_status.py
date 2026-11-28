@@ -256,6 +256,25 @@ class StatusServiceTests(unittest.TestCase):
             marker.unlink(missing_ok=True)
             settings.unlink(missing_ok=True)
 
+    def test_source_switch_does_not_offer_a_release_from_the_previous_feed(self) -> None:
+        state = self.server.AUTO_UPDATE_STATE_FILE
+        state.parent.mkdir(exist_ok=True)
+        state.write_text(json.dumps({"available_channel": "release", "available_checksum": "a" * 64}))
+        status_file.record_check(self.paths, enrolled=False, printer=status_file.PrinterInfo(),
+                                 installed_release="26.11.26.1", pending=(status_file.PendingItem(
+                                     kind=status_file.RELEASE, version="26.11.25.1", current="26.11.26.1", downgrade=True),))
+        try:
+            self.server.set_experimental_updates(False)
+            self.assertEqual(len(self.request("/api/status", method="GET")[1]["pending"]), 1)
+            code, body = self.request("/api/auto-update", headers=self.GOOD, body=b'{"experimental": true}')
+            self.assertEqual(code, 200)
+            self.assertEqual(body["pending"], [])
+            self.assertIsNone(body["auto_update"]["available_build"])
+            self.assertFalse(body["busy"])
+        finally:
+            self.server.set_experimental_updates(False)
+            state.unlink(missing_ok=True)
+
     def test_experimental_updates_are_printer_owned_and_preserve_checksum_state(self) -> None:
         state = self.server.AUTO_UPDATE_STATE_FILE
         state.parent.mkdir(exist_ok=True)

@@ -309,6 +309,9 @@ describe('voStatusView', () => {
       expect(voStatusView(status).sourceChanged).toBe(true)
       expect(voStatusView(status).updateNow).toMatchObject({ offered: true, action: 'install', allowed: true })
       status.auto_update.experimental = !experimental
+      expect(voStatusView(status).sourceChanged).toBe(true)
+      expect(voStatusView(status).updateNow.offered).toBe(true)
+      status.auto_update.available_build = status.auto_update.installed_build
       expect(voStatusView(status).sourceChanged).toBe(false)
       expect(voStatusView(status).updateNow.offered).toBe(false)
     }
